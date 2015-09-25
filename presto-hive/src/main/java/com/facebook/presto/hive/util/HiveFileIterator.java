@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Properties;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILESYSTEM_ERROR;
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILE_NOT_FOUND;
 import static java.util.Objects.requireNonNull;
 
 public class HiveFileIterator
@@ -94,7 +93,8 @@ public class HiveFileIterator
             return endOfData();
         }
         catch (FileNotFoundException e) {
-            throw new PrestoException(HIVE_FILE_NOT_FOUND, "Partition location does not exist: " + path);
+            // We are okay if the path does not exist.
+            return endOfData();
         }
         catch (IOException e) {
             throw new PrestoException(HIVE_FILESYSTEM_ERROR, e);
