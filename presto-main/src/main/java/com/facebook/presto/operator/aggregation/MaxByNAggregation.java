@@ -11,23 +11,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.plugin.blackhole;
+package com.facebook.presto.operator.aggregation;
 
-import static com.google.common.base.Preconditions.checkArgument;
-import static java.util.Objects.requireNonNull;
-
-public final class Types
+public class MaxByNAggregation
+        extends AbstractMinMaxByNAggregation
 {
-    private Types() {}
+    private static final String NAME = "max_by";
 
-    public static <A, B extends A> B checkType(A value, Class<B> target, String name)
+    public static final MaxByNAggregation MAX_BY_N_AGGREGATION = new MaxByNAggregation();
+
+    public MaxByNAggregation()
     {
-        requireNonNull(value, "value is null");
-        checkArgument(target.isInstance(value),
-                "%s must be of type %s, not %s",
-                name,
-                target.getName(),
-                value.getClass().getName());
-        return target.cast(value);
+        super(NAME, t -> t::compareTo);
+    }
+
+    @Override
+    public String getDescription()
+    {
+        return  "Returns the values of the first argument associated with the maximum values of the second argument";
     }
 }
