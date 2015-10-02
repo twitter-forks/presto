@@ -189,7 +189,7 @@ public class TypeSignature
     {
         if (literal.startsWith("'") || literal.endsWith("'")) {
             checkArgument(literal.startsWith("'") && literal.endsWith("'"), "Bad literal: '%s'", literal);
-            return literal.substring(1, literal.length() - 1);
+            return literal.substring(1, literal.length() - 1).toLowerCase();
         }
         else {
             return Long.parseLong(literal);

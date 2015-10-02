@@ -449,7 +449,7 @@ public class FunctionRegistry
                 RowType rowType = RowParametricType.ROW.createType(resolveTypes(typeSignature.getParameters(), typeManager), typeSignature.getLiteralParameters());
                 // search for exact match
                 for (ParametricFunction function : RowParametricType.ROW.createFunctions(rowType)) {
-                    if (!function.getSignature().getName().equals(name.toString())) {
+                    if (!function.getSignature().getName().equalsIgnoreCase(name.toString())) {
                         continue;
                     }
                     Map<String, Type> boundTypeParameters = function.getSignature().bindTypeParameters(resolvedTypes, false, typeManager);
