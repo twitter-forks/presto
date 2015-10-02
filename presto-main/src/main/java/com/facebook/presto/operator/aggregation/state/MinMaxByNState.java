@@ -11,24 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package com.facebook.presto.operator.aggregation.state;
 
-package com.facebook.presto.plugin.blackhole;
+import com.facebook.presto.operator.aggregation.TypedKeyValueHeap;
 
-import com.facebook.presto.spi.ConnectorFactory;
-import com.facebook.presto.spi.Plugin;
-import com.google.common.collect.ImmutableList;
-
-import java.util.List;
-
-public final class BlackHolePlugin
-        implements Plugin
+public interface MinMaxByNState
+        extends AccumulatorState
 {
-    @Override
-    public <T> List<T> getServices(Class<T> type)
-    {
-        if (type == ConnectorFactory.class) {
-            return ImmutableList.of(type.cast(new BlackHoleConnectorFactory()));
-        }
-        return ImmutableList.of();
-    }
+    TypedKeyValueHeap getTypedKeyValueHeap();
+
+    void setTypedKeyValueHeap(TypedKeyValueHeap value);
+
+    void addMemoryUsage(long memory);
 }
