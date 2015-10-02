@@ -28,7 +28,6 @@ import io.airlift.slice.Slice;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Map;
-import java.util.Optional;
 
 import static com.facebook.presto.sql.QueryUtil.mangleFieldReference;
 import static com.facebook.presto.type.RowType.RowField;
@@ -59,7 +58,7 @@ public class RowFieldReference
         Type returnType = null;
         int index = 0;
         for (RowField field : type.getFields()) {
-            if (field.getName().equals(Optional.of(fieldName))) {
+            if (field.getName().get().equalsIgnoreCase(fieldName)) {
                 returnType = field.getType();
                 break;
             }
