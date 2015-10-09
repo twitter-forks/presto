@@ -77,7 +77,6 @@ import java.util.concurrent.TimeUnit;
 
 import static com.facebook.presto.hive.HivePartitionKey.HIVE_DEFAULT_DYNAMIC_PARTITION;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
-import static com.facebook.presto.hive.HiveType.getType;
 import static com.facebook.presto.hive.HiveUtil.isStructuralType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
@@ -244,7 +243,7 @@ public abstract class AbstractTestHiveFileFormats
                     asMap(null, ImmutableMap.of(15L, true), ImmutableList.of("k", "ka"), ImmutableMap.of(16L, false)),
                     mapBlockOf(new ArrayType(VARCHAR), new MapType(BIGINT, BOOLEAN), arrayBlockOf(VARCHAR, "k", "ka"), mapBlockOf(BIGINT, BOOLEAN, 16L, false))))
             .add(new TestColumn("t_struct_nested", getStandardStructObjectInspector(ImmutableList.of("struct_field"),
-                    ImmutableList.of(getStandardListObjectInspector(javaStringObjectInspector))), ImmutableList.of(ImmutableList.of("1", "2", "3")) , rowBlockOf(ImmutableList.of(new ArrayType(VARCHAR)), arrayBlockOf(VARCHAR, "1", "2", "3"))))
+                    ImmutableList.of(getStandardListObjectInspector(javaStringObjectInspector))), ImmutableList.of(ImmutableList.of("1", "2", "3")), rowBlockOf(ImmutableList.of(new ArrayType(VARCHAR)), arrayBlockOf(VARCHAR, "1", "2", "3"))))
             .add(new TestColumn("t_struct_null", getStandardStructObjectInspector(ImmutableList.of("struct_field", "struct_field2"),
                     ImmutableList.of(javaStringObjectInspector, javaStringObjectInspector)), Arrays.asList(null, null), rowBlockOf(ImmutableList.of(VARCHAR, VARCHAR), null, null)))
             .build();
@@ -273,11 +272,8 @@ public abstract class AbstractTestHiveFileFormats
             TestColumn testColumn = testColumns.get(i);
             int columnIndex = testColumn.isPartitionKey() ? -1 : nextHiveColumnIndex++;
 
-            ObjectInspector inspector = testColumn.getObjectInspector();
-            HiveType hiveType = HiveType.getHiveType(inspector);
-            Type type = getType(inspector, TYPE_MANAGER);
-
-            columns.add(new HiveColumnHandle("client_id", testColumn.getName(), i, hiveType, type.getTypeSignature(), columnIndex, testColumn.isPartitionKey()));
+            HiveType hiveType = HiveType.valueOf(testColumn.getObjectInspector().getTypeName());
+            columns.add(new HiveColumnHandle("client_id", testColumn.getName(), i, hiveType, hiveType.getTypeSignature(), columnIndex, testColumn.isPartitionKey()));
         }
         return columns;
     }
@@ -367,7 +363,7 @@ public abstract class AbstractTestHiveFileFormats
                 TestColumn testColumn = testColumns.get(i);
 
                 Object fieldFromCursor;
-                Type type = getType(testColumn.getObjectInspector(), TYPE_MANAGER);
+                Type type = HiveType.valueOf(testColumn.getObjectInspector().getTypeName()).getType(TYPE_MANAGER);
                 if (cursor.isNull(i)) {
                     fieldFromCursor = null;
                 }

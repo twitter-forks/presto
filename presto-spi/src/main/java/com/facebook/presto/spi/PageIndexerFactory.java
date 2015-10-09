@@ -11,38 +11,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.metadata;
+package com.facebook.presto.spi;
 
-public abstract class ParametricScalar
-        implements ParametricFunction
+import com.facebook.presto.spi.type.Type;
+
+import java.util.List;
+
+/**
+ * This interface is not stable and will not be supported in future releases.
+ */
+@Deprecated
+public interface PageIndexerFactory
 {
-    @Override
-    public final boolean isScalar()
-    {
-        return true;
-    }
-
-    @Override
-    public final boolean isAggregate()
-    {
-        return false;
-    }
-
-    @Override
-    public final boolean isApproximate()
-    {
-        return false;
-    }
-
-    @Override
-    public final boolean isWindow()
-    {
-        return false;
-    }
-
-    @Override
-    public final boolean isUnbound()
-    {
-        return true;
-    }
+    PageIndexer createPageIndexer(List<? extends Type> types);
 }

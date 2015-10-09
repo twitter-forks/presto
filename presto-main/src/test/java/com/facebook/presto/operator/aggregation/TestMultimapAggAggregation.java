@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.facebook.presto.metadata.FunctionType.AGGREGATE;
 import static com.facebook.presto.metadata.MetadataManager.createTestMetadataManager;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
 import static com.facebook.presto.operator.aggregation.MultimapAggregation.NAME;
@@ -117,8 +118,8 @@ public class TestMultimapAggAggregation
         checkState(expectedKeys.size() == expectedValues.size(), "expectedKeys and expectedValues should have equal size");
 
         MapType mapType = new MapType(keyType, new ArrayType(valueType));
-        Signature signature = new Signature(NAME, mapType.getTypeSignature(), keyType.getTypeSignature(), valueType.getTypeSignature());
-        InternalAggregationFunction aggFunc = metadata.getExactFunction(signature).getAggregationFunction();
+        Signature signature = new Signature(NAME, AGGREGATE, mapType.getTypeSignature(), keyType.getTypeSignature(), valueType.getTypeSignature());
+        InternalAggregationFunction aggFunc = metadata.getFunctionRegistry().getAggregateFunctionImplementation(signature);
 
         Map<K, List<V>> map = Maps.newHashMap();
         for (int i = 0; i < expectedKeys.size(); i++) {

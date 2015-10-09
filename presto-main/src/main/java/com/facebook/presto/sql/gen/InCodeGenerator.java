@@ -20,9 +20,9 @@ import com.facebook.presto.byteCode.Variable;
 import com.facebook.presto.byteCode.control.IfStatement;
 import com.facebook.presto.byteCode.control.LookupSwitch;
 import com.facebook.presto.byteCode.instruction.LabelNode;
-import com.facebook.presto.metadata.FunctionInfo;
-import com.facebook.presto.metadata.OperatorType;
+import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
+import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.DateType;
 import com.facebook.presto.spi.type.Type;
@@ -35,6 +35,7 @@ import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.primitives.Ints;
 
+import java.lang.invoke.MethodHandle;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -43,14 +44,27 @@ import java.util.Set;
 import static com.facebook.presto.byteCode.control.LookupSwitch.lookupSwitchBuilder;
 import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantFalse;
 import static com.facebook.presto.byteCode.instruction.JumpInstruction.jump;
+import static com.facebook.presto.metadata.OperatorType.EQUAL;
+import static com.facebook.presto.metadata.OperatorType.HASH_CODE;
+import static com.facebook.presto.metadata.Signature.internalOperator;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.sql.gen.ByteCodeUtils.ifWasNullPopAndGoto;
 import static com.facebook.presto.sql.gen.ByteCodeUtils.invoke;
 import static com.facebook.presto.sql.gen.ByteCodeUtils.loadConstant;
 import static com.facebook.presto.util.FastutilSetHelper.toFastutilHashSet;
+import static java.util.Objects.requireNonNull;
 
 public class InCodeGenerator
         implements ByteCodeGenerator
 {
+    private final FunctionRegistry registry;
+
+    public InCodeGenerator(FunctionRegistry registry)
+    {
+        this.registry = requireNonNull(registry, "registry is null");
+    }
+
     enum SwitchGenerationCase
     {
         DIRECT_SWITCH,
@@ -108,7 +122,8 @@ public class InCodeGenerator
 
         SwitchGenerationCase switchGenerationCase  = checkSwitchGenerationCase(type, values);
 
-        FunctionInfo hashCodeFunction = generatorContext.getRegistry().resolveOperator(OperatorType.HASH_CODE, ImmutableList.of(type));
+        Signature hashCodeSignature = internalOperator(HASH_CODE, BIGINT, ImmutableList.of(type));
+        MethodHandle hashCodeFunction = generatorContext.getRegistry().getScalarFunctionImplementation(hashCodeSignature).getMethodHandle();
 
         ImmutableListMultimap.Builder<Integer, ByteCodeNode> hashBucketsBuilder = ImmutableListMultimap.builder();
         ImmutableList.Builder<ByteCodeNode> defaultBucket = ImmutableList.builder();
@@ -127,7 +142,7 @@ public class InCodeGenerator
                         break;
                     case HASH_SWITCH:
                         try {
-                            int hashCode = Ints.checkedCast((Long) hashCodeFunction.getMethodHandle().invoke(object));
+                            int hashCode = Ints.checkedCast((Long) hashCodeFunction.invoke(object));
                             hashBucketsBuilder.put(hashCode, testByteCode);
                         }
                         catch (Throwable throwable) {
@@ -182,17 +197,17 @@ public class InCodeGenerator
                 switchBuilder.defaultCase(defaultLabel);
                 Binding hashCodeBinding = generatorContext
                         .getCallSiteBinder()
-                        .bind(hashCodeFunction.getMethodHandle());
+                        .bind(hashCodeFunction);
                 switchBlock = new ByteCodeBlock()
                         .comment("lookupSwitch(hashCode(<stackValue>))")
                         .dup(javaType)
-                        .append(invoke(hashCodeBinding, hashCodeFunction.getSignature()))
+                        .append(invoke(hashCodeBinding, hashCodeSignature))
                         .longToInt()
                         .append(switchBuilder.build())
                         .append(switchCaseBlocks);
                 break;
             case SET_CONTAINS:
-                Set<?> constantValuesSet = toFastutilHashSet(constantValues, javaType);
+                Set<?> constantValuesSet = toFastutilHashSet(constantValues, type, registry);
                 Binding constant = generatorContext.getCallSiteBinder().bind(constantValuesSet, constantValuesSet.getClass());
 
                 switchBlock = new ByteCodeBlock()
@@ -274,7 +289,7 @@ public class InCodeGenerator
 
         elseBlock.gotoLabel(noMatchLabel);
 
-        FunctionInfo operator = generatorContext.getRegistry().resolveOperator(OperatorType.EQUAL, ImmutableList.of(type, type));
+        ScalarFunctionImplementation operator = generatorContext.getRegistry().getScalarFunctionImplementation(internalOperator(EQUAL, BOOLEAN, ImmutableList.of(type, type)));
 
         Binding equalsFunction = generatorContext
                 .getCallSiteBinder()
@@ -297,7 +312,7 @@ public class InCodeGenerator
                         .append(ifWasNullPopAndGoto(scope, elseLabel, void.class, type.getJavaType(), type.getJavaType()));
             }
             test.condition()
-                    .append(invoke(equalsFunction, operator.getSignature()));
+                    .append(invoke(equalsFunction, EQUAL.name()));
 
             test.ifTrue().gotoLabel(matchLabel);
             test.ifFalse(elseNode);
