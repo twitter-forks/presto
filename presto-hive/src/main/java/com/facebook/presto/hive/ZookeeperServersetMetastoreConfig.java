@@ -29,7 +29,6 @@ public class ZookeeperServersetMetastoreConfig
     private int zookeeperRetrySleepTime = 500; // ms
     private int zookeeperMaxRetries = 3;
 
-    @NotNull
     public String getZookeeperServerHostAndPort()
     {
         return zookeeperServerHostAndPort;
@@ -43,7 +42,6 @@ public class ZookeeperServersetMetastoreConfig
         return this;
     }
 
-    @NotNull
     public String getZookeeperMetastorePath()
     {
         return zookeeperMetastorePath;

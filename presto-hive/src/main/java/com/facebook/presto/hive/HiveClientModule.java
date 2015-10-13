@@ -86,8 +86,6 @@ public class HiveClientModule
         newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class));
 
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
-        binder.bind(HiveCluster.class).to(ZookeeperServersetHiveCluster.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(ZookeeperServersetMetastoreConfig.class);
 
         binder.bind(TypeManager.class).toInstance(typeManager);
 
