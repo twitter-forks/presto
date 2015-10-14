@@ -19,9 +19,6 @@ import io.airlift.configuration.ConfigDescription;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 
-/**
- * Created by smittal on 10/9/15.
- */
 public class ZookeeperServersetMetastoreConfig
 {
     private String zookeeperServerHostAndPort;

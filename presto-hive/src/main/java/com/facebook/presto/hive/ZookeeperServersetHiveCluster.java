@@ -25,9 +25,6 @@ import java.util.List;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_METASTORE_ERROR;
 import static java.util.Objects.requireNonNull;
 
-/**
- * Created by smittal on 10/9/15.
- */
 public class ZookeeperServersetHiveCluster
         implements HiveCluster
 {
