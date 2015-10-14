@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.OperatorNotFoundException;
+import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableLayout;
 import com.facebook.presto.spi.ColumnHandle;
@@ -612,8 +613,8 @@ public class PlanPrinter
 
             try {
                 ColumnMetadata columnMetadata = metadata.getColumnMetadata(session, table, column);
-                MethodHandle method = metadata.getFunctionRegistry().getCoercion(columnMetadata.getType(), VARCHAR)
-                        .getMethodHandle();
+                Signature coercion = metadata.getFunctionRegistry().getCoercion(columnMetadata.getType(), VARCHAR);
+                MethodHandle method = metadata.getFunctionRegistry().getScalarFunctionImplementation(coercion).getMethodHandle();
 
                 for (Range range : domain.getRanges()) {
                     StringBuilder builder = new StringBuilder();

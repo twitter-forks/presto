@@ -65,7 +65,7 @@ public final class RowParametricType
         ImmutableList.Builder<ParametricFunction> builder = ImmutableList.builder();
         for (RowField field : rowType.getFields()) {
             field.getName()
-                    .ifPresent(name -> builder.add(new RowFieldReference(rowType, field.getName().get())));
+                    .ifPresent(name -> builder.add(new RowFieldReference(rowType, field.getName().get().toLowerCase())));
         }
         return builder.build();
     }

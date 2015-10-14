@@ -14,7 +14,7 @@
 package com.facebook.presto.kafka.util;
 
 import com.google.common.io.Files;
-import org.apache.zookeeper.server.NIOServerCnxn;
+import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ZooKeeperServer;
 import org.apache.zookeeper.server.persistence.FileTxnSnapLog;
 
@@ -32,7 +32,7 @@ public class EmbeddedZookeeper
     private final int port;
     private final File zkDataDir;
     private final ZooKeeperServer zkServer;
-    private final NIOServerCnxn.Factory cnxnFactory;
+    private final NIOServerCnxnFactory cnxnFactory;
 
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean stopped = new AtomicBoolean();
@@ -53,7 +53,8 @@ public class EmbeddedZookeeper
         FileTxnSnapLog ftxn = new FileTxnSnapLog(zkDataDir, zkDataDir);
         zkServer.setTxnLogFactory(ftxn);
 
-        cnxnFactory = new NIOServerCnxn.Factory(new InetSocketAddress(this.port), 0);
+        cnxnFactory = new NIOServerCnxnFactory();
+        cnxnFactory.configure(new InetSocketAddress(this.port), 0);
     }
 
     public void start()
