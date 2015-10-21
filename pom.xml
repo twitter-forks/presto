@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.123-SNAPSHOT</version>
+    <version>0.124-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -55,8 +55,8 @@
         <!-- use a fractional hour timezone offset for tests -->
         <air.test.timezone>Asia/Katmandu</air.test.timezone>
         <air.test.parallel>methods</air.test.parallel>
-        <air.test.thread-count>4</air.test.thread-count>
-        <air.test.jvmsize>1792m</air.test.jvmsize>
+        <air.test.thread-count>2</air.test.thread-count>
+        <air.test.jvmsize>2g</air.test.jvmsize>
 
         <air.javadoc.lint>-missing</air.javadoc.lint>
     </properties>
@@ -855,7 +855,7 @@
                 <version>1.2.2</version>
                 <configuration>
                     <javaVersion>1.8</javaVersion>
-                    <failOnViolations>false</failOnViolations>
+                    <failOnViolations>true</failOnViolations>
                 </configuration>
                 <executions>
                     <execution>

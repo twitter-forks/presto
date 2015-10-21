@@ -30,6 +30,7 @@ import com.facebook.presto.spi.ConnectorMetadata;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableHandle;
+import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.ConnectorViewDefinition;
 import com.facebook.presto.spi.PrestoException;
@@ -143,14 +144,10 @@ public class RaptorMetadata
         List<TableColumn> tableColumns = dao.getTableColumns(table.getTableId());
         checkArgument(!tableColumns.isEmpty(), "Table %s does not have any columns", tableName);
 
-        RaptorColumnHandle countColumnHandle = null;
         RaptorColumnHandle sampleWeightColumnHandle = null;
         for (TableColumn tableColumn : tableColumns) {
             if (SAMPLE_WEIGHT_COLUMN_NAME.equals(tableColumn.getColumnName())) {
                 sampleWeightColumnHandle = getRaptorColumnHandle(tableColumn);
-            }
-            if (countColumnHandle == null && tableColumn.getDataType().getJavaType().isPrimitive()) {
-                countColumnHandle = getRaptorColumnHandle(tableColumn);
             }
         }
 
@@ -288,6 +285,22 @@ public class RaptorMetadata
             dao.renameTable(table.getTableId(), newTableName.getSchemaName(), newTableName.getTableName());
             return null;
         });
+    }
+
+    @Override
+    public void addColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column)
+    {
+        RaptorTableHandle table = checkType(tableHandle, RaptorTableHandle.class, "tableHandle");
+
+        // Always add new columns to the end.
+        // TODO: This needs to be updated when we support dropping columns.
+        List<TableColumn> existingColumns = dao.listTableColumns(table.getSchemaName(), table.getTableName());
+        TableColumn lastColumn = existingColumns.get(existingColumns.size() - 1);
+        long columnId = lastColumn.getColumnId() + 1;
+        int ordinalPosition = existingColumns.size();
+
+        dao.insertColumn(table.getTableId(), columnId, column.getName(), ordinalPosition, column.getType().getTypeSignature().toString(), null);
+        shardManager.addColumn(table.getTableId(), new ColumnInfo(columnId, column.getType()));
     }
 
     @Override
@@ -478,6 +491,12 @@ public class RaptorMetadata
                 });
 
         shardManager.replaceShardUuids(tableId, columns, oldShardUuids.build(), newShards.build());
+    }
+
+    @Override
+    public boolean supportsMetadataDelete(ConnectorSession session, ConnectorTableHandle tableHandle, ConnectorTableLayoutHandle tableLayoutHandle)
+    {
+        return false;
     }
 
     @Override

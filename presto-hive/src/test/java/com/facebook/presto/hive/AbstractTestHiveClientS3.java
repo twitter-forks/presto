@@ -15,6 +15,7 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.GroupByHashPageIndexerFactory;
 import com.facebook.presto.hive.metastore.CachingHiveMetastore;
+import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorPageSink;
@@ -180,7 +181,7 @@ public abstract class AbstractTestHiveClientS3
 
         List<ConnectorTableLayoutResult> tableLayoutResults = metadata.getTableLayouts(SESSION, table, new Constraint<>(TupleDomain.all(), bindings -> true), Optional.empty());
         HiveTableLayoutHandle layoutHandle = (HiveTableLayoutHandle) getOnlyElement(tableLayoutResults).getTableLayout().getHandle();
-        assertEquals(layoutHandle.getPartitions().size(), 1);
+        assertEquals(layoutHandle.getPartitions().get().size(), 1);
         ConnectorSplitSource splitSource = splitManager.getSplits(SESSION, layoutHandle);
 
         long sum = 0;
@@ -338,7 +339,7 @@ public abstract class AbstractTestHiveClientS3
         // verify the data
         List<ConnectorTableLayoutResult> tableLayoutResults = metadata.getTableLayouts(SESSION, tableHandle, new Constraint<>(TupleDomain.all(), bindings -> true), Optional.empty());
         HiveTableLayoutHandle layoutHandle = (HiveTableLayoutHandle) getOnlyElement(tableLayoutResults).getTableLayout().getHandle();
-        assertEquals(layoutHandle.getPartitions().size(), 1);
+        assertEquals(layoutHandle.getPartitions().get().size(), 1);
         ConnectorSplitSource splitSource = splitManager.getSplits(SESSION, layoutHandle);
         ConnectorSplit split = getOnlyElement(getAllSplits(splitSource));
 
@@ -433,8 +434,8 @@ public abstract class AbstractTestHiveClientS3
 
                 // drop table
                 try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
-                    client.alter_table(databaseName, tableName, table.get());
-                    client.drop_table(databaseName, tableName, false);
+                    client.alterTable(databaseName, tableName, table.get());
+                    client.dropTable(databaseName, tableName, false);
                 }
 
                 // drop data
@@ -457,7 +458,7 @@ public abstract class AbstractTestHiveClientS3
                 }
                 table.get().getSd().setLocation(location);
                 try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
-                    client.alter_table(databaseName, tableName, table.get());
+                    client.alterTable(databaseName, tableName, table.get());
                 }
             }
             catch (TException e) {

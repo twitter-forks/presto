@@ -55,22 +55,6 @@ public abstract class AbstractTestDistributedQueries
         super(queryRunner, sampledSession);
     }
 
-    private void assertCreateTable(String table, @Language("SQL") String query, @Language("SQL") String rowCountQuery)
-            throws Exception
-    {
-        assertCreateTable(table, query, query, rowCountQuery);
-    }
-
-    private void assertCreateTable(String table, @Language("SQL") String query, @Language("SQL") String expectedQuery, @Language("SQL") String rowCountQuery)
-            throws Exception
-    {
-        assertQuery("CREATE TABLE " + table + " AS " + query, rowCountQuery);
-        assertQuery("SELECT * FROM " + table, expectedQuery);
-        assertQueryTrue("DROP TABLE " + table);
-
-        assertFalse(queryRunner.tableExists(getSession(), table));
-    }
-
     @Test
     public void testSetSession()
             throws Exception
@@ -148,41 +132,69 @@ public abstract class AbstractTestDistributedQueries
     public void testCreateTableAsSelect()
             throws Exception
     {
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_select",
                 "SELECT orderdate, orderkey, totalprice FROM orders",
                 "SELECT count(*) FROM orders");
 
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_group",
                 "SELECT orderstatus, sum(totalprice) x FROM orders GROUP BY orderstatus",
                 "SELECT count(DISTINCT orderstatus) FROM orders");
 
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_join",
                 "SELECT count(*) x FROM lineitem JOIN orders ON lineitem.orderkey = orders.orderkey",
                 "SELECT 1");
 
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_limit",
                 "SELECT orderkey FROM orders ORDER BY orderkey LIMIT 10",
                 "SELECT 10");
 
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_unicode",
                 "SELECT '\u2603' unicode",
                 "SELECT 1");
+
+        assertCreateTableAsSelect(
+                "test_with_data",
+                "SELECT * FROM orders WITH DATA",
+                "SELECT * FROM orders",
+                "SELECT count(*) FROM orders");
+
+        assertCreateTableAsSelect(
+                "test_with_no_data",
+                "SELECT * FROM orders WITH NO DATA",
+                "SELECT * FROM orders LIMIT 0",
+                "SELECT 0");
     }
 
     @Test
     public void testCreateTableAsSelectSampled()
             throws Exception
     {
-        assertCreateTable(
+        assertCreateTableAsSelect(
                 "test_sampled",
                 "SELECT orderkey FROM tpch_sampled.tiny.orders ORDER BY orderkey LIMIT 10",
                 "SELECT orderkey FROM orders ORDER BY orderkey LIMIT 10",
                 "SELECT 10");
+    }
+
+    private void assertCreateTableAsSelect(String table, @Language("SQL") String query, @Language("SQL") String rowCountQuery)
+            throws Exception
+    {
+        assertCreateTableAsSelect(table, query, query, rowCountQuery);
+    }
+
+    private void assertCreateTableAsSelect(String table, @Language("SQL") String query, @Language("SQL") String expectedQuery, @Language("SQL") String rowCountQuery)
+            throws Exception
+    {
+        assertQuery("CREATE TABLE " + table + " AS " + query, rowCountQuery);
+        assertQuery("SELECT * FROM " + table, expectedQuery);
+        assertQueryTrue("DROP TABLE " + table);
+
+        assertFalse(queryRunner.tableExists(getSession(), table));
     }
 
     @Test
@@ -229,15 +241,36 @@ public abstract class AbstractTestDistributedQueries
             throws Exception
     {
         assertQueryTrue("CREATE TABLE test_add_column AS SELECT 123 x");
+        assertQueryTrue("CREATE TABLE test_add_column_a AS SELECT 234 x, 111 a");
+        assertQueryTrue("CREATE TABLE test_add_column_ab AS SELECT 345 x, 222 a, 33.3 b");
 
-        assertQueryTrue("ALTER TABLE test_add_column ADD COLUMN (a bigint, b double)");
-        MaterializedResult materializedRows = computeActual("SELECT x, a, b FROM test_add_column");
-        assertEquals(getOnlyElement(materializedRows.getMaterializedRows()).getField(0), 123L);
-        assertEquals(getOnlyElement(materializedRows.getMaterializedRows()).getField(1), null);
-        assertEquals(getOnlyElement(materializedRows.getMaterializedRows()).getField(2), null);
+        assertQueryTrue("ALTER TABLE test_add_column ADD COLUMN a bigint");
+        assertQuery("INSERT INTO test_add_column SELECT * FROM test_add_column_a", "SELECT 1");
+        MaterializedResult materializedRows = computeActual("SELECT x, a FROM test_add_column ORDER BY x");
+        assertEquals(materializedRows.getMaterializedRows().get(0).getField(0), 123L);
+        assertEquals(materializedRows.getMaterializedRows().get(0).getField(1), null);
+        assertEquals(materializedRows.getMaterializedRows().get(1).getField(0), 234L);
+        assertEquals(materializedRows.getMaterializedRows().get(1).getField(1), 111L);
+
+        assertQueryTrue("ALTER TABLE test_add_column ADD COLUMN b double");
+        assertQuery("INSERT INTO test_add_column SELECT * FROM test_add_column_ab", "SELECT 1");
+        materializedRows = computeActual("SELECT x, a, b FROM test_add_column ORDER BY x");
+        assertEquals(materializedRows.getMaterializedRows().get(0).getField(0), 123L);
+        assertEquals(materializedRows.getMaterializedRows().get(0).getField(1), null);
+        assertEquals(materializedRows.getMaterializedRows().get(0).getField(2), null);
+        assertEquals(materializedRows.getMaterializedRows().get(1).getField(0), 234L);
+        assertEquals(materializedRows.getMaterializedRows().get(1).getField(1), 111L);
+        assertEquals(materializedRows.getMaterializedRows().get(1).getField(2), null);
+        assertEquals(materializedRows.getMaterializedRows().get(2).getField(0), 345L);
+        assertEquals(materializedRows.getMaterializedRows().get(2).getField(1), 222L);
+        assertEquals(materializedRows.getMaterializedRows().get(2).getField(2), 33.3);
 
         assertQueryTrue("DROP TABLE test_add_column");
+        assertQueryTrue("DROP TABLE test_add_column_a");
+        assertQueryTrue("DROP TABLE test_add_column_ab");
         assertFalse(queryRunner.tableExists(getSession(), "test_add_column"));
+        assertFalse(queryRunner.tableExists(getSession(), "test_add_column_a"));
+        assertFalse(queryRunner.tableExists(getSession(), "test_add_column_ab"));
     }
 
     @Test

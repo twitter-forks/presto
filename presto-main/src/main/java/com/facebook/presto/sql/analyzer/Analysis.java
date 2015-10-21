@@ -24,8 +24,6 @@ import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.Node;
-import com.facebook.presto.sql.tree.QualifiedName;
-import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.Relation;
@@ -44,6 +42,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.google.common.collect.Sets.newIdentityHashSet;
 import static java.util.Objects.requireNonNull;
 
 public class Analysis
@@ -55,7 +54,7 @@ public class Analysis
 
     private TupleDescriptor outputDescriptor;
     private final IdentityHashMap<Node, TupleDescriptor> outputDescriptors = new IdentityHashMap<>();
-    private final IdentityHashMap<Expression, Map<QualifiedName, Integer>> resolvedNames = new IdentityHashMap<>();
+    private final IdentityHashMap<Expression, Map<Expression, Integer>> resolvedNames = new IdentityHashMap<>();
 
     private final IdentityHashMap<QuerySpecification, List<FunctionCall>> aggregates = new IdentityHashMap<>();
     private final IdentityHashMap<QuerySpecification, List<FieldOrExpression>> groupByExpressions = new IdentityHashMap<>();
@@ -71,11 +70,11 @@ public class Analysis
 
     private final IdentityHashMap<Table, TableHandle> tables = new IdentityHashMap<>();
 
-    private final IdentityHashMap<Expression, Boolean> rowFieldReferences = new IdentityHashMap<>();
     private final IdentityHashMap<Expression, Type> types = new IdentityHashMap<>();
     private final IdentityHashMap<Expression, Type> coercions = new IdentityHashMap<>();
     private final IdentityHashMap<Relation, Type[]> relationCoercions = new IdentityHashMap<>();
     private final IdentityHashMap<FunctionCall, Signature> functionSignature = new IdentityHashMap<>();
+    private final Set<Expression> columnReferences = newIdentityHashSet();
 
     private final IdentityHashMap<Field, ColumnHandle> columns = new IdentityHashMap<>();
 
@@ -84,6 +83,7 @@ public class Analysis
     // for create table
     private Optional<QualifiedTableName> createTableDestination = Optional.empty();
     private Map<String, Expression> createTableProperties = ImmutableMap.of();
+    private boolean createTableAsSelectWithData = true;
 
     // for insert
     private Optional<TableHandle> insertTarget = Optional.empty();
@@ -111,12 +111,22 @@ public class Analysis
         this.updateType = updateType;
     }
 
-    public void addResolvedNames(Expression expression, Map<QualifiedName, Integer> mappings)
+    public boolean isCreateTableAsSelectWithData()
+    {
+        return createTableAsSelectWithData;
+    }
+
+    public void setCreateTableAsSelectWithData(boolean createTableAsSelectWithData)
+    {
+        this.createTableAsSelectWithData = createTableAsSelectWithData;
+    }
+
+    public void addResolvedNames(Expression expression, Map<Expression, Integer> mappings)
     {
         resolvedNames.put(expression, mappings);
     }
 
-    public Map<QualifiedName, Integer> getResolvedNames(Expression expression)
+    public Map<Expression, Integer> getResolvedNames(Expression expression)
     {
         return resolvedNames.get(expression);
     }
@@ -134,11 +144,6 @@ public class Analysis
     public IdentityHashMap<Expression, Type> getTypes()
     {
         return new IdentityHashMap<>(types);
-    }
-
-    public boolean isRowFieldReference(QualifiedNameReference qualifiedNameReference)
-    {
-        return rowFieldReferences.containsKey(qualifiedNameReference);
     }
 
     public Type getType(Expression expression)
@@ -298,14 +303,19 @@ public class Analysis
         functionSignature.putAll(infos);
     }
 
+    public Set<Expression> getColumnReferences()
+    {
+        return ImmutableSet.copyOf(columnReferences);
+    }
+
+    public void addColumnReferences(Set<Expression> references)
+    {
+        columnReferences.addAll(references);
+    }
+
     public void addTypes(IdentityHashMap<Expression, Type> types)
     {
         this.types.putAll(types);
-    }
-
-    public void addRowFieldReferences(IdentityHashMap<Expression, Boolean> rowFieldReferences)
-    {
-        this.rowFieldReferences.putAll(rowFieldReferences);
     }
 
     public void addCoercion(Expression expression, Type type)
