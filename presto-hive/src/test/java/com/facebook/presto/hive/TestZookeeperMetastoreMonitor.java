@@ -27,6 +27,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -53,7 +54,7 @@ public class TestZookeeperMetastoreMonitor
             public byte[] serialize(Object o) throws ZkMarshallingError
             {
                 try {
-                    return o.toString().getBytes("UTF-8");
+                    return o.toString().getBytes(StandardCharsets.UTF_8);
                 }
                 catch (Exception e) {
                     log.warn("Exception in serializing " + e);
