@@ -306,7 +306,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public List<String> getAllDatabases()
+    public List<String> getAllDatabases(String user)
     {
         return get(databaseNamesCache, "");
     }
@@ -329,7 +329,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<Database> getDatabase(String databaseName)
+    public Optional<Database> getDatabase(String user, String databaseName)
     {
         return get(databaseCache, databaseName);
     }
@@ -356,7 +356,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getAllTables(String databaseName)
+    public Optional<List<String>> getAllTables(String user, String databaseName)
     {
         return get(tableNamesCache, databaseName);
     }
@@ -399,13 +399,13 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<Table> getTable(String databaseName, String tableName)
+    public Optional<Table> getTable(String user, String databaseName, String tableName)
     {
         return get(tableCache, HiveTableName.table(databaseName, tableName));
     }
 
     @Override
-    public Optional<List<String>> getAllViews(String databaseName)
+    public Optional<List<String>> getAllViews(String user, String databaseName)
     {
         return get(viewNamesCache, databaseName);
     }
@@ -433,7 +433,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void createTable(Table table)
+    public void createTable(String user, Table table)
     {
         try {
             retry()
@@ -468,7 +468,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void dropTable(String databaseName, String tableName)
+    public void dropTable(String user, String databaseName, String tableName)
     {
         try {
             retry()
@@ -507,7 +507,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void alterTable(String databaseName, String tableName, Table table)
+    public void alterTable(String user, String databaseName, String tableName, Table table)
     {
         try {
             retry()
@@ -571,7 +571,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getPartitionNames(String databaseName, String tableName)
+    public Optional<List<String>> getPartitionNames(String user, String databaseName, String tableName)
     {
         return get(partitionNamesCache, HiveTableName.table(databaseName, tableName));
     }
@@ -606,7 +606,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getPartitionNamesByParts(String databaseName, String tableName, List<String> parts)
+    public Optional<List<String>> getPartitionNamesByParts(String user, String databaseName, String tableName, List<String> parts)
     {
         return get(partitionFilterCache, PartitionFilter.partitionFilter(databaseName, tableName, parts));
     }
@@ -637,7 +637,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void addPartitions(String databaseName, String tableName, List<Partition> partitions)
+    public void addPartitions(String user, String databaseName, String tableName, List<Partition> partitions)
     {
         if (partitions.isEmpty()) {
             return;
@@ -681,7 +681,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void dropPartition(String databaseName, String tableName, List<String> parts)
+    public void dropPartition(String user, String databaseName, String tableName, List<String> parts)
     {
         try {
             retry()
@@ -712,7 +712,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public void dropPartitionByName(String databaseName, String tableName, String partitionName)
+    public void dropPartitionByName(String user, String databaseName, String tableName, String partitionName)
     {
         try {
             retry()
@@ -758,7 +758,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<Map<String, Partition>> getPartitionsByNames(String databaseName, String tableName, List<String> partitionNames)
+    public Optional<Map<String, Partition>> getPartitionsByNames(String user, String databaseName, String tableName, List<String> partitionNames)
     {
         Iterable<HivePartitionName> names = transform(partitionNames, name -> HivePartitionName.partition(databaseName, tableName, name));
 
@@ -774,7 +774,7 @@ public class CachingHiveMetastore
     }
 
     @Override
-    public Optional<Partition> getPartition(String databaseName, String tableName, String partitionName)
+    public Optional<Partition> getPartition(String user, String databaseName, String tableName, String partitionName)
     {
         HivePartitionName name = HivePartitionName.partition(databaseName, tableName, partitionName);
         return get(partitionCache, name);

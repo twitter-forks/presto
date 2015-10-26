@@ -30,43 +30,43 @@ public interface HiveMetastore
 {
     String DEFAULT_DATABASE_NAME = "default";
 
-    void createTable(Table table);
+    void createTable(String user, Table table);
 
-    void dropTable(String databaseName, String tableName);
+    void dropTable(String user, String databaseName, String tableName);
 
-    void alterTable(String databaseName, String tableName, Table table);
+    void alterTable(String user, String databaseName, String tableName, Table table);
 
     @Managed
     void flushCache();
 
-    List<String> getAllDatabases();
+    List<String> getAllDatabases(String user);
 
-    Optional<List<String>> getAllTables(String databaseName);
+    Optional<List<String>> getAllTables(String user, String databaseName);
 
-    Optional<List<String>> getAllViews(String databaseName);
+    Optional<List<String>> getAllViews(String user, String databaseName);
 
-    Optional<Database> getDatabase(String databaseName);
+    Optional<Database> getDatabase(String user, String databaseName);
 
     /**
      * Adds partitions to the table in a single atomic task.  The implementation
      * must either add all partitions and return normally, or add no partitions and
      * throw an exception.
      */
-    void addPartitions(String databaseName, String tableName, List<Partition> partitions);
+    void addPartitions(String user, String databaseName, String tableName, List<Partition> partitions);
 
-    void dropPartition(String databaseName, String tableName, List<String> parts);
+    void dropPartition(String user, String databaseName, String tableName, List<String> parts);
 
-    void dropPartitionByName(String databaseName, String tableName, String partitionName);
+    void dropPartitionByName(String user, String databaseName, String tableName, String partitionName);
 
-    Optional<List<String>> getPartitionNames(String databaseName, String tableName);
+    Optional<List<String>> getPartitionNames(String user, String databaseName, String tableName);
 
-    Optional<List<String>> getPartitionNamesByParts(String databaseName, String tableName, List<String> parts);
+    Optional<List<String>> getPartitionNamesByParts(String user, String databaseName, String tableName, List<String> parts);
 
-    Optional<Partition> getPartition(String databaseName, String tableName, String partitionName);
+    Optional<Partition> getPartition(String user, String databaseName, String tableName, String partitionName);
 
-    Optional<Map<String, Partition>> getPartitionsByNames(String databaseName, String tableName, List<String> partitionNames);
+    Optional<Map<String, Partition>> getPartitionsByNames(String user, String databaseName, String tableName, List<String> partitionNames);
 
-    Optional<Table> getTable(String databaseName, String tableName);
+    Optional<Table> getTable(String user, String databaseName, String tableName);
 
     Set<String> getRoles(String user);
 
@@ -81,7 +81,7 @@ public interface HiveMetastore
             return true;
         }
 
-        Optional<Database> databaseMetadata = getDatabase(databaseName);
+        Optional<Database> databaseMetadata = getDatabase(user, databaseName);
         if (!databaseMetadata.isPresent()) {
             return false;
         }
@@ -101,7 +101,7 @@ public interface HiveMetastore
     default boolean isTableOwner(String user, String databaseName, String tableName)
     {
         // a table can only be owned by a user
-        Optional<Table> table = getTable(databaseName, tableName);
+        Optional<Table> table = getTable(user, databaseName, tableName);
         return table.isPresent() && user.equals(table.get().getOwner());
     }
 }
