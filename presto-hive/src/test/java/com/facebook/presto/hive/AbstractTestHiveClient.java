@@ -1564,7 +1564,7 @@ public abstract class AbstractTestHiveClient
         assertEquals(tableMetadata.getColumns(), createTableColumns);
 
         // verify table format
-        Table table = getMetastoreClient(tableName.getSchemaName()).getTable(tableName.getSchemaName(), tableName.getTableName()).get();
+        Table table = getMetastoreClient(tableName.getSchemaName()).getTable(SESSION.getUser(), tableName.getSchemaName(), tableName.getTableName()).get();
         if (!table.getSd().getInputFormat().equals(storageFormat.getInputFormat())) {
             assertEquals(table.getSd().getInputFormat(), storageFormat.getInputFormat());
         }
@@ -1678,7 +1678,7 @@ public abstract class AbstractTestHiveClient
     protected Set<String> listAllDataFiles(String schemaName, String tableName)
             throws IOException
     {
-        Table table = metastoreClient.getTable(schemaName, tableName).get();
+        Table table = metastoreClient.getTable(SESSION.getUser(), schemaName, tableName).get();
         Path path = new Path(table.getSd().getLocation());
         Set<String> existingFiles = new HashSet<>();
         return listAllDataFiles(path, existingFiles);
@@ -1715,7 +1715,7 @@ public abstract class AbstractTestHiveClient
             insertData(tableHandle, CREATE_TABLE_PARTITIONED_DATA, SESSION);
 
             // verify partitions were created
-            List<String> partitionNames = getMetastoreClient(tableName.getSchemaName()).getPartitionNames(tableName.getSchemaName(), tableName.getTableName())
+            List<String> partitionNames = getMetastoreClient(tableName.getSchemaName()).getPartitionNames(SESSION.getUser(), tableName.getSchemaName(), tableName.getTableName())
                     .orElseThrow(() -> new PrestoException(HIVE_METASTORE_ERROR, "Partition metadata not available"));
             assertEqualsIgnoreOrder(partitionNames, CREATE_TABLE_PARTITIONED_DATA.getMaterializedRows().stream()
                     .map(row -> "ds=" + row.getField(CREATE_TABLE_PARTITIONED_DATA.getTypes().size() - 1))
@@ -1800,7 +1800,7 @@ public abstract class AbstractTestHiveClient
         }
 
         // verify partitions were created
-        List<String> partitionNames = getMetastoreClient(tableName.getSchemaName()).getPartitionNames(tableName.getSchemaName(), tableName.getTableName())
+        List<String> partitionNames = getMetastoreClient(tableName.getSchemaName()).getPartitionNames(SESSION.getUser(), tableName.getSchemaName(), tableName.getTableName())
                 .orElseThrow(() -> new PrestoException(HIVE_METASTORE_ERROR, "Partition metadata not available"));
         assertEqualsIgnoreOrder(partitionNames, CREATE_TABLE_PARTITIONED_DATA.getMaterializedRows().stream()
                 .map(row -> "ds=" + row.getField(CREATE_TABLE_PARTITIONED_DATA.getTypes().size() - 1))

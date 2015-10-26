@@ -325,7 +325,7 @@ public abstract class AbstractTestHiveClientS3
         // table, which fails without explicit configuration for S3.
         // We work around that by using a dummy location when creating the
         // table and update it here to the correct S3 location.
-        metastoreClient.updateTableLocation(database, tableName.getTableName(), outputHandle.getWritePath().get());
+        metastoreClient.updateTableLocation(SESSION.getUser(), database, tableName.getTableName(), outputHandle.getWritePath().get());
 
         // load the new table
         ConnectorTableHandle tableHandle = getTableHandle(tableName);
@@ -352,7 +352,7 @@ public abstract class AbstractTestHiveClientS3
     private void dropTable(SchemaTableName table)
     {
         try {
-            metastoreClient.dropTable(table.getSchemaName(), table.getTableName());
+            metastoreClient.dropTable(SESSION.getUser(), table.getSchemaName(), table.getTableName());
         }
         catch (RuntimeException e) {
             // this usually occurs because the table was not created
@@ -402,9 +402,9 @@ public abstract class AbstractTestHiveClientS3
         }
 
         @Override
-        public Optional<Database> getDatabase(String databaseName)
+        public Optional<Database> getDatabase(String user, String databaseName)
         {
-            Optional<Database> database = super.getDatabase(databaseName);
+            Optional<Database> database = super.getDatabase(user, databaseName);
             if (database.isPresent()) {
                 database.get().setLocationUri("s3://" + writableBucket + "/");
             }
@@ -412,18 +412,18 @@ public abstract class AbstractTestHiveClientS3
         }
 
         @Override
-        public void createTable(Table table)
+        public void createTable(String user, Table table)
         {
             // hack to work around the metastore not being configured for S3
             table.getSd().setLocation("/");
-            super.createTable(table);
+            super.createTable(user, table);
         }
 
         @Override
-        public void dropTable(String databaseName, String tableName)
+        public void dropTable(String user, String databaseName, String tableName)
         {
             try {
-                Optional<Table> table = getTable(databaseName, tableName);
+                Optional<Table> table = getTable(user, databaseName, tableName);
                 if (!table.isPresent()) {
                     throw new TableNotFoundException(new SchemaTableName(databaseName, tableName));
                 }
@@ -449,10 +449,10 @@ public abstract class AbstractTestHiveClientS3
             }
         }
 
-        public void updateTableLocation(String databaseName, String tableName, String location)
+        public void updateTableLocation(String user, String databaseName, String tableName, String location)
         {
             try {
-                Optional<Table> table = getTable(databaseName, tableName);
+                Optional<Table> table = getTable(user, databaseName, tableName);
                 if (!table.isPresent()) {
                     throw new TableNotFoundException(new SchemaTableName(databaseName, tableName));
                 }

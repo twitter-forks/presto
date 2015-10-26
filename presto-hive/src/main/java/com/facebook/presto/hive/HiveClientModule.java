@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.hive;
 
-import com.facebook.presto.hive.metastore.CachingHiveMetastore;
 import com.facebook.presto.hive.metastore.HiveMetastore;
+import com.facebook.presto.hive.metastore.UserBasedHiveMetastore;
 import com.facebook.presto.hive.orc.DwrfPageSourceFactory;
 import com.facebook.presto.hive.orc.DwrfRecordCursorProvider;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
@@ -81,9 +81,9 @@ public class HiveClientModule
             binder.bind(HiveMetastore.class).toInstance(metastore);
         }
         else {
-            binder.bind(HiveMetastore.class).to(CachingHiveMetastore.class).in(Scopes.SINGLETON);
+            binder.bind(HiveMetastore.class).to(UserBasedHiveMetastore.class).in(Scopes.SINGLETON);
             newExporter(binder).export(HiveMetastore.class)
-                    .as(generatedNameOf(CachingHiveMetastore.class, connectorId));
+                    .as(generatedNameOf(UserBasedHiveMetastore.class, connectorId));
         }
 
         binder.bind(NamenodeStats.class).in(Scopes.SINGLETON);
