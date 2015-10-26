@@ -27,12 +27,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.joda.time.DateTimeZone;
 
 import javax.inject.Inject;
 
-import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -90,26 +88,20 @@ public class ParquetRecordCursorProvider
             throw new IllegalArgumentException("Can not read Parquet column: " + unsupportedColumns);
         }
 
-        UserGroupInformation ugi = UserGroupInformation.createRemoteUser(session.getUser());
-        try {
-            return ugi.doAs((PrivilegedExceptionAction<Optional<HiveRecordCursor>>) () -> Optional.<HiveRecordCursor>of(new ParquetHiveRecordCursor(
-                    configuration,
-                    path,
-                    start,
-                    length,
-                    schema,
-                    partitionKeys,
-                    columns,
-                    useParquetColumnNames,
-                    hiveStorageTimeZone,
-                    typeManager,
-                    isParquetPredicatePushdownEnabled(session),
-                    effectivePredicate
-            )));
-        }
-        catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        return Optional.<HiveRecordCursor>of(new ParquetHiveRecordCursor(
+                configuration,
+                path,
+                start,
+                length,
+                schema,
+                partitionKeys,
+                columns,
+                useParquetColumnNames,
+                hiveStorageTimeZone,
+                typeManager,
+                isParquetPredicatePushdownEnabled(session),
+                effectivePredicate
+        ));
     }
 
     private static Predicate<HiveColumnHandle> isParquetSupportedType()
