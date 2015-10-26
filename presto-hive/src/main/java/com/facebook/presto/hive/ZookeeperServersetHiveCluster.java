@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.facebook.presto.spi.PrestoException;
 import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
