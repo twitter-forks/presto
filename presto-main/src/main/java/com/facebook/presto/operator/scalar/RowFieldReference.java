@@ -15,7 +15,7 @@ package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.metadata.FunctionInfo;
 import com.facebook.presto.metadata.FunctionRegistry;
-import com.facebook.presto.metadata.ParametricScalar;
+import com.facebook.presto.metadata.ParametricFunction;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
@@ -29,13 +29,14 @@ import io.airlift.slice.Slice;
 import java.lang.invoke.MethodHandle;
 import java.util.Map;
 
+import static com.facebook.presto.metadata.FunctionType.SCALAR;
 import static com.facebook.presto.sql.QueryUtil.mangleFieldReference;
 import static com.facebook.presto.type.RowType.RowField;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class RowFieldReference
-        extends ParametricScalar
+        implements ParametricFunction
 {
     private static final Map<String, MethodHandle> METHOD_HANDLE_MAP;
 
@@ -65,7 +66,7 @@ public class RowFieldReference
             index++;
         }
         requireNonNull(returnType, format("%s not found in row type %s", fieldName, type));
-        signature = new Signature(mangleFieldReference(fieldName), returnType.getTypeSignature(), type.getTypeSignature());
+        signature = new Signature(mangleFieldReference(fieldName), SCALAR, returnType.getTypeSignature(), type.getTypeSignature());
 
         String stackType = returnType.getJavaType().getSimpleName().toLowerCase();
         MethodHandle methodHandle;

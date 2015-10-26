@@ -11,14 +11,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.raptor.util;
+package com.facebook.presto.type;
 
-import java.io.Closeable;
-import java.util.Iterator;
+import org.testng.annotations.Test;
 
-public interface CloseableIterator<T>
-        extends Iterator<T>, Closeable
+import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static org.testng.Assert.assertEquals;
+
+public class ArrayTypeTest
 {
-    @Override
-    void close();
+    @Test
+    public void testDisplayName()
+    {
+        ArrayType type = new ArrayType(BOOLEAN);
+        assertEquals(type.getDisplayName(), "array<boolean>");
+    }
 }

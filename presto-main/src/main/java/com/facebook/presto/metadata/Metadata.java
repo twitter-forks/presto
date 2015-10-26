@@ -30,6 +30,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 
 public interface Metadata
@@ -38,20 +39,12 @@ public interface Metadata
 
     Type getType(TypeSignature signature);
 
-    FunctionInfo resolveFunction(QualifiedName name, List<TypeSignature> parameterTypes, boolean approximate);
-
-    @NotNull
-    FunctionInfo getExactFunction(Signature handle);
-
     boolean isAggregationFunction(QualifiedName name);
 
     @NotNull
     List<ParametricFunction> listFunctions();
 
     void addFunctions(List<? extends ParametricFunction> functions);
-
-    FunctionInfo resolveOperator(OperatorType operatorType, List<? extends Type> argumentTypes)
-            throws OperatorNotFoundException;
 
     @NotNull
     List<String> listSchemaNames(Session session, String catalogName);
@@ -180,6 +173,18 @@ public interface Metadata
      * Get the row ID column handle used with UpdatablePageSource.
      */
     ColumnHandle getUpdateRowIdColumnHandle(Session session, TableHandle tableHandle);
+
+    /**
+     * @return whether delete without table scan is supported
+     */
+    boolean supportsMetadataDelete(Session session, TableHandle tableHandle, TableLayoutHandle tableLayoutHandle);
+
+    /**
+     * Delete the provide table layout
+     *
+     * @return number of rows deleted, or empty for unknown
+     */
+    OptionalLong metadataDelete(Session session, TableHandle tableHandle, TableLayoutHandle tableLayoutHandle);
 
     /**
      * Begin delete query

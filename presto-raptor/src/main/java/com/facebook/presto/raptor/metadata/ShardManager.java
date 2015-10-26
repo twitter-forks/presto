@@ -14,8 +14,8 @@
 package com.facebook.presto.raptor.metadata;
 
 import com.facebook.presto.raptor.RaptorColumnHandle;
-import com.facebook.presto.raptor.util.CloseableIterator;
 import com.facebook.presto.spi.TupleDomain;
+import org.skife.jdbi.v2.ResultIterator;
 
 import java.util.Collection;
 import java.util.List;
@@ -32,14 +32,14 @@ public interface ShardManager
     void createTable(long tableId, List<ColumnInfo> columns);
 
     /**
+     * Add a column to the end of the table.
+     */
+    void addColumn(long tableId, ColumnInfo column);
+
+    /**
      * Commit data for a table.
      */
     void commitShards(long tableId, List<ColumnInfo> columns, Collection<ShardInfo> shards, Optional<String> externalBatchId);
-
-    /**
-     * Replace oldShardsIds with newShards.
-     */
-    void replaceShardIds(long tableId, List<ColumnInfo> columns, Set<Long> oldShardIds, Collection<ShardInfo> newShards);
 
     /**
      * Replace oldShardsUuids with newShards.
@@ -54,7 +54,7 @@ public interface ShardManager
     /**
      * Return the shard nodes a given table.
      */
-    CloseableIterator<ShardNodes> getShardNodes(long tableId, TupleDomain<RaptorColumnHandle> effectivePredicate);
+    ResultIterator<ShardNodes> getShardNodes(long tableId, TupleDomain<RaptorColumnHandle> effectivePredicate);
 
     /**
      * Assign a shard to a node.

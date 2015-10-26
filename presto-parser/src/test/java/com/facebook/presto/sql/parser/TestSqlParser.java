@@ -717,7 +717,7 @@ public class TestSqlParser
                         ImmutableMap.of()));
 
         assertStatement("CREATE TABLE foo " +
-                        "WITH ( string = 'bar', long = 42, computed = 'ban' || 'ana' ) " +
+                        "WITH ( string = 'bar', long = 42, computed = 'ban' || 'ana', a  = ARRAY[ 'v1', 'v2' ] ) " +
                         "AS " +
                         "SELECT * " +
                         "FROM t",
@@ -729,6 +729,7 @@ public class TestSqlParser
                                 .put("computed", new FunctionCall(new QualifiedName("concat"), ImmutableList.of(
                                         new StringLiteral("ban"),
                                         new StringLiteral("ana"))))
+                                .put("a", new ArrayConstructor(ImmutableList.of(new StringLiteral("v1"), new StringLiteral("v2"))))
                                 .build()));
     }
 
@@ -925,6 +926,16 @@ public class TestSqlParser
                                 new Table(QualifiedName.of("t")),
                                 new Unnest(ImmutableList.of(new QualifiedNameReference(QualifiedName.of("a"))), true),
                                 Optional.empty())));
+    }
+
+    @Test
+    public void testNonReserved()
+            throws Exception
+    {
+        assertStatement("SELECT zone FROM t",
+                simpleQuery(
+                        selectList(new QualifiedNameReference(QualifiedName.of("zone"))),
+                        table(QualifiedName.of("t"))));
     }
 
     private static void assertCast(String type)

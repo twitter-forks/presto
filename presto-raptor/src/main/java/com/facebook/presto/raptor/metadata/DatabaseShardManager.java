@@ -14,7 +14,6 @@
 package com.facebook.presto.raptor.metadata;
 
 import com.facebook.presto.raptor.RaptorColumnHandle;
-import com.facebook.presto.raptor.util.CloseableIterator;
 import com.facebook.presto.raptor.util.UuidUtil.UuidArgument;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.TupleDomain;
@@ -34,7 +33,7 @@ import org.h2.jdbc.JdbcConnection;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.IDBI;
 import org.skife.jdbi.v2.Query;
-import org.skife.jdbi.v2.TransactionCallback;
+import org.skife.jdbi.v2.ResultIterator;
 import org.skife.jdbi.v2.exceptions.DBIException;
 import org.skife.jdbi.v2.util.ByteArrayMapper;
 import org.skife.jdbi.v2.util.LongMapper;
@@ -63,11 +62,13 @@ import static com.facebook.presto.raptor.metadata.SqlUtils.runIgnoringConstraint
 import static com.facebook.presto.raptor.storage.ShardStats.MAX_BINARY_INDEX_SIZE;
 import static com.facebook.presto.raptor.util.ArrayUtil.intArrayFromBytes;
 import static com.facebook.presto.raptor.util.ArrayUtil.intArrayToBytes;
+import static com.facebook.presto.raptor.util.DatabaseUtil.metadataError;
+import static com.facebook.presto.raptor.util.DatabaseUtil.onDemandDao;
+import static com.facebook.presto.raptor.util.DatabaseUtil.runTransaction;
 import static com.facebook.presto.raptor.util.UuidUtil.uuidToBytes;
 import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.TRANSACTION_CONFLICT;
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Throwables.propagateIfInstanceOf;
 import static com.google.common.collect.Iterables.partition;
 import static java.lang.String.format;
 import static java.sql.Statement.RETURN_GENERATED_KEYS;
@@ -99,10 +100,10 @@ public class DatabaseShardManager
     public DatabaseShardManager(@ForMetadata IDBI dbi)
     {
         this.dbi = requireNonNull(dbi, "dbi is null");
-        this.dao = dbi.onDemand(ShardManagerDao.class);
+        this.dao = onDemandDao(dbi, ShardManagerDao.class);
 
         // keep retrying if database is unavailable when the server starts
-        createShardTablesWithRetry(dao);
+        createShardTablesWithRetry(dbi);
     }
 
     @Override
@@ -130,6 +131,30 @@ public class DatabaseShardManager
         try (Handle handle = dbi.open()) {
             handle.execute(sql);
         }
+        catch (DBIException e) {
+            throw metadataError(e);
+        }
+    }
+
+    @Override
+    public void addColumn(long tableId, ColumnInfo column)
+    {
+        String columnType = sqlColumnType(column.getType());
+        if (columnType == null) {
+            return;
+        }
+
+        String sql = format("ALTER TABLE %s ADD COLUMN (%s %s, %s %s)",
+                shardIndexTable(tableId),
+                minColumn(column.getColumnId()), columnType,
+                maxColumn(column.getColumnId()), columnType);
+
+        try (Handle handle = dbi.open()) {
+            handle.execute(sql);
+        }
+        catch (DBIException e) {
+            throw metadataError(e);
+        }
     }
 
     @Override
@@ -142,7 +167,7 @@ public class DatabaseShardManager
 
         Map<String, Integer> nodeIds = toNodeIdMap(shards);
 
-        dbi.inTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             ShardManagerDao dao = handle.attach(ShardManagerDao.class);
 
             insertShardsAndIndex(tableId, columns, shards, nodeIds, handle);
@@ -155,23 +180,11 @@ public class DatabaseShardManager
     }
 
     @Override
-    public void replaceShardIds(long tableId, List<ColumnInfo> columns, Set<Long> oldShardIds, Collection<ShardInfo> newShards)
-    {
-        Map<String, Integer> nodeIds = toNodeIdMap(newShards);
-
-        runTransaction((handle, status) -> {
-            insertShardsAndIndex(tableId, columns, newShards, nodeIds, handle);
-            deleteShardsAndIndex(tableId, oldShardIds, handle);
-            return null;
-        });
-    }
-
-    @Override
     public void replaceShardUuids(long tableId, List<ColumnInfo> columns, Set<UUID> oldShardUuids, Collection<ShardInfo> newShards)
     {
         Map<String, Integer> nodeIds = toNodeIdMap(newShards);
 
-        runTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             for (List<ShardInfo> shards : partition(newShards, 1000)) {
                 insertShardsAndIndex(tableId, columns, shards, nodeIds, handle);
             }
@@ -277,7 +290,7 @@ public class DatabaseShardManager
     }
 
     @Override
-    public CloseableIterator<ShardNodes> getShardNodes(long tableId, TupleDomain<RaptorColumnHandle> effectivePredicate)
+    public ResultIterator<ShardNodes> getShardNodes(long tableId, TupleDomain<RaptorColumnHandle> effectivePredicate)
     {
         return new ShardIterator(tableId, effectivePredicate, dbi);
     }
@@ -287,7 +300,7 @@ public class DatabaseShardManager
     {
         int nodeId = getOrCreateNodeId(nodeIdentifier);
 
-        runTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             ShardManagerDao dao = handle.attach(ShardManagerDao.class);
 
             Set<Integer> nodes = new HashSet<>(fetchLockedNodeIds(handle, tableId, shardUuid));
@@ -305,7 +318,7 @@ public class DatabaseShardManager
     {
         int nodeId = getOrCreateNodeId(nodeIdentifier);
 
-        runTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             ShardManagerDao dao = handle.attach(ShardManagerDao.class);
 
             Set<Integer> nodes = new HashSet<>(fetchLockedNodeIds(handle, tableId, shardUuid));
@@ -339,16 +352,8 @@ public class DatabaseShardManager
                     })
                     .build();
         }
-    }
-
-    private <T> T runTransaction(TransactionCallback<T> callback)
-    {
-        try {
-            return dbi.inTransaction(callback);
-        }
         catch (DBIException e) {
-            propagateIfInstanceOf(e.getCause(), PrestoException.class);
-            throw new PrestoException(RAPTOR_ERROR, "Failed to perform metadata operation", e);
+            throw metadataError(e);
         }
     }
 

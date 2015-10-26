@@ -30,6 +30,7 @@ import com.facebook.presto.spi.ConnectorMetadata;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableHandle;
+import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.ConnectorViewDefinition;
 import com.facebook.presto.spi.PrestoException;
@@ -49,7 +50,6 @@ import io.airlift.slice.Slice;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.IDBI;
 import org.skife.jdbi.v2.exceptions.DBIException;
-import org.skife.jdbi.v2.exceptions.UnableToExecuteStatementException;
 
 import javax.annotation.Nullable;
 import javax.inject.Inject;
@@ -72,6 +72,8 @@ import static com.facebook.presto.raptor.RaptorTableProperties.getSortColumns;
 import static com.facebook.presto.raptor.RaptorTableProperties.getTemporalColumn;
 import static com.facebook.presto.raptor.metadata.DatabaseShardManager.shardIndexTable;
 import static com.facebook.presto.raptor.metadata.MetadataDaoUtils.createMetadataTablesWithRetry;
+import static com.facebook.presto.raptor.util.DatabaseUtil.onDemandDao;
+import static com.facebook.presto.raptor.util.DatabaseUtil.runTransaction;
 import static com.facebook.presto.raptor.util.Types.checkType;
 import static com.facebook.presto.spi.StandardErrorCode.ALREADY_EXISTS;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
@@ -84,8 +86,8 @@ import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.String.format;
 import static java.util.Collections.nCopies;
-import static java.util.stream.Collectors.toCollection;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 
 public class RaptorMetadata
@@ -112,12 +114,12 @@ public class RaptorMetadata
 
         this.connectorId = connectorId.toString();
         this.dbi = requireNonNull(dbi, "dbi is null");
-        this.dao = dbi.onDemand(MetadataDao.class);
+        this.dao = onDemandDao(dbi, MetadataDao.class);
         this.shardManager = requireNonNull(shardManager, "shardManager is null");
         this.shardInfoCodec = requireNonNull(shardInfoCodec, "shardInfoCodec is null");
         this.shardDeltaCodec = requireNonNull(shardDeltaCodec, "shardDeltaCodec is null");
 
-        createMetadataTablesWithRetry(dao);
+        createMetadataTablesWithRetry(dbi);
     }
 
     @Override
@@ -142,14 +144,10 @@ public class RaptorMetadata
         List<TableColumn> tableColumns = dao.getTableColumns(table.getTableId());
         checkArgument(!tableColumns.isEmpty(), "Table %s does not have any columns", tableName);
 
-        RaptorColumnHandle countColumnHandle = null;
         RaptorColumnHandle sampleWeightColumnHandle = null;
         for (TableColumn tableColumn : tableColumns) {
             if (SAMPLE_WEIGHT_COLUMN_NAME.equals(tableColumn.getColumnName())) {
                 sampleWeightColumnHandle = getRaptorColumnHandle(tableColumn);
-            }
-            if (countColumnHandle == null && tableColumn.getDataType().getJavaType().isPrimitive()) {
-                countColumnHandle = getRaptorColumnHandle(tableColumn);
             }
         }
 
@@ -257,7 +255,7 @@ public class RaptorMetadata
     {
         RaptorTableHandle raptorHandle = checkType(tableHandle, RaptorTableHandle.class, "tableHandle");
         long tableId = raptorHandle.getTableId();
-        dbi.inTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             ShardManagerDao shardManagerDao = handle.attach(ShardManagerDao.class);
             shardManagerDao.dropShardNodes(tableId);
             shardManagerDao.dropShards(tableId);
@@ -282,11 +280,27 @@ public class RaptorMetadata
     public void renameTable(ConnectorSession session, ConnectorTableHandle tableHandle, SchemaTableName newTableName)
     {
         RaptorTableHandle table = checkType(tableHandle, RaptorTableHandle.class, "tableHandle");
-        dbi.inTransaction((handle, status) -> {
+        runTransaction(dbi, (handle, status) -> {
             MetadataDao dao = handle.attach(MetadataDao.class);
             dao.renameTable(table.getTableId(), newTableName.getSchemaName(), newTableName.getTableName());
             return null;
         });
+    }
+
+    @Override
+    public void addColumn(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnMetadata column)
+    {
+        RaptorTableHandle table = checkType(tableHandle, RaptorTableHandle.class, "tableHandle");
+
+        // Always add new columns to the end.
+        // TODO: This needs to be updated when we support dropping columns.
+        List<TableColumn> existingColumns = dao.listTableColumns(table.getSchemaName(), table.getTableName());
+        TableColumn lastColumn = existingColumns.get(existingColumns.size() - 1);
+        long columnId = lastColumn.getColumnId() + 1;
+        int ordinalPosition = existingColumns.size();
+
+        dao.insertColumn(table.getTableId(), columnId, column.getName(), ordinalPosition, column.getType().getTypeSignature().toString(), null);
+        shardManager.addColumn(table.getTableId(), new ColumnInfo(columnId, column.getType()));
     }
 
     @Override
@@ -374,9 +388,9 @@ public class RaptorMetadata
             }
         }
 
-        long newTableId = dbi.inTransaction((dbiHandle, status) -> {
+        long newTableId = runTransaction(dbi, (dbiHandle, status) -> {
             MetadataDao dao = dbiHandle.attach(MetadataDao.class);
-            long tableId = dao.insertTable(table.getSchemaName(), table.getTableName());
+            long tableId = dao.insertTable(table.getSchemaName(), table.getTableName(), true);
             List<RaptorColumnHandle> sortColumnHandles = table.getSortColumnHandles();
 
             for (int i = 0; i < table.getColumnTypes().size(); i++) {
@@ -480,13 +494,19 @@ public class RaptorMetadata
     }
 
     @Override
+    public boolean supportsMetadataDelete(ConnectorSession session, ConnectorTableHandle tableHandle, ConnectorTableLayoutHandle tableLayoutHandle)
+    {
+        return false;
+    }
+
+    @Override
     public void createView(ConnectorSession session, SchemaTableName viewName, String viewData, boolean replace)
     {
         String schemaName = viewName.getSchemaName();
         String tableName = viewName.getTableName();
 
         if (replace) {
-            dbi.inTransaction((handle, status) -> {
+            runTransaction(dbi, (handle, status) -> {
                 MetadataDao dao = handle.attach(MetadataDao.class);
                 dao.dropView(schemaName, tableName);
                 dao.insertView(schemaName, tableName, viewData);
@@ -498,7 +518,7 @@ public class RaptorMetadata
         try {
             dao.insertView(schemaName, tableName, viewData);
         }
-        catch (UnableToExecuteStatementException e) {
+        catch (PrestoException e) {
             if (viewExists(session, viewName)) {
                 throw new PrestoException(ALREADY_EXISTS, "View already exists: " + viewName);
             }

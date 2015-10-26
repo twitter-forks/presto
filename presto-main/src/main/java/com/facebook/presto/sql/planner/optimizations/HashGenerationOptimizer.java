@@ -194,6 +194,11 @@ public class HashGenerationOptimizer
             PlanNode rewrittenLeft = context.rewrite(node.getLeft(), null);
             PlanNode rewrittenRight = context.rewrite(node.getRight(), null);
 
+            if (clauses.isEmpty()) {
+                // No Hash is necessary for cross join
+                return new JoinNode(idAllocator.getNextId(), JoinNode.Type.INNER, rewrittenLeft, rewrittenRight, node.getCriteria(), Optional.empty(), Optional.empty());
+            }
+
             Symbol leftHashSymbol = symbolAllocator.newHashSymbol();
             Symbol rightHashSymbol = symbolAllocator.newHashSymbol();
 

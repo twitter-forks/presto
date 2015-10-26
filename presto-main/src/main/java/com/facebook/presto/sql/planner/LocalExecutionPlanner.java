@@ -17,7 +17,6 @@ import com.facebook.presto.Session;
 import com.facebook.presto.block.BlockUtils;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.index.IndexManager;
-import com.facebook.presto.metadata.FunctionInfo;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFactory;
@@ -40,6 +39,8 @@ import com.facebook.presto.operator.LimitOperator.LimitOperatorFactory;
 import com.facebook.presto.operator.LookupJoinOperators;
 import com.facebook.presto.operator.LookupSourceSupplier;
 import com.facebook.presto.operator.MarkDistinctOperator.MarkDistinctOperatorFactory;
+import com.facebook.presto.operator.MetadataDeleteOperator.MetadataDeleteOperatorFactory;
+import com.facebook.presto.operator.NestedLoopJoinPagesSupplier;
 import com.facebook.presto.operator.OperatorFactory;
 import com.facebook.presto.operator.OrderByOperator.OrderByOperatorFactory;
 import com.facebook.presto.operator.OutputFactory;
@@ -67,6 +68,7 @@ import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.operator.index.IndexLookupSourceSupplier;
 import com.facebook.presto.operator.index.IndexSourceOperator;
 import com.facebook.presto.operator.window.FrameInfo;
+import com.facebook.presto.operator.window.WindowFunctionSupplier;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorIndex;
 import com.facebook.presto.spi.PageBuilder;
@@ -91,6 +93,7 @@ import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
+import com.facebook.presto.sql.planner.plan.MetadataDeleteNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.PlanVisitor;
@@ -152,13 +155,17 @@ import static com.facebook.presto.SystemSessionProperties.getTaskAggregationConc
 import static com.facebook.presto.SystemSessionProperties.getTaskHashBuildConcurrency;
 import static com.facebook.presto.SystemSessionProperties.getTaskJoinConcurrency;
 import static com.facebook.presto.SystemSessionProperties.getTaskWriterCount;
+import static com.facebook.presto.metadata.FunctionType.SCALAR;
 import static com.facebook.presto.operator.DistinctLimitOperator.DistinctLimitOperatorFactory;
 import static com.facebook.presto.operator.InMemoryExchangeSourceOperator.InMemoryExchangeSourceOperatorFactory.createBroadcastDistribution;
 import static com.facebook.presto.operator.InMemoryExchangeSourceOperator.InMemoryExchangeSourceOperatorFactory.createRandomDistribution;
+import static com.facebook.presto.operator.NestedLoopBuildOperator.NestedLoopBuildOperatorFactory;
+import static com.facebook.presto.operator.NestedLoopJoinOperator.NestedLoopJoinOperatorFactory;
 import static com.facebook.presto.operator.TableCommitOperator.TableCommitOperatorFactory;
 import static com.facebook.presto.operator.TableCommitOperator.TableCommitter;
 import static com.facebook.presto.operator.TableWriterOperator.TableWriterOperatorFactory;
 import static com.facebook.presto.operator.UnnestOperator.UnnestOperatorFactory;
+import static com.facebook.presto.operator.WindowFunctionDefinition.window;
 import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
@@ -553,9 +560,9 @@ public class LocalExecutionPlanner
                 }
                 Symbol symbol = entry.getKey();
                 Signature signature = node.getSignatures().get(symbol);
-                FunctionInfo functionInfo = metadata.getExactFunction(signature);
-                Type type = metadata.getType(functionInfo.getReturnType());
-                windowFunctionsBuilder.add(functionInfo.bindWindowFunction(type, arguments.build()));
+                WindowFunctionSupplier windowFunctionSupplier = metadata.getFunctionRegistry().getWindowFunctionImplementation(signature);
+                Type type = metadata.getType(signature.getReturnType());
+                windowFunctionsBuilder.add(window(windowFunctionSupplier, type, arguments.build()));
                 windowFunctionOutputSymbolsBuilder.add(symbol);
             }
 
@@ -955,7 +962,7 @@ public class LocalExecutionPlanner
 
         private RowExpression toRowExpression(Expression expression, IdentityHashMap<Expression, Type> types)
         {
-            return SqlToRowExpressionTranslator.translate(expression, types, metadata.getFunctionRegistry(), metadata.getTypeManager(), session, true);
+            return SqlToRowExpressionTranslator.translate(expression, SCALAR, types, metadata.getFunctionRegistry(), metadata.getTypeManager(), session, true);
         }
 
         private Map<Integer, Type> getInputTypes(Map<Symbol, Integer> layout, List<Type> types)
@@ -1246,6 +1253,9 @@ public class LocalExecutionPlanner
         public PhysicalOperation visitJoin(JoinNode node, LocalExecutionPlanContext context)
         {
             List<JoinNode.EquiJoinClause> clauses = node.getCriteria();
+            if (clauses.isEmpty()) {
+                return createNestedLoopJoin(node.getLeft(), node.getRight(), context);
+            }
 
             List<Symbol> leftSymbols = Lists.transform(clauses, JoinNode.EquiJoinClause::getLeft);
             List<Symbol> rightSymbols = Lists.transform(clauses, JoinNode.EquiJoinClause::getRight);
@@ -1255,13 +1265,50 @@ public class LocalExecutionPlanner
                 case LEFT:
                 case RIGHT:
                 case FULL:
-                    return createJoinOperator(node, node.getLeft(), leftSymbols, node.getLeftHashSymbol(), node.getRight(), rightSymbols, node.getRightHashSymbol(), context);
+                    return createLookupJoin(node, node.getLeft(), leftSymbols, node.getLeftHashSymbol(), node.getRight(), rightSymbols, node.getRightHashSymbol(), context);
                 default:
                     throw new UnsupportedOperationException("Unsupported join type: " + node.getType());
             }
         }
 
-        private PhysicalOperation createJoinOperator(JoinNode node,
+        private PhysicalOperation createNestedLoopJoin(
+                PlanNode probeNode,
+                PlanNode buildNode,
+                LocalExecutionPlanContext context)
+        {
+            PhysicalOperation probeSource = probeNode.accept(this, context);
+
+            LocalExecutionPlanContext buildContext = context.createSubContext();
+            PhysicalOperation buildSource = buildNode.accept(this, buildContext);
+            NestedLoopBuildOperatorFactory nestedLoopBuildOperatorFactory = new NestedLoopBuildOperatorFactory(
+                    buildContext.getNextOperatorId(),
+                    buildSource.getTypes());
+
+            context.addDriverFactory(new DriverFactory(
+                    buildContext.isInputDriver(),
+                    false,
+                    ImmutableList.<OperatorFactory>builder()
+                            .addAll(buildSource.getOperatorFactories())
+                            .add(nestedLoopBuildOperatorFactory)
+                            .build()));
+
+            NestedLoopJoinPagesSupplier nestedLoopJoinPagesSupplier = nestedLoopBuildOperatorFactory.getNestedLoopJoinPagesSupplier();
+            ImmutableMap.Builder<Symbol, Integer> outputMappings = ImmutableMap.builder();
+            outputMappings.putAll(probeSource.getLayout());
+
+            // inputs from build side of the join are laid out following the input from the probe side,
+            // so adjust the channel ids but keep the field layouts intact
+            int offset = probeSource.getTypes().size();
+            for (Map.Entry<Symbol, Integer> entry : buildSource.getLayout().entrySet()) {
+                outputMappings.put(entry.getKey(), offset + entry.getValue());
+            }
+
+            OperatorFactory operatorFactory = new NestedLoopJoinOperatorFactory(context.getNextOperatorId(), nestedLoopJoinPagesSupplier, probeSource.getTypes());
+            PhysicalOperation operation = new PhysicalOperation(operatorFactory, outputMappings.build(), probeSource);
+            return operation;
+        }
+
+        private PhysicalOperation createLookupJoin(JoinNode node,
                 PlanNode probeNode,
                 List<Symbol> probeSymbols,
                 Optional<Symbol> probeHashSymbol,
@@ -1352,7 +1399,7 @@ public class LocalExecutionPlanner
                 outputMappings.put(entry.getKey(), offset + input);
             }
 
-            OperatorFactory operator = createJoinOperator(node.getType(), lookupSourceSupplier, probeSource.getTypes(), probeChannels, probeHashChannel, context);
+            OperatorFactory operator = createLookupJoin(node.getType(), lookupSourceSupplier, probeSource.getTypes(), probeChannels, probeHashChannel, context);
             PhysicalOperation operation = new PhysicalOperation(operator, outputMappings.build(), probeSource);
 
             // merge parallel joiners back into a single stream
@@ -1368,7 +1415,7 @@ public class LocalExecutionPlanner
             return node.getType() == RIGHT || node.getType() == FULL;
         }
 
-        private OperatorFactory createJoinOperator(
+        private OperatorFactory createLookupJoin(
                 JoinNode.Type type,
                 LookupSourceSupplier lookupSourceSupplier,
                 List<Type> probeTypes,
@@ -1528,6 +1575,14 @@ public class LocalExecutionPlanner
         }
 
         @Override
+        public PhysicalOperation visitMetadataDelete(MetadataDeleteNode node, LocalExecutionPlanContext context)
+        {
+            OperatorFactory operatorFactory = new MetadataDeleteOperatorFactory(context.getNextOperatorId(), node.getTableLayout(), metadata, session, node.getTarget().getHandle());
+
+            return new PhysicalOperation(operatorFactory, makeLayout(node));
+        }
+
+        @Override
         public PhysicalOperation visitUnion(UnionNode node, LocalExecutionPlanContext context)
         {
             List<Type> types = getSourceOperatorTypes(node, context.getTypes());
@@ -1613,7 +1668,7 @@ public class LocalExecutionPlanner
                 sampleWeightChannel = Optional.of(source.getLayout().get(sampleWeight.get()));
             }
 
-            return metadata.getExactFunction(function).getAggregationFunction().bind(arguments, maskChannel, sampleWeightChannel, confidence);
+            return metadata.getFunctionRegistry().getAggregateFunctionImplementation(function).bind(arguments, maskChannel, sampleWeightChannel, confidence);
         }
 
         private PhysicalOperation planGlobalAggregation(int operatorId, AggregationNode node, PhysicalOperation source)

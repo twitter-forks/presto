@@ -13,10 +13,9 @@
  */
 package com.facebook.presto.raptor.metadata;
 
-import io.airlift.dbpool.H2EmbeddedDataSource;
-import io.airlift.dbpool.H2EmbeddedDataSourceConfig;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
+import org.skife.jdbi.v2.IDBI;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -30,21 +29,22 @@ import static org.testng.Assert.assertNull;
 public class TestMetadataDao
 {
     private MetadataDao dao;
-    private Handle handle;
+    private Handle dummyHandle;
 
     @BeforeMethod
     public void setup()
             throws Exception
     {
-        handle = new DBI(new H2EmbeddedDataSource(new H2EmbeddedDataSourceConfig().setFilename("mem:"))).open();
-        dao = handle.attach(MetadataDao.class);
-        createMetadataTablesWithRetry(dao);
+        IDBI dbi = new DBI("jdbc:h2:mem:test" + System.nanoTime());
+        dummyHandle = dbi.open();
+        dao = dbi.onDemand(MetadataDao.class);
+        createMetadataTablesWithRetry(dbi);
     }
 
     @AfterMethod(alwaysRun = true)
     public void tearDown()
     {
-        handle.close();
+        dummyHandle.close();
     }
 
     @Test
@@ -52,7 +52,7 @@ public class TestMetadataDao
             throws Exception
     {
         Long columnId = 1L;
-        long tableId = dao.insertTable("schema1", "table1");
+        long tableId = dao.insertTable("schema1", "table1", true);
         dao.insertColumn(tableId, columnId, "col1", 1, "bigint", null);
         Long temporalColumnId = dao.getTemporalColumnId(tableId);
         assertNull(temporalColumnId);
@@ -62,7 +62,7 @@ public class TestMetadataDao
         assertNotNull(temporalColumnId);
         assertEquals(temporalColumnId, columnId);
 
-        long tableId2 = dao.insertTable("schema1", "table2");
+        long tableId2 = dao.insertTable("schema1", "table2", true);
         Long columnId2 = dao.getTemporalColumnId(tableId2);
         assertNull(columnId2);
     }

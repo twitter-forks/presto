@@ -26,6 +26,7 @@ import com.facebook.presto.sql.planner.optimizations.ImplementSampleAsFilter;
 import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
 import com.facebook.presto.sql.planner.optimizations.MergeProjections;
+import com.facebook.presto.sql.planner.optimizations.MetadataDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.MetadataQueryOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PickLayout;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
@@ -97,11 +98,13 @@ public class PlanOptimizersFactory
         builder.add(new PickLayout(metadata));
 
         builder.add(new PredicatePushDown(metadata, sqlParser)); // Run predicate push down one more time in case we can leverage new information from layouts' effective predicate
-        builder.add(new UnaliasSymbolReferences());
+        builder.add(new ProjectionPushDown());
         builder.add(new MergeProjections());
+        builder.add(new UnaliasSymbolReferences()); // Run unalias after merging projections to simplify projections more efficiently
         builder.add(new PruneUnreferencedOutputs());
         builder.add(new PruneRedundantProjections());
 
+        builder.add(new MetadataDeleteOptimizer(metadata));
         builder.add(new BeginTableWrite(metadata)); // HACK! see comments in BeginTableWrite
 
         // TODO: consider adding a formal final plan sanitization optimizer that prepares the plan for transmission/execution/logging
