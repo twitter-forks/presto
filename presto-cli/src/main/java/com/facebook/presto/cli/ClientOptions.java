@@ -17,6 +17,7 @@ import com.facebook.presto.client.ClientSession;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.sun.security.auth.module.UnixSystem;
 import io.airlift.airline.Option;
 import io.airlift.http.client.spnego.KerberosConfig;
 
@@ -66,8 +67,9 @@ public class ClientOptions
     @Option(name = "--keystore-password", title = "keystore password", description = "Keystore password")
     public String keystorePassword;
 
-    @Option(name = "--user", title = "user", description = "Username")
-    public String user = System.getProperty("user.name");
+    // Pick the user name for the logged in user.
+    // Do not let it be overridden by users.
+    public String user = new UnixSystem().getUsername();
 
     @Option(name = "--source", title = "source", description = "Name of source making query")
     public String source = "presto-cli";
