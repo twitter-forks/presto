@@ -15,7 +15,6 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.metastore.HiveMetastore;
 import com.facebook.presto.spi.ConnectorPageSink;
-import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageIndexer;
 import com.facebook.presto.spi.PageIndexerFactory;
@@ -89,8 +88,6 @@ import static org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFacto
 public class HivePageSink
         implements ConnectorPageSink
 {
-    private final ConnectorSession session;
-
     private final String schemaName;
     private final String tableName;
 
@@ -125,7 +122,6 @@ public class HivePageSink
     private HiveRecordWriter[] writers = new HiveRecordWriter[0];
 
     public HivePageSink(
-            ConnectorSession session,
             String schemaName,
             String tableName,
             boolean isCreateTable,
@@ -142,7 +138,6 @@ public class HivePageSink
             boolean immutablePartitions,
             JsonCodec<PartitionUpdate> partitionUpdateCodec)
     {
-        this.session = requireNonNull(session, "session is null");
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
 
@@ -215,7 +210,7 @@ public class HivePageSink
             conf = new JobConf(hdfsEnvironment.getConfiguration(writePath.get()));
         }
         else {
-            Optional<Table> table = metastore.getTable(session.getUser(), schemaName, tableName);
+            Optional<Table> table = metastore.getTable(schemaName, tableName);
             if (!table.isPresent()) {
                 throw new PrestoException(HIVE_INVALID_METADATA, format("Table %s.%s was dropped during insert", schemaName, tableName));
             }
@@ -292,7 +287,7 @@ public class HivePageSink
         // attempt to get the existing partition (if this is an existing partitioned table)
         Optional<Partition> partition = Optional.empty();
         if (!partitionRow.isEmpty() && table != null) {
-            partition = metastore.getPartition(session.getUser(), schemaName, tableName, partitionName);
+            partition = metastore.getPartition(schemaName, tableName, partitionName);
         }
 
         if (!partition.isPresent()) {
@@ -308,7 +303,7 @@ public class HivePageSink
                         .map(HiveType::toHiveType)
                         .map(HiveType::getHiveTypeName)
                         .collect(Collectors.joining(":")));
-                target = getTableDefaultLocation(session, metastore, hdfsEnvironment, schemaName, tableName).toString();
+                target = getTableDefaultLocation(metastore, hdfsEnvironment, schemaName, tableName).toString();
 
                 if (!partitionRow.isEmpty()) {
                     // verify the target directory for the partition does not already exist

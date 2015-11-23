@@ -49,11 +49,6 @@ public class ThriftHiveMetastoreClient
         this.client = new ThriftHiveMetastore.Client(protocol);
     }
 
-    public ThriftHiveMetastore.Client getClient()
-    {
-        return client;
-    }
-
     @Override
     public void close()
     {

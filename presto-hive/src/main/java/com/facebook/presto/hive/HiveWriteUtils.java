@@ -14,7 +14,6 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.metastore.HiveMetastore;
-import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaNotFoundException;
 import com.facebook.presto.spi.SchemaTableName;
@@ -302,9 +301,9 @@ public final class HiveWriteUtils
         }
     }
 
-    public static Path getTableDefaultLocation(ConnectorSession session, HiveMetastore metastore, HdfsEnvironment hdfsEnvironment, String schemaName, String tableName)
+    public static Path getTableDefaultLocation(HiveMetastore metastore, HdfsEnvironment hdfsEnvironment, String schemaName, String tableName)
     {
-        String location = getDatabase(session, metastore, schemaName).getLocationUri();
+        String location = getDatabase(metastore, schemaName).getLocationUri();
         if (isNullOrEmpty(location)) {
             throw new PrestoException(HIVE_DATABASE_LOCATION_ERROR, format("Database '%s' location is not set", schemaName));
         }
@@ -320,9 +319,9 @@ public final class HiveWriteUtils
         return new Path(databasePath, tableName);
     }
 
-    private static Database getDatabase(ConnectorSession session, HiveMetastore metastore, String database)
+    private static Database getDatabase(HiveMetastore metastore, String database)
     {
-        return metastore.getDatabase(session.getUser(), database).orElseThrow(() -> new SchemaNotFoundException(database));
+        return metastore.getDatabase(database).orElseThrow(() -> new SchemaNotFoundException(database));
     }
 
     public static boolean pathExists(HdfsEnvironment hdfsEnvironment, Path path)

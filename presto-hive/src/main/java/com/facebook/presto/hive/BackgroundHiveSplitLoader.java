@@ -38,10 +38,8 @@ import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.IOException;
-import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
@@ -164,9 +162,8 @@ public class BackgroundHiveSplitLoader
                 try {
                     CompletableFuture<?> future;
                     taskExecutionLock.readLock().lock();
-                    UserGroupInformation ugi = UserGroupInformation.createRemoteUser(session.getUser());
                     try {
-                        future = ugi.doAs((PrivilegedExceptionAction<CompletableFuture<?>>) BackgroundHiveSplitLoader.this::loadSplits);
+                        future = loadSplits();
                     }
                     finally {
                         taskExecutionLock.readLock().unlock();

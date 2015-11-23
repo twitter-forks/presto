@@ -157,11 +157,11 @@ public class HiveSplitManager
         // sort partitions
         partitions = Ordering.natural().onResultOf(HivePartition::getPartitionId).reverse().sortedCopy(partitions);
 
-        Optional<Table> table = metastore.getTable(session.getUser(), tableName.getSchemaName(), tableName.getTableName());
+        Optional<Table> table = metastore.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (!table.isPresent()) {
             throw new TableNotFoundException(tableName);
         }
-        Iterable<HivePartitionMetadata> hivePartitions = getPartitionMetadata(session, table.get(), tableName, partitions);
+        Iterable<HivePartitionMetadata> hivePartitions = getPartitionMetadata(table.get(), tableName, partitions);
 
         HiveSplitLoader hiveSplitLoader = new BackgroundHiveSplitLoader(
                 connectorId,
@@ -185,7 +185,7 @@ public class HiveSplitManager
         return splitSource;
     }
 
-    private Iterable<HivePartitionMetadata> getPartitionMetadata(ConnectorSession session, Table table, SchemaTableName tableName, List<HivePartition> hivePartitions)
+    private Iterable<HivePartitionMetadata> getPartitionMetadata(Table table, SchemaTableName tableName, List<HivePartition> hivePartitions)
     {
         if (hivePartitions.isEmpty()) {
             return ImmutableList.of();
@@ -201,7 +201,6 @@ public class HiveSplitManager
         Iterable<List<HivePartition>> partitionNameBatches = partitionExponentially(hivePartitions, minPartitionBatchSize, maxPartitionBatchSize);
         Iterable<List<HivePartitionMetadata>> partitionBatches = transform(partitionNameBatches, partitionBatch -> {
             Optional<Map<String, Partition>> batch = metastore.getPartitionsByNames(
-                    session.getUser(),
                     tableName.getSchemaName(),
                     tableName.getTableName(),
                     Lists.transform(partitionBatch, HivePartition::getPartitionId));
