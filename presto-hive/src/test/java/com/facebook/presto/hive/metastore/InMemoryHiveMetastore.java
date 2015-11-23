@@ -88,13 +88,13 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public List<String> getAllDatabases(String user)
+    public List<String> getAllDatabases()
     {
         return ImmutableList.copyOf(databases.keySet());
     }
 
     @Override
-    public void createTable(String user1, Table table)
+    public void createTable(Table table)
     {
         SchemaTableName schemaTableName = new SchemaTableName(table.getDbName(), table.getTableName());
         Table tableCopy = table.deepCopy();
@@ -137,7 +137,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public void dropTable(String user, String databaseName, String tableName)
+    public void dropTable(String databaseName, String tableName)
     {
         SchemaTableName schemaTableName = new SchemaTableName(databaseName, tableName);
         Table table = relations.remove(schemaTableName);
@@ -159,7 +159,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public void alterTable(String user, String databaseName, String tableName, Table newTable)
+    public void alterTable(String databaseName, String tableName, Table newTable)
     {
         SchemaTableName oldName = new SchemaTableName(databaseName, tableName);
         SchemaTableName newName = new SchemaTableName(newTable.getDbName(), newTable.getTableName());
@@ -186,7 +186,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getAllTables(String user, String databaseName)
+    public Optional<List<String>> getAllTables(String databaseName)
     {
         ImmutableList.Builder<String> tables = ImmutableList.builder();
         for (SchemaTableName schemaTableName : this.relations.keySet()) {
@@ -198,7 +198,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getAllViews(String user, String databaseName)
+    public Optional<List<String>> getAllViews(String databaseName)
     {
         ImmutableList.Builder<String> tables = ImmutableList.builder();
         for (SchemaTableName schemaTableName : this.views.keySet()) {
@@ -210,15 +210,15 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<Database> getDatabase(String user, String databaseName)
+    public Optional<Database> getDatabase(String databaseName)
     {
         return Optional.ofNullable(databases.get(databaseName));
     }
 
     @Override
-    public void addPartitions(String user, String databaseName, String tableName, List<Partition> partitions)
+    public void addPartitions(String databaseName, String tableName, List<Partition> partitions)
     {
-        Optional<Table> table = getTable(user, databaseName, tableName);
+        Optional<Table> table = getTable(databaseName, tableName);
         if (!table.isPresent()) {
             throw new TableNotFoundException(new SchemaTableName(databaseName, tableName));
         }
@@ -233,7 +233,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public void dropPartition(String user, String databaseName, String tableName, List<String> parts)
+    public void dropPartition(String databaseName, String tableName, List<String> parts)
     {
         for (Entry<PartitionName, Partition> entry : partitions.entrySet()) {
             PartitionName partitionName = entry.getKey();
@@ -245,7 +245,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public void dropPartitionByName(String user, String databaseName, String tableName, String partitionName)
+    public void dropPartitionByName(String databaseName, String tableName, String partitionName)
     {
         for (PartitionName partition : partitions.keySet()) {
             if (partition.matches(databaseName, tableName, partitionName)) {
@@ -255,7 +255,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getPartitionNames(String user, String databaseName, String tableName)
+    public Optional<List<String>> getPartitionNames(String databaseName, String tableName)
     {
         return Optional.of(ImmutableList.copyOf(partitions.entrySet().stream()
                 .filter(entry -> entry.getKey().matches(databaseName, tableName))
@@ -264,7 +264,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<Partition> getPartition(String user, String databaseName, String tableName, String partitionName)
+    public Optional<Partition> getPartition(String databaseName, String tableName, String partitionName)
     {
         PartitionName name = new PartitionName(databaseName, tableName, partitionName);
         Partition partition = partitions.get(name);
@@ -275,7 +275,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<List<String>> getPartitionNamesByParts(String user, String databaseName, String tableName, List<String> parts)
+    public Optional<List<String>> getPartitionNamesByParts(String databaseName, String tableName, List<String> parts)
     {
         return Optional.of(partitions.entrySet().stream()
                 .filter(entry -> partitionMatches(entry.getValue(), databaseName, tableName, parts))
@@ -303,7 +303,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<Map<String, Partition>> getPartitionsByNames(String user, String databaseName, String tableName, List<String> partitionNames)
+    public Optional<Map<String, Partition>> getPartitionsByNames(String databaseName, String tableName, List<String> partitionNames)
     {
         ImmutableMap.Builder<String, Partition> builder = ImmutableMap.builder();
         for (String name : partitionNames) {
@@ -318,7 +318,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public Optional<Table> getTable(String user, String databaseName, String tableName)
+    public Optional<Table> getTable(String databaseName, String tableName)
     {
         SchemaTableName schemaTableName = new SchemaTableName(databaseName, tableName);
         return Optional.ofNullable(relations.get(schemaTableName));

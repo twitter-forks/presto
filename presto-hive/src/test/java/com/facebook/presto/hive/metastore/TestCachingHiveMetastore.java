@@ -22,7 +22,6 @@ import org.testng.annotations.Test;
 
 import java.util.concurrent.TimeUnit;
 
-import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.hive.metastore.MockHiveMetastoreClient.BAD_DATABASE;
 import static com.facebook.presto.hive.metastore.MockHiveMetastoreClient.TEST_DATABASE;
 import static com.facebook.presto.hive.metastore.MockHiveMetastoreClient.TEST_PARTITION1;
@@ -56,14 +55,14 @@ public class TestCachingHiveMetastore
             throws Exception
     {
         assertEquals(mockClient.getAccessCount(), 0);
-        assertEquals(metastore.getAllDatabases(SESSION.getUser()), ImmutableList.of(TEST_DATABASE));
+        assertEquals(metastore.getAllDatabases(), ImmutableList.of(TEST_DATABASE));
         assertEquals(mockClient.getAccessCount(), 1);
-        assertEquals(metastore.getAllDatabases(SESSION.getUser()), ImmutableList.of(TEST_DATABASE));
+        assertEquals(metastore.getAllDatabases(), ImmutableList.of(TEST_DATABASE));
         assertEquals(mockClient.getAccessCount(), 1);
 
         metastore.flushCache();
 
-        assertEquals(metastore.getAllDatabases(SESSION.getUser()), ImmutableList.of(TEST_DATABASE));
+        assertEquals(metastore.getAllDatabases(), ImmutableList.of(TEST_DATABASE));
         assertEquals(mockClient.getAccessCount(), 2);
     }
 
@@ -72,21 +71,21 @@ public class TestCachingHiveMetastore
             throws Exception
     {
         assertEquals(mockClient.getAccessCount(), 0);
-        assertEquals(metastore.getAllTables(SESSION.getUser(), TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
+        assertEquals(metastore.getAllTables(TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 1);
-        assertEquals(metastore.getAllTables(SESSION.getUser(), TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
+        assertEquals(metastore.getAllTables(TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 1);
 
         metastore.flushCache();
 
-        assertEquals(metastore.getAllTables(SESSION.getUser(), TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
+        assertEquals(metastore.getAllTables(TEST_DATABASE).get(), ImmutableList.of(TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 2);
     }
 
     public void testInvalidDbGetAllTAbles()
             throws Exception
     {
-        assertFalse(metastore.getAllTables(SESSION.getUser(), BAD_DATABASE).isPresent());
+        assertFalse(metastore.getAllTables(BAD_DATABASE).isPresent());
     }
 
     @Test
@@ -94,21 +93,21 @@ public class TestCachingHiveMetastore
             throws Exception
     {
         assertEquals(mockClient.getAccessCount(), 0);
-        assertNotNull(metastore.getTable(SESSION.getUser(), TEST_DATABASE, TEST_TABLE));
+        assertNotNull(metastore.getTable(TEST_DATABASE, TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 1);
-        assertNotNull(metastore.getTable(SESSION.getUser(), TEST_DATABASE, TEST_TABLE));
+        assertNotNull(metastore.getTable(TEST_DATABASE, TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 1);
 
         metastore.flushCache();
 
-        assertNotNull(metastore.getTable(SESSION.getUser(), TEST_DATABASE, TEST_TABLE));
+        assertNotNull(metastore.getTable(TEST_DATABASE, TEST_TABLE));
         assertEquals(mockClient.getAccessCount(), 2);
     }
 
     public void testInvalidDbGetTable()
             throws Exception
     {
-        assertFalse(metastore.getTable(SESSION.getUser(), BAD_DATABASE, TEST_TABLE).isPresent());
+        assertFalse(metastore.getTable(BAD_DATABASE, TEST_TABLE).isPresent());
     }
 
     @Test
@@ -117,14 +116,14 @@ public class TestCachingHiveMetastore
     {
         ImmutableList<String> expectedPartitions = ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2);
         assertEquals(mockClient.getAccessCount(), 0);
-        assertEquals(metastore.getPartitionNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNames(TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 1);
-        assertEquals(metastore.getPartitionNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNames(TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 1);
 
         metastore.flushCache();
 
-        assertEquals(metastore.getPartitionNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNames(TEST_DATABASE, TEST_TABLE).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 2);
     }
 
@@ -132,7 +131,7 @@ public class TestCachingHiveMetastore
     public void testInvalidGetPartitionNames()
             throws Exception
     {
-        assertEquals(metastore.getPartitionNames(SESSION.getUser(), BAD_DATABASE, TEST_TABLE).get(), ImmutableList.of());
+        assertEquals(metastore.getPartitionNames(BAD_DATABASE, TEST_TABLE).get(), ImmutableList.of());
     }
 
     @Test
@@ -143,14 +142,14 @@ public class TestCachingHiveMetastore
         ImmutableList<String> expectedPartitions = ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2);
 
         assertEquals(mockClient.getAccessCount(), 0);
-        assertEquals(metastore.getPartitionNamesByParts(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNamesByParts(TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 1);
-        assertEquals(metastore.getPartitionNamesByParts(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNamesByParts(TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 1);
 
         metastore.flushCache();
 
-        assertEquals(metastore.getPartitionNamesByParts(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
+        assertEquals(metastore.getPartitionNamesByParts(TEST_DATABASE, TEST_TABLE, parts).get(), expectedPartitions);
         assertEquals(mockClient.getAccessCount(), 2);
     }
 
@@ -158,7 +157,7 @@ public class TestCachingHiveMetastore
             throws Exception
     {
         ImmutableList<String> parts = ImmutableList.of();
-        assertFalse(metastore.getPartitionNamesByParts(SESSION.getUser(), BAD_DATABASE, TEST_TABLE, parts).isPresent());
+        assertFalse(metastore.getPartitionNamesByParts(BAD_DATABASE, TEST_TABLE, parts).isPresent());
     }
 
     @Test
@@ -166,35 +165,35 @@ public class TestCachingHiveMetastore
             throws Exception
     {
         assertEquals(mockClient.getAccessCount(), 0);
-        metastore.getTable(SESSION.getUser(), TEST_DATABASE, TEST_TABLE);
+        metastore.getTable(TEST_DATABASE, TEST_TABLE);
         assertEquals(mockClient.getAccessCount(), 1);
 
         // Select half of the available partitions and load them into the cache
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).get().size(), 1);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).get().size(), 1);
         assertEquals(mockClient.getAccessCount(), 2);
 
         // Now select all of the partitions
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
         // There should be one more access to fetch the remaining partition
         assertEquals(mockClient.getAccessCount(), 3);
 
         // Now if we fetch any or both of them, they should not hit the client
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).get().size(), 1);
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION2)).get().size(), 1);
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).get().size(), 1);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION2)).get().size(), 1);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
         assertEquals(mockClient.getAccessCount(), 3);
 
         metastore.flushCache();
 
         // Fetching both should only result in one batched access
-        assertEquals(metastore.getPartitionsByNames(SESSION.getUser(), TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
+        assertEquals(metastore.getPartitionsByNames(TEST_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1, TEST_PARTITION2)).get().size(), 2);
         assertEquals(mockClient.getAccessCount(), 4);
     }
 
     public void testInvalidGetPartitionsByNames()
             throws Exception
     {
-        assertFalse(metastore.getPartitionsByNames(SESSION.getUser(), BAD_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).isPresent());
+        assertFalse(metastore.getPartitionsByNames(BAD_DATABASE, TEST_TABLE, ImmutableList.of(TEST_PARTITION1)).isPresent());
     }
 
     @Test
@@ -204,7 +203,7 @@ public class TestCachingHiveMetastore
         // Throw exceptions on usage
         mockClient.setThrowException(true);
         try {
-            metastore.getAllDatabases(SESSION.getUser());
+            metastore.getAllDatabases();
         }
         catch (RuntimeException ignored) {
         }
@@ -212,7 +211,7 @@ public class TestCachingHiveMetastore
 
         // Second try should hit the client again
         try {
-            metastore.getAllDatabases(SESSION.getUser());
+            metastore.getAllDatabases();
         }
         catch (RuntimeException ignored) {
         }

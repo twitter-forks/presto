@@ -100,7 +100,7 @@ public class HivePartitionManager
         }
 
         SchemaTableName tableName = hiveTableHandle.getSchemaTableName();
-        Table table = getTable(session, metastore, tableName);
+        Table table = getTable(metastore, tableName);
         Optional<HiveBucketing.HiveBucket> bucket = getHiveBucket(table, effectivePredicate.extractFixedValues());
 
         TupleDomain<HiveColumnHandle> compactEffectivePredicate = toCompactTupleDomain(effectivePredicate, domainCompactionThreshold);
@@ -110,7 +110,7 @@ public class HivePartitionManager
         }
 
         List<HiveColumnHandle> partitionColumns = getPartitionKeyColumnHandles(connectorId, table);
-        List<String> partitionNames = getFilteredPartitionNames(session, metastore, tableName, partitionColumns, effectivePredicate);
+        List<String> partitionNames = getFilteredPartitionNames(metastore, tableName, partitionColumns, effectivePredicate);
 
         // do a final pass to filter based on fields that could not be used to filter the partitions
         ImmutableList.Builder<HivePartition> partitions = ImmutableList.builder();
@@ -164,9 +164,9 @@ public class HivePartitionManager
         return Optional.of(builder.build());
     }
 
-    private Table getTable(ConnectorSession session, HiveMetastore metastore, SchemaTableName tableName)
+    private Table getTable(HiveMetastore metastore, SchemaTableName tableName)
     {
-        Optional<Table> target = metastore.getTable(session.getUser(), tableName.getSchemaName(), tableName.getTableName());
+        Optional<Table> target = metastore.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (!target.isPresent()) {
             throw new TableNotFoundException(tableName);
         }
@@ -185,7 +185,7 @@ public class HivePartitionManager
         return table;
     }
 
-    private List<String> getFilteredPartitionNames(ConnectorSession session, HiveMetastore metastore, SchemaTableName tableName, List<HiveColumnHandle> partitionKeys, TupleDomain<ColumnHandle> effectivePredicate)
+    private List<String> getFilteredPartitionNames(HiveMetastore metastore, SchemaTableName tableName, List<HiveColumnHandle> partitionKeys, TupleDomain<ColumnHandle> effectivePredicate)
     {
         List<String> filter = new ArrayList<>();
         for (HiveColumnHandle partitionKey : partitionKeys) {
@@ -217,7 +217,7 @@ public class HivePartitionManager
         }
 
         // fetch the partition names
-        return metastore.getPartitionNamesByParts(session.getUser(), tableName.getSchemaName(), tableName.getTableName(), filter)
+        return metastore.getPartitionNamesByParts(tableName.getSchemaName(), tableName.getTableName(), filter)
                 .orElseThrow(() -> new TableNotFoundException(tableName));
     }
 
