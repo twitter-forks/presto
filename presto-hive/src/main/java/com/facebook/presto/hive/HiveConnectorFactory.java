@@ -45,6 +45,7 @@ import java.lang.management.ManagementFactory;
 import java.util.Map;
 
 import static com.facebook.presto.hive.ConditionalModule.installModuleIf;
+import static com.facebook.presto.hive.SecurityConfig.ALLOW_ALL_ACCESS_CONTROL;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.Objects.requireNonNull;
@@ -103,7 +104,7 @@ public class HiveConnectorFactory
                             new MetastoreZkDiscoveryBasedModule()),
                     installModuleIf(
                             SecurityConfig.class,
-                            security -> "none".equalsIgnoreCase(security.getSecuritySystem()),
+                            security -> ALLOW_ALL_ACCESS_CONTROL.equalsIgnoreCase(security.getSecuritySystem()),
                             new NoSecurityModule()),
                     installModuleIf(
                             SecurityConfig.class,

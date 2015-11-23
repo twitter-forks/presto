@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableMap;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
@@ -31,6 +32,17 @@ public class CreateTableAsSelect
 
     public CreateTableAsSelect(QualifiedName name, Query query, Map<String, Expression> properties, boolean withData)
     {
+        this(Optional.empty(), name, query, properties, withData);
+    }
+
+    public CreateTableAsSelect(NodeLocation location, QualifiedName name, Query query, Map<String, Expression> properties, boolean withData)
+    {
+        this(Optional.of(location), name, query, properties, withData);
+    }
+
+    private CreateTableAsSelect(Optional<NodeLocation> location, QualifiedName name, Query query, Map<String, Expression> properties, boolean withData)
+    {
+        super(location);
         this.name = requireNonNull(name, "name is null");
         this.query = requireNonNull(query, "query is null");
         this.properties = ImmutableMap.copyOf(requireNonNull(properties, "properties is null"));
@@ -52,7 +64,7 @@ public class CreateTableAsSelect
         return properties;
     }
 
-    public boolean getWithData()
+    public boolean isWithData()
     {
         return withData;
     }
@@ -66,7 +78,7 @@ public class CreateTableAsSelect
     @Override
     public int hashCode()
     {
-        return Objects.hash(name, query, properties);
+        return Objects.hash(name, query, properties, withData);
     }
 
     @Override
@@ -81,7 +93,8 @@ public class CreateTableAsSelect
         CreateTableAsSelect o = (CreateTableAsSelect) obj;
         return Objects.equals(name, o.name)
                 && Objects.equals(query, o.query)
-                && Objects.equals(properties, o.properties);
+                && Objects.equals(properties, o.properties)
+                && Objects.equals(withData, o.withData);
     }
 
     @Override

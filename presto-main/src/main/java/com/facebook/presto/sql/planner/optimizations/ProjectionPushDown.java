@@ -21,13 +21,12 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
-import com.facebook.presto.sql.planner.plan.PlanRewriter;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
+import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.QualifiedNameReference;
-import com.facebook.presto.util.ImmutableCollectors;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableMap;
@@ -37,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.facebook.presto.sql.planner.plan.ChildReplacer.replaceChildren;
 import static java.util.Objects.requireNonNull;
 
 public class ProjectionPushDown
@@ -51,11 +51,11 @@ public class ProjectionPushDown
         requireNonNull(symbolAllocator, "symbolAllocator is null");
         requireNonNull(idAllocator, "idAllocator is null");
 
-        return PlanRewriter.rewriteWith(new Rewriter(idAllocator, symbolAllocator), plan);
+        return SimplePlanRewriter.rewriteWith(new Rewriter(idAllocator, symbolAllocator), plan);
     }
 
     private static class Rewriter
-            extends PlanRewriter<Void>
+            extends SimplePlanRewriter<Void>
     {
         private final PlanNodeIdAllocator idAllocator;
         private final SymbolAllocator symbolAllocator;
@@ -77,7 +77,7 @@ public class ProjectionPushDown
             else if (source instanceof ExchangeNode) {
                 return pushProjectionThrough(node, (ExchangeNode) source);
             }
-            return context.replaceChildren(node, ImmutableList.of(source));
+            return replaceChildren(node, ImmutableList.of(source));
         }
 
         private PlanNode pushProjectionThrough(ProjectNode node, UnionNode source)
@@ -116,26 +116,37 @@ public class ProjectionPushDown
         private PlanNode pushProjectionThrough(ProjectNode node, ExchangeNode exchange)
         {
             ImmutableList.Builder<PlanNode> newSourceBuilder = ImmutableList.builder();
+            ImmutableList.Builder<List<Symbol>> inputsBuilder = ImmutableList.builder();
             for (int i = 0; i < exchange.getSources().size(); i++) {
                 Map<Symbol, QualifiedNameReference> outputToInputMap = extractExchangeOutputToInput(exchange, i);
 
                 Map<Symbol, Expression> projections = new LinkedHashMap<>(); // Use LinkedHashMap to make output symbol order deterministic
+                ImmutableList.Builder<Symbol> inputs = ImmutableList.builder();
                 if (exchange.getPartitionKeys().isPresent()) {
                     // Need to retain the partition keys for the exchange
                     exchange.getPartitionKeys().get().stream()
                             .map(outputToInputMap::get)
-                            .forEach(nameReference -> projections.put(Symbol.fromQualifiedName(nameReference.getName()), nameReference));
+                            .forEach(nameReference -> {
+                                Symbol symbol = Symbol.fromQualifiedName(nameReference.getName());
+                                projections.put(symbol, nameReference);
+                                inputs.add(symbol);
+                            });
+
                 }
                 if (exchange.getHashSymbol().isPresent()) {
                     // Need to retain the hash symbol for the exchange
                     projections.put(exchange.getHashSymbol().get(), exchange.getHashSymbol().get().toQualifiedNameReference());
+                    inputs.add(exchange.getHashSymbol().get());
                 }
                 for (Map.Entry<Symbol, Expression> projection : node.getAssignments().entrySet()) {
                     Expression translatedExpression = translateExpression(projection.getValue(), outputToInputMap);
                     Type type = symbolAllocator.getTypes().get(projection.getKey());
-                    projections.put(symbolAllocator.newSymbol(translatedExpression, type), translatedExpression);
+                    Symbol symbol = symbolAllocator.newSymbol(translatedExpression, type);
+                    projections.put(symbol, translatedExpression);
+                    inputs.add(symbol);
                 }
                 newSourceBuilder.add(new ProjectNode(idAllocator.getNextId(), exchange.getSources().get(i), projections));
+                inputsBuilder.add(inputs.build());
             }
 
             // Construct the output symbols in the same order as the sources
@@ -151,17 +162,14 @@ public class ProjectionPushDown
                 outputBuilder.add(projection.getKey());
             }
 
-            List<PlanNode> newSources = newSourceBuilder.build();
             return new ExchangeNode(
                     exchange.getId(),
                     exchange.getType(),
                     exchange.getPartitionKeys(),
                     exchange.getHashSymbol(),
-                    newSources,
+                    newSourceBuilder.build(),
                     outputBuilder.build(),
-                    newSources.stream()
-                            .map(PlanNode::getOutputSymbols)
-                            .collect(ImmutableCollectors.toImmutableList()));
+                    inputsBuilder.build());
         }
     }
 

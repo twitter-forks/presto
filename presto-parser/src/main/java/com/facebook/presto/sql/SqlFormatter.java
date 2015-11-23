@@ -617,6 +617,10 @@ public final class SqlFormatter
             builder.append(" AS ");
             process(node.getQuery(), indent);
 
+            if (!node.isWithData()) {
+                builder.append(" WITH NO DATA");
+            }
+
             return null;
         }
 
@@ -700,6 +704,12 @@ public final class SqlFormatter
             builder.append("INSERT INTO ")
                     .append(node.getTarget())
                     .append(" ");
+
+            if (node.getColumns().isPresent()) {
+                builder.append("(")
+                        .append(Joiner.on(", ").join(node.getColumns().get()))
+                        .append(") ");
+            }
 
             process(node.getQuery(), indent);
 

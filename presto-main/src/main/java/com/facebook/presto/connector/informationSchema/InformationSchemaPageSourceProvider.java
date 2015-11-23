@@ -14,6 +14,7 @@
 package com.facebook.presto.connector.informationSchema;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.execution.QueryId;
 import com.facebook.presto.metadata.InternalTable;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.OperatorNotFoundException;
@@ -34,9 +35,9 @@ import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.FixedPageSource;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.SchemaTableName;
-import com.facebook.presto.spi.SerializableNativeValue;
-import com.facebook.presto.spi.TupleDomain;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.predicate.NullableValue;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
@@ -46,7 +47,9 @@ import io.airlift.slice.Slice;
 
 import javax.inject.Inject;
 
+import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -108,9 +111,10 @@ public class InformationSchemaPageSourceProvider
         requireNonNull(columns, "columns is null");
 
         InformationSchemaTableHandle handle = split.getTableHandle();
-        Map<String, SerializableNativeValue> filters = split.getFilters();
+        Map<String, NullableValue> filters = split.getFilters();
 
         Session session = Session.builder(metadata.getSessionPropertyManager())
+                .setQueryId(new QueryId(connectorSession.getQueryId()))
                 .setIdentity(connectorSession.getIdentity())
                 .setSource("information_schema")
                 .setCatalog("") // default catalog is not be used
@@ -123,7 +127,7 @@ public class InformationSchemaPageSourceProvider
         return getInformationSchemaTable(session, handle.getCatalogName(), handle.getSchemaTableName(), filters);
     }
 
-    public InternalTable getInformationSchemaTable(Session session, String catalog, SchemaTableName table, Map<String, SerializableNativeValue> filters)
+    public InternalTable getInformationSchemaTable(Session session, String catalog, SchemaTableName table, Map<String, NullableValue> filters)
     {
         if (table.equals(TABLE_COLUMNS)) {
             return buildColumns(session, catalog, filters);
@@ -144,7 +148,7 @@ public class InformationSchemaPageSourceProvider
         throw new IllegalArgumentException(format("table does not exist: %s", table));
     }
 
-    private InternalTable buildColumns(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private InternalTable buildColumns(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         InternalTable.Builder table = InternalTable.builder(informationSchemaTableColumns(TABLE_COLUMNS));
         for (Entry<QualifiedTableName, List<ColumnMetadata>> entry : getColumnsList(session, catalogName, filters).entrySet()) {
@@ -171,12 +175,12 @@ public class InformationSchemaPageSourceProvider
         return table.build();
     }
 
-    private Map<QualifiedTableName, List<ColumnMetadata>> getColumnsList(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private Map<QualifiedTableName, List<ColumnMetadata>> getColumnsList(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         return metadata.listTableColumns(session, extractQualifiedTablePrefix(catalogName, filters));
     }
 
-    private InternalTable buildTables(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private InternalTable buildTables(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         Set<QualifiedTableName> tables = ImmutableSet.copyOf(getTablesList(session, catalogName, filters));
         Set<QualifiedTableName> views = ImmutableSet.copyOf(getViewsList(session, catalogName, filters));
@@ -194,17 +198,17 @@ public class InformationSchemaPageSourceProvider
         return table.build();
     }
 
-    private List<QualifiedTableName> getTablesList(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private List<QualifiedTableName> getTablesList(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         return metadata.listTables(session, extractQualifiedTablePrefix(catalogName, filters));
     }
 
-    private List<QualifiedTableName> getViewsList(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private List<QualifiedTableName> getViewsList(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         return metadata.listViews(session, extractQualifiedTablePrefix(catalogName, filters));
     }
 
-    private InternalTable buildViews(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private InternalTable buildViews(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         InternalTable.Builder table = InternalTable.builder(informationSchemaTableColumns(TABLE_VIEWS));
         for (Entry<QualifiedTableName, ViewDefinition> entry : getViews(session, catalogName, filters).entrySet()) {
@@ -217,7 +221,7 @@ public class InformationSchemaPageSourceProvider
         return table.build();
     }
 
-    private Map<QualifiedTableName, ViewDefinition> getViews(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private Map<QualifiedTableName, ViewDefinition> getViews(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         return metadata.getViews(session, extractQualifiedTablePrefix(catalogName, filters));
     }
@@ -231,7 +235,7 @@ public class InformationSchemaPageSourceProvider
         return table.build();
     }
 
-    private InternalTable buildPartitions(Session session, String catalogName, Map<String, SerializableNativeValue> filters)
+    private InternalTable buildPartitions(Session session, String catalogName, Map<String, NullableValue> filters)
     {
         QualifiedTableName tableName = extractQualifiedTableName(catalogName, filters);
 
@@ -239,31 +243,44 @@ public class InformationSchemaPageSourceProvider
 
         Optional<TableHandle> tableHandle = metadata.getTableHandle(session, tableName);
         checkArgument(tableHandle.isPresent(), "Table %s does not exist", tableName);
-        Map<ColumnHandle, String> columnHandles = ImmutableBiMap.copyOf(metadata.getColumnHandles(session, tableHandle.get())).inverse();
 
         List<TableLayoutResult> layouts = metadata.getLayouts(session, tableHandle.get(), Constraint.<ColumnHandle>alwaysTrue(), Optional.empty());
 
         if (layouts.size() == 1) {
-            TableLayout layout = Iterables.getOnlyElement(layouts).getLayout();
+            Map<ColumnHandle, String> columnHandles = ImmutableBiMap.copyOf(metadata.getColumnHandles(session, tableHandle.get())).inverse();
+            Map<ColumnHandle, MethodHandle> methodHandles = new HashMap<>();
+            for (ColumnHandle columnHandle : columnHandles.keySet()) {
+                try {
+                    ColumnMetadata columnMetadata = metadata.getColumnMetadata(session, tableHandle.get(), columnHandle);
+                    Signature operator = metadata.getFunctionRegistry().getCoercion(columnMetadata.getType(), VARCHAR);
+                    MethodHandle methodHandle = metadata.getFunctionRegistry().getScalarFunctionImplementation(operator).getMethodHandle();
+                    methodHandles.put(columnHandle, methodHandle);
+                }
+                catch (OperatorNotFoundException exception) {
+                    // Do not put the columnHandle in the map.
+                }
+            }
 
+            TableLayout layout = Iterables.getOnlyElement(layouts).getLayout();
             layout.getDiscretePredicates().ifPresent(domains -> {
                 int partitionNumber = 1;
                 for (TupleDomain<ColumnHandle> domain : domains) {
-                    for (Entry<ColumnHandle, SerializableNativeValue> entry : domain.extractNullableFixedValues().entrySet()) {
+                    for (Entry<ColumnHandle, NullableValue> entry : TupleDomain.extractFixedValues(domain).get().entrySet()) {
                         ColumnHandle columnHandle = entry.getKey();
                         String columnName = columnHandles.get(columnHandle);
                         String value = null;
                         if (entry.getValue().getValue() != null) {
-                            ColumnMetadata columnMetadata = metadata.getColumnMetadata(session, tableHandle.get(), columnHandle);
-                            try {
-                                Signature operator = metadata.getFunctionRegistry().getCoercion(columnMetadata.getType(), VARCHAR);
-                                value = ((Slice) metadata.getFunctionRegistry().getScalarFunctionImplementation(operator).getMethodHandle().invokeWithArguments(entry.getValue().getValue())).toStringUtf8();
+                            if (methodHandles.containsKey(columnHandle)) {
+                                try {
+                                    value = ((Slice) methodHandles.get(columnHandle).invokeWithArguments(entry.getValue().getValue())).toStringUtf8();
+                                }
+                                catch (Throwable throwable) {
+                                    throw Throwables.propagate(throwable);
+                                }
                             }
-                            catch (OperatorNotFoundException e) {
+                            else {
+                                // OperatorNotFoundException was thrown for this columnHandle
                                 value = "<UNREPRESENTABLE VALUE>";
-                            }
-                            catch (Throwable throwable) {
-                                throw Throwables.propagate(throwable);
                             }
                         }
                         table.add(
@@ -281,7 +298,7 @@ public class InformationSchemaPageSourceProvider
         return table.build();
     }
 
-    private static QualifiedTableName extractQualifiedTableName(String catalogName, Map<String, SerializableNativeValue> filters)
+    private static QualifiedTableName extractQualifiedTableName(String catalogName, Map<String, NullableValue> filters)
     {
         Optional<String> schemaName = getFilterColumn(filters, "table_schema");
         checkArgument(schemaName.isPresent(), "filter is required for column: %s.%s", TABLE_INTERNAL_PARTITIONS, "table_schema");
@@ -290,7 +307,7 @@ public class InformationSchemaPageSourceProvider
         return new QualifiedTableName(catalogName, schemaName.get(), tableName.get());
     }
 
-    private static QualifiedTablePrefix extractQualifiedTablePrefix(String catalogName, Map<String, SerializableNativeValue> filters)
+    private static QualifiedTablePrefix extractQualifiedTablePrefix(String catalogName, Map<String, NullableValue> filters)
     {
         Optional<String> schemaName = getFilterColumn(filters, "table_schema");
         Optional<String> tableName = getFilterColumn(filters, "table_name");
@@ -300,17 +317,14 @@ public class InformationSchemaPageSourceProvider
         return new QualifiedTablePrefix(catalogName, schemaName, tableName);
     }
 
-    private static Optional<String> getFilterColumn(Map<String, SerializableNativeValue> filters, String columnName)
+    private static Optional<String> getFilterColumn(Map<String, NullableValue> filters, String columnName)
     {
-        SerializableNativeValue value = filters.get(columnName);
+        NullableValue value = filters.get(columnName);
         if (value == null || value.getValue() == null) {
             return Optional.empty();
         }
-        if (Slice.class.isAssignableFrom(value.getType())) {
-            return Optional.of((((Slice) value.getValue()).toStringUtf8()).toLowerCase(ENGLISH));
-        }
-        if (String.class.isAssignableFrom(value.getType())) {
-            return Optional.of(((String) value.getValue()).toLowerCase(ENGLISH));
+        if (value.getType().equals(VARCHAR)) {
+            return Optional.of(((Slice) value.getValue()).toStringUtf8().toLowerCase(ENGLISH));
         }
         return Optional.empty();
     }

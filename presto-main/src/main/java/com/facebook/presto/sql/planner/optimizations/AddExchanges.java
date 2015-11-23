@@ -25,7 +25,8 @@ import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.SortingProperty;
-import com.facebook.presto.spi.TupleDomain;
+import com.facebook.presto.spi.predicate.NullableValue;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.DomainTranslator;
@@ -58,6 +59,7 @@ import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TopNNode;
 import com.facebook.presto.sql.planner.plan.TopNRowNumberNode;
 import com.facebook.presto.sql.planner.plan.UnionNode;
+import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.BooleanLiteral;
@@ -118,22 +120,21 @@ public class AddExchanges
 {
     private final SqlParser parser;
     private final Metadata metadata;
-    private final boolean distributedIndexJoins;
 
-    public AddExchanges(Metadata metadata, SqlParser parser, boolean distributedIndexJoins)
+    public AddExchanges(Metadata metadata, SqlParser parser)
     {
         this.metadata = metadata;
         this.parser = parser;
-        this.distributedIndexJoins = distributedIndexJoins;
     }
 
     @Override
     public PlanNode optimize(PlanNode plan, Session session, Map<Symbol, Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
     {
         boolean distributedJoinEnabled = SystemSessionProperties.isDistributedJoinEnabled(session);
+        boolean distributedIndexJoinEnabled = SystemSessionProperties.isDistributedIndexJoinEnabled(session);
         boolean redistributeWrites = SystemSessionProperties.isRedistributeWrites(session);
         boolean preferStreamingOperators = SystemSessionProperties.preferStreamingOperators(session);
-        PlanWithProperties result = plan.accept(new Rewriter(symbolAllocator, idAllocator, symbolAllocator, session, distributedIndexJoins, distributedJoinEnabled, preferStreamingOperators, redistributeWrites), new Context(PreferredProperties.any(), false));
+        PlanWithProperties result = plan.accept(new Rewriter(symbolAllocator, idAllocator, symbolAllocator, session, distributedIndexJoinEnabled, distributedJoinEnabled, preferStreamingOperators, redistributeWrites), new Context(PreferredProperties.any(), false));
         return result.getNode();
     }
 
@@ -603,9 +604,7 @@ public class AddExchanges
 
             Expression constraint = combineConjuncts(
                     deterministicPredicate,
-                    DomainTranslator.toPredicate(
-                            node.getCurrentConstraint().transform(assignments::get),
-                            symbolAllocator.getTypes()));
+                    DomainTranslator.toPredicate(node.getCurrentConstraint().transform(assignments::get)));
 
             // Layouts will be returned in order of the connector's preference
             List<TableLayoutResult> layouts = metadata.getLayouts(
@@ -641,9 +640,7 @@ public class AddExchanges
                         PlanWithProperties result = new PlanWithProperties(tableScan, deriveProperties(tableScan, ImmutableList.of()));
 
                         Expression resultingPredicate = combineConjuncts(
-                                DomainTranslator.toPredicate(
-                                        layout.getUnenforcedConstraint().transform(assignments::get),
-                                        symbolAllocator.getTypes()),
+                                DomainTranslator.toPredicate(layout.getUnenforcedConstraint().transform(assignments::get)),
                                 stripDeterministicConjuncts(predicate),
                                 decomposedPredicate.getRemainingExpression());
 
@@ -681,7 +678,7 @@ public class AddExchanges
             return possiblePlans.get(0);
         }
 
-        private boolean shouldPrune(Expression predicate, Map<Symbol, ColumnHandle> assignments, Map<ColumnHandle, ?> bindings)
+        private boolean shouldPrune(Expression predicate, Map<Symbol, ColumnHandle> assignments, Map<ColumnHandle, NullableValue> bindings)
         {
             List<Expression> conjuncts = extractConjuncts(predicate);
             IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypes(session, metadata, parser, symbolAllocator.getTypes(), predicate);
@@ -779,6 +776,14 @@ public class AddExchanges
                     node.getRightHashSymbol());
 
             return new PlanWithProperties(result, deriveProperties(result, ImmutableList.of(left.getProperties(), right.getProperties())));
+        }
+
+        @Override
+        public PlanWithProperties visitUnnest(UnnestNode node, Context context)
+        {
+            PreferredProperties translatedPreferred = context.getPreferredProperties().translate(symbol -> node.getReplicateSymbols().contains(symbol) ? Optional.of(symbol) : Optional.empty());
+
+            return rebaseAndDeriveProperties(node, planChild(node, context.withPreferredProperties(translatedPreferred)));
         }
 
         @Override

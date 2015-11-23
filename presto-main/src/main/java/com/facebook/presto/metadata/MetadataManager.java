@@ -34,8 +34,9 @@ import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
-import com.facebook.presto.spi.TupleDomain;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
+import com.facebook.presto.spi.predicate.NullableValue;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
@@ -88,6 +89,7 @@ import static com.facebook.presto.metadata.ViewDefinition.ViewColumn;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_VIEW;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
+import static com.facebook.presto.spi.predicate.TupleDomain.extractFixedValues;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
@@ -242,13 +244,13 @@ public class MetadataManager
     }
 
     @Override
-    public List<ParametricFunction> listFunctions()
+    public List<SqlFunction> listFunctions()
     {
         return functions.list();
     }
 
     @Override
-    public void addFunctions(List<? extends ParametricFunction> functionInfos)
+    public void addFunctions(List<? extends SqlFunction> functionInfos)
     {
         functions.addFunctions(functionInfos);
     }
@@ -292,7 +294,7 @@ public class MetadataManager
         TupleDomain<ColumnHandle> summary = constraint.getSummary();
         String connectorId = table.getConnectorId();
         ConnectorTableHandle connectorTable = table.getConnectorHandle();
-        Predicate<Map<ColumnHandle, ?>> predicate = constraint.predicate();
+        Predicate<Map<ColumnHandle, NullableValue>> predicate = constraint.predicate();
 
         List<ConnectorTableLayoutResult> layouts;
         ConnectorMetadataEntry entry = getConnectorMetadata(connectorId);
@@ -305,7 +307,8 @@ public class MetadataManager
             ConnectorPartitionResult result = connectorSplitManager.getPartitions(connectorSession, connectorTable, summary);
 
             List<ConnectorPartition> partitions = result.getPartitions().stream()
-                    .filter(partition -> predicate.test(partition.getTupleDomain().extractFixedValues()))
+                    .filter(partition -> !partition.getTupleDomain().isNone())
+                    .filter(partition -> predicate.test(extractFixedValues(partition.getTupleDomain()).get()))
                     .collect(toImmutableList());
 
             List<TupleDomain<ColumnHandle>> partitionDomains = partitions.stream()

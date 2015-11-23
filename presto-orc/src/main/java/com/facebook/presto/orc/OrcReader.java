@@ -25,6 +25,7 @@ import com.google.common.primitives.Ints;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import io.airlift.units.DataSize;
 import org.joda.time.DateTimeZone;
 
 import java.io.IOException;
@@ -49,17 +50,22 @@ public class OrcReader
 
     private final OrcDataSource orcDataSource;
     private final MetadataReader metadataReader;
+    private final DataSize maxMergeDistance;
+    private final DataSize maxReadSize;
     private final CompressionKind compressionKind;
     private final int bufferSize;
     private final Footer footer;
     private final Metadata metadata;
 
     // This is based on the Apache Hive ORC code
-    public OrcReader(OrcDataSource orcDataSource, MetadataReader metadataReader)
+    public OrcReader(OrcDataSource orcDataSource, MetadataReader metadataReader, DataSize maxMergeDistance, DataSize maxReadSize)
             throws IOException
     {
-        this.orcDataSource = requireNonNull(orcDataSource, "orcDataSource is null");
+        orcDataSource = wrapWithCacheIfTiny(requireNonNull(orcDataSource, "orcDataSource is null"), maxMergeDistance);
+        this.orcDataSource = orcDataSource;
         this.metadataReader = requireNonNull(metadataReader, "metadataReader is null");
+        this.maxMergeDistance = requireNonNull(maxMergeDistance, "maxMergeDistance is null");
+        this.maxReadSize = requireNonNull(maxReadSize, "maxReadSize is null");
 
         //
         // Read the file tail:
@@ -185,7 +191,21 @@ public class OrcReader
                 bufferSize,
                 footer.getRowsInRowGroup(),
                 requireNonNull(hiveStorageTimeZone, "hiveStorageTimeZone is null"),
-                metadataReader);
+                metadataReader,
+                maxMergeDistance,
+                maxReadSize);
+    }
+
+    private static OrcDataSource wrapWithCacheIfTiny(OrcDataSource dataSource, DataSize maxCacheSize)
+    {
+        if (dataSource instanceof CachingOrcDataSource) {
+            return dataSource;
+        }
+        if (dataSource.getSize() > maxCacheSize.toBytes()) {
+            return dataSource;
+        }
+        DiskRange diskRange = new DiskRange(0, Ints.checkedCast(dataSource.getSize()));
+        return new CachingOrcDataSource(dataSource, desiredOffset -> diskRange);
     }
 
     /**

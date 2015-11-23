@@ -226,8 +226,8 @@ public class HttpRemoteTask
                     taskStats,
                     ImmutableList.<ExecutionFailureInfo>of()));
 
-            // wait at least 2 seconds for a response
-            requestTimeout = new Duration(2000 + refreshMaxWait.toMillis(), MILLISECONDS);
+            long timeout = minErrorDuration.toMillis() / 3;
+            requestTimeout = new Duration(timeout + refreshMaxWait.toMillis(), MILLISECONDS);
             continuousTaskInfoFetcher = new ContinuousTaskInfoFetcher(refreshMaxWait);
         }
     }
@@ -949,8 +949,9 @@ public class HttpRemoteTask
             if (backoff.failure()) {
                 // it is weird to mark the task failed locally and then cancel the remote task, but there is no way to tell a remote task that it is failed
                 PrestoException exception = new PrestoException(TOO_MANY_REQUESTS_FAILED,
-                        format("%s (%s - %s failures, time since last success %s)",
+                        format("%s (%s %s - %s failures, time since last success %s)",
                                 WORKER_NODE_ERROR,
+                                jobDescription,
                                 taskUri,
                                 backoff.getFailureCount(),
                                 backoff.getTimeSinceLastSuccess().convertTo(SECONDS)));

@@ -21,6 +21,8 @@ import com.facebook.presto.metadata.OperatorType;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.security.DenyAllAccessControl;
+import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
@@ -79,7 +81,6 @@ import com.google.common.collect.Iterables;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -131,9 +132,8 @@ public class ExpressionAnalyzer
     private final TypeManager typeManager;
     private final Function<Node, StatementAnalyzer> statementAnalyzerFactory;
     private final IdentityHashMap<FunctionCall, Signature> resolvedFunctions = new IdentityHashMap<>();
-    private final Map<Expression, Integer> resolvedNames = new HashMap<>();
+    private final IdentityHashMap<Expression, Integer> resolvedNames = new IdentityHashMap<>();
     private final IdentityHashMap<Expression, Type> expressionTypes = new IdentityHashMap<>();
-    private final Set<Expression> columnReferences = newIdentityHashSet();
     private final IdentityHashMap<Expression, Type> expressionCoercions = new IdentityHashMap<>();
     private final Set<InPredicate> subqueryInPredicates = newIdentityHashSet();
     private final Session session;
@@ -173,14 +173,14 @@ public class ExpressionAnalyzer
 
     public Set<Expression> getColumnReferences()
     {
-        return ImmutableSet.copyOf(columnReferences);
+        return ImmutableSet.copyOf(resolvedNames.keySet());
     }
 
     /**
      * @param tupleDescriptor the tuple descriptor to use to resolve QualifiedNames
      * @param context the namespace context of the surrounding query
      */
-    public Type analyze(Expression expression, TupleDescriptor tupleDescriptor, AnalysisContext context)
+    public Type analyze(Expression expression, RelationType tupleDescriptor, AnalysisContext context)
     {
         ScalarSubqueryDetector scalarSubqueryDetector = new ScalarSubqueryDetector();
         expression.accept(scalarSubqueryDetector, null);
@@ -216,9 +216,9 @@ public class ExpressionAnalyzer
     private class Visitor
             extends AstVisitor<Type, AnalysisContext>
     {
-        private final TupleDescriptor tupleDescriptor;
+        private final RelationType tupleDescriptor;
 
-        private Visitor(TupleDescriptor tupleDescriptor)
+        private Visitor(RelationType tupleDescriptor)
         {
             this.tupleDescriptor = requireNonNull(tupleDescriptor, "tupleDescriptor is null");
         }
@@ -296,7 +296,6 @@ public class ExpressionAnalyzer
             int fieldIndex = tupleDescriptor.indexOf(field);
             resolvedNames.put(node, fieldIndex);
             expressionTypes.put(node, field.getType());
-            columnReferences.add(node);
             return field.getType();
         }
 
@@ -317,9 +316,10 @@ public class ExpressionAnalyzer
                     int fieldIndex = tupleDescriptor.indexOf(field);
                     resolvedNames.put(node, fieldIndex);
                     expressionTypes.put(node, field.getType());
-                    columnReferences.add(node);
                     return field.getType();
                 }
+
+                assertColumnPrefix(qualifiedName, node);
             }
 
             Type baseType = process(node.getBase(), context);
@@ -342,6 +342,21 @@ public class ExpressionAnalyzer
 
             expressionTypes.put(node, rowFieldType);
             return rowFieldType;
+        }
+
+        private void assertColumnPrefix(QualifiedName qualifiedName, Expression node)
+        {
+            // Recursively check if its prefix is a column.
+            while (qualifiedName.getPrefix().isPresent()) {
+                qualifiedName = qualifiedName.getPrefix().get();
+                List<Field> matches = tupleDescriptor.resolveFields(qualifiedName);
+                if (matches.size() > 0) {
+                    // The AMBIGUOUS_ATTRIBUTE exception will be thrown later with the right node if matches.size() > 1
+                    return;
+                }
+            }
+
+            throw createMissingAttributeException(node);
         }
 
         private SemanticException createMissingAttributeException(Expression node)
@@ -455,7 +470,7 @@ public class ExpressionAnalyzer
         protected Type visitSimpleCaseExpression(SimpleCaseExpression node, AnalysisContext context)
         {
             for (WhenClause whenClause : node.getWhenClauses()) {
-                coerceToSingleType(context, node, "CASE operand type does not match WHEN clause operand type: %s vs %s", node.getOperand(), whenClause.getOperand());
+                coerceToSingleType(context, whenClause, "CASE operand type does not match WHEN clause operand type: %s vs %s", node.getOperand(), whenClause.getOperand());
             }
 
             Type type = coerceToSingleType(context,
@@ -695,7 +710,17 @@ public class ExpressionAnalyzer
                 argumentTypes.add(process(expression, context).getTypeSignature());
             }
 
-            Signature function = functionRegistry.resolveFunction(node.getName(), argumentTypes.build(), context.isApproximate());
+            Signature function;
+            try {
+                function = functionRegistry.resolveFunction(node.getName(), argumentTypes.build(), context.isApproximate());
+            }
+            catch (PrestoException e) {
+                if (e.getErrorCode().getCode() == StandardErrorCode.FUNCTION_NOT_FOUND.toErrorCode().getCode()) {
+                    throw new SemanticException(SemanticErrorCode.FUNCTION_NOT_FOUND, node, e.getMessage());
+                }
+                throw e;
+            }
+
             for (int i = 0; i < node.getArguments().size(); i++) {
                 Expression expression = node.getArguments().get(i);
                 Type type = typeManager.getType(function.getArgumentTypes().get(i));
@@ -810,7 +835,7 @@ public class ExpressionAnalyzer
         protected Type visitSubqueryExpression(SubqueryExpression node, AnalysisContext context)
         {
             StatementAnalyzer analyzer = statementAnalyzerFactory.apply(node);
-            TupleDescriptor descriptor = analyzer.process(node.getQuery(), context);
+            RelationType descriptor = analyzer.process(node.getQuery(), context);
 
             // Scalar subqueries should only produce one column
             if (descriptor.getVisibleFieldCount() != 1) {
@@ -993,7 +1018,7 @@ public class ExpressionAnalyzer
                 })
                 .collect(toImmutableList());
 
-        return analyzeExpressions(session, metadata, sqlParser, new TupleDescriptor(fields), expressions);
+        return analyzeExpressions(session, metadata, sqlParser, new RelationType(fields), expressions);
     }
 
     private static ExpressionAnalysis analyzeExpressionsWithInputs(
@@ -1007,7 +1032,7 @@ public class ExpressionAnalyzer
         for (Entry<Integer, Type> entry : types.entrySet()) {
             fields[entry.getKey()] = Field.newUnqualified(Optional.empty(), entry.getValue());
         }
-        TupleDescriptor tupleDescriptor = new TupleDescriptor(fields);
+        RelationType tupleDescriptor = new RelationType(fields);
 
         return analyzeExpressions(session, metadata, sqlParser, tupleDescriptor, expressions);
     }
@@ -1016,7 +1041,7 @@ public class ExpressionAnalyzer
             Session session,
             Metadata metadata,
             SqlParser sqlParser,
-            TupleDescriptor tupleDescriptor,
+            RelationType tupleDescriptor,
             Iterable<? extends Expression> expressions)
     {
         // expressions at this point can not have sub queries so deny all access checks
@@ -1030,7 +1055,7 @@ public class ExpressionAnalyzer
                 analyzer.getExpressionTypes(),
                 analyzer.getExpressionCoercions(),
                 analyzer.getSubqueryInPredicates(),
-                analyzer.getColumnReferences());
+                analyzer.getResolvedNames().keySet());
     }
 
     public static ExpressionAnalysis analyzeExpression(
@@ -1038,7 +1063,7 @@ public class ExpressionAnalyzer
             Metadata metadata,
             AccessControl accessControl,
             SqlParser sqlParser,
-            TupleDescriptor tupleDescriptor,
+            RelationType tupleDescriptor,
             Analysis analysis,
             boolean approximateQueriesEnabled,
             AnalysisContext context,
@@ -1054,15 +1079,12 @@ public class ExpressionAnalyzer
         analysis.addTypes(expressionTypes);
         analysis.addCoercions(expressionCoercions);
         analysis.addFunctionSignatures(resolvedFunctions);
-        analysis.addColumnReferences(analyzer.getColumnReferences());
 
-        for (Expression subExpression : expressionTypes.keySet()) {
-            analysis.addResolvedNames(subExpression, analyzer.getResolvedNames());
-        }
+        analysis.addResolvedNames(analyzer.getResolvedNames());
 
         Set<InPredicate> subqueryInPredicates = analyzer.getSubqueryInPredicates();
 
-        return new ExpressionAnalysis(expressionTypes, expressionCoercions, subqueryInPredicates, analyzer.getColumnReferences());
+        return new ExpressionAnalysis(expressionTypes, expressionCoercions, subqueryInPredicates, analyzer.getResolvedNames().keySet());
     }
 
     public static ExpressionAnalyzer create(

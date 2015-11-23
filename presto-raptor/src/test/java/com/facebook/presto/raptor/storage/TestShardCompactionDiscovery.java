@@ -40,11 +40,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static com.facebook.presto.raptor.metadata.MetadataDaoUtils.createMetadataTablesWithRetry;
 import static com.facebook.presto.raptor.metadata.TestDatabaseShardManager.shardInfo;
-import static com.facebook.presto.raptor.storage.TestOrcStorageManager.createOrcStorageManager;
-import static com.facebook.presto.raptor.storage.TestShardRecovery.createShardRecoveryManager;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.google.common.reflect.Reflection.newProxy;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.stream.Collectors.toSet;
 import static org.testng.Assert.assertEquals;
@@ -52,7 +50,8 @@ import static org.testng.Assert.assertEquals;
 @Test(singleThreaded = true)
 public class TestShardCompactionDiscovery
 {
-    private static final ReaderAttributes readerAttributes = new ReaderAttributes(new DataSize(1, MEGABYTE), new DataSize(1, MEGABYTE), new DataSize(1, MEGABYTE));
+    private static final DataSize ONE_MEGABYTE = new DataSize(1, MEGABYTE);
+    private static final ReaderAttributes READER_ATTRIBUTES = new ReaderAttributes(ONE_MEGABYTE, ONE_MEGABYTE, ONE_MEGABYTE);
 
     private IDBI dbi;
     private Handle dummyHandle;
@@ -80,9 +79,8 @@ public class TestShardCompactionDiscovery
             throws Exception
     {
         List<ColumnInfo> columns = ImmutableList.of(new ColumnInfo(1, BIGINT), new ColumnInfo(2, BIGINT));
-        long tableId = 1;
+        long tableId = createTable("test");
         shardManager.createTable(tableId, columns);
-        createMetadataTablesWithRetry(dbi);
         dbi.onDemand(MetadataDao.class).updateTemporalColumnId(1, 1);
 
         Set<ShardInfo> nonTimeRangeShards = ImmutableSet.<ShardInfo>builder()
@@ -90,7 +88,8 @@ public class TestShardCompactionDiscovery
                 .add(shardInfo(UUID.randomUUID(), "node1"))
                 .add(shardInfo(UUID.randomUUID(), "node1"))
                 .build();
-        shardManager.commitShards(tableId, columns, nonTimeRangeShards, Optional.empty());
+        long transactionId = shardManager.beginTransaction();
+        shardManager.commitShards(transactionId, tableId, columns, nonTimeRangeShards, Optional.empty());
 
         Set<ShardInfo> timeRangeShards = ImmutableSet.<ShardInfo>builder()
                 .add(shardInfo(
@@ -106,18 +105,19 @@ public class TestShardCompactionDiscovery
                         "node1",
                         ImmutableList.of(new ColumnStats(1, 1, 10), new ColumnStats(2, 1, 10))))
                 .build();
-        shardManager.commitShards(tableId, columns, timeRangeShards, Optional.empty());
+        transactionId = shardManager.beginTransaction();
+        shardManager.commitShards(transactionId, tableId, columns, timeRangeShards, Optional.empty());
 
-        StorageService storageService = new FileStorageService(dataDir);
-        ShardRecoveryManager recoveryManager = createShardRecoveryManager(storageService, Optional.empty(), shardManager);
-        StorageManager storageManager = createOrcStorageManager(storageService, Optional.empty(), recoveryManager);
+        StorageManager storageManager = newProxy(StorageManager.class, (proxy, method, args) -> {
+            throw new UnsupportedOperationException();
+        });
         ShardCompactionManager shardCompactionManager = new ShardCompactionManager(
                 dbi,
                 "node1",
                 shardManager,
-                new ShardCompactor(storageManager, readerAttributes),
+                new ShardCompactor(storageManager, READER_ATTRIBUTES),
                 new Duration(1, TimeUnit.HOURS),
-                new DataSize(1, DataSize.Unit.MEGABYTE),
+                ONE_MEGABYTE,
                 100,
                 10,
                 true);
@@ -125,5 +125,10 @@ public class TestShardCompactionDiscovery
         Set<ShardMetadata> shardMetadata = shardManager.getNodeShards("node1");
         Set<ShardMetadata> temporalMetadata = shardCompactionManager.filterShardsWithTemporalMetadata(shardMetadata, 1, 1);
         assertEquals(temporalMetadata.stream().map(ShardMetadata::getShardUuid).collect(toSet()), timeRangeShards.stream().map(ShardInfo::getShardUuid).collect(toSet()));
+    }
+
+    private long createTable(String name)
+    {
+        return dbi.onDemand(MetadataDao.class).insertTable("test", name, false);
     }
 }

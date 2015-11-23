@@ -14,7 +14,7 @@
 package com.facebook.presto.tests;
 
 import com.facebook.presto.metadata.FunctionListBuilder;
-import com.facebook.presto.metadata.ParametricFunction;
+import com.facebook.presto.metadata.SqlFunction;
 import com.facebook.presto.operator.scalar.TestingRowConstructor;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spi.type.TimeZoneKey;
@@ -84,7 +84,7 @@ public abstract class AbstractTestQueries
         extends AbstractTestQueryFramework
 {
     // We can just use the default type registry, since we don't use any parametric types
-    protected static final List<ParametricFunction> CUSTOM_FUNCTIONS = new FunctionListBuilder(new TypeRegistry())
+    protected static final List<SqlFunction> CUSTOM_FUNCTIONS = new FunctionListBuilder(new TypeRegistry())
             .aggregate(CustomSum.class)
             .window("custom_rank", BIGINT, ImmutableList.<Type>of(), CustomRank.class)
             .scalar(CustomAdd.class)
@@ -239,8 +239,20 @@ public abstract class AbstractTestQueries
                         "(ROW(test_row(1.5, ARRAY[2, 13, 4], test_row(11, 4.1)))), " +
                         "(ROW(test_row(1.5, ARRAY[2, 13, 4], test_row(11, 4.1)))), " +
                         "(ROW(test_row(7.0, ARRAY[22, 33, 44], test_row(13, 5.0))))) t(a) " +
+                        "WHERE a.col1[2] < 30 " +
                         "GROUP BY 1, 2 ORDER BY 1",
-                "SELECT * FROM VALUES (11, 1.0, 4.1), (11, 1.5, 8.2), (11, 2.0, 14.0), (13, 7.0, 5.0)");
+                "SELECT * FROM VALUES (11, 1.0, 4.1), (11, 1.5, 8.2), (11, 2.0, 14.0)");
+
+        assertQuery("SELECT a[1].col0, COUNT(1) FROM " +
+                        "(VALUES " +
+                        "(ROW(ARRAY[test_row(31, 4.2), test_row(22, 4.2)])), " +
+                        "(ROW(ARRAY[test_row(31, 4.5), test_row(12, 4.2)])), " +
+                        "(ROW(ARRAY[test_row(41, 3.1), test_row(32, 4.2)])), " +
+                        "(ROW(ARRAY[test_row(31, 3.1), test_row(32, 4.2)])) " +
+                        ") t(a) " +
+                        "GROUP BY 1 " +
+                        "ORDER BY 2 DESC",
+                "SELECT * FROM VALUES (31, 3), (41, 1)");
     }
 
     @Test
@@ -265,8 +277,9 @@ public abstract class AbstractTestQueries
                         "(VALUES " +
                         "(ROW(test_row(1.0, ARRAY[test_row(31, 14.5), test_row(12, 4.2)], test_row(3, 4.0)))), " +
                         "(ROW(test_row(3.1, ARRAY[test_row(41, 13.1), test_row(32, 4.2)], test_row(6, 6.0)))), " +
-                        "(ROW(test_row(2.2, ARRAY[test_row(31, 14.2), test_row(22, 4.2)], test_row(5, 4.0))))) t(a) ",
-                "SELECT * FROM VALUES (31, 3.2, 28.7, 8.0), (31, 3.2, 28.7, 8.0), (41, 3.1, 13.1, 6.0)");
+                        "(ROW(test_row(2.2, ARRAY[test_row(31, 14.2), test_row(22, 5.2)], test_row(5, 4.0))))) t(a) " +
+                        "WHERE a.col1[2].col1 > a.col2.col0",
+                "SELECT * FROM VALUES (31, 3.2, 28.7, 8.0), (31, 3.2, 28.7, 8.0)");
     }
 
     @Test
@@ -274,7 +287,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("" +
-                        "SELECT t.a.col1, custkey, orderkey  FROM " +
+                        "SELECT t.a.col1, custkey, orderkey FROM " +
                         "(VALUES " +
                         "(ROW(test_row(1, 11))), " +
                         "(ROW(test_row(2, 22))), " +
@@ -284,7 +297,76 @@ public abstract class AbstractTestQueries
                 "SELECT * FROM VALUES (11, 370, 1), (22, 781, 2), (33, 1234, 3)");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "'\"a\".\"col0\"' must be an aggregate expression or appear in GROUP BY clause")
+    @Test
+    public void testDereferenceInSubquery()
+            throws Exception
+    {
+        assertQuery("" +
+                        "SELECT x " +
+                        "FROM (" +
+                        "   SELECT a.x" +
+                        "   FROM (VALUES 1, 2, 3) a(x)" +
+                        ") " +
+                        "GROUP BY x",
+                "SELECT * FROM VALUES 1, 2, 3");
+
+        assertQuery("" +
+                        "SELECT t2.*, max(t1.b) as max_b " +
+                        "FROM (VALUES (1, 'a'),  (2, 'b'), (1, 'c'), (3, 'd')) t1(a, b) " +
+                        "INNER JOIN " +
+                        "(VALUES 1, 2, 3, 4) t2(a) " +
+                        "ON t1.a = t2.a " +
+                        "GROUP BY t2.a",
+                "SELECT * FROM VALUES (1, 'c'), (2, 'b'), (3, 'd')");
+
+        assertQuery("" +
+                        "SELECT t2.*, max(t1.b1) as max_b1 " +
+                        "FROM (VALUES (1, 'a'),  (2, 'b'), (1, 'c'), (3, 'd')) t1(a1, b1) " +
+                        "INNER JOIN " +
+                        "(VALUES (1, 11, 111), (2, 22, 222), (3, 33, 333), (4, 44, 444)) t2(a2, b2, c2) " +
+                        "ON t1.a1 = t2.a2 " +
+                        "GROUP BY t2.a2, t2.b2, t2.c2",
+                "SELECT * FROM VALUES (1, 11, 111, 'c'), (2, 22, 222, 'b'), (3, 33, 333, 'd')");
+
+        assertQuery("" +
+                "SELECT custkey, orders2 " +
+                "FROM (" +
+                "   SELECT x.custkey, SUM(x.orders) + 1 orders2 " +
+                "   FROM ( " +
+                "      SELECT x.custkey, COUNT(x.orderkey) orders " +
+                "      FROM ORDERS x " +
+                "      WHERE x.custkey < 100 " +
+                "      GROUP BY x.custkey " +
+                "   ) x " +
+                "   GROUP BY x.custkey" +
+                ") " +
+                "ORDER BY custkey");
+    }
+
+    @Test
+    public void testDereferenceInFunctionCall()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT COUNT(DISTINCT custkey) " +
+                "FROM ( " +
+                "  SELECT x.custkey " +
+                "  FROM ORDERS x " +
+                "  WHERE custkey < 100 " +
+                ") t");
+    }
+
+    @Test
+    public void testDereferenceInComparsion()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT orders.custkey, orders.orderkey " +
+                "FROM ORDERS " +
+                "WHERE orders.custkey > orders.orderkey AND orders.custkey < 200.3");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:8: '\"a\".\"col0\"' must be an aggregate expression or appear in GROUP BY clause")
     public void testMissingRowFieldInGroupBy()
             throws Exception
     {
@@ -532,6 +614,13 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("SELECT APPROX_PERCENTILE(0.1, x), AVG(x), MIN(x) FROM (values 1, 1, 1) t(x)", "SELECT 0.1, 1.0, 1");
+    }
+
+    @Test
+    public void testAggregationWithHaving()
+            throws Exception
+    {
+        assertQuery("SELECT a, count(1) FROM (VALUES 1, 2, 3, 2) t(a) GROUP BY a HAVING count(1) > 1", "SELECT 2, 2");
     }
 
     @Test
@@ -801,7 +890,7 @@ public abstract class AbstractTestQueries
         assertQueryOrdered("SELECT DISTINCT custkey FROM orders ORDER BY custkey LIMIT 10");
     }
 
-    @Test(expectedExceptions = Exception.class, expectedExceptionsMessageRegExp = "For SELECT DISTINCT, ORDER BY expressions must appear in select list")
+    @Test(expectedExceptions = Exception.class, expectedExceptionsMessageRegExp = "line 1:1: For SELECT DISTINCT, ORDER BY expressions must appear in select list")
     public void testDistinctWithOrderByNotInSelect()
             throws Exception
     {
@@ -1688,6 +1777,34 @@ public abstract class AbstractTestQueries
                         "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey AND lineitem.orderkey = 2" +
                         "WHERE lineitem.orderkey IS NULL" +
                         ")");
+    }
+
+    @Test
+    public void testOuterJoinWithNullsOnProbe()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT DISTINCT a.orderkey FROM " +
+                        "(SELECT CASE WHEN orderkey > 10 THEN orderkey END orderkey FROM orders WHERE orderkey < 100) a " +
+                        "RIGHT OUTER JOIN " +
+                        "(SELECT * FROM orders WHERE orderkey < 100) b ON a.orderkey = b.orderkey");
+
+        assertQuery(
+                "SELECT DISTINCT a.orderkey FROM " +
+                        "(SELECT CASE WHEN orderkey > 2 THEN orderkey END orderkey FROM orders WHERE orderkey < 100) a " +
+                        "FULL OUTER JOIN " +
+                        "(SELECT * FROM orders WHERE orderkey < 100) b ON a.orderkey = b.orderkey",
+                "SELECT DISTINCT orderkey FROM (" +
+                        "SELECT a.orderkey FROM " +
+                        "(SELECT CASE WHEN orderkey > 2 THEN orderkey END orderkey FROM orders WHERE orderkey < 100) a " +
+                        "RIGHT OUTER JOIN " +
+                        "(SELECT * FROM orders WHERE orderkey < 100) b ON a.orderkey = b.orderkey " +
+                        "UNION ALL " +
+                        "SELECT a.orderkey FROM" +
+                        "(SELECT CASE WHEN orderkey > 2 THEN orderkey END orderkey FROM orders WHERE orderkey < 100) a " +
+                        "LEFT OUTER JOIN " +
+                        "(SELECT * FROM orders WHERE orderkey < 100) b ON a.orderkey = b.orderkey " +
+                        "WHERE a.orderkey IS NULL)");
     }
 
     @Test
@@ -2666,6 +2783,37 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testWindowPropertyDerivation()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, orderkey,\n" +
+                "SUM(s) OVER (PARTITION BY orderstatus),\n" +
+                "SUM(s) OVER (PARTITION BY orderstatus, orderkey),\n" +
+                "SUM(s) OVER (PARTITION BY orderstatus ORDER BY orderkey),\n" +
+                "SUM(s) OVER (ORDER BY orderstatus, orderkey)\n" +
+                "FROM (\n" +
+                "   SELECT orderkey, orderstatus, SUM(orderkey) OVER (ORDER BY orderstatus, orderkey) s\n" +
+                "   FROM (\n" +
+                "       SELECT * FROM orders ORDER BY orderkey LIMIT 10\n" +
+                "   )\n" +
+                ")");
+        MaterializedResult expected = resultBuilder(getSession(), VARCHAR, BIGINT, BIGINT, BIGINT, BIGINT, BIGINT)
+                .row("F", 3, 72, 3, 3, 3)
+                .row("F", 5, 72, 8, 11, 11)
+                .row("F", 6, 72, 14, 25, 25)
+                .row("F", 33, 72, 47, 72, 72)
+                .row("O", 1, 433, 48, 48, 120)
+                .row("O", 2, 433, 50, 98, 170)
+                .row("O", 4, 433, 54, 152, 224)
+                .row("O", 7, 433, 61, 213, 285)
+                .row("O", 32, 433, 93, 306, 378)
+                .row("O", 34, 433, 127, 433, 505)
+                .build();
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
     public void testTopNUnpartitionedWindow()
             throws Exception
     {
@@ -3101,6 +3249,22 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT coalesce(try_cast(clerk AS BIGINT), 456) FROM orders", "SELECT 456 FROM orders");
     }
 
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:8: Cannot cast bigint to date")
+    public void testInvalidCast()
+            throws Exception
+    {
+        assertQuery("SELECT CAST(1 AS DATE) FROM orders");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 2:1: Cannot cast bigint to date")
+    public void testInvalidCastInMultilineQuery()
+            throws Exception
+    {
+        assertQuery("SELECT CAST(totalprice AS BIGINT),\n" +
+                "CAST(2015 AS DATE),\n" +
+                "CAST(orderkey AS DOUBLE) FROM orders");
+    }
+
     @Test
     public void testConcatOperator()
             throws Exception
@@ -3115,7 +3279,7 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT \"TOTALPRICE\" \"my price\" FROM \"ORDERS\"");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*orderkey_1.*")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:39: Column '\"orderkey_1\"' cannot be resolved")
     public void testInvalidColumn()
             throws Exception
     {
@@ -3261,7 +3425,7 @@ public abstract class AbstractTestQueries
         );
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Recursive WITH queries are not supported")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:1: Recursive WITH queries are not supported")
     public void testWithRecursive()
             throws Exception
     {
@@ -3273,6 +3437,13 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("SELECT orderkey, CASE orderstatus WHEN 'O' THEN 'a' END FROM orders");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:67: All CASE results must be the same type: varchar")
+    public void testCaseNoElseInconsistentResultType()
+        throws Exception
+    {
+        computeActual("SELECT orderkey, CASE orderstatus WHEN 'O' THEN 'a' WHEN '1' THEN 2 END FROM orders");
     }
 
     @Test
@@ -3311,6 +3482,8 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT x FROM (values 1, 2, 3, 4) t(x) WHERE x IN (1 + cast(rand() < 0 as bigint), 2 + cast(rand() < 0 as bigint), 4)", "values 1, 2, 4");
         assertQuery("SELECT x FROM (values 1, 2, 3, 4) t(x) WHERE x IN (4, 2, 1)", "values 1, 2, 4");
         assertQuery("SELECT x FROM (values 1, 2, 3, 2147483648) t(x) WHERE x IN (1 + cast(rand() < 0 as bigint), 2 + cast(rand() < 0 as bigint), 2147483648)", "values 1, 2, 2147483648");
+        assertQuery("SELECT x IN (0) FROM (values 4294967296) t(x)", "values false");
+        assertQuery("SELECT x IN (0, 4294967297 + cast(rand() < 0 as bigint)) FROM (values 4294967296, 4294967297) t(x)", "values false, true");
         assertQuery("SELECT NULL in (1, 2, 3)", "values null");
         assertQuery("SELECT 1 in (1, NULL, 3)", "values true");
         assertQuery("SELECT 2 in (1, NULL, 3)", "values null");
@@ -3598,7 +3771,7 @@ public abstract class AbstractTestQueries
             assertEquals(e.getCode(), MISSING_SCHEMA);
         }
         catch (RuntimeException e) {
-            assertEquals(e.getMessage(), "Schema 'unknown' does not exist");
+            assertEquals(e.getMessage(), "line 1:1: Schema 'unknown' does not exist");
         }
     }
 
@@ -3797,6 +3970,20 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("SELECT key + 5, status FROM (SELECT orderkey key, orderstatus status FROM orders UNION ALL SELECT orderkey key, linestatus status FROM lineitem)");
+    }
+
+    @Test
+    public void testJoinProjectionPushDown()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT *\n" +
+                "FROM\n" +
+                "  (SELECT orderkey, abs(orderkey) a FROM orders) t\n" +
+                "JOIN\n" +
+                "  (SELECT orderkey, abs(orderkey) a FROM orders) u\n" +
+                "ON\n" +
+                "  t.orderkey = u.orderkey");
     }
 
     @Test
@@ -4091,6 +4278,25 @@ public abstract class AbstractTestQueries
                 "SELECT * FROM (SELECT * FROM orders ORDER BY orderkey LIMIT 5) a, " +
                 "(SELECT * FROM orders ORDER BY orderkey LIMIT 5) b, " +
                 "(SELECT * FROM orders ORDER BY orderkey LIMIT 5) c ");
+
+        // Inner Join converted to cross join because all join conditions are pushed down.
+        assertQuery("" +
+                "SELECT l.orderkey, l.linenumber " +
+                "FROM orders o INNER JOIN lineitem l " +
+                "ON o.custkey = l.linenumber " +
+                "WHERE o.custkey IN (5) AND l.orderkey IN (7522)");
+
+        assertQuery("" +
+                "SELECT o.custkey " +
+                "FROM orders o INNER JOIN lineitem l " +
+                "ON o.custkey = l.linenumber " +
+                "WHERE o.custkey IN (5) AND l.orderkey IN (7522)");
+
+        assertQuery("" +
+                "SELECT COUNT(*) " +
+                "FROM orders o INNER JOIN lineitem l " +
+                "ON o.custkey = l.linenumber " +
+                "WHERE o.custkey IN (5) AND l.orderkey IN (7522)");
     }
 
     @Test
@@ -4105,6 +4311,21 @@ public abstract class AbstractTestQueries
                 "SELECT a, b " +
                 "FROM (VALUES (1, 1)) " +
                 "CROSS JOIN (SELECT 0 AS a, 0 AS b UNION ALL SELECT 1, 1) t");
+    }
+
+    @Test
+    public void testCrossJoinUnnestWithUnion()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT col, COUNT(*)\n" +
+                "FROM ((\n" +
+                "    SELECT ARRAY[1, 2] AS a\n" +
+                "    UNION ALL\n" +
+                "    SELECT ARRAY[1, 3] AS a)  unionresult\n" +
+                "  CROSS JOIN UNNEST(unionresult.a) t(col))\n" +
+                "GROUP BY col",
+                "SELECT * FROM VALUES (1, 2), (2, 1), (3, 1)");
     }
 
     @Test
@@ -4590,28 +4811,40 @@ public abstract class AbstractTestQueries
         assertTrue(stats.getVariance() > 0, "Samples all had the exact same size");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\QUnexpected parameters (bigint) for function length. Expected:\\E.*")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:8: Unexpected parameters (bigint) for function length. Expected:\\E.*")
     public void testFunctionNotRegistered()
     {
         computeActual("SELECT length(1)");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\QUnexpected parameters (color) for function greatest. Expected: greatest(E) E:orderable\\E.*")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:8: Unexpected parameters (color) for function greatest. Expected: greatest(E) E:orderable\\E.*")
     public void testFunctionArgumentTypeConstraint()
     {
         computeActual("SELECT greatest(rgb(255, 0, 0))");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\QOperator NOT_EQUAL(bigint, varchar) not registered\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:10: Operator NOT_EQUAL(bigint, varchar) not registered\\E")
     public void testTypeMismatch()
     {
         computeActual("SELECT 1 <> 'x'");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\QUnknown type: ARRAY<FOO>\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:8: Unknown type: ARRAY<FOO>\\E")
     public void testInvalidType()
     {
-        computeActual("select cast(null as array<foo>)");
+        computeActual("SELECT CAST(null AS array<foo>)");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:21: Operator ADD(varchar, bigint) not registered\\E")
+    public void testInvalidTypeInfixOperator()
+    {
+        computeActual("SELECT ('a' || 'z') + (3 * 4) / 5");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:20: All ARRAY elements must be the same type: bigint\\E")
+    public void testInvalidTypeArray()
+    {
+        computeActual("SELECT ARRAY[1, 2, 'a']");
     }
 
     @Test

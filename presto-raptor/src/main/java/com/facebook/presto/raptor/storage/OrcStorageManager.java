@@ -30,12 +30,13 @@ import com.facebook.presto.raptor.metadata.ColumnInfo;
 import com.facebook.presto.raptor.metadata.ColumnStats;
 import com.facebook.presto.raptor.metadata.ShardDelta;
 import com.facebook.presto.raptor.metadata.ShardInfo;
+import com.facebook.presto.raptor.metadata.ShardRecorder;
 import com.facebook.presto.raptor.storage.OrcFileRewriter.OrcFileInfo;
 import com.facebook.presto.raptor.util.CurrentNodeId;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.TupleDomain;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -65,6 +66,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -107,6 +109,7 @@ public class OrcStorageManager
     private final ReaderAttributes defaultReaderAttributes;
     private final BackupManager backupManager;
     private final ShardRecoveryManager recoveryManager;
+    private final ShardRecorder shardRecorder;
     private final Duration recoveryTimeout;
     private final long maxShardRows;
     private final DataSize maxShardSize;
@@ -124,6 +127,7 @@ public class OrcStorageManager
             RaptorConnectorId connectorId,
             BackupManager backgroundBackupManager,
             ShardRecoveryManager recoveryManager,
+            ShardRecorder shardRecorder,
             TypeManager typeManager)
     {
         this(currentNodeId.toString(),
@@ -133,6 +137,7 @@ public class OrcStorageManager
                 readerAttributes,
                 backgroundBackupManager,
                 recoveryManager,
+                shardRecorder,
                 typeManager,
                 connectorId.toString(),
                 config.getDeletionThreads(),
@@ -149,6 +154,7 @@ public class OrcStorageManager
             ReaderAttributes readerAttributes,
             BackupManager backgroundBackupManager,
             ShardRecoveryManager recoveryManager,
+            ShardRecorder shardRecorder,
             TypeManager typeManager,
             String connectorId,
             int deletionThreads,
@@ -169,6 +175,7 @@ public class OrcStorageManager
         checkArgument(maxShardRows > 0, "maxShardRows must be > 0");
         this.maxShardRows = min(maxShardRows, MAX_ROWS);
         this.maxShardSize = requireNonNull(maxShardSize, "maxShardSize is null");
+        this.shardRecorder = requireNonNull(shardRecorder, "shardRecorder is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.deletionExecutor = newFixedThreadPool(deletionThreads, daemonThreadsNamed("raptor-delete-" + connectorId + "-%s"));
     }
@@ -185,12 +192,13 @@ public class OrcStorageManager
             List<Long> columnIds,
             List<Type> columnTypes,
             TupleDomain<RaptorColumnHandle> effectivePredicate,
-            ReaderAttributes readerAttributes)
+            ReaderAttributes readerAttributes,
+            OptionalLong transactionId)
     {
         OrcDataSource dataSource = openShard(shardUuid, readerAttributes);
 
         try {
-            OrcReader reader = new OrcReader(dataSource, new OrcMetadataReader());
+            OrcReader reader = new OrcReader(dataSource, new OrcMetadataReader(), readerAttributes.getMaxMergeDistance(), readerAttributes.getMaxReadSize());
 
             Map<Long, Integer> indexMap = columnIdIndex(reader.getColumnNames());
             ImmutableMap.Builder<Integer, Type> includedColumns = ImmutableMap.builder();
@@ -220,7 +228,10 @@ public class OrcStorageManager
 
             OrcRecordReader recordReader = reader.createRecordReader(includedColumns.build(), predicate, UTC);
 
-            ShardRewriter shardRewriter = rowsToDelete -> supplyAsync(() -> rewriteShard(shardUuid, rowsToDelete), deletionExecutor);
+            Optional<ShardRewriter> shardRewriter = Optional.empty();
+            if (transactionId.isPresent()) {
+                shardRewriter = Optional.of(createShardRewriter(transactionId.getAsLong(), shardUuid));
+            }
 
             return new OrcPageSource(shardRewriter, recordReader, dataSource, columnIds, columnTypes, columnIndexes.build(), shardUuid);
         }
@@ -236,9 +247,14 @@ public class OrcStorageManager
     }
 
     @Override
-    public StoragePageSink createStoragePageSink(List<Long> columnIds, List<Type> columnTypes)
+    public StoragePageSink createStoragePageSink(long transactionId, List<Long> columnIds, List<Type> columnTypes)
     {
-        return new OrcStoragePageSink(columnIds, columnTypes);
+        return new OrcStoragePageSink(transactionId, columnIds, columnTypes);
+    }
+
+    private ShardRewriter createShardRewriter(long transactionId, UUID shardUuid)
+    {
+        return rowsToDelete -> supplyAsync(() -> rewriteShard(transactionId, shardUuid, rowsToDelete), deletionExecutor);
     }
 
     private void writeShard(UUID shardUuid)
@@ -309,7 +325,7 @@ public class OrcStorageManager
     private List<ColumnStats> computeShardStats(File file)
     {
         try (OrcDataSource dataSource = fileOrcDataSource(defaultReaderAttributes, file)) {
-            OrcReader reader = new OrcReader(dataSource, new OrcMetadataReader());
+            OrcReader reader = new OrcReader(dataSource, new OrcMetadataReader(), defaultReaderAttributes.getMaxMergeDistance(), defaultReaderAttributes.getMaxReadSize());
 
             ImmutableList.Builder<ColumnStats> list = ImmutableList.builder();
             for (ColumnInfo info : getColumnInfo(reader)) {
@@ -323,7 +339,7 @@ public class OrcStorageManager
     }
 
     @VisibleForTesting
-    Collection<Slice> rewriteShard(UUID shardUuid, BitSet rowsToDelete)
+    Collection<Slice> rewriteShard(long transactionId, UUID shardUuid, BitSet rowsToDelete)
     {
         if (rowsToDelete.isEmpty()) {
             return ImmutableList.of();
@@ -339,6 +355,8 @@ public class OrcStorageManager
         if (rowCount == 0) {
             return shardDelta(shardUuid, Optional.empty());
         }
+
+        shardRecorder.recordCreatedShard(transactionId, newShardUuid, nodeId);
 
         // submit for backup and wait until it finishes
         getFutureValue(backupManager.submit(newShardUuid, output));
@@ -422,7 +440,7 @@ public class OrcStorageManager
     private static OrcPredicate getPredicate(TupleDomain<RaptorColumnHandle> effectivePredicate, Map<Long, Integer> indexMap)
     {
         ImmutableList.Builder<ColumnReference<RaptorColumnHandle>> columns = ImmutableList.builder();
-        for (RaptorColumnHandle column : effectivePredicate.getDomains().keySet()) {
+        for (RaptorColumnHandle column : effectivePredicate.getDomains().get().keySet()) {
             Integer index = indexMap.get(column.getColumnId());
             if (index != null) {
                 columns.add(new ColumnReference<>(column, index, column.getColumnType()));
@@ -443,9 +461,11 @@ public class OrcStorageManager
     private class OrcStoragePageSink
             implements StoragePageSink
     {
+        private final long transactionId;
         private final List<Long> columnIds;
         private final List<Type> columnTypes;
 
+        private final List<File> stagingFiles = new ArrayList<>();
         private final List<ShardInfo> shards = new ArrayList<>();
         private final List<CompletableFuture<?>> futures = new ArrayList<>();
 
@@ -453,8 +473,9 @@ public class OrcStorageManager
         private OrcFileWriter writer;
         private UUID shardUuid;
 
-        public OrcStoragePageSink(List<Long> columnIds, List<Type> columnTypes)
+        public OrcStoragePageSink(long transactionId, List<Long> columnIds, List<Type> columnTypes)
         {
+            this.transactionId = transactionId;
             this.columnIds = ImmutableList.copyOf(requireNonNull(columnIds, "columnIds is null"));
             this.columnTypes = ImmutableList.copyOf(requireNonNull(columnTypes, "columnTypes is null"));
         }
@@ -495,6 +516,8 @@ public class OrcStorageManager
             if (writer != null) {
                 writer.close();
 
+                shardRecorder.recordCreatedShard(transactionId, shardUuid, nodeId);
+
                 File stagingFile = storageService.getStagingFile(shardUuid);
                 futures.add(backupManager.submit(shardUuid, stagingFile));
 
@@ -526,12 +549,20 @@ public class OrcStorageManager
             return ImmutableList.copyOf(shards);
         }
 
+        @SuppressWarnings("ResultOfMethodCallIgnored")
         @Override
         public void rollback()
         {
-            if (writer != null) {
-                writer.close();
-                writer = null;
+            try {
+                if (writer != null) {
+                    writer.close();
+                    writer = null;
+                }
+            }
+            finally {
+                for (File file : stagingFiles) {
+                    file.delete();
+                }
             }
         }
 
@@ -541,6 +572,7 @@ public class OrcStorageManager
                 shardUuid = UUID.randomUUID();
                 File stagingFile = storageService.getStagingFile(shardUuid);
                 storageService.createParents(stagingFile);
+                stagingFiles.add(stagingFile);
                 writer = new OrcFileWriter(columnIds, columnTypes, stagingFile);
             }
         }

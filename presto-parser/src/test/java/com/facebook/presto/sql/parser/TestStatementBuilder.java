@@ -129,6 +129,7 @@ public class TestStatementBuilder
 
         printStatement("create table foo as (select * from abc)");
         printStatement("create table foo with (a = 'apple', b = 'banana') as select * from abc");
+        printStatement("create table foo as select * from abc WITH NO DATA");
         printStatement("drop table foo");
 
         printStatement("insert into foo select * from abc");
@@ -176,6 +177,9 @@ public class TestStatementBuilder
         printStatement("create or replace view foo as select 123 from t");
 
         printStatement("drop view foo");
+
+        printStatement("insert into t select * from t");
+        printStatement("insert into t (c1, c2) select * from t");
     }
 
     @Test
