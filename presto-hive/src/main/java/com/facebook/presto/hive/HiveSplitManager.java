@@ -188,10 +188,10 @@ public class HiveSplitManager
 
         try {
             ugi.doAs((PrivilegedExceptionAction<Void>)
-                () -> {
-                    hiveSplitLoader.start(splitSource);
-                    return null;
-                }
+                    () -> {
+                        hiveSplitLoader.start(splitSource);
+                        return null;
+                    }
             );
         }
         catch (IOException | InterruptedException e) {
