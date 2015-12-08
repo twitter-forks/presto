@@ -187,18 +187,18 @@ public class HiveSplitManager
         UserGroupInformation ugi = UserGroupInformation.createRemoteUser(session.getUser());
 
         try {
-          ugi.doAs((PrivilegedExceptionAction<Void>)
-            () -> {
-              hiveSplitLoader.start(splitSource);
-              return null;
-            }
-          );
+            ugi.doAs((PrivilegedExceptionAction<Void>)
+                () -> {
+                    hiveSplitLoader.start(splitSource);
+                    return null;
+                }
+            );
         }
         catch (IOException | InterruptedException e) {
-          throw new RuntimeException("Could not runAs " + ugi.getUserName(), e);
+            throw new RuntimeException("Could not runAs " + ugi.getUserName(), e);
         }
 
-      return splitSource;
+        return splitSource;
     }
 
     private Iterable<HivePartitionMetadata> getPartitionMetadata(Table table, SchemaTableName tableName, List<HivePartition> hivePartitions)
