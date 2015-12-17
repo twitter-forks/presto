@@ -47,6 +47,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_SESSION_PROPERTY;
+import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.evaluateConstantExpression;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -142,8 +143,9 @@ public final class SessionPropertyManager
                     sessionProperty.getFullyQualifiedName(),
                     sessionProperty.getCatalogName(),
                     sessionProperty.getPropertyName(),
-                    sessionProperty.getMetadata().getDescription(),
-                    sessionProperty.getMetadata().getSqlType().getTypeSignature().toString()));
+                    propertyMetadata.getDescription(),
+                    propertyMetadata.getSqlType().getTypeSignature().toString(),
+                    propertyMetadata.isHidden()));
         }
 
         // sort properties by catalog then property
@@ -193,7 +195,7 @@ public final class SessionPropertyManager
 
         // convert to object value type of SQL type
         BlockBuilder blockBuilder = expectedType.createBlockBuilder(new BlockBuilderStatus(), 1);
-        blockBuilder.write(expectedType, value);
+        writeNativeValue(expectedType, blockBuilder, value);
         Object objectValue = expectedType.getObjectValue(session.toConnectorSession(), blockBuilder, 0);
 
         if (objectValue == null) {
@@ -302,6 +304,7 @@ public final class SessionPropertyManager
         private final String type;
         private final String value;
         private final String defaultValue;
+        private final boolean hidden;
 
         private SessionPropertyValue(String value,
                 String defaultValue,
@@ -309,7 +312,8 @@ public final class SessionPropertyManager
                 Optional<String> catalogName,
                 String propertyName,
                 String description,
-                String type)
+                String type,
+                boolean hidden)
         {
             this.fullyQualifiedName = fullyQualifiedName;
             this.catalogName = catalogName;
@@ -318,6 +322,7 @@ public final class SessionPropertyManager
             this.type = type;
             this.value = value;
             this.defaultValue = defaultValue;
+            this.hidden = hidden;
         }
 
         public String getFullyQualifiedName()
@@ -353,6 +358,11 @@ public final class SessionPropertyManager
         public String getDefaultValue()
         {
             return defaultValue;
+        }
+
+        public boolean isHidden()
+        {
+            return hidden;
         }
     }
 

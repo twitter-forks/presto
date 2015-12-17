@@ -77,7 +77,6 @@ public class TestZookeeperMetastoreMonitor
         zkMetastoreMonitor.close();
         zkClient.close();
         zkServer.close();
-
     }
 
     @BeforeTest
