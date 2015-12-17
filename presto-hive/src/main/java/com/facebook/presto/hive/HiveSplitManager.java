@@ -34,12 +34,9 @@ import org.apache.hadoop.hive.metastore.ProtectMode;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.Table;
-import org.apache.hadoop.security.UserGroupInformation;
 
 import javax.inject.Inject;
 
-import java.io.IOException;
-import java.security.PrivilegedExceptionAction;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -183,20 +180,7 @@ public class HiveSplitManager
                 recursiveDfsWalkerEnabled);
 
         HiveSplitSource splitSource = new HiveSplitSource(connectorId, maxOutstandingSplits, hiveSplitLoader, executor);
-
-        UserGroupInformation ugi = UserGroupInformation.createRemoteUser(session.getUser());
-
-        try {
-            ugi.doAs((PrivilegedExceptionAction<Void>)
-                    () -> {
-                        hiveSplitLoader.start(splitSource);
-                        return null;
-                    }
-            );
-        }
-        catch (IOException | InterruptedException e) {
-            throw new RuntimeException("Could not runAs " + ugi.getUserName(), e);
-        }
+        hiveSplitLoader.start(splitSource);
 
         return splitSource;
     }
