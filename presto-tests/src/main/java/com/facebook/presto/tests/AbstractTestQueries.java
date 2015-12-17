@@ -1233,6 +1233,56 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testSingleEmptyGroupBy()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY ()",
+                "SELECT SUM(quantity) " +
+                        "FROM lineitem");
+    }
+
+    @Test
+    public void testSingleEmptyGroupingSet()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY GROUPING SETS (())",
+                "SELECT SUM(quantity) " +
+                        "FROM lineitem");
+    }
+
+    @Test
+    public void testSingleGroupingSet()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT suppkey, SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY GROUPING SETS (suppkey) ",
+                "SELECT suppkey, SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY suppkey");
+    }
+
+    @Test
+    public void testSingleGroupingSetMultipleColumns()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT linenumber, suppkey, SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY GROUPING SETS ((linenumber, suppkey)) ",
+                "SELECT linenumber, suppkey, SUM(quantity) " +
+                        "FROM lineitem " +
+                        "GROUP BY linenumber, suppkey");
+    }
+
+    @Test
     public void testCountAllWithComparison()
             throws Exception
     {
@@ -1805,6 +1855,21 @@ public abstract class AbstractTestQueries
                         "LEFT OUTER JOIN " +
                         "(SELECT * FROM orders WHERE orderkey < 100) b ON a.orderkey = b.orderkey " +
                         "WHERE a.orderkey IS NULL)");
+    }
+
+    public void testOuterJoinWithCommonExpression()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT count(1), count(one) " +
+                "FROM (values (1, 'a'), (2, 'a')) as l(k, a) " +
+                "LEFT JOIN (select k, 1 one from (values 1) as r(k)) r " +
+                "ON l.k = r.k GROUP BY a");
+
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT, BIGINT)
+                .row(2, 1) // (total rows, # of non null values)
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -5141,6 +5206,160 @@ public abstract class AbstractTestQueries
         assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
+    @Test
+    public void testP4ApproxSetBigint()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT cardinality(cast(approx_set(custkey) AS P4HYPERLOGLOG)) FROM orders");
+
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
+                .row(1002)
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetVarchar()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT cardinality(cast(approx_set(CAST(custkey AS VARCHAR)) AS P4HYPERLOGLOG)) FROM orders");
+
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
+                .row(1024)
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetDouble()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT cardinality(cast(approx_set(CAST(custkey AS DOUBLE)) AS P4HYPERLOGLOG)) FROM orders");
+
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
+                .row(1014)
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetBigintGroupBy()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, cardinality(cast(approx_set(custkey) AS P4HYPERLOGLOG)) " +
+                "FROM orders " +
+                "GROUP BY orderstatus");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row("O", 1001)
+                .row("F", 998)
+                .row("P", 308)
+                .build();
+
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetVarcharGroupBy()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, cardinality(cast(approx_set(CAST(custkey AS VARCHAR)) AS P4HYPERLOGLOG)) " +
+                "FROM orders " +
+                "GROUP BY orderstatus");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row("O", 1021)
+                .row("F", 1019)
+                .row("P", 302)
+                .build();
+
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetDoubleGroupBy()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, cardinality(cast(approx_set(CAST(custkey AS DOUBLE)) AS P4HYPERLOGLOG)) " +
+                "FROM orders " +
+                "GROUP BY orderstatus");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row("O", 1011)
+                .row("F", 1011)
+                .row("P", 306)
+                .build();
+
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetWithNulls()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT cardinality(cast(approx_set(IF(orderstatus = 'O', custkey)) AS P4HYPERLOGLOG)) FROM orders");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row(1001)
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetOnlyNulls()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("SELECT cardinality(cast(approx_set(null) AS P4HYPERLOGLOG)) FROM orders");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row(new Object[] { null })
+                .build();
+
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetGroupByWithOnlyNullsInOneGroup()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, cardinality(cast(approx_set(IF(orderstatus != 'O', custkey)) AS P4HYPERLOGLOG)) " +
+                "FROM orders " +
+                "GROUP BY orderstatus");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row("O", null)
+                .row("F", 998)
+                .row("P", 308)
+                .build();
+
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testP4ApproxSetGroupByWithNulls()
+            throws Exception
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT orderstatus, cardinality(cast(approx_set(IF(custkey % 2 <> 0, custkey)) AS P4HYPERLOGLOG)) " +
+                "FROM orders " +
+                "GROUP BY orderstatus");
+
+        MaterializedResult expected = resultBuilder(getSession(), actual.getTypes())
+                .row("O", 495)
+                .row("F", 491)
+                .row("P", 153)
+                .build();
+
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
     @Test
     public void testValuesWithNonTrivialType()
             throws Exception

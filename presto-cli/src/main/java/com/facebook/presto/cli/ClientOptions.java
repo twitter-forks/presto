@@ -20,6 +20,7 @@ import com.google.common.net.HostAndPort;
 import com.sun.security.auth.module.UnixSystem;
 import io.airlift.airline.Option;
 import io.airlift.http.client.spnego.KerberosConfig;
+import io.airlift.units.Duration;
 
 import java.io.File;
 import java.net.URI;
@@ -37,6 +38,7 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
 public class ClientOptions
 {
@@ -101,6 +103,9 @@ public class ClientOptions
     @Option(name = "--socks-proxy", title = "socks-proxy", description = "SOCKS proxy to use for server connections")
     public HostAndPort socksProxy;
 
+    @Option(name = "--client-request-timeout", title = "client request timeout", description = "Client request timeout (default: 2m)")
+    public Duration clientRequestTimeout = new Duration(2, MINUTES);
+
     public enum OutputFormat
     {
         ALIGNED,
@@ -123,7 +128,8 @@ public class ClientOptions
                 TimeZone.getDefault().getID(),
                 Locale.getDefault(),
                 toProperties(sessionProperties),
-                debug);
+                debug,
+                clientRequestTimeout);
     }
 
     public KerberosConfig toKerberosConfig()
