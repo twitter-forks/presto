@@ -159,8 +159,8 @@ public class BackgroundHiveSplitLoader
         {
             if (HiveSessionProperties.getReadAsQueryUser(session)) {
                 try {
-                    // TODO: Configure hadoop to allow sqlsystem to impersonate all presto users and
-                    // change to the approach below.
+                    // TODO: Configure hadoop to allow sqlsystem to impersonate all presto users (HADOOPINFRA-7081)
+                    // and then change to the approach below (IQ-85).
                     // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
                     // UserGroupInformation ugi = UserGroupInformation.createProxyUser(
                     //        session.getUser(), UserGroupInformation.getLoginUser());
