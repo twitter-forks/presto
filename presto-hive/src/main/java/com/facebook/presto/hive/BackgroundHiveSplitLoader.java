@@ -38,8 +38,10 @@ import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
@@ -154,6 +156,28 @@ public class BackgroundHiveSplitLoader
     {
         @Override
         public TaskStatus process()
+        {
+            if (HiveSessionProperties.getReadAsQueryUser(session)) {
+                try {
+                    // TODO: Configure hadoop to allow presto daemon user to impersonate all presto users
+                    // (HADOOPINFRA-7081) and then change to the approach below (IQ-85).
+                    // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
+                    // UserGroupInformation ugi = UserGroupInformation.createProxyUser(
+                    //        session.getUser(), UserGroupInformation.getLoginUser());
+                    UserGroupInformation ugi = UserGroupInformation.createRemoteUser(session.getUser());
+
+                    return ugi.doAs((PrivilegedExceptionAction<TaskStatus>) this::doProcess);
+                }
+                catch (IOException | InterruptedException e) {
+                    throw new RuntimeException("Could not runAs " + session.getUser(), e);
+                }
+            }
+            else {
+                return doProcess();
+            }
+        }
+
+        private TaskStatus doProcess()
         {
             while (true) {
                 if (stopped) {
