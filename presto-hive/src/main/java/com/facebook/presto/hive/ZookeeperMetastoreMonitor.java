@@ -94,31 +94,25 @@ public class ZookeeperMetastoreMonitor implements PathChildrenCacheListener
     @Override
     public void childEvent(CuratorFramework client, PathChildrenCacheEvent event) throws Exception
     {
-        String node = ZKPaths.getNodeFromPath(event.getData().getPath());
-
         switch (event.getType()) {
-            case CHILD_ADDED: {
-                HostAndPort hostPort = deserialize(event.getData().getData());
-                log.info("child added: " + node + ": " + hostPort);
-                servers.put(node, hostPort);
-                break;
-            }
-
+            case CHILD_ADDED:
             case CHILD_UPDATED: {
                 HostAndPort hostPort = deserialize(event.getData().getData());
+                String node = ZKPaths.getNodeFromPath(event.getData().getPath());
                 log.info("child updated: " + node + ": " + hostPort);
                 servers.put(node, hostPort);
                 break;
             }
 
             case CHILD_REMOVED: {
+                String node = ZKPaths.getNodeFromPath(event.getData().getPath());
                 log.info("child removed: " + node);
                 servers.remove(node);
                 break;
             }
 
             default:
-                log.info("connection state changed: " + node);
+                log.info("connection state changed: " + event.getType());
                 break;
         }
     }
