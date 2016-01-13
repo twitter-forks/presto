@@ -17,6 +17,7 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 
 import java.util.List;
 
+@Deprecated
 public interface ConnectorSplitManager
 {
     /**

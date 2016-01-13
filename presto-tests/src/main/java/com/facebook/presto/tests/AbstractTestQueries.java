@@ -69,6 +69,7 @@ import static com.facebook.presto.testing.TestingAccessControlManager.TestingPri
 import static com.facebook.presto.testing.TestingAccessControlManager.privilege;
 import static com.facebook.presto.tests.QueryAssertions.assertContains;
 import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
+import static com.facebook.presto.tests.QueryAssertions.assertQuery;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.tpch.TpchTable.ORDERS;
 import static io.airlift.tpch.TpchTable.tableNameGetter;
@@ -1857,6 +1858,7 @@ public abstract class AbstractTestQueries
                         "WHERE a.orderkey IS NULL)");
     }
 
+    @Test
     public void testOuterJoinWithCommonExpression()
             throws Exception
     {
@@ -3668,6 +3670,14 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testTransactionsTable()
+            throws Exception
+    {
+        List<MaterializedRow> result = computeActual("SELECT * FROM system.runtime.transactions").getMaterializedRows();
+        assertTrue(result.size() >= 1); // At least one row for the current transaction.
+    }
+
+    @Test
     public void testDefaultExplainTextFormat()
     {
         String query = "SELECT * FROM orders";
@@ -3759,6 +3769,9 @@ public abstract class AbstractTestQueries
         assertExplainDdl("ALTER TABLE orders RENAME COLUMN orderkey TO new_column_name");
         assertExplainDdl("SET SESSION foo = 'bar'");
         assertExplainDdl("RESET SESSION foo");
+        assertExplainDdl("START TRANSACTION");
+        assertExplainDdl("COMMIT");
+        assertExplainDdl("ROLLBACK");
     }
 
     private void assertExplainDdl(String query)
@@ -4531,6 +4544,68 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testScalarSubquery()
+            throws Exception
+    {
+        // nested
+        assertQuery("SELECT (SELECT (SELECT (SELECT 1)))");
+
+        // aggregation
+        assertQuery("SELECT * FROM lineitem WHERE orderkey = \n" +
+                "(SELECT max(orderkey) FROM orders)");
+
+        // no output
+        assertQuery("SELECT * FROM lineitem WHERE orderkey = \n" +
+                "(SELECT orderkey FROM orders WHERE 0=1)");
+
+        // no output matching with null test
+        assertQuery("SELECT * FROM lineitem WHERE \n" +
+                "(SELECT orderkey FROM orders WHERE 0=1) " +
+                "is null");
+        assertQuery("SELECT * FROM lineitem WHERE \n" +
+                "(SELECT orderkey FROM orders WHERE 0=1) " +
+                "is not null");
+
+        // subquery results and in in-predicate
+        assertQuery("SELECT (SELECT 1) IN (1, 2, 3)");
+        assertQuery("SELECT (SELECT 1) IN (   2, 3)");
+
+        // multiple subqueries
+        assertQuery("SELECT (SELECT 1) = (SELECT 3)");
+        assertQuery("SELECT (SELECT 1) < (SELECT 3)");
+        assertQuery("SELECT COUNT(*) FROM lineitem WHERE " +
+                "(SELECT min(orderkey) FROM orders)" +
+                "<" +
+                "(SELECT max(orderkey) FROM orders)");
+
+        // distinct
+        assertQuery("SELECT DISTINCT orderkey FROM lineitem " +
+                "WHERE orderkey BETWEEN" +
+                "   (SELECT avg(orderkey) FROM orders) - 10 " +
+                "   AND" +
+                "   (SELECT avg(orderkey) FROM orders) + 10");
+
+        // subqueries with joins
+        for (String joinType : ImmutableList.of("INNER", "LEFT OUTER")) {
+            assertQuery("SELECT l.orderkey, COUNT(*) " +
+                    "FROM lineitem l " + joinType + " JOIN orders o ON l.orderkey = o.orderkey " +
+                    "WHERE l.orderkey BETWEEN" +
+                    "   (SELECT avg(orderkey) FROM orders) - 10 " +
+                    "   AND" +
+                    "   (SELECT avg(orderkey) FROM orders) + 10 " +
+                    "GROUP BY l.orderkey");
+        }
+
+        // subquery returns multiple rows
+        String multipleRowsErrorMsg = "Scalar sub-query has returned multiple rows";
+        assertQueryFails("SELECT * FROM lineitem WHERE orderkey = (\n" +
+                "SELECT orderkey FROM orders ORDER BY totalprice)",
+                multipleRowsErrorMsg);
+        assertQueryFails("SELECT (VALUES (1), (2)) IN (1,2)",
+                multipleRowsErrorMsg);
+    }
+
+    @Test
     public void testPredicatePushdown()
             throws Exception
     {
@@ -4888,7 +4963,7 @@ public abstract class AbstractTestQueries
         computeActual("SELECT greatest(rgb(255, 0, 0))");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:10: Operator NOT_EQUAL(bigint, varchar) not registered\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:10: '<>' cannot be applied to bigint, varchar\\E")
     public void testTypeMismatch()
     {
         computeActual("SELECT 1 <> 'x'");
@@ -4900,10 +4975,16 @@ public abstract class AbstractTestQueries
         computeActual("SELECT CAST(null AS array<foo>)");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:21: Operator ADD(varchar, bigint) not registered\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:21: '+' cannot be applied to varchar, bigint\\E")
     public void testInvalidTypeInfixOperator()
     {
         computeActual("SELECT ('a' || 'z') + (3 * 4) / 5");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:12: Cannot check if varchar is BETWEEN bigint and varchar\\E")
+    public void testInvalidTypeBetweenOperator()
+    {
+        computeActual("SELECT 'a' BETWEEN 3 AND 'z'");
     }
 
     @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:20: All ARRAY elements must be the same type: bigint\\E")

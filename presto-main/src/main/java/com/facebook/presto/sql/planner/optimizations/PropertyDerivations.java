@@ -31,6 +31,7 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.DistinctLimitNode;
+import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.IndexJoinNode;
@@ -46,7 +47,7 @@ import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
-import com.facebook.presto.sql.planner.plan.TableCommitNode;
+import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TopNNode;
@@ -123,6 +124,12 @@ class PropertyDerivations
 
         @Override
         public ActualProperties visitOutput(OutputNode node, List<ActualProperties> inputProperties)
+        {
+            return Iterables.getOnlyElement(inputProperties);
+        }
+
+        @Override
+        public ActualProperties visitEnforceSingleRow(EnforceSingleRowNode node, List<ActualProperties> inputProperties)
         {
             return Iterables.getOnlyElement(inputProperties);
         }
@@ -249,7 +256,7 @@ class PropertyDerivations
         }
 
         @Override
-        public ActualProperties visitTableCommit(TableCommitNode node, List<ActualProperties> inputProperties)
+        public ActualProperties visitTableFinish(TableFinishNode node, List<ActualProperties> inputProperties)
         {
             return ActualProperties.builder()
                     .global(coordinatorOnly())

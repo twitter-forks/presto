@@ -18,6 +18,7 @@ import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.ConnectorTableHandle;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 
 import static java.util.Objects.requireNonNull;
 
@@ -60,6 +61,13 @@ public class SystemHandleResolver
     }
 
     @Override
+    public boolean canHandle(ConnectorTransactionHandle transactionHandle)
+    {
+        return (transactionHandle instanceof SystemTransactionHandle) &&
+                ((SystemTransactionHandle) transactionHandle).getConnectorId().equals(connectorId);
+    }
+
+    @Override
     public Class<? extends ConnectorTableHandle> getTableHandleClass()
     {
         return SystemTableHandle.class;
@@ -81,5 +89,11 @@ public class SystemHandleResolver
     public Class<? extends ConnectorSplit> getSplitClass()
     {
         return SystemSplit.class;
+    }
+
+    @Override
+    public Class<? extends ConnectorTransactionHandle> getTransactionHandleClass()
+    {
+        return SystemTransactionHandle.class;
     }
 }

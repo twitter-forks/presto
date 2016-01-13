@@ -20,6 +20,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.type.SqlTimestampWithTimeZone;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
 import com.facebook.presto.sql.planner.Symbol;
@@ -32,6 +33,7 @@ import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.StringLiteral;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
@@ -47,6 +49,7 @@ import org.testng.annotations.Test;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -63,6 +66,7 @@ import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionT
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.expressionInterpreter;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.expressionOptimizer;
 import static io.airlift.slice.Slices.utf8Slice;
+import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
 import static org.testng.Assert.assertEquals;
 
@@ -71,6 +75,7 @@ public class TestExpressionInterpreter
     private static final Map<Symbol, Type> SYMBOL_TYPES = ImmutableMap.<Symbol, Type>builder()
             .put(new Symbol("bound_long"), BIGINT)
             .put(new Symbol("bound_string"), VARCHAR)
+            .put(new Symbol("bound_varbinary"), VarbinaryType.VARBINARY)
             .put(new Symbol("bound_double"), DOUBLE)
             .put(new Symbol("bound_boolean"), BOOLEAN)
             .put(new Symbol("bound_date"), DATE)
@@ -158,6 +163,9 @@ public class TestExpressionInterpreter
         assertOptimizedEquals("bound_long = unbound_long", "1234 = unbound_long");
 
         assertOptimizedEquals("10151082135029368 = 10151082135029369", "false");
+
+        assertOptimizedEquals("bound_varbinary = X'a b'", "true");
+        assertOptimizedEquals("bound_varbinary = X'a d'", "false");
     }
 
     @Test
@@ -924,6 +932,26 @@ public class TestExpressionInterpreter
         optimize("0 / 0");
     }
 
+    @Test
+    public void testMassiveArrayConstructor()
+    {
+        optimize(format("ARRAY [%s]", Joiner.on(", ").join(IntStream.range(0, 10_000).mapToObj(i -> "(bound_long + " + i + ")").iterator())));
+        optimize(format("ARRAY [%s]", Joiner.on(", ").join(IntStream.range(0, 10_000).mapToObj(i -> "'" + i + "'").iterator())));
+        optimize(format("ARRAY [%s]", Joiner.on(", ").join(IntStream.range(0, 10_000).mapToObj(i -> "ARRAY['" + i + "']").iterator())));
+    }
+
+    @Test
+    public void testArrayConstructor()
+    {
+        optimize("ARRAY []");
+        assertOptimizedEquals("ARRAY [(unbound_long + 0), (unbound_long + 1), (unbound_long + 2)]",
+                "array_constructor((unbound_long + 0), (unbound_long + 1), (unbound_long + 2))");
+        assertOptimizedEquals("ARRAY [(bound_long + 0), (unbound_long + 1), (bound_long + 2)]",
+                "array_constructor((bound_long + 0), (unbound_long + 1), (bound_long + 2))");
+        assertOptimizedEquals("ARRAY [(bound_long + 0), (unbound_long + 1), NULL]",
+                "array_constructor((bound_long + 0), (unbound_long + 1), NULL)");
+    }
+
     @Test(expectedExceptions = PrestoException.class)
     public void testArraySubscriptConstantNegativeIndex()
     {
@@ -962,6 +990,8 @@ public class TestExpressionInterpreter
 
         optimize("interval '3' day * unbound_long");
         optimize("interval '3' year * unbound_long");
+
+        assertEquals(optimize("X'1234'"), Slices.wrappedBuffer((byte) 0x12, (byte) 0x34));
     }
 
     private static void assertLike(byte[] value, String pattern, boolean expected)
@@ -1035,6 +1065,8 @@ public class TestExpressionInterpreter
                         return utf8Slice("%el%");
                     case "bound_timestamp_with_timezone":
                         return new SqlTimestampWithTimeZone(new DateTime(1970, 1, 1, 1, 0, 0, 999, DateTimeZone.UTC).getMillis(), getTimeZoneKey("Z"));
+                    case "bound_varbinary":
+                        return Slices.wrappedBuffer((byte) 0xab);
                 }
 
                 return new QualifiedNameReference(symbol.toQualifiedName());

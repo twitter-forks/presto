@@ -18,6 +18,7 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.DistinctLimitNode;
+import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.IndexJoinNode;
@@ -35,7 +36,7 @@ import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
-import com.facebook.presto.sql.planner.plan.TableCommitNode;
+import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TopNNode;
@@ -217,7 +218,7 @@ public final class GraphvizPrinter
         }
 
         @Override
-        public Void visitTableCommit(TableCommitNode node, Void context)
+        public Void visitTableFinish(TableFinishNode node, Void context)
         {
             printNode(node, format("TableCommit[%s]", Joiner.on(", ").join(node.getOutputSymbols())), NODE_COLORS.get(NodeType.TABLE_COMMIT));
             return node.getSource().accept(this, context);
@@ -399,6 +400,13 @@ public final class GraphvizPrinter
         public Void visitValues(ValuesNode node, Void context)
         {
             printNode(node, "Values", NODE_COLORS.get(NodeType.TABLESCAN));
+            return null;
+        }
+
+        @Override
+        public Void visitEnforceSingleRow(EnforceSingleRowNode node, Void context)
+        {
+            printNode(node, "Scalar", NODE_COLORS.get(NodeType.PROJECT));
             return null;
         }
 

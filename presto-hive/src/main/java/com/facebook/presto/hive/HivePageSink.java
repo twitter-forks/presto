@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.HiveWriteUtils.FieldSetter;
 import com.facebook.presto.hive.metastore.HiveMetastore;
 import com.facebook.presto.spi.ConnectorPageSink;
 import com.facebook.presto.spi.Page;
@@ -42,6 +43,7 @@ import org.apache.hadoop.hive.ql.exec.FileSinkOperator.RecordWriter;
 import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.Serializer;
+import org.apache.hadoop.hive.serde2.columnar.OptimizedLazyBinaryColumnarSerde;
 import org.apache.hadoop.hive.serde2.objectinspector.SettableStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.io.compress.CompressionCodec;
@@ -67,12 +69,13 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_PATH_ALREADY_EXISTS;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_TOO_MANY_OPEN_PARTITIONS;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNSUPPORTED_FORMAT;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_ERROR;
+import static com.facebook.presto.hive.HivePartitionKey.HIVE_DEFAULT_DYNAMIC_PARTITION;
 import static com.facebook.presto.hive.HiveType.toHiveTypes;
+import static com.facebook.presto.hive.HiveWriteUtils.createFieldSetter;
 import static com.facebook.presto.hive.HiveWriteUtils.getField;
-import static com.facebook.presto.hive.HiveWriteUtils.getJavaObjectInspectors;
+import static com.facebook.presto.hive.HiveWriteUtils.getRowColumnInspectors;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -111,7 +114,6 @@ public class HivePageSink
     private final int maxOpenPartitions;
     private final JsonCodec<PartitionUpdate> partitionUpdateCodec;
 
-    private final List<Object> dataRow;
     private final List<Object> partitionRow;
 
     private final Table table;
@@ -203,7 +205,6 @@ public class HivePageSink
 
         // preallocate temp space for partition and data
         this.partitionRow = Arrays.asList(new Object[this.partitionColumnNames.size()]);
-        this.dataRow = Arrays.asList(new Object[this.dataColumnNames.size()]);
 
         if (isCreateTable) {
             this.table = null;
@@ -223,7 +224,7 @@ public class HivePageSink
     }
 
     @Override
-    public Collection<Slice> commit()
+    public Collection<Slice> finish()
     {
         ImmutableList.Builder<Slice> partitionUpdates = ImmutableList.builder();
         for (HiveRecordWriter writer : writers) {
@@ -237,7 +238,7 @@ public class HivePageSink
     }
 
     @Override
-    public void rollback()
+    public void abort()
     {
         for (HiveRecordWriter writer : writers) {
             if (writer != null) {
@@ -268,13 +269,15 @@ public class HivePageSink
             int writerIndex = indexes[position];
             HiveRecordWriter writer = writers[writerIndex];
             if (writer == null) {
-                buildRow(partitionColumnTypes, partitionRow, partitionBlocks, position);
+                for (int field = 0; field < partitionBlocks.length; field++) {
+                    Object value = getField(partitionColumnTypes.get(field), partitionBlocks[field], position);
+                    partitionRow.set(field, value);
+                }
                 writer = createWriter(partitionRow);
                 writers[writerIndex] = writer;
             }
 
-            buildRow(dataColumnTypes, dataRow, dataBlocks, position);
-            writer.addRow(dataRow);
+            writer.addRow(dataBlocks, position);
         }
     }
 
@@ -283,7 +286,7 @@ public class HivePageSink
         checkArgument(partitionRow.size() == partitionColumnNames.size(), "size of partitionRow is different from partitionColumnNames");
 
         List<String> partitionValues = partitionRow.stream()
-                .map(Object::toString) // todo this seems wrong
+                .map(value -> (value == null) ? HIVE_DEFAULT_DYNAMIC_PARTITION : value.toString())
                 .collect(toList());
 
         Optional<String> partitionName;
@@ -446,13 +449,6 @@ public class HivePageSink
         return blocks;
     }
 
-    private static void buildRow(List<Type> columnTypes, List<Object> row, Block[] blocks, int position)
-    {
-        for (int field = 0; field < blocks.length; field++) {
-            row.set(field, getField(columnTypes.get(field), blocks[field], position));
-        }
-    }
-
     private static class HiveRecordWriter
     {
         private final String partitionName;
@@ -467,6 +463,7 @@ public class HivePageSink
         private final SettableStructObjectInspector tableInspector;
         private final List<StructField> structFields;
         private final Object row;
+        private final FieldSetter[] setters;
 
         public HiveRecordWriter(
                 String schemaName,
@@ -534,10 +531,13 @@ public class HivePageSink
 
             fieldCount = fileColumnNames.size();
 
+            if (serDe.equals(org.apache.hadoop.hive.serde2.columnar.LazyBinaryColumnarSerDe.class.getName())) {
+                serDe = OptimizedLazyBinaryColumnarSerde.class.getName();
+            }
             serializer = initializeSerializer(conf, schema, serDe);
             recordWriter = HiveWriteUtils.createRecordWriter(new Path(writePath, fileName), conf, schema, outputFormat);
 
-            tableInspector = getStandardStructObjectInspector(fileColumnNames, getJavaObjectInspectors(fileColumnTypes));
+            tableInspector = getStandardStructObjectInspector(fileColumnNames, getRowColumnInspectors(fileColumnTypes));
 
             // reorder (and possibly reduce) struct fields to match input
             structFields = ImmutableList.copyOf(inputColumnNames.stream()
@@ -545,14 +545,22 @@ public class HivePageSink
                     .collect(toList()));
 
             row = tableInspector.create();
+
+            setters = new FieldSetter[structFields.size()];
+            for (int i = 0; i < setters.length; i++) {
+                setters[i] = createFieldSetter(tableInspector, row, structFields.get(i), inputColumnTypes.get(i));
+            }
         }
 
-        public void addRow(List<Object> fieldValues)
+        public void addRow(Block[] columns, int position)
         {
-            checkState(fieldValues.size() == fieldCount, "Invalid row");
-
             for (int field = 0; field < fieldCount; field++) {
-                tableInspector.setStructFieldData(row, structFields.get(field), fieldValues.get(field));
+                if (columns[field].isNull(position)) {
+                    tableInspector.setStructFieldData(row, structFields.get(field), null);
+                }
+                else {
+                    setters[field].setField(columns[field], position);
+                }
             }
 
             try {

@@ -19,8 +19,10 @@ import com.facebook.presto.sql.tree.Approximate;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.BetweenPredicate;
+import com.facebook.presto.sql.tree.BinaryLiteral;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Cast;
+import com.facebook.presto.sql.tree.Commit;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateTable;
 import com.facebook.presto.sql.tree.CreateTableAsSelect;
@@ -44,6 +46,7 @@ import com.facebook.presto.sql.tree.Intersect;
 import com.facebook.presto.sql.tree.IntervalLiteral;
 import com.facebook.presto.sql.tree.IntervalLiteral.IntervalField;
 import com.facebook.presto.sql.tree.IntervalLiteral.Sign;
+import com.facebook.presto.sql.tree.Isolation;
 import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinCriteria;
 import com.facebook.presto.sql.tree.JoinOn;
@@ -61,6 +64,7 @@ import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.RenameColumn;
 import com.facebook.presto.sql.tree.RenameTable;
 import com.facebook.presto.sql.tree.ResetSession;
+import com.facebook.presto.sql.tree.Rollback;
 import com.facebook.presto.sql.tree.Rollup;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.ShowCatalogs;
@@ -70,6 +74,7 @@ import com.facebook.presto.sql.tree.ShowSession;
 import com.facebook.presto.sql.tree.ShowTables;
 import com.facebook.presto.sql.tree.SimpleGroupBy;
 import com.facebook.presto.sql.tree.SortItem;
+import com.facebook.presto.sql.tree.StartTransaction;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubscriptExpression;
@@ -77,6 +82,7 @@ import com.facebook.presto.sql.tree.Table;
 import com.facebook.presto.sql.tree.TableElement;
 import com.facebook.presto.sql.tree.TimeLiteral;
 import com.facebook.presto.sql.tree.TimestampLiteral;
+import com.facebook.presto.sql.tree.TransactionAccessMode;
 import com.facebook.presto.sql.tree.Union;
 import com.facebook.presto.sql.tree.Unnest;
 import com.facebook.presto.sql.tree.With;
@@ -85,6 +91,7 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
@@ -142,6 +149,22 @@ public class TestSqlParser
         assertGenericLiteral("BOOLEAN");
         assertGenericLiteral("DATE");
         assertGenericLiteral("foo");
+    }
+
+    @Test
+    public void testBinaryLiteral()
+        throws Exception
+    {
+        assertExpression("x' '", new BinaryLiteral(""));
+        assertExpression("x''", new BinaryLiteral(""));
+        assertExpression("X'abcdef1234567890ABCDEF'", new BinaryLiteral("abcdef1234567890ABCDEF"));
+
+        // forms such as "X 'a b' " may look like BinaryLiteral
+        // but they do not pass the syntax rule for BinaryLiteral
+        // but instead conform to TypeConstructor, which generates a GenericLiteral expression
+        assertInvalidExpression("X 'a b'", "Spaces are not allowed.*");
+        assertInvalidExpression("X'a b c'", "Binary literal must contain an even number of digits.*");
+        assertInvalidExpression("X'a z'", "Binary literal can only contain hexadecimal digits.*");
     }
 
     public static void assertGenericLiteral(String type)
@@ -1119,6 +1142,60 @@ public class TestSqlParser
     }
 
     @Test
+    public void testStartTransaction()
+            throws Exception
+    {
+        assertStatement("START TRANSACTION",
+                new StartTransaction(ImmutableList.of()));
+        assertStatement("START TRANSACTION ISOLATION LEVEL READ UNCOMMITTED",
+                new StartTransaction(ImmutableList.of(
+                        new Isolation(Isolation.Level.READ_UNCOMMITTED))));
+        assertStatement("START TRANSACTION ISOLATION LEVEL READ COMMITTED",
+                new StartTransaction(ImmutableList.of(
+                        new Isolation(Isolation.Level.READ_COMMITTED))));
+        assertStatement("START TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+                new StartTransaction(ImmutableList.of(
+                        new Isolation(Isolation.Level.REPEATABLE_READ))));
+        assertStatement("START TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+                new StartTransaction(ImmutableList.of(
+                        new Isolation(Isolation.Level.SERIALIZABLE))));
+        assertStatement("START TRANSACTION READ ONLY",
+                new StartTransaction(ImmutableList.of(
+                        new TransactionAccessMode(true))));
+        assertStatement("START TRANSACTION READ WRITE",
+                new StartTransaction(ImmutableList.of(
+                        new TransactionAccessMode(false))));
+        assertStatement("START TRANSACTION ISOLATION LEVEL READ COMMITTED, READ ONLY",
+                new StartTransaction(ImmutableList.of(
+                        new Isolation(Isolation.Level.READ_COMMITTED),
+                        new TransactionAccessMode(true))));
+        assertStatement("START TRANSACTION READ ONLY, ISOLATION LEVEL READ COMMITTED",
+                new StartTransaction(ImmutableList.of(
+                        new TransactionAccessMode(true),
+                        new Isolation(Isolation.Level.READ_COMMITTED))));
+        assertStatement("START TRANSACTION READ WRITE, ISOLATION LEVEL SERIALIZABLE",
+                new StartTransaction(ImmutableList.of(
+                        new TransactionAccessMode(false),
+                        new Isolation(Isolation.Level.SERIALIZABLE))));
+    }
+
+    @Test
+    public void testCommit()
+            throws Exception
+    {
+        assertStatement("COMMIT", new Commit());
+        assertStatement("COMMIT WORK", new Commit());
+    }
+
+    @Test
+    public void testRollback()
+            throws Exception
+    {
+        assertStatement("ROLLBACK", new Rollback());
+        assertStatement("ROLLBACK WORK", new Rollback());
+    }
+
+    @Test
     public void testLambda()
             throws Exception
     {
@@ -1142,6 +1219,14 @@ public class TestSqlParser
                 simpleQuery(
                         selectList(new QualifiedNameReference(QualifiedName.of("zone"))),
                         table(QualifiedName.of("t"))));
+    }
+
+    @Test
+    public void testBinaryLiteralToHex()
+            throws Exception
+    {
+        // note that toHexString() always outputs in upper case
+        assertEquals(new BinaryLiteral("ab 01").toHexString(), "AB01");
     }
 
     private static void assertCast(String type)
@@ -1171,6 +1256,19 @@ public class TestSqlParser
                     indent(input),
                     indent(formatSql(expected)),
                     indent(formatSql(parsed))));
+        }
+    }
+
+    private static void assertInvalidExpression(String expression, String expectedErrorMessageRegex)
+    {
+        try {
+            Expression result = SQL_PARSER.createExpression(expression);
+            fail("Expected to throw ParsingException for input:[" + expression + "], but got: " + result);
+        }
+        catch (ParsingException e) {
+            if (!e.getErrorMessage().matches(expectedErrorMessageRegex)) {
+                Assert.fail(String.format("Expected error message to match '%s', but was: '%s'", expectedErrorMessageRegex, e.getErrorMessage()));
+            }
         }
     }
 

@@ -24,6 +24,7 @@ import com.facebook.presto.operator.AggregationOperator.AggregationOperatorFacto
 import com.facebook.presto.operator.CursorProcessor;
 import com.facebook.presto.operator.DeleteOperator.DeleteOperatorFactory;
 import com.facebook.presto.operator.DriverFactory;
+import com.facebook.presto.operator.EnforceSingleRowOperator;
 import com.facebook.presto.operator.ExchangeClientSupplier;
 import com.facebook.presto.operator.ExchangeOperator.ExchangeOperatorFactory;
 import com.facebook.presto.operator.FilterAndProjectOperator;
@@ -93,6 +94,7 @@ import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Step;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.DistinctLimitNode;
+import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.IndexSourceNode;
@@ -109,7 +111,7 @@ import com.facebook.presto.sql.planner.plan.RowNumberNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
-import com.facebook.presto.sql.planner.plan.TableCommitNode;
+import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode.DeleteHandle;
@@ -170,8 +172,8 @@ import static com.facebook.presto.operator.InMemoryExchangeSourceOperator.InMemo
 import static com.facebook.presto.operator.InMemoryExchangeSourceOperator.InMemoryExchangeSourceOperatorFactory.createRandomDistribution;
 import static com.facebook.presto.operator.NestedLoopBuildOperator.NestedLoopBuildOperatorFactory;
 import static com.facebook.presto.operator.NestedLoopJoinOperator.NestedLoopJoinOperatorFactory;
-import static com.facebook.presto.operator.TableCommitOperator.TableCommitOperatorFactory;
-import static com.facebook.presto.operator.TableCommitOperator.TableCommitter;
+import static com.facebook.presto.operator.TableFinishOperator.TableFinishOperatorFactory;
+import static com.facebook.presto.operator.TableFinishOperator.TableFinisher;
 import static com.facebook.presto.operator.TableWriterOperator.TableWriterOperatorFactory;
 import static com.facebook.presto.operator.UnnestOperator.UnnestOperatorFactory;
 import static com.facebook.presto.operator.WindowFunctionDefinition.window;
@@ -192,6 +194,7 @@ import static com.google.common.base.Functions.forMap;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.concat;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.Boolean.TRUE;
 import static java.lang.String.format;
 import static java.util.Collections.singleton;
@@ -1709,11 +1712,11 @@ public class LocalExecutionPlanner
         }
 
         @Override
-        public PhysicalOperation visitTableCommit(TableCommitNode node, LocalExecutionPlanContext context)
+        public PhysicalOperation visitTableFinish(TableFinishNode node, LocalExecutionPlanContext context)
         {
             PhysicalOperation source = node.getSource().accept(this, context);
 
-            OperatorFactory operatorFactory = new TableCommitOperatorFactory(context.getNextOperatorId(), createTableCommitter(session, node, metadata));
+            OperatorFactory operatorFactory = new TableFinishOperatorFactory(context.getNextOperatorId(), createTableFinisher(session, node, metadata));
             Map<Symbol, Integer> layout = ImmutableMap.of(node.getOutputSymbols().get(0), 0);
 
             return new PhysicalOperation(operatorFactory, layout, source);
@@ -1785,6 +1788,18 @@ public class LocalExecutionPlanner
             context.setInputDriver(false);
 
             return new PhysicalOperation(createRandomDistribution(context.getNextOperatorId(), inMemoryExchange), makeLayout(node));
+        }
+
+        @Override
+        public PhysicalOperation visitEnforceSingleRow(EnforceSingleRowNode node, LocalExecutionPlanContext context)
+        {
+            PhysicalOperation source = node.getSource().accept(this, context);
+
+            Symbol symbol = getOnlyElement(node.getOutputSymbols());
+            Type type = requireNonNull(context.getTypes().get(symbol), format("No type for symbol %s", symbol));
+
+            OperatorFactory operatorFactory = new EnforceSingleRowOperator.EnforceSingleRowOperatorFactory(context.getNextOperatorId(), type);
+            return new PhysicalOperation(operatorFactory, makeLayout(node), source);
         }
 
         @Override
@@ -1920,39 +1935,22 @@ public class LocalExecutionPlanner
         return builder.build();
     }
 
-    private static TableCommitter createTableCommitter(Session session, TableCommitNode node, Metadata metadata)
+    private static TableFinisher createTableFinisher(Session session, TableFinishNode node, Metadata metadata)
     {
         WriterTarget target = node.getTarget();
-        return new TableCommitter()
+        return new TableFinisher()
         {
             @Override
-            public void commitTable(Collection<Slice> fragments)
+            public void finishTable(Collection<Slice> fragments)
             {
                 if (target instanceof CreateHandle) {
-                    metadata.commitCreateTable(session, ((CreateHandle) target).getHandle(), fragments);
+                    metadata.finishCreateTable(session, ((CreateHandle) target).getHandle(), fragments);
                 }
                 else if (target instanceof InsertHandle) {
-                    metadata.commitInsert(session, ((InsertHandle) target).getHandle(), fragments);
+                    metadata.finishInsert(session, ((InsertHandle) target).getHandle(), fragments);
                 }
                 else if (target instanceof DeleteHandle) {
-                    metadata.commitDelete(session, ((DeleteHandle) target).getHandle(), fragments);
-                }
-                else {
-                    throw new AssertionError("Unhandled target type: " + target.getClass().getName());
-                }
-            }
-
-            @Override
-            public void rollbackTable()
-            {
-                if (target instanceof CreateHandle) {
-                    metadata.rollbackCreateTable(session, ((CreateHandle) target).getHandle());
-                }
-                else if (target instanceof InsertHandle) {
-                    metadata.rollbackInsert(session, ((InsertHandle) target).getHandle());
-                }
-                else if (target instanceof DeleteHandle) {
-                    metadata.rollbackDelete(session, ((DeleteHandle) target).getHandle());
+                    metadata.finishDelete(session, ((DeleteHandle) target).getHandle(), fragments);
                 }
                 else {
                     throw new AssertionError("Unhandled target type: " + target.getClass().getName());

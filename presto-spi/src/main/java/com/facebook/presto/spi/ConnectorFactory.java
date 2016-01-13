@@ -15,6 +15,7 @@ package com.facebook.presto.spi;
 
 import java.util.Map;
 
+@Deprecated
 public interface ConnectorFactory
 {
     String getName();

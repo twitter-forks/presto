@@ -27,6 +27,7 @@ import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
 
+@Deprecated
 public interface ConnectorMetadata
 {
     /**
@@ -212,7 +213,7 @@ public interface ConnectorMetadata
     /**
      * Commit delete query
      *
-     * @param fragments all fragments returned by {@link com.facebook.presto.spi.UpdatablePageSource#commit()}
+     * @param fragments all fragments returned by {@link com.facebook.presto.spi.UpdatablePageSource#finish()}
      */
     default void commitDelete(ConnectorSession session, ConnectorTableHandle tableHandle, Collection<Slice> fragments)
     {

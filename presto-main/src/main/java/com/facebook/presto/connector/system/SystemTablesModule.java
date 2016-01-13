@@ -47,6 +47,7 @@ public class SystemTablesModule
         globalTableBinder.addBinding().to(TaskSystemTable.class).in(Scopes.SINGLETON);
         globalTableBinder.addBinding().to(CatalogSystemTable.class).in(Scopes.SINGLETON);
         globalTableBinder.addBinding().to(TablePropertiesSystemTable.class).in(Scopes.SINGLETON);
+        globalTableBinder.addBinding().to(TransactionsSystemTable.class).in(Scopes.SINGLETON);
 
         globalTableBinder.addBinding().to(AttributeJdbcTable.class).in(Scopes.SINGLETON);
         globalTableBinder.addBinding().to(CatalogJdbcTable.class).in(Scopes.SINGLETON);
@@ -61,16 +62,16 @@ public class SystemTablesModule
         globalTableBinder.addBinding().to(TableTypeJdbcTable.class).in(Scopes.SINGLETON);
         globalTableBinder.addBinding().to(UdtJdbcTable.class).in(Scopes.SINGLETON);
 
-        binder.bind(SystemConnectorFactory.class).in(Scopes.SINGLETON);
+        binder.bind(GlobalSystemConnectorFactory.class).in(Scopes.SINGLETON);
         binder.bind(SystemTablesRegistrar.class).asEagerSingleton();
     }
 
     private static class SystemTablesRegistrar
     {
         @Inject
-        public SystemTablesRegistrar(ConnectorManager manager, SystemConnectorFactory connectorFactory)
+        public SystemTablesRegistrar(ConnectorManager manager, GlobalSystemConnectorFactory globalSystemConnectorFactory)
         {
-            manager.createConnection(SystemConnector.NAME, connectorFactory, ImmutableMap.of());
+            manager.createConnection(GlobalSystemConnector.NAME, globalSystemConnectorFactory, ImmutableMap.of());
         }
     }
 }

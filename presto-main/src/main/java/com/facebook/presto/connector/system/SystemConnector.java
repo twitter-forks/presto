@@ -13,36 +13,60 @@
  */
 package com.facebook.presto.connector.system;
 
-import com.facebook.presto.spi.Connector;
 import com.facebook.presto.spi.ConnectorHandleResolver;
-import com.facebook.presto.spi.ConnectorMetadata;
-import com.facebook.presto.spi.ConnectorRecordSetProvider;
-import com.facebook.presto.spi.ConnectorSplitManager;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.SystemTable;
+import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.spi.transaction.IsolationLevel;
+import com.facebook.presto.transaction.InternalConnector;
+import com.facebook.presto.transaction.TransactionHandle;
+import com.facebook.presto.transaction.TransactionId;
 
 import java.util.Set;
+import java.util.function.Function;
+
+import static java.util.Objects.requireNonNull;
 
 public class SystemConnector
-        implements Connector
+        implements InternalConnector
 {
-    public static final String NAME = "system";
-
+    private final String connectorId;
     private final SystemHandleResolver handleResolver;
     private final ConnectorMetadata metadata;
     private final ConnectorSplitManager splitManager;
     private final ConnectorRecordSetProvider recordSetProvider;
+    private final Function<TransactionId, TransactionHandle> transactionHandleFunction;
 
-    public SystemConnector(String connectorId, NodeManager nodeManager, Set<SystemTable> tables)
+    public SystemConnector(
+            String connectorId,
+            NodeManager nodeManager,
+            Set<SystemTable> tables,
+            Function<TransactionId, TransactionHandle> transactionHandleFunction)
     {
-        handleResolver = new SystemHandleResolver(connectorId);
-        metadata = new SystemTablesMetadata(connectorId, tables);
-        splitManager = new SystemSplitManager(nodeManager, tables);
-        recordSetProvider = new SystemRecordSetProvider(tables);
+        requireNonNull(connectorId, "connectorId is null");
+        requireNonNull(nodeManager, "nodeManager is null");
+        requireNonNull(tables, "tables is null");
+        requireNonNull(transactionHandleFunction, "transactionHandleFunction is null");
+
+        this.connectorId = connectorId;
+        this.handleResolver = new SystemHandleResolver(connectorId);
+        this.metadata = new SystemTablesMetadata(connectorId, tables);
+        this.splitManager = new SystemSplitManager(nodeManager, tables);
+        this.recordSetProvider = new SystemRecordSetProvider(tables);
+        this.transactionHandleFunction = transactionHandleFunction;
     }
 
     @Override
-    public ConnectorMetadata getMetadata()
+    public ConnectorTransactionHandle beginTransaction(TransactionId transactionId, IsolationLevel isolationLevel, boolean readOnly)
+    {
+        return new SystemTransactionHandle(connectorId, transactionHandleFunction.apply(transactionId));
+    }
+
+    @Override
+    public ConnectorMetadata getMetadata(ConnectorTransactionHandle transactionHandle)
     {
         return metadata;
     }
