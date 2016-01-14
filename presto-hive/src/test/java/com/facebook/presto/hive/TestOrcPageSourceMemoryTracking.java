@@ -35,6 +35,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.TestingSplit;
+import com.facebook.presto.testing.TestingTransactionHandle;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;
@@ -294,26 +295,33 @@ public class TestOrcPageSourceMemoryTracking
         for (int i = 0; i < 52; i++) {
             assertFalse(operator.isFinished());
             operator.getOutput();
-            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 590000L, 639999L);
+            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 550000L, 639999L);
         }
 
         for (int i = 52; i < 65; i++) {
             assertFalse(operator.isFinished());
             operator.getOutput();
-            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 490000L, 539999L);
+            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 450000L, 539999L);
         }
 
         // Page source is over, but data still exist in buffer of ScanFilterProjectOperator
         assertFalse(operator.isFinished());
         assertNull(operator.getOutput());
-        assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 170000L, 179999L);
+        assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 110000L, 119999L);
         assertFalse(operator.isFinished());
-        assertNotNull(operator.getOutput());
+        Page lastPage = operator.getOutput();
+        assertNotNull(lastPage);
 
         // No data is left
         assertTrue(operator.isFinished());
         // an empty page builder of two variable width block builders is left in ScanFilterAndProjectOperator
         PageBuilder pageBuilder = new PageBuilder(ImmutableList.of(VARCHAR, VARCHAR));
+        for (int i = 0; i < lastPage.getPositionCount(); i++) {
+            pageBuilder.declarePosition();
+            VARCHAR.appendTo(lastPage.getBlock(0), i, pageBuilder.getBlockBuilder(0));
+            VARCHAR.appendTo(lastPage.getBlock(1), i, pageBuilder.getBlockBuilder(1));
+        }
+        pageBuilder.reset();
         assertEquals(driverContext.getSystemMemoryUsage(), pageBuilder.getRetainedSizeInBytes());
     }
 
@@ -394,7 +402,7 @@ public class TestOrcPageSourceMemoryTracking
                     columns.stream().map(columnHandle -> (ColumnHandle) columnHandle).collect(toList())
             );
             SourceOperator operator = sourceOperatorFactory.createOperator(driverContext);
-            operator.addSplit(new Split("test", TestingSplit.createLocalSplit()));
+            operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
             return operator;
         }
 
@@ -416,7 +424,7 @@ public class TestOrcPageSourceMemoryTracking
                     types
             );
             SourceOperator operator = sourceOperatorFactory.createOperator(driverContext);
-            operator.addSplit(new Split("test", TestingSplit.createLocalSplit()));
+            operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
             return operator;
         }
 

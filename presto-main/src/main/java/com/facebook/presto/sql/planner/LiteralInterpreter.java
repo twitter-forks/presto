@@ -17,6 +17,7 @@ import com.facebook.presto.block.BlockSerdeUtil;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
+import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
 import com.facebook.presto.operator.scalar.VarbinaryFunctions;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.Block;
@@ -24,6 +25,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
 import com.facebook.presto.sql.tree.AstVisitor;
+import com.facebook.presto.sql.tree.BinaryLiteral;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.DoubleLiteral;
@@ -45,7 +47,6 @@ import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 
-import java.lang.invoke.MethodHandle;
 import java.util.List;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
@@ -211,6 +212,12 @@ public final class LiteralInterpreter
         }
 
         @Override
+        protected Slice visitBinaryLiteral(BinaryLiteral node, ConnectorSession session)
+        {
+            return node.getValue();
+        }
+
+        @Override
         protected Object visitGenericLiteral(GenericLiteral node, ConnectorSession session)
         {
             Type type = metadata.getType(parseTypeSignature(node.getType()));
@@ -219,7 +226,7 @@ public final class LiteralInterpreter
             }
 
             if (JSON.equals(type)) {
-                MethodHandle operator = metadata.getFunctionRegistry().getScalarFunctionImplementation(new Signature("json_parse", SCALAR, JSON.getTypeSignature(), VARCHAR.getTypeSignature())).getMethodHandle();
+                ScalarFunctionImplementation operator = metadata.getFunctionRegistry().getScalarFunctionImplementation(new Signature("json_parse", SCALAR, JSON.getTypeSignature(), VARCHAR.getTypeSignature()));
                 try {
                     return ExpressionInterpreter.invoke(session, operator, ImmutableList.<Object>of(utf8Slice(node.getValue())));
                 }
@@ -228,10 +235,10 @@ public final class LiteralInterpreter
                 }
             }
 
-            MethodHandle operator;
+            ScalarFunctionImplementation operator;
             try {
                 Signature signature = metadata.getFunctionRegistry().getCoercion(VARCHAR, type);
-                operator = metadata.getFunctionRegistry().getScalarFunctionImplementation(signature).getMethodHandle();
+                operator = metadata.getFunctionRegistry().getScalarFunctionImplementation(signature);
             }
             catch (IllegalArgumentException e) {
                 throw new SemanticException(TYPE_MISMATCH, node, "No literal form for type %s", type);

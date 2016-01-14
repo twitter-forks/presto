@@ -18,9 +18,9 @@ import com.facebook.presto.metadata.LegacyTableLayoutHandle;
 import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.ConnectorSplitManager;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.FixedSplitSource;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.google.common.collect.ImmutableList;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -50,16 +50,16 @@ public class SplitManager
         if (layout.getConnectorHandle() instanceof LegacyTableLayoutHandle) {
             LegacyTableLayoutHandle handle = (LegacyTableLayoutHandle) layout.getConnectorHandle();
             if (handle.getPartitions().isEmpty()) {
-                return new ConnectorAwareSplitSource(connectorId, new FixedSplitSource(connectorId, ImmutableList.<ConnectorSplit>of()));
+                return new ConnectorAwareSplitSource(connectorId, layout.getTransactionHandle(), new FixedSplitSource(connectorId, ImmutableList.<ConnectorSplit>of()));
             }
 
-            source = splitManager.getPartitionSplits(connectorSession, handle.getTable(), handle.getPartitions());
+            source = splitManager.getPartitionSplits(layout.getTransactionHandle().getTransactionHandle(), connectorSession, handle.getTable(), handle.getPartitions());
         }
         else {
-            source = splitManager.getSplits(connectorSession, layout.getConnectorHandle());
+            source = splitManager.getSplits(layout.getTransactionHandle().getTransactionHandle(), connectorSession, layout.getConnectorHandle());
         }
 
-        return new ConnectorAwareSplitSource(connectorId, source);
+        return new ConnectorAwareSplitSource(connectorId, layout.getTransactionHandle(), source);
     }
 
     public ConnectorSplitManager getConnectorSplitManager(String connectorId)

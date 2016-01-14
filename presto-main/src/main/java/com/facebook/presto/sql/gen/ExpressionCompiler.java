@@ -13,10 +13,12 @@
  */
 package com.facebook.presto.sql.gen;
 
-import com.facebook.presto.byteCode.ClassDefinition;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.CompilationException;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.operator.CursorProcessor;
 import com.facebook.presto.operator.PageProcessor;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.google.common.base.Throwables;
 import com.google.common.cache.CacheBuilder;
@@ -30,13 +32,14 @@ import javax.inject.Inject;
 import java.util.List;
 import java.util.Objects;
 
-import static com.facebook.presto.byteCode.Access.FINAL;
-import static com.facebook.presto.byteCode.Access.PUBLIC;
-import static com.facebook.presto.byteCode.Access.a;
-import static com.facebook.presto.byteCode.ParameterizedType.type;
-import static com.facebook.presto.sql.gen.ByteCodeUtils.invoke;
-import static com.facebook.presto.sql.gen.CompilerUtils.defineClass;
-import static com.facebook.presto.sql.gen.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
+import static com.facebook.presto.sql.gen.BytecodeUtils.invoke;
 import static com.google.common.base.MoreObjects.toStringHelper;
 
 public class ExpressionCompiler
@@ -90,12 +93,15 @@ public class ExpressionCompiler
     private <T> T compileAndInstantiate(RowExpression filter, List<RowExpression> projections, BodyCompiler<T> bodyCompiler, Class<? extends T> superType)
     {
         // create filter and project page iterator class
-        Class<? extends T> clazz = compileProcessor(filter, projections, bodyCompiler, superType);
         try {
+            Class<? extends T> clazz = compileProcessor(filter, projections, bodyCompiler, superType);
             return clazz.newInstance();
         }
         catch (ReflectiveOperationException e) {
             throw Throwables.propagate(e);
+        }
+        catch (CompilationException e) {
+            throw new PrestoException(COMPILER_ERROR, e.getCause());
         }
     }
 

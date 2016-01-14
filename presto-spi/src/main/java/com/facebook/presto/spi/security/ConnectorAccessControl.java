@@ -15,6 +15,7 @@ package com.facebook.presto.spi.security;
 
 import com.facebook.presto.spi.SchemaTableName;
 
+@Deprecated
 public interface ConnectorAccessControl
 {
     /**

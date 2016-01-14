@@ -14,18 +14,22 @@
 package com.facebook.presto.connector.informationSchema;
 
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.spi.Connector;
 import com.facebook.presto.spi.ConnectorHandleResolver;
-import com.facebook.presto.spi.ConnectorMetadata;
-import com.facebook.presto.spi.ConnectorPageSourceProvider;
-import com.facebook.presto.spi.ConnectorSplitManager;
 import com.facebook.presto.spi.NodeManager;
+import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.spi.transaction.IsolationLevel;
+import com.facebook.presto.transaction.InternalConnector;
+import com.facebook.presto.transaction.TransactionId;
 
 import static java.util.Objects.requireNonNull;
 
 public class InformationSchemaConnector
-        implements Connector
+        implements InternalConnector
 {
+    private final String connectorId;
     private final ConnectorHandleResolver handleResolver;
     private final ConnectorMetadata metadata;
     private final ConnectorSplitManager splitManager;
@@ -38,10 +42,17 @@ public class InformationSchemaConnector
         requireNonNull(nodeManager, "nodeManager is null");
         requireNonNull(metadata, "metadata is null");
 
+        this.connectorId = connectorId;
         this.handleResolver = new InformationSchemaHandleResolver(connectorId);
         this.metadata = new InformationSchemaMetadata(connectorId, catalogName);
         this.splitManager = new InformationSchemaSplitManager(nodeManager);
         this.pageSourceProvider = new InformationSchemaPageSourceProvider(metadata);
+    }
+
+    @Override
+    public ConnectorTransactionHandle beginTransaction(TransactionId transactionId, IsolationLevel isolationLevel, boolean readOnly)
+    {
+        return new InformationSchemaTransactionHandle(connectorId, transactionId);
     }
 
     @Override
@@ -51,7 +62,7 @@ public class InformationSchemaConnector
     }
 
     @Override
-    public ConnectorMetadata getMetadata()
+    public ConnectorMetadata getMetadata(ConnectorTransactionHandle transactionHandle)
     {
         return metadata;
     }

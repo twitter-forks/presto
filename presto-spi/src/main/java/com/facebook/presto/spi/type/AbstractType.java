@@ -160,7 +160,7 @@ public abstract class AbstractType
     }
 
     @Override
-    public final boolean equals(Object o)
+    public boolean equals(Object o)
     {
         if (this == o) {
             return true;
@@ -173,8 +173,8 @@ public abstract class AbstractType
     }
 
     @Override
-    public final int hashCode()
+    public int hashCode()
     {
-        return getClass().hashCode();
+        return signature.hashCode();
     }
 }

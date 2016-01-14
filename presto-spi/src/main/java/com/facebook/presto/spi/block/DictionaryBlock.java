@@ -35,9 +35,16 @@ public class DictionaryBlock
     private final int positionCount;
     private final Block dictionary;
     private final Slice ids;
+    private final int retainedSizeInBytes;
     private final int sizeInBytes;
+    private final int uniqueIds;
 
     public DictionaryBlock(int positionCount, Block dictionary, Slice ids)
+    {
+        this(positionCount, dictionary, ids, false);
+    }
+
+    public DictionaryBlock(int positionCount, Block dictionary, Slice ids, boolean dictionaryIsCompacted)
     {
         requireNonNull(dictionary, "dictionary is null");
         requireNonNull(ids, "ids is null");
@@ -54,7 +61,27 @@ public class DictionaryBlock
         this.dictionary = dictionary;
         this.ids = ids;
 
-        this.sizeInBytes = INSTANCE_SIZE + dictionary.getRetainedSizeInBytes() + ids.getRetainedSize();
+        this.retainedSizeInBytes = INSTANCE_SIZE + dictionary.getRetainedSizeInBytes() + ids.getRetainedSize();
+
+        if (dictionaryIsCompacted) {
+            this.sizeInBytes = this.retainedSizeInBytes;
+            this.uniqueIds = dictionary.getPositionCount();
+        }
+        else {
+            int sizeInBytes = 0;
+            int uniqueIds = 0;
+            boolean[] isReferenced = getReferencedPositions();
+            for (int position = 0; position < isReferenced.length; position++) {
+                if (isReferenced[position]) {
+                    if (!dictionary.isNull(position)) {
+                        sizeInBytes += dictionary.getLength(position);
+                    }
+                    uniqueIds++;
+                }
+            }
+            this.sizeInBytes = sizeInBytes + ids.length();
+            this.uniqueIds = uniqueIds;
+        }
     }
 
     @Override
@@ -174,7 +201,7 @@ public class DictionaryBlock
     @Override
     public int getRetainedSizeInBytes()
     {
-        return sizeInBytes;
+        return retainedSizeInBytes;
     }
 
     @Override
@@ -219,7 +246,8 @@ public class DictionaryBlock
             throw new IndexOutOfBoundsException("Invalid position " + position + " in block with " + positionCount + " positions");
         }
         Slice newIds = copyOf(ids, position * SIZE_OF_INT, length * SIZE_OF_INT);
-        return new DictionaryBlock(length, dictionary, newIds);
+        DictionaryBlock dictionaryBlock = new DictionaryBlock(length, dictionary, newIds);
+        return dictionaryBlock.compact();
     }
 
     @Override
@@ -243,19 +271,34 @@ public class DictionaryBlock
         return ids;
     }
 
+    public boolean isCompact()
+    {
+        return uniqueIds == dictionary.getPositionCount();
+    }
+
     private int getIndex(int position)
     {
         return ids.getInt(position * SIZE_OF_INT);
     }
 
-    public DictionaryBlock compact()
+    private boolean[] getReferencedPositions()
     {
         int dictionarySize = dictionary.getPositionCount();
         boolean[] isReferenced = new boolean[dictionarySize];
         for (int i = 0; i < this.positionCount; i++) {
             isReferenced[getIndex(i)] = true;
         }
+        return isReferenced;
+    }
 
+    public DictionaryBlock compact()
+    {
+        if (isCompact()) {
+            return this;
+        }
+
+        int dictionarySize = dictionary.getPositionCount();
+        boolean[] isReferenced = getReferencedPositions();
         List<Integer> dictionaryPositionsToCopy = new ArrayList<>(dictionarySize);
         int[] remapIndex = new int[dictionarySize];
         Arrays.fill(remapIndex, -1);
@@ -284,7 +327,7 @@ public class DictionaryBlock
         }
         try {
             Block compactDictionary = dictionary.copyPositions(dictionaryPositionsToCopy);
-            return new DictionaryBlock(positionCount, compactDictionary, wrappedIntArray(newIds));
+            return new DictionaryBlock(positionCount, compactDictionary, wrappedIntArray(newIds), true);
         }
         catch (UnsupportedOperationException e) {
             // ignore if copy positions is not supported for the dictionary block

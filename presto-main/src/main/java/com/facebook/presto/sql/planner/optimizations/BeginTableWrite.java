@@ -30,9 +30,10 @@ import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
-import com.facebook.presto.sql.planner.plan.TableCommitNode;
+import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
+import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -110,7 +111,7 @@ public class BeginTableWrite
         }
 
         @Override
-        public PlanNode visitTableCommit(TableCommitNode node, RewriteContext<Context> context)
+        public PlanNode visitTableFinish(TableFinishNode node, RewriteContext<Context> context)
         {
             PlanNode child = node.getSource();
 
@@ -120,7 +121,7 @@ public class BeginTableWrite
             context.get().addMaterializedHandle(originalTarget, newTarget);
             child = child.accept(this, context);
 
-            return new TableCommitNode(node.getId(), child, newTarget, node.getOutputSymbols());
+            return new TableFinishNode(node.getId(), child, newTarget, node.getOutputSymbols());
         }
 
         public TableWriterNode.WriterTarget getTarget(PlanNode node)
@@ -131,7 +132,7 @@ public class BeginTableWrite
             if (node instanceof DeleteNode) {
                 return ((DeleteNode) node).getTarget();
             }
-            if (node instanceof ExchangeNode) {
+            if (node instanceof ExchangeNode || node instanceof UnionNode) {
                 Set<TableWriterNode.WriterTarget> writerTargets = node.getSources().stream()
                         .map(this::getTarget)
                         .collect(toSet());
