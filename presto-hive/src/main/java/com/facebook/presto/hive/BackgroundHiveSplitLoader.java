@@ -16,6 +16,7 @@ package com.facebook.presto.hive;
 import com.facebook.presto.hive.util.HiveFileIterator;
 import com.facebook.presto.hive.util.ResumableTask;
 import com.facebook.presto.hive.util.ResumableTasks;
+import com.facebook.presto.hive.util.UgiUtils;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -51,7 +52,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -72,11 +72,6 @@ public class BackgroundHiveSplitLoader
         implements HiveSplitLoader
 {
     public static final CompletableFuture<?> COMPLETED_FUTURE = CompletableFuture.completedFuture(null);
-
-    // Every instance of a UserGroupInformation object for a given user has a unique hashcode, due
-    // to the hashCode() impl. If we don't cache the UGI per-user here, there will be a memory leak
-    // in the PrestoFileSystemCache.
-    private static final Map<String, UserGroupInformation> UGI_CACHE = new ConcurrentHashMap<>();
 
     private final String connectorId;
     private final Table table;
@@ -150,18 +145,7 @@ public class BackgroundHiveSplitLoader
         UserGroupInformation ugi = null;
 
         if (HiveSessionProperties.getReadAsQueryUser(session)) {
-            String user = session.getUser();
-            ugi = UGI_CACHE.get(user);
-
-            if (ugi == null) {
-                // TODO: Configure hadoop to allow presto daemon user to impersonate all presto users
-                // (HADOOPINFRA-7081) and then change to the approach below (IQ-85).
-                // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
-                // UserGroupInformation ugi = UserGroupInformation.createProxyUser(
-                //        session.getUser(), UserGroupInformation.getLoginUser());
-                ugi = UserGroupInformation.createRemoteUser(user);
-                UGI_CACHE.put(user, ugi);
-            }
+            ugi = UgiUtils.getUgi(session.getUser());
         }
 
         for (int i = 0; i < maxPartitionBatchSize; i++) {
