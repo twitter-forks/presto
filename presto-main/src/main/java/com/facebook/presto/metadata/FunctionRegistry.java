@@ -508,7 +508,7 @@ public class FunctionRegistry
         checkState(rowType.getTypeSignature().getBase().equals(StandardTypes.ROW), "rowType is not a ROW type");
         SqlFunction match = null;
         for (SqlFunction function : RowParametricType.ROW.createFunctions(rowType)) {
-            if (!function.getSignature().getName().equalsIgnoreCase(field)) {
+            if (!function.getSignature().getName().equals(field)) {
                 continue;
             }
             checkArgument(match == null, "Ambiguous field %s in type %s", field, rowType.getDisplayName());
