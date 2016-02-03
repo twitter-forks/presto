@@ -15,6 +15,7 @@ package com.facebook.presto.hive.util;
 
 import org.apache.hadoop.security.UserGroupInformation;
 
+import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -35,12 +36,14 @@ public class UgiUtils
         UserGroupInformation ugi = UGI_CACHE.get(user);
 
         if (ugi == null) {
-            // TODO: Configure hadoop to allow presto daemon user to impersonate all presto users
-            // (HADOOPINFRA-7081) and then change to the approach below (IQ-85).
+            // Configure hadoop to allow presto daemon user to impersonate all presto users
             // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
-            // UserGroupInformation ugi = UserGroupInformation.createProxyUser(
-            //        session.getUser(), UserGroupInformation.getLoginUser());
-            ugi = UserGroupInformation.createRemoteUser(user);
+            try {
+                ugi = UserGroupInformation.createProxyUser(user, UserGroupInformation.getLoginUser());
+            }
+            catch (IOException e) {
+                throw new RuntimeException("Could not get login user from UserGroupInformation", e);
+            }
             UGI_CACHE.put(user, ugi);
         }
 
