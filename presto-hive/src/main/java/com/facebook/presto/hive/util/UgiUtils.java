@@ -39,7 +39,13 @@ public class UgiUtils
             // Configure hadoop to allow presto daemon user to impersonate all presto users
             // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
             try {
-                ugi = UserGroupInformation.createProxyUser(user, UserGroupInformation.getLoginUser());
+                // TODO: IQ-152 roll this back once zeppelin runsAs user
+                if ("zeppelin".equals(user)) {
+                    ugi = UserGroupInformation.createRemoteUser(user);
+                }
+                else {
+                    ugi = UserGroupInformation.createProxyUser(user, UserGroupInformation.getLoginUser());
+                }
             }
             catch (IOException e) {
                 throw new RuntimeException("Could not get login user from UserGroupInformation", e);
