@@ -68,7 +68,7 @@ public final class RowParametricType
             RowField field = fields.get(i);
             int index = i;
             field.getName()
-                    .ifPresent(name -> builder.add(new RowFieldReference(rowType, field.getType(), index, field.getName().get().toLowerCase())));
+                    .ifPresent(name -> builder.add(new RowFieldReference(rowType, field.getType(), index, field.getName().get())));
         }
         return builder.build();
     }
