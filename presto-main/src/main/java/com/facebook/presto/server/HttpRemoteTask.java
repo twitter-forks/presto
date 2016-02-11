@@ -53,6 +53,7 @@ import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpStatus;
 import io.airlift.http.client.Request;
+import io.airlift.http.client.StaticBodyGenerator;
 import io.airlift.http.client.StatusResponseHandler.StatusResponse;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
@@ -454,6 +455,14 @@ public final class HttpRemoteTask
 
         updateErrorTracker.startRequest();
 
+        // TODO: (billg) remove this logging or contribute it upstream
+        if (log.isDebugEnabled()) {
+            String size = "unknown";
+            if (request.getBodyGenerator() instanceof StaticBodyGenerator) {
+                size = Integer.toString(((StaticBodyGenerator) request.getBodyGenerator()).getBody().length);
+            }
+            log.debug(String.format("scheduleUpdate POST %s, bodySize=%s sourcesSize=%s", request.getUri(), size, sources.size()));
+        }
         ListenableFuture<JsonResponse<TaskInfo>> future = httpClient.executeAsync(request, createFullJsonResponseHandler(taskInfoCodec));
         currentRequest = future;
         currentRequestStartNanos = System.nanoTime();
