@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.132-tw-0.15</version>
+        <version>0.132-tw-0.16</version>
     </parent>
 
     <artifactId>presto-tpch</artifactId>
