@@ -19,13 +19,17 @@ import org.openjdk.jol.info.ClassLayout;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 import static com.facebook.presto.spi.block.BlockValidationUtil.checkValidPositions;
+import static com.facebook.presto.spi.block.DictionaryId.randomDictionaryId;
 import static io.airlift.slice.SizeOf.SIZE_OF_INT;
 import static io.airlift.slice.Slices.copyOf;
 import static io.airlift.slice.Slices.wrappedIntArray;
+import static java.util.Collections.singletonList;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toSet;
 
 public class DictionaryBlock
         implements Block
@@ -38,13 +42,24 @@ public class DictionaryBlock
     private final int retainedSizeInBytes;
     private final int sizeInBytes;
     private final int uniqueIds;
+    private final DictionaryId dictionarySourceId;
 
     public DictionaryBlock(int positionCount, Block dictionary, Slice ids)
     {
-        this(positionCount, dictionary, ids, false);
+        this(positionCount, dictionary, ids, false, randomDictionaryId());
+    }
+
+    public DictionaryBlock(int positionCount, Block dictionary, Slice ids, DictionaryId dictionaryId)
+    {
+        this(positionCount, dictionary, ids, false, dictionaryId);
     }
 
     public DictionaryBlock(int positionCount, Block dictionary, Slice ids, boolean dictionaryIsCompacted)
+    {
+        this(positionCount, dictionary, ids, dictionaryIsCompacted, randomDictionaryId());
+    }
+
+    public DictionaryBlock(int positionCount, Block dictionary, Slice ids, boolean dictionaryIsCompacted, DictionaryId dictionarySourceId)
     {
         requireNonNull(dictionary, "dictionary is null");
         requireNonNull(ids, "ids is null");
@@ -60,7 +75,7 @@ public class DictionaryBlock
         this.positionCount = positionCount;
         this.dictionary = dictionary;
         this.ids = ids;
-
+        this.dictionarySourceId = requireNonNull(dictionarySourceId, "dictionarySourceId is null");
         this.retainedSizeInBytes = INSTANCE_SIZE + dictionary.getRetainedSizeInBytes() + ids.getRetainedSize();
 
         if (dictionaryIsCompacted) {
@@ -70,7 +85,7 @@ public class DictionaryBlock
         else {
             int sizeInBytes = 0;
             int uniqueIds = 0;
-            boolean[] isReferenced = getReferencedPositions();
+            boolean[] isReferenced = getReferencedPositions(dictionary, ids, positionCount);
             for (int position = 0; position < isReferenced.length; position++) {
                 if (isReferenced[position]) {
                     if (!dictionary.isNull(position)) {
@@ -271,6 +286,16 @@ public class DictionaryBlock
         return ids;
     }
 
+    public int getId(int position)
+    {
+        return ids.getInt(position * SIZE_OF_INT);
+    }
+
+    public DictionaryId getDictionarySourceId()
+    {
+        return dictionarySourceId;
+    }
+
     public boolean isCompact()
     {
         return uniqueIds == dictionary.getPositionCount();
@@ -278,17 +303,7 @@ public class DictionaryBlock
 
     private int getIndex(int position)
     {
-        return ids.getInt(position * SIZE_OF_INT);
-    }
-
-    private boolean[] getReferencedPositions()
-    {
-        int dictionarySize = dictionary.getPositionCount();
-        boolean[] isReferenced = new boolean[dictionarySize];
-        for (int i = 0; i < this.positionCount; i++) {
-            isReferenced[getIndex(i)] = true;
-        }
-        return isReferenced;
+        return getIndex(ids, position);
     }
 
     public DictionaryBlock compact()
@@ -297,8 +312,23 @@ public class DictionaryBlock
             return this;
         }
 
+        List<Block> compactBlocks = compactBlocks(singletonList(this));
+        return (DictionaryBlock) compactBlocks.get(0);
+    }
+
+    public static List<Block> compactBlocks(List<Block> blocks)
+    {
+        verifyEligibleToCompact(blocks);
+
+        DictionaryBlock dictionaryBlock = (DictionaryBlock) blocks.get(0);
+        Block dictionary = dictionaryBlock.getDictionary();
+        Slice ids = dictionaryBlock.getIds();
+
+        int positionCount = dictionaryBlock.getPositionCount();
         int dictionarySize = dictionary.getPositionCount();
-        boolean[] isReferenced = getReferencedPositions();
+
+        boolean[] isReferenced = getReferencedPositions(dictionary, ids, positionCount);
+
         List<Integer> dictionaryPositionsToCopy = new ArrayList<>(dictionarySize);
         int[] remapIndex = new int[dictionarySize];
         Arrays.fill(remapIndex, -1);
@@ -314,24 +344,70 @@ public class DictionaryBlock
 
         // entire dictionary is referenced
         if (dictionaryPositionsToCopy.size() == dictionarySize) {
-            return this;
+            return blocks;
         }
 
+        Slice newIdsSlice = wrappedIntArray(getNewIds(positionCount, ids, remapIndex));
+        List<Block> outputDictionaryBlocks = new ArrayList<>(blocks.size());
+        DictionaryId dictionaryId = randomDictionaryId();
+
+        for (Block block : blocks) {
+            dictionaryBlock = ((DictionaryBlock) block);
+            try {
+                Block compactDictionary = dictionaryBlock.getDictionary().copyPositions(dictionaryPositionsToCopy);
+                outputDictionaryBlocks.add(new DictionaryBlock(positionCount, compactDictionary, newIdsSlice, true, dictionaryId));
+            }
+            catch (UnsupportedOperationException e) {
+                // ignore if copy positions is not supported for the dictionary
+                outputDictionaryBlocks.add(new DictionaryBlock(positionCount, dictionaryBlock.getDictionary(), dictionaryBlock.getIds()));
+            }
+        }
+        return outputDictionaryBlocks;
+    }
+
+    private static void verifyEligibleToCompact(List<Block> blocks)
+    {
+        for (Block block : blocks) {
+            if (!(block instanceof DictionaryBlock)) {
+                throw new IllegalArgumentException("block must be DictionaryBlock");
+            }
+        }
+
+        Set<DictionaryId> sourceIds = blocks.stream()
+                .map(block -> ((DictionaryBlock) block).getDictionarySourceId())
+                .distinct()
+                .collect(toSet());
+
+        if (sourceIds.size() != 1) {
+            throw new IllegalArgumentException("dictionarySourceIds must be the same");
+        }
+    }
+
+    private static int[] getNewIds(int positionCount, Slice ids, int[] remapIndex)
+    {
         int[] newIds = new int[positionCount];
         for (int i = 0; i < positionCount; i++) {
-            int newId = remapIndex[getIndex(i)];
+            int newId = remapIndex[getIndex(ids, i)];
             if (newId == -1) {
                 throw new IllegalStateException("reference to a non-existent key");
             }
             newIds[i] = newId;
         }
-        try {
-            Block compactDictionary = dictionary.copyPositions(dictionaryPositionsToCopy);
-            return new DictionaryBlock(positionCount, compactDictionary, wrappedIntArray(newIds), true);
+        return newIds;
+    }
+
+    private static boolean[] getReferencedPositions(Block dictionary, Slice ids, int positionCount)
+    {
+        int dictionarySize = dictionary.getPositionCount();
+        boolean[] isReferenced = new boolean[dictionarySize];
+        for (int i = 0; i < positionCount; i++) {
+            isReferenced[getIndex(ids, i)] = true;
         }
-        catch (UnsupportedOperationException e) {
-            // ignore if copy positions is not supported for the dictionary block
-            return this;
-        }
+        return isReferenced;
+    }
+
+    private static int getIndex(Slice ids, int i)
+    {
+        return ids.getInt(i * SIZE_OF_INT);
     }
 }

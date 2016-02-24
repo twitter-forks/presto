@@ -81,6 +81,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.block.BlockAssertions.createBooleansBlock;
@@ -106,6 +107,7 @@ import static com.facebook.presto.sql.planner.LocalExecutionPlanner.toTypes;
 import static com.facebook.presto.sql.planner.optimizations.CanonicalizeExpressions.canonicalizeExpression;
 import static com.facebook.presto.sql.tree.BooleanLiteral.TRUE_LITERAL;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
+import static com.facebook.presto.type.TypeRegistry.isTypeOnlyCoercion;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.testing.Assertions.assertInstanceOf;
 import static java.util.Objects.requireNonNull;
@@ -422,9 +424,14 @@ public final class FunctionAssertions
                 Expression rewrittenExpression = treeRewriter.defaultRewrite(node, context);
 
                 // cast expression if coercion is registered
+                Type type = analysis.getType(node);
                 Type coercion = analysis.getCoercion(node);
                 if (coercion != null) {
-                    rewrittenExpression = new Cast(rewrittenExpression, coercion.getTypeSignature().toString());
+                    rewrittenExpression = new Cast(
+                            rewrittenExpression,
+                            coercion.getTypeSignature().toString(),
+                            false,
+                            isTypeOnlyCoercion(type.getTypeSignature(), coercion.getTypeSignature()));
                 }
 
                 return rewrittenExpression;
@@ -543,7 +550,7 @@ public final class FunctionAssertions
                 session
         );
 
-        OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, new GenericPageProcessor(filterFunction, ImmutableList.of(projectionFunction)), toTypes(
+        OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, new PlanNodeId("test"), () -> new GenericPageProcessor(filterFunction, ImmutableList.of(projectionFunction)), toTypes(
                 ImmutableList.of(projectionFunction)));
         return operatorFactory.createOperator(createDriverContext(session));
     }
@@ -555,9 +562,9 @@ public final class FunctionAssertions
         IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(TEST_SESSION, metadata, SQL_PARSER, INPUT_TYPES, ImmutableList.of(filter));
 
         try {
-            PageProcessor processor = compiler.compilePageProcessor(toRowExpression(filter, expressionTypes), ImmutableList.of());
+            Supplier<PageProcessor> processor = compiler.compilePageProcessor(toRowExpression(filter, expressionTypes), ImmutableList.of());
 
-            return new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, processor, ImmutableList.<Type>of());
+            return new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, new PlanNodeId("test"), processor, ImmutableList.<Type>of());
         }
         catch (Throwable e) {
             if (e instanceof UncheckedExecutionException) {
@@ -577,9 +584,9 @@ public final class FunctionAssertions
 
         try {
             List<RowExpression> projections = ImmutableList.of(toRowExpression(projection, expressionTypes));
-            PageProcessor processor = compiler.compilePageProcessor(toRowExpression(filter, expressionTypes), projections);
+            Supplier<PageProcessor> processor = compiler.compilePageProcessor(toRowExpression(filter, expressionTypes), projections);
 
-            return new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, processor, ImmutableList.of(expressionTypes.get(projection)));
+            return new FilterAndProjectOperator.FilterAndProjectOperatorFactory(0, new PlanNodeId("test"), processor, ImmutableList.of(expressionTypes.get(projection)));
         }
         catch (Throwable e) {
             if (e instanceof UncheckedExecutionException) {
@@ -603,12 +610,13 @@ public final class FunctionAssertions
                     ImmutableList.of(toRowExpression(projection, expressionTypes)),
                     SOURCE_ID);
 
-            PageProcessor pageProcessor = compiler.compilePageProcessor(
+            Supplier<PageProcessor> pageProcessor = compiler.compilePageProcessor(
                     toRowExpression(filter, expressionTypes),
                     ImmutableList.of(toRowExpression(projection, expressionTypes)));
 
             return new ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory(
                     0,
+                    new PlanNodeId("test"),
                     SOURCE_ID,
                     PAGE_SOURCE_PROVIDER,
                     cursorProcessor,

@@ -17,7 +17,11 @@ import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableHandle;
+import com.facebook.presto.spi.ConnectorTableLayout;
+import com.facebook.presto.spi.ConnectorTableLayoutHandle;
+import com.facebook.presto.spi.ConnectorTableLayoutResult;
 import com.facebook.presto.spi.ConnectorTableMetadata;
+import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
@@ -27,8 +31,9 @@ import com.google.common.collect.ImmutableMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
+import java.util.Set;
 
-import static com.facebook.presto.connector.informationSchema.InformationSchemaColumnHandle.toInformationSchemaColumnHandles;
 import static com.facebook.presto.metadata.MetadataUtil.SchemaMetadataBuilder.schemaMetadataBuilder;
 import static com.facebook.presto.metadata.MetadataUtil.TableMetadataBuilder.tableMetadataBuilder;
 import static com.facebook.presto.metadata.MetadataUtil.findColumnMetadata;
@@ -40,6 +45,8 @@ import static com.google.common.base.Predicates.compose;
 import static com.google.common.base.Predicates.equalTo;
 import static com.google.common.collect.Iterables.filter;
 import static java.util.Objects.requireNonNull;
+import static java.util.function.Function.identity;
+import static java.util.stream.Collectors.toMap;
 
 public class InformationSchemaMetadata
         implements ConnectorMetadata
@@ -62,7 +69,6 @@ public class InformationSchemaMetadata
                     .column("column_default", VARCHAR)
                     .column("is_nullable", VARCHAR)
                     .column("data_type", VARCHAR)
-                    .column("is_partition_key", VARCHAR)
                     .column("comment", VARCHAR)
                     .build())
             .table(tableMetadataBuilder(TABLE_TABLES)
@@ -91,12 +97,10 @@ public class InformationSchemaMetadata
                     .build())
             .build();
 
-    private final String connectorId;
     private final String catalogName;
 
-    public InformationSchemaMetadata(String connectorId, String catalogName)
+    public InformationSchemaMetadata(String catalogName)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.catalogName = requireNonNull(catalogName, "catalogName is null");
     }
 
@@ -121,7 +125,7 @@ public class InformationSchemaMetadata
             return null;
         }
 
-        return new InformationSchemaTableHandle(connectorId, catalogName, tableName.getSchemaName(), tableName.getTableName());
+        return new InformationSchemaTableHandle(catalogName, tableName.getSchemaName(), tableName.getTableName());
     }
 
     @Override
@@ -161,7 +165,9 @@ public class InformationSchemaMetadata
 
         ConnectorTableMetadata tableMetadata = TABLES.get(informationSchemaTableHandle.getSchemaTableName());
 
-        return toInformationSchemaColumnHandles(connectorId, tableMetadata);
+        return tableMetadata.getColumns().stream()
+                .map(ColumnMetadata::getName)
+                .collect(toMap(identity(), InformationSchemaColumnHandle::new));
     }
 
     @Override
@@ -175,6 +181,20 @@ public class InformationSchemaMetadata
             }
         }
         return builder.build();
+    }
+
+    @Override
+    public List<ConnectorTableLayoutResult> getTableLayouts(ConnectorSession session, ConnectorTableHandle table, Constraint<ColumnHandle> constraint, Optional<Set<ColumnHandle>> desiredColumns)
+    {
+        InformationSchemaTableHandle handle = checkType(table, InformationSchemaTableHandle.class, "table");
+        ConnectorTableLayout layout = new ConnectorTableLayout(new InformationSchemaTableLayoutHandle(handle, constraint.getSummary()));
+        return ImmutableList.of(new ConnectorTableLayoutResult(layout, constraint.getSummary()));
+    }
+
+    @Override
+    public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
+    {
+        return new ConnectorTableLayout(handle);
     }
 
     static List<ColumnMetadata> informationSchemaTableColumns(SchemaTableName tableName)

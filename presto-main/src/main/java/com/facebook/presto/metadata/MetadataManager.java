@@ -18,13 +18,11 @@ import com.facebook.presto.block.BlockEncodingManager;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
+import com.facebook.presto.spi.ConnectorNewTableLayout;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
-import com.facebook.presto.spi.ConnectorPartition;
-import com.facebook.presto.spi.ConnectorPartitionResult;
 import com.facebook.presto.spi.ConnectorResolvedIndex;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableHandle;
-import com.facebook.presto.spi.ConnectorTableLayout;
 import com.facebook.presto.spi.ConnectorTableLayoutResult;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.ConnectorViewDefinition;
@@ -34,16 +32,15 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
-import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.tree.QualifiedName;
-import com.facebook.presto.transaction.TransactionHandle;
 import com.facebook.presto.transaction.TransactionId;
 import com.facebook.presto.transaction.TransactionManager;
 import com.facebook.presto.type.TypeDeserializer;
@@ -51,9 +48,11 @@ import com.facebook.presto.type.TypeRegistry;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.google.common.base.Joiner;
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import io.airlift.json.JsonCodec;
 import io.airlift.json.JsonCodecFactory;
@@ -91,8 +90,8 @@ import static com.facebook.presto.metadata.TableLayout.fromConnectorLayout;
 import static com.facebook.presto.metadata.ViewDefinition.ViewColumn;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_VIEW;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
-import static com.facebook.presto.spi.predicate.TupleDomain.extractFixedValues;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.transaction.TransactionManager.createTestTransactionManager;
@@ -113,9 +112,9 @@ public class MetadataManager
     private final ConcurrentMap<String, ConnectorEntry> connectorsByCatalog = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ConnectorEntry> connectorsById = new ConcurrentHashMap<>();
     private final FunctionRegistry functions;
+    private final ProcedureRegistry procedures;
     private final TypeManager typeManager;
     private final JsonCodec<ViewDefinition> viewCodec;
-    private final SplitManager splitManager;
     private final BlockEncodingSerde blockEncodingSerde;
     private final SessionPropertyManager sessionPropertyManager;
     private final TablePropertyManager tablePropertyManager;
@@ -123,29 +122,27 @@ public class MetadataManager
 
     public MetadataManager(FeaturesConfig featuresConfig,
             TypeManager typeManager,
-            SplitManager splitManager,
             BlockEncodingSerde blockEncodingSerde,
             SessionPropertyManager sessionPropertyManager,
             TablePropertyManager tablePropertyManager,
             TransactionManager transactionManager)
     {
-        this(featuresConfig, typeManager, createTestingViewCodec(), splitManager, blockEncodingSerde, sessionPropertyManager, tablePropertyManager, transactionManager);
+        this(featuresConfig, typeManager, createTestingViewCodec(), blockEncodingSerde, sessionPropertyManager, tablePropertyManager, transactionManager);
     }
 
     @Inject
     public MetadataManager(FeaturesConfig featuresConfig,
             TypeManager typeManager,
             JsonCodec<ViewDefinition> viewCodec,
-            SplitManager splitManager,
             BlockEncodingSerde blockEncodingSerde,
             SessionPropertyManager sessionPropertyManager,
             TablePropertyManager tablePropertyManager,
             TransactionManager transactionManager)
     {
         functions = new FunctionRegistry(typeManager, blockEncodingSerde, featuresConfig.isExperimentalSyntaxEnabled());
+        procedures = new ProcedureRegistry();
         this.typeManager = requireNonNull(typeManager, "types is null");
         this.viewCodec = requireNonNull(viewCodec, "viewCodec is null");
-        this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.blockEncodingSerde = requireNonNull(blockEncodingSerde, "blockEncodingSerde is null");
         this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
         this.tablePropertyManager = requireNonNull(tablePropertyManager, "tablePropertyManager is null");
@@ -159,10 +156,9 @@ public class MetadataManager
         FeaturesConfig featuresConfig = new FeaturesConfig();
         TypeManager typeManager = new TypeRegistry();
         SessionPropertyManager sessionPropertyManager = new SessionPropertyManager();
-        SplitManager splitManager = new SplitManager();
         BlockEncodingSerde blockEncodingSerde = new BlockEncodingManager(typeManager);
         TransactionManager transactionManager = createTestTransactionManager();
-        return new MetadataManager(featuresConfig, typeManager, splitManager, blockEncodingSerde, sessionPropertyManager, new TablePropertyManager(), transactionManager);
+        return new MetadataManager(featuresConfig, typeManager, blockEncodingSerde, sessionPropertyManager, new TablePropertyManager(), transactionManager);
     }
 
     public synchronized void registerConnectorCatalog(String connectorId, String catalogName)
@@ -308,35 +304,11 @@ public class MetadataManager
         ConnectorTableHandle connectorTable = table.getConnectorHandle();
         Predicate<Map<ColumnHandle, NullableValue>> predicate = constraint.predicate();
 
-        List<ConnectorTableLayoutResult> layouts;
         ConnectorEntry entry = getConnectorMetadata(connectorId);
         ConnectorMetadata metadata = entry.getMetadata(session);
-        TransactionHandle transaction = entry.getTransactionHandle(session);
+        ConnectorTransactionHandle transaction = entry.getTransactionHandle(session);
         ConnectorSession connectorSession = session.toConnectorSession(entry.getCatalog());
-        try {
-            layouts = metadata.getTableLayouts(connectorSession, connectorTable, new Constraint<>(summary, predicate::test), desiredColumns);
-        }
-        catch (UnsupportedOperationException e) {
-            ConnectorSplitManager connectorSplitManager = splitManager.getConnectorSplitManager(connectorId);
-            ConnectorPartitionResult result = connectorSplitManager.getPartitions(transaction.getTransactionHandle(), connectorSession, connectorTable, summary);
-
-            List<ConnectorPartition> partitions = result.getPartitions().stream()
-                    .filter(partition -> !partition.getTupleDomain().isNone())
-                    .filter(partition -> predicate.test(extractFixedValues(partition.getTupleDomain()).get()))
-                    .collect(toImmutableList());
-
-            List<TupleDomain<ColumnHandle>> partitionDomains = partitions.stream()
-                    .map(ConnectorPartition::getTupleDomain)
-                    .collect(toImmutableList());
-
-            TupleDomain<ColumnHandle> effectivePredicate = TupleDomain.none();
-            if (!partitionDomains.isEmpty()) {
-                effectivePredicate = TupleDomain.columnWiseUnion(partitionDomains);
-            }
-
-            ConnectorTableLayout layout = new ConnectorTableLayout(new LegacyTableLayoutHandle(connectorTable, partitions), Optional.empty(), effectivePredicate, Optional.empty(), Optional.of(partitionDomains), ImmutableList.of());
-            layouts = ImmutableList.of(new ConnectorTableLayoutResult(layout, result.getUndeterminedTupleDomain()));
-        }
+        List<ConnectorTableLayoutResult> layouts = metadata.getTableLayouts(connectorSession, connectorTable, new Constraint<>(summary, predicate::test), desiredColumns);
 
         return layouts.stream()
                 .map(layout -> new TableLayoutResult(fromConnectorLayout(connectorId, transaction, layout.getTableLayout()), layout.getUnenforcedConstraint()))
@@ -346,23 +318,10 @@ public class MetadataManager
     @Override
     public TableLayout getLayout(Session session, TableLayoutHandle handle)
     {
-        if (handle.getConnectorHandle() instanceof LegacyTableLayoutHandle) {
-            LegacyTableLayoutHandle legacyHandle = (LegacyTableLayoutHandle) handle.getConnectorHandle();
-            List<TupleDomain<ColumnHandle>> partitionDomains = legacyHandle.getPartitions().stream()
-                    .map(ConnectorPartition::getTupleDomain)
-                    .collect(toImmutableList());
-
-            TupleDomain<ColumnHandle> predicate = TupleDomain.none();
-            if (!partitionDomains.isEmpty()) {
-                predicate = TupleDomain.columnWiseUnion(partitionDomains);
-            }
-            return new TableLayout(handle, new ConnectorTableLayout(legacyHandle, Optional.empty(), predicate, Optional.empty(), Optional.of(partitionDomains), ImmutableList.of()));
-        }
-
         String connectorId = handle.getConnectorId();
         ConnectorEntry entry = getConnectorMetadata(connectorId);
         ConnectorMetadata metadata = entry.getMetadata(session);
-        TransactionHandle transaction = entry.getTransactionHandle(session);
+        ConnectorTransactionHandle transaction = entry.getTransactionHandle(session);
         return fromConnectorLayout(connectorId, transaction, metadata.getTableLayout(session.toConnectorSession(entry.getCatalog()), handle.getConnectorHandle()));
     }
 
@@ -520,14 +479,57 @@ public class MetadataManager
     }
 
     @Override
-    public OutputTableHandle beginCreateTable(Session session, String catalogName, TableMetadata tableMetadata)
+    public Optional<NewTableLayout> getInsertLayout(Session session, TableHandle target)
+    {
+        List<TableLayout> layouts = getLayouts(session, target, new Constraint<>(TupleDomain.all(), map -> true), Optional.empty())
+                .stream()
+                .map(TableLayoutResult::getLayout)
+                .filter(layout -> layout.getNodePartitioning().isPresent())
+                .collect(toImmutableList());
+
+        if (layouts.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (layouts.size() > 1) {
+            throw new PrestoException(NOT_SUPPORTED, "Tables with multiple layouts can not be written");
+        }
+
+        TableLayout layout = Iterables.getOnlyElement(layouts);
+        ConnectorPartitioningHandle partitioningHandle = layout.getNodePartitioning().get().getPartitioningHandle().getConnectorHandle();
+
+        Map<ColumnHandle, String> columnNamesByHandle = ImmutableBiMap.copyOf(getColumnHandles(session, target)).inverse();
+        List<String> partitionColumns = layout.getNodePartitioning().get().getPartitioningColumns().stream()
+                .map(columnNamesByHandle::get)
+                .collect(toImmutableList());
+
+        return Optional.of(new NewTableLayout(
+                layout.getConnectorId(),
+                lookupConnectorFor(target).getTransactionHandle(session),
+                new ConnectorNewTableLayout(partitioningHandle, partitionColumns)));
+    }
+
+    @Override
+    public Optional<NewTableLayout> getNewTableLayout(Session session, String catalogName, TableMetadata tableMetadata)
     {
         ConnectorEntry entry = connectorsByCatalog.get(catalogName);
         checkArgument(entry != null, "Catalog %s does not exist", catalogName);
         ConnectorMetadata metadata = entry.getMetadataForWrite(session);
-        TransactionHandle transactionHandle = entry.getTransactionHandle(session);
+        ConnectorTransactionHandle transactionHandle = entry.getTransactionHandle(session);
         ConnectorSession connectorSession = session.toConnectorSession(entry.getCatalog());
-        ConnectorOutputTableHandle handle = metadata.beginCreateTable(connectorSession, tableMetadata.getMetadata());
+        return metadata.getNewTableLayout(connectorSession, tableMetadata.getMetadata())
+                .map(layout -> new NewTableLayout(entry.getConnectorId(), transactionHandle, layout));
+    }
+
+    @Override
+    public OutputTableHandle beginCreateTable(Session session, String catalogName, TableMetadata tableMetadata, Optional<NewTableLayout> layout)
+    {
+        ConnectorEntry entry = connectorsByCatalog.get(catalogName);
+        checkArgument(entry != null, "Catalog %s does not exist", catalogName);
+        ConnectorMetadata metadata = entry.getMetadataForWrite(session);
+        ConnectorTransactionHandle transactionHandle = entry.getTransactionHandle(session);
+        ConnectorSession connectorSession = session.toConnectorSession(entry.getCatalog());
+        ConnectorOutputTableHandle handle = metadata.beginCreateTable(connectorSession, tableMetadata.getMetadata(), layout.map(NewTableLayout::getLayout));
         return new OutputTableHandle(entry.getConnectorId(), transactionHandle, handle);
     }
 
@@ -544,7 +546,7 @@ public class MetadataManager
     {
         ConnectorEntry entry = lookupConnectorFor(tableHandle);
         ConnectorMetadata metadata = entry.getMetadataForWrite(session);
-        TransactionHandle transactionHandle = entry.getTransactionHandle(session);
+        ConnectorTransactionHandle transactionHandle = entry.getTransactionHandle(session);
         ConnectorInsertTableHandle handle = metadata.beginInsert(session.toConnectorSession(entry.getCatalog()), tableHandle.getConnectorHandle());
         return new InsertTableHandle(tableHandle.getConnectorId(), transactionHandle, handle);
     }
@@ -689,7 +691,7 @@ public class MetadataManager
     {
         ConnectorEntry entry = lookupConnectorFor(tableHandle);
         ConnectorMetadata metadata = entry.getMetadata(session);
-        TransactionHandle transaction = entry.getTransactionHandle(session);
+        ConnectorTransactionHandle transaction = entry.getTransactionHandle(session);
         ConnectorSession connectorSession = session.toConnectorSession(entry.getCatalog());
         Optional<ConnectorResolvedIndex> resolvedIndex = metadata.resolveIndex(connectorSession, tableHandle.getConnectorHandle(), indexableColumns, outputColumns, tupleDomain);
         return resolvedIndex.map(resolved -> new ResolvedIndex(tableHandle.getConnectorId(), transaction, resolved));
@@ -700,6 +702,12 @@ public class MetadataManager
     {
         // TODO: transactional when FunctionRegistry is made transactional
         return functions;
+    }
+
+    @Override
+    public ProcedureRegistry getProcedureRegistry()
+    {
+        return procedures;
     }
 
     @Override
@@ -832,7 +840,7 @@ public class MetadataManager
             return metadata;
         }
 
-        public TransactionHandle getTransactionHandle(Session session)
+        public ConnectorTransactionHandle getTransactionHandle(Session session)
         {
             return transactionManager.getConnectorTransaction(session.getRequiredTransactionId(), connectorId);
         }

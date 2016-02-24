@@ -46,6 +46,7 @@ statement
         ADD COLUMN column=tableElement                                 #addColumn
     | CREATE (OR REPLACE)? VIEW qualifiedName AS query                 #createView
     | DROP VIEW (IF EXISTS)? qualifiedName                             #dropView
+    | CALL qualifiedName '(' (callArgument (',' callArgument)*)? ')'   #call
     | EXPLAIN ('(' explainOption (',' explainOption)* ')')? statement  #explain
     | SHOW TABLES ((FROM | IN) qualifiedName)? (LIKE pattern=STRING)?  #showTables
     | SHOW SCHEMAS ((FROM | IN) identifier)?                           #showSchemas
@@ -298,10 +299,14 @@ type
     : type ARRAY
     | ARRAY '<' type '>'
     | MAP '<' type ',' type '>'
-    | simpleType
+    | baseType ('(' typeParameter (',' typeParameter)* ')')?
     ;
 
-simpleType
+typeParameter
+    : INTEGER_VALUE | type
+    ;
+
+baseType
     : TIME_WITH_TIME_ZONE
     | TIMESTAMP_WITH_TIME_ZONE
     | identifier
@@ -351,6 +356,11 @@ levelOfIsolation
     | SERIALIZABLE                        #serializable
     ;
 
+callArgument
+    : expression                    #positionalArgument
+    | identifier '=>' expression    #namedArgument
+    ;
+
 qualifiedName
     : identifier ('.' identifier)*
     ;
@@ -375,7 +385,7 @@ number
 nonReserved
     : SHOW | TABLES | COLUMNS | COLUMN | PARTITIONS | FUNCTIONS | SCHEMAS | CATALOGS | SESSION
     | ADD
-    | OVER | PARTITION | RANGE | ROWS | PRECEDING | FOLLOWING | CURRENT | ROW | MAP
+    | OVER | PARTITION | RANGE | ROWS | PRECEDING | FOLLOWING | CURRENT | ROW | MAP | ARRAY
     | DATE | TIME | TIMESTAMP | INTERVAL | ZONE
     | YEAR | MONTH | DAY | HOUR | MINUTE | SECOND
     | EXPLAIN | FORMAT | TYPE | TEXT | GRAPHVIZ | LOGICAL | DISTRIBUTED
@@ -389,6 +399,7 @@ nonReserved
     | NO | DATA
     | START | TRANSACTION | COMMIT | ROLLBACK | WORK | ISOLATION | LEVEL
     | SERIALIZABLE | REPEATABLE | COMMITTED | UNCOMMITTED | READ | WRITE | ONLY
+    | CALL
     ;
 
 normalForm
@@ -543,6 +554,7 @@ UNCOMMITTED: 'UNCOMMITTED';
 READ: 'READ';
 WRITE: 'WRITE';
 ONLY: 'ONLY';
+CALL: 'CALL';
 
 NORMALIZE: 'NORMALIZE';
 NFD : 'NFD';

@@ -25,6 +25,8 @@ import com.facebook.presto.raptor.RaptorNodeSupplier;
 import com.facebook.presto.raptor.RaptorSplitManager;
 import com.facebook.presto.raptor.RaptorTableHandle;
 import com.facebook.presto.raptor.RaptorTableLayoutHandle;
+import com.facebook.presto.raptor.RaptorTransactionHandle;
+import com.facebook.presto.raptor.util.DaoSupplier;
 import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableHandle;
@@ -32,11 +34,13 @@ import com.facebook.presto.spi.ConnectorTableLayoutResult;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.json.JsonCodec;
+import io.airlift.units.Duration;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
 import org.testng.annotations.AfterMethod;
@@ -51,7 +55,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static com.facebook.presto.raptor.metadata.DatabaseShardManager.shardIndexTable;
-import static com.facebook.presto.raptor.metadata.TestDatabaseShardManager.createShardManager;
 import static com.facebook.presto.raptor.metadata.TestDatabaseShardManager.shardInfo;
 import static com.facebook.presto.raptor.util.Types.checkType;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
@@ -63,6 +66,7 @@ import static io.airlift.json.JsonCodec.jsonCodec;
 import static io.airlift.testing.Assertions.assertInstanceOf;
 import static io.airlift.testing.FileUtils.deleteRecursively;
 import static java.lang.String.format;
+import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.stream.Collectors.toList;
 import static org.testng.Assert.assertEquals;
 
@@ -94,7 +98,7 @@ public class TestRaptorSplitManager
         dbi.registerMapper(new TableColumn.Mapper(typeRegistry));
         dummyHandle = dbi.open();
         temporary = createTempDir();
-        shardManager = createShardManager(dbi);
+        shardManager = new DatabaseShardManager(dbi, new DaoSupplier<>(dbi, ShardDao.class), ImmutableSet::of, new Duration(0, MINUTES));
         InMemoryNodeManager nodeManager = new InMemoryNodeManager();
         RaptorNodeSupplier nodeSupplier = new RaptorNodeSupplier(nodeManager, new RaptorConnectorId("raptor"));
 
@@ -102,7 +106,7 @@ public class TestRaptorSplitManager
         nodeManager.addNode("raptor", new PrestoNode(nodeName, new URI("http://127.0.0.1/"), NodeVersion.UNKNOWN));
 
         RaptorConnectorId connectorId = new RaptorConnectorId("raptor");
-        metadata = new RaptorMetadata(connectorId, dbi, shardManager, SHARD_INFO_CODEC, SHARD_DELTA_CODEC);
+        metadata = new RaptorMetadata(connectorId.toString(), dbi, shardManager, SHARD_INFO_CODEC, SHARD_DELTA_CODEC);
 
         metadata.createTable(SESSION, TEST_TABLE);
         tableHandle = metadata.getTableHandle(SESSION, TEST_TABLE.getTable());
@@ -143,7 +147,7 @@ public class TestRaptorSplitManager
         ConnectorTableLayoutResult layout = getOnlyElement(layouts);
         assertInstanceOf(layout.getTableLayout().getHandle(), RaptorTableLayoutHandle.class);
 
-        ConnectorSplitSource splitSource = raptorSplitManager.getSplits(SESSION, layout.getTableLayout().getHandle());
+        ConnectorSplitSource splitSource = getSplits(raptorSplitManager, layout);
         int splitCount = 0;
         while (!splitSource.isFinished()) {
             splitCount += getFutureValue(splitSource.getNextBatch(1000)).size();
@@ -158,7 +162,7 @@ public class TestRaptorSplitManager
         deleteShardNodes();
 
         ConnectorTableLayoutResult layout = getOnlyElement(metadata.getTableLayouts(SESSION, tableHandle, Constraint.alwaysTrue(), Optional.empty()));
-        ConnectorSplitSource splitSource = raptorSplitManager.getSplits(SESSION, layout.getTableLayout().getHandle());
+        ConnectorSplitSource splitSource = getSplits(raptorSplitManager, layout);
         getFutureValue(splitSource.getNextBatch(1000));
     }
 
@@ -176,7 +180,7 @@ public class TestRaptorSplitManager
         deleteShardNodes();
 
         ConnectorTableLayoutResult layout = getOnlyElement(metadata.getTableLayouts(SESSION, tableHandle, Constraint.alwaysTrue(), Optional.empty()));
-        ConnectorSplitSource partitionSplit = raptorSplitManagerWithBackup.getSplits(SESSION, layout.getTableLayout().getHandle());
+        ConnectorSplitSource partitionSplit = getSplits(raptorSplitManagerWithBackup, layout);
         List<ConnectorSplit> batch = getFutureValue(partitionSplit.getNextBatch(1), PrestoException.class);
         assertEquals(getOnlyElement(getOnlyElement(batch).getAddresses()), node.getHostAndPort());
     }
@@ -189,7 +193,7 @@ public class TestRaptorSplitManager
 
         RaptorSplitManager raptorSplitManagerWithBackup = new RaptorSplitManager(new RaptorConnectorId("fbraptor"), ImmutableSet::of, shardManager, true);
         ConnectorTableLayoutResult layout = getOnlyElement(metadata.getTableLayouts(SESSION, tableHandle, Constraint.alwaysTrue(), Optional.empty()));
-        ConnectorSplitSource splitSource = raptorSplitManagerWithBackup.getSplits(SESSION, layout.getTableLayout().getHandle());
+        ConnectorSplitSource splitSource = getSplits(raptorSplitManagerWithBackup, layout);
         getFutureValue(splitSource.getNextBatch(1000), PrestoException.class);
     }
 
@@ -197,5 +201,11 @@ public class TestRaptorSplitManager
     {
         dummyHandle.execute("DELETE FROM shard_nodes");
         dummyHandle.execute(format("UPDATE %s SET node_ids = ''", shardIndexTable(tableId)));
+    }
+
+    private static ConnectorSplitSource getSplits(RaptorSplitManager splitManager, ConnectorTableLayoutResult layout)
+    {
+        ConnectorTransactionHandle transaction = new RaptorTransactionHandle();
+        return splitManager.getSplits(transaction, SESSION, layout.getTableLayout().getHandle());
     }
 }

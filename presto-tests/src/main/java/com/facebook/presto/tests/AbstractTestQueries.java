@@ -30,7 +30,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
@@ -50,7 +49,6 @@ import java.util.Set;
 
 import static com.facebook.presto.connector.informationSchema.InformationSchemaMetadata.INFORMATION_SCHEMA;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TimeType.TIME;
@@ -69,7 +67,7 @@ import static com.facebook.presto.testing.TestingAccessControlManager.TestingPri
 import static com.facebook.presto.testing.TestingAccessControlManager.privilege;
 import static com.facebook.presto.tests.QueryAssertions.assertContains;
 import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
-import static com.facebook.presto.tests.QueryAssertions.assertQuery;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.tpch.TpchTable.ORDERS;
 import static io.airlift.tpch.TpchTable.tableNameGetter;
@@ -136,6 +134,14 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("SELECT NULL", "SELECT NULL FROM (SELECT * FROM ORDERS LIMIT 1)");
+    }
+
+    @Test
+    public void testLimitIntMax()
+            throws Exception
+    {
+        assertQuery("SELECT orderkey from orders LIMIT " + Integer.MAX_VALUE);
+        assertQuery("SELECT orderkey from orders ORDER BY orderkey LIMIT " + Integer.MAX_VALUE);
     }
 
     @Test
@@ -498,7 +504,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult actual = computeActual("SELECT nan(), infinity(), -infinity()");
-        MaterializedRow row = Iterables.getOnlyElement(actual.getMaterializedRows());
+        MaterializedRow row = getOnlyElement(actual.getMaterializedRows());
         assertEquals(row.getField(0), Double.NaN);
         assertEquals(row.getField(1), Double.POSITIVE_INFINITY);
         assertEquals(row.getField(2), Double.NEGATIVE_INFINITY);
@@ -628,26 +634,14 @@ public abstract class AbstractTestQueries
     public void testApproximateCountDistinct()
             throws Exception
     {
-        MaterializedResult actual = computeActual("SELECT approx_distinct(custkey) FROM orders");
-
-        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
-                .row(996)
-                .build();
-
-        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
-    }
-
-    @Test
-    public void testApproximateCountDistinctWithStandardError()
-            throws Exception
-    {
-        MaterializedResult actual = computeActual("SELECT approx_distinct(custkey, 0.023) FROM orders");
-
-        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
-                .row(996)
-                .build();
-
-        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+        assertQuery("SELECT approx_distinct(custkey) FROM orders", "SELECT 996");
+        assertQuery("SELECT approx_distinct(custkey, 0.023) FROM orders", "SELECT 996");
+        assertQuery("SELECT approx_distinct(CAST(custkey AS DOUBLE)) FROM orders", "SELECT 1031");
+        assertQuery("SELECT approx_distinct(CAST(custkey AS DOUBLE), 0.023) FROM orders", "SELECT 1031");
+        assertQuery("SELECT approx_distinct(CAST(custkey AS VARCHAR)) FROM orders", "SELECT 1011");
+        assertQuery("SELECT approx_distinct(CAST(custkey AS VARCHAR), 0.023) FROM orders", "SELECT 1011");
+        assertQuery("SELECT approx_distinct(to_utf8(CAST(custkey AS VARCHAR))) FROM orders", "SELECT 1011");
+        assertQuery("SELECT approx_distinct(to_utf8(CAST(custkey AS VARCHAR)), 0.023) FROM orders", "SELECT 1011");
     }
 
     @Test
@@ -1525,6 +1519,26 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testJoinWithConstantPredicatePushDown()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT\n" +
+                "  a.orderstatus\n" +
+                "  , a.clerk\n" +
+                "FROM (\n" +
+                "  SELECT DISTINCT orderstatus, clerk FROM orders\n" +
+                ") a\n" +
+                "INNER JOIN (\n" +
+                "  SELECT DISTINCT orderstatus, clerk FROM orders\n" +
+                ") b\n" +
+                "ON\n" +
+                "  a.orderstatus = b.orderstatus\n" +
+                "  and a.clerk = b.clerk\n" +
+                "where a.orderstatus = 'F'\n");
+    }
+
+    @Test
     public void testJoinUsing()
             throws Exception
     {
@@ -2387,6 +2401,19 @@ public abstract class AbstractTestQueries
 
         // argument in group by
         assertQuery("SELECT EXTRACT(YEAR FROM now()), count(*) FROM orders GROUP BY now()");
+    }
+
+    @Test
+    public void testGroupByNullConstant()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT count(*)\n" +
+                "FROM (\n" +
+                "  SELECT cast(null as VARCHAR) constant, orderdate\n" +
+                "  FROM orders\n" +
+                ") a\n" +
+                "group by constant, orderdate\n");
     }
 
     @Test
@@ -3506,7 +3533,7 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT orderkey, CASE orderstatus WHEN 'O' THEN 'a' END FROM orders");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:67: All CASE results must be the same type: varchar")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:67: All CASE results must be the same type: varchar(1)\\E")
     public void testCaseNoElseInconsistentResultType()
         throws Exception
     {
@@ -3556,6 +3583,7 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT 2 in (1, NULL, 3)", "values null");
         assertQuery("SELECT x FROM (values DATE '1970-01-01', DATE '1970-01-03') t(x) WHERE x IN (DATE '1970-01-01')", "values DATE '1970-01-01'");
         assertQuery("SELECT x FROM (values TIMESTAMP '1970-01-01 00:01:00+00:00', TIMESTAMP '1970-01-01 08:01:00+08:00', TIMESTAMP '1970-01-01 00:01:00+08:00') t(x) WHERE x IN (TIMESTAMP '1970-01-01 00:01:00+00:00')", "values TIMESTAMP '1970-01-01 00:01:00+00:00', TIMESTAMP '1970-01-01 08:01:00+08:00'");
+        assertQuery("SELECT COUNT(*) FROM (values 1) t(x) WHERE x IN (null, 0)", "SELECT 0");
 
         String longValues =  range(0, 20_000).asLongStream()
                 .mapToObj(Long::toString)
@@ -3682,8 +3710,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3691,8 +3718,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (FORMAT GRAPHVIZ) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getGraphvizExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getGraphvizExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3700,8 +3726,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE LOGICAL) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3709,8 +3734,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE LOGICAL, FORMAT TEXT) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3718,8 +3742,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE LOGICAL, FORMAT GRAPHVIZ) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getGraphvizExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getGraphvizExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3727,8 +3750,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE DISTRIBUTED) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, DISTRIBUTED));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, DISTRIBUTED));
     }
 
     @Test
@@ -3736,8 +3758,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE DISTRIBUTED, FORMAT TEXT) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, DISTRIBUTED));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, DISTRIBUTED));
     }
 
     @Test
@@ -3745,8 +3766,7 @@ public abstract class AbstractTestQueries
     {
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE DISTRIBUTED, FORMAT GRAPHVIZ) " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getGraphvizExplainPlan(query, DISTRIBUTED));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getGraphvizExplainPlan(query, DISTRIBUTED));
     }
 
     @Test
@@ -3754,8 +3774,7 @@ public abstract class AbstractTestQueries
     {
         String query = "EXPLAIN SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, getExplainPlan(query, LOGICAL));
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getExplainPlan(query, LOGICAL));
     }
 
     @Test
@@ -3782,8 +3801,7 @@ public abstract class AbstractTestQueries
     private void assertExplainDdl(String query, String expected)
     {
         MaterializedResult result = computeActual("EXPLAIN " + query);
-        String actual = Iterables.getOnlyElement(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(actual, expected);
+        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), expected);
     }
 
     @Test
@@ -3791,8 +3809,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult result = computeActual("SHOW CATALOGS");
-        Set<String> catalogNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(catalogNames.contains(getSession().getCatalog().get()));
+        assertTrue(result.getOnlyColumnAsSet().contains(getSession().getCatalog().get()));
     }
 
     @Test
@@ -3800,8 +3817,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult result = computeActual("SHOW SCHEMAS");
-        ImmutableSet<String> schemaNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(schemaNames.containsAll(ImmutableSet.of(getSession().getSchema().get(), INFORMATION_SCHEMA)));
+        assertTrue(result.getOnlyColumnAsSet().containsAll(ImmutableSet.of(getSession().getSchema().get(), INFORMATION_SCHEMA)));
     }
 
     @Test
@@ -3809,8 +3825,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult result = computeActual(format("SHOW SCHEMAS FROM %s", getSession().getCatalog().get()));
-        ImmutableSet<String> schemaNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(schemaNames.containsAll(ImmutableSet.of(getSession().getSchema().get(), INFORMATION_SCHEMA)));
+        assertTrue(result.getOnlyColumnAsSet().containsAll(ImmutableSet.of(getSession().getSchema().get(), INFORMATION_SCHEMA)));
     }
 
     @Test
@@ -3820,8 +3835,7 @@ public abstract class AbstractTestQueries
         Set<String> expectedTables = ImmutableSet.copyOf(transform(TpchTable.getTables(), tableNameGetter()));
 
         MaterializedResult result = computeActual("SHOW TABLES");
-        Set<String> tableNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(tableNames.containsAll(expectedTables));
+        assertTrue(result.getOnlyColumnAsSet().containsAll(expectedTables));
     }
 
     @Test
@@ -3834,12 +3848,10 @@ public abstract class AbstractTestQueries
         String schema = getSession().getSchema().get();
 
         MaterializedResult result = computeActual("SHOW TABLES FROM " + schema);
-        Set<String> tableNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(tableNames.containsAll(expectedTables));
+        assertTrue(result.getOnlyColumnAsSet().containsAll(expectedTables));
 
         result = computeActual("SHOW TABLES FROM " + catalog + "." + schema);
-        tableNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertTrue(tableNames.containsAll(expectedTables));
+        assertTrue(result.getOnlyColumnAsSet().containsAll(expectedTables));
 
         try {
             computeActual("SHOW TABLES FROM UNKNOWN");
@@ -3858,8 +3870,7 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult result = computeActual("SHOW TABLES LIKE 'or%'");
-        ImmutableSet<String> tableNames = ImmutableSet.copyOf(transform(result.getMaterializedRows(), onlyColumnGetter()));
-        assertEquals(tableNames, ImmutableSet.of(ORDERS.getTableName()));
+        assertEquals(result.getOnlyColumnAsSet(), ImmutableSet.of(ORDERS.getTableName()));
     }
 
     @Test
@@ -3868,16 +3879,16 @@ public abstract class AbstractTestQueries
     {
         MaterializedResult actual = computeActual("SHOW COLUMNS FROM orders");
 
-        MaterializedResult expected = resultBuilder(getSession(), VARCHAR, VARCHAR, BOOLEAN, BOOLEAN, VARCHAR)
-                .row("orderkey", "bigint", true, false, "")
-                .row("custkey", "bigint", true, false, "")
-                .row("orderstatus", "varchar", true, false, "")
-                .row("totalprice", "double", true, false, "")
-                .row("orderdate", "date", true, false, "")
-                .row("orderpriority", "varchar", true, false, "")
-                .row("clerk", "varchar", true, false, "")
-                .row("shippriority", "bigint", true, false, "")
-                .row("comment", "varchar", true, false, "")
+        MaterializedResult expected = resultBuilder(getSession(), VARCHAR, VARCHAR, VARCHAR)
+                .row("orderkey", "bigint", "")
+                .row("custkey", "bigint", "")
+                .row("orderstatus", "varchar", "")
+                .row("totalprice", "double",  "")
+                .row("orderdate", "date", "")
+                .row("orderpriority", "varchar", "")
+                .row("clerk", "varchar", "")
+                .row("shippriority", "bigint", "")
+                .row("comment", "varchar", "")
                 .build();
 
         assertEquals(actual, expected);
@@ -3936,8 +3947,8 @@ public abstract class AbstractTestQueries
         assertEquals(functions.get("rank").asList().get(0).getField(3), "window");
 
         assertTrue(functions.containsKey("rank"), "Expected function names " + functions + " to contain 'split_part'");
-        assertEquals(functions.get("split_part").asList().get(0).getField(1), "varchar");
-        assertEquals(functions.get("split_part").asList().get(0).getField(2), "varchar, varchar, bigint");
+        assertEquals(functions.get("split_part").asList().get(0).getField(1), "varchar(x)");
+        assertEquals(functions.get("split_part").asList().get(0).getField(2), "varchar(x), varchar, bigint");
         assertEquals(functions.get("split_part").asList().get(0).getField(3), "scalar");
 
         assertFalse(functions.containsKey("like"), "Expected function names " + functions + " not to contain 'like'");
@@ -4603,6 +4614,10 @@ public abstract class AbstractTestQueries
                 multipleRowsErrorMsg);
         assertQueryFails("SELECT (VALUES (1), (2)) IN (1,2)",
                 multipleRowsErrorMsg);
+
+        // exposes a bug in optimize hash generation because EnforceSingleNode does not
+        // support more than one column from the underlying query
+        assertQuery("SELECT custkey, (SELECT DISTINCT custkey FROM orders ORDER BY custkey LIMIT 1) FROM orders");
     }
 
     @Test
@@ -4679,6 +4694,21 @@ public abstract class AbstractTestQueries
                 "WHERE orders.orderkey = orders.orderkey\n" +
                 "  AND lineitem.orderkey % 4 = 0\n" +
                 "  AND (lineitem.suppkey % 2 = orders.orderkey % 2 OR orders.orderkey IS NULL)");
+    }
+
+    @Test
+    public void testLeftJoinPredicatePushdownWithNullConstant()
+            throws Exception
+    {
+        assertQuery("" +
+                "SELECT count(*)\n" +
+                "FROM orders a\n" +
+                "LEFT OUTER JOIN orders b\n" +
+                "  ON a.clerk = b.clerk\n" +
+                "WHERE a.orderpriority='5-LOW'\n" +
+                "  AND b.orderpriority='1-URGENT'\n" +
+                "  AND b.clerk is null\n" +
+                "  AND a.orderkey % 4 = 0\n");
     }
 
     @Test
@@ -4794,7 +4824,7 @@ public abstract class AbstractTestQueries
                 "  ON table1.col1a = table2.col2a\n" +
                 "  WHERE rand() * 1000 > table1.col1b\n" +
                 ")");
-        MaterializedRow row = Iterables.getOnlyElement(materializedResult.getMaterializedRows());
+        MaterializedRow row = getOnlyElement(materializedResult.getMaterializedRows());
         assertEquals(row.getFieldCount(), 1);
         long count = (Long) row.getField(0);
         // Technically non-deterministic unit test but has essentially a next to impossible chance of a false positive
@@ -4820,7 +4850,7 @@ public abstract class AbstractTestQueries
                 "  LIMIT 1000\n" +
                 ")\n" +
                 "WHERE rand() > 0.5");
-        MaterializedRow row = Iterables.getOnlyElement(materializedResult.getMaterializedRows());
+        MaterializedRow row = getOnlyElement(materializedResult.getMaterializedRows());
         assertEquals(row.getFieldCount(), 1);
         long count = (Long) row.getField(0);
         // Technically non-deterministic unit test but has essentially a next to impossible chance of a false positive
@@ -4840,7 +4870,7 @@ public abstract class AbstractTestQueries
                 "  LIMIT 1000\n" +
                 ")\n" +
                 "WHERE rand() > 0.5");
-        MaterializedRow row = Iterables.getOnlyElement(materializedResult.getMaterializedRows());
+        MaterializedRow row = getOnlyElement(materializedResult.getMaterializedRows());
         assertEquals(row.getFieldCount(), 1);
         long count = (Long) row.getField(0);
         // Technically non-deterministic unit test but has essentially a next to impossible chance of a false positive
@@ -4963,25 +4993,28 @@ public abstract class AbstractTestQueries
         computeActual("SELECT greatest(rgb(255, 0, 0))");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:10: '<>' cannot be applied to bigint, varchar\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:10: '<>' cannot be applied to bigint, varchar(1)\\E")
     public void testTypeMismatch()
     {
         computeActual("SELECT 1 <> 'x'");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:8: Unknown type: ARRAY<FOO>\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:8: Unknown type: ARRAY(FOO)\\E")
     public void testInvalidType()
     {
-        computeActual("SELECT CAST(null AS array<foo>)");
+        computeActual("SELECT CAST(null AS array(foo))");
     }
 
     @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:21: '+' cannot be applied to varchar, bigint\\E")
     public void testInvalidTypeInfixOperator()
     {
+        // Comment on why error message references varchar(214783647) instead of varchar(2) which seems expected result type for concatenation in expression.
+        // Currently variable argument functions do not play well with arguments using parametrized types.
+        // The variable argument functions mechanism requires that all the arguments are of exactly same type. We cannot enforce that base must match but parameters may differ.
         computeActual("SELECT ('a' || 'z') + (3 * 4) / 5");
     }
 
-    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:12: Cannot check if varchar is BETWEEN bigint and varchar\\E")
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "\\Qline 1:12: Cannot check if varchar(1) is BETWEEN bigint and varchar(1)\\E")
     public void testInvalidTypeBetweenOperator()
     {
         computeActual("SELECT 'a' BETWEEN 3 AND 'z'");

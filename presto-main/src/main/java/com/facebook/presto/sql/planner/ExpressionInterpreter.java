@@ -78,6 +78,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Functions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import io.airlift.joni.Regex;
@@ -141,10 +142,8 @@ public class ExpressionInterpreter
         return new ExpressionInterpreter(expression, metadata, session, expressionTypes, true);
     }
 
-    public static Object evaluateConstantExpression(Expression expression, Type expectedType, Metadata metadata, Session session, Set<Expression> columnReferences)
+    public static Object evaluateConstantExpression(Expression expression, Type expectedType, Metadata metadata, Session session)
     {
-        requireNonNull(columnReferences, "columnReferences is null");
-
         ExpressionAnalyzer analyzer = createConstantAnalyzer(metadata, session);
         analyzer.analyze(expression, new RelationType(), new AnalysisContext());
 
@@ -158,7 +157,7 @@ public class ExpressionInterpreter
         IdentityHashMap<Expression, Type> coercions = new IdentityHashMap<>();
         coercions.putAll(analyzer.getExpressionCoercions());
         coercions.put(expression, expectedType);
-        return evaluateConstantExpression(expression, coercions, metadata, session, columnReferences);
+        return evaluateConstantExpression(expression, coercions, metadata, session, ImmutableSet.of());
     }
 
     public static Object evaluateConstantExpression(Expression expression, IdentityHashMap<Expression, Type> coercions, Metadata metadata, Session session, Set<Expression> columnReferences)
@@ -178,6 +177,7 @@ public class ExpressionInterpreter
 
                 // cast expression if coercion is registered
                 Type coerceToType = coercions.get(node);
+
                 if (coerceToType != null) {
                     rewrittenExpression = new Cast(rewrittenExpression, coerceToType.getTypeSignature().toString());
                 }
@@ -918,13 +918,17 @@ public class ExpressionInterpreter
             Object value = process(node.getExpression(), context);
 
             if (value instanceof Expression) {
-                return new Cast((Expression) value, node.getType(), node.isSafe());
+                return new Cast((Expression) value, node.getType(), node.isSafe(), node.isTypeOnly());
+            }
+
+            if (node.isTypeOnly()) {
+                return value;
             }
 
             // hack!!! don't optimize CASTs for types that cannot be represented in the SQL AST
             // TODO: this will not be an issue when we migrate to RowExpression tree for this, which allows arbitrary literals.
             if (optimize && !FunctionRegistry.isSupportedLiteralType(expressionTypes.get(node))) {
-                return new Cast(toExpression(value, expressionTypes.get(node.getExpression())), node.getType(), node.isSafe());
+                return new Cast(toExpression(value, expressionTypes.get(node.getExpression())), node.getType(), node.isSafe(), node.isTypeOnly());
             }
 
             if (value == null) {

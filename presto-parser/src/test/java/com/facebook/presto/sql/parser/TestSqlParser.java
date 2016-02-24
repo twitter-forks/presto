@@ -21,6 +21,8 @@ import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BinaryLiteral;
 import com.facebook.presto.sql.tree.BooleanLiteral;
+import com.facebook.presto.sql.tree.Call;
+import com.facebook.presto.sql.tree.CallArgument;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.Commit;
 import com.facebook.presto.sql.tree.ComparisonExpression;
@@ -91,7 +93,6 @@ import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.Optional;
@@ -238,6 +239,7 @@ public class TestSqlParser
     public void testCast()
             throws Exception
     {
+        assertCast("foo(42, 55) ARRAY", "ARRAY(foo(42,55))");
         assertCast("varchar");
         assertCast("bigint");
         assertCast("BIGINT");
@@ -252,15 +254,34 @@ public class TestSqlParser
         assertCast("foo");
         assertCast("FOO");
 
-        assertCast("ARRAY<bigint>");
-        assertCast("ARRAY<BIGINT>");
-        assertCast("array<bigint>");
-        assertCast("array < bigint  >", "ARRAY<bigint>");
-        assertCast("array<array<bigint>>");
-        assertCast("foo ARRAY", "ARRAY<foo>");
-        assertCast("boolean array  array ARRAY", "ARRAY<ARRAY<ARRAY<boolean>>>");
-        assertCast("boolean ARRAY ARRAY ARRAY", "ARRAY<ARRAY<ARRAY<boolean>>>");
-        assertCast("ARRAY<boolean> ARRAY ARRAY", "ARRAY<ARRAY<ARRAY<boolean>>>");
+        assertCast("ARRAY<bigint>", "ARRAY(bigint)");
+        assertCast("ARRAY<BIGINT>", "ARRAY(BIGINT)");
+        assertCast("array<bigint>", "array(bigint)");
+        assertCast("array < bigint  >", "ARRAY(bigint)");
+
+        assertCast("ARRAY(bigint)");
+        assertCast("ARRAY(BIGINT)");
+        assertCast("array(bigint)");
+        assertCast("array ( bigint  )", "ARRAY(bigint)");
+
+        assertCast("array<array<bigint>>", "array(array(bigint))");
+        assertCast("array(array(bigint))");
+
+        assertCast("foo ARRAY", "ARRAY(foo)");
+        assertCast("boolean array  array ARRAY", "ARRAY(ARRAY(ARRAY(boolean)))");
+        assertCast("boolean ARRAY ARRAY ARRAY", "ARRAY(ARRAY(ARRAY(boolean)))");
+        assertCast("ARRAY<boolean> ARRAY ARRAY", "ARRAY(ARRAY(ARRAY(boolean)))");
+
+        assertCast("map(BIGINT,array(VARCHAR))");
+        assertCast("map<BIGINT,array<VARCHAR>>", "map(BIGINT,array(VARCHAR))");
+
+        assertCast("varchar(42)");
+        assertCast("foo(42,55)");
+        assertCast("foo(BIGINT,array(VARCHAR))");
+        assertCast("ARRAY<varchar(42)>", "ARRAY(varchar(42))");
+        assertCast("ARRAY<foo(42,55)>", "ARRAY(foo(42,55))");
+        assertCast("varchar(42) ARRAY", "ARRAY(varchar(42))");
+        assertCast("foo(42, 55) ARRAY", "ARRAY(foo(42,55))");
     }
 
     @Test
@@ -1229,6 +1250,18 @@ public class TestSqlParser
         assertEquals(new BinaryLiteral("ab 01").toHexString(), "AB01");
     }
 
+    @Test
+    public void testCall()
+            throws Exception
+    {
+        assertStatement("CALL foo()", new Call(QualifiedName.of("foo"), ImmutableList.of()));
+        assertStatement("CALL foo(123, a => 1, b => 'go', 456)", new Call(QualifiedName.of("foo"), ImmutableList.of(
+                        new CallArgument(new LongLiteral("123")),
+                        new CallArgument("a", new LongLiteral("1")),
+                        new CallArgument("b", new StringLiteral("go")),
+                        new CallArgument(new LongLiteral("456")))));
+    }
+
     private static void assertCast(String type)
     {
         assertCast(type, type);
@@ -1267,7 +1300,7 @@ public class TestSqlParser
         }
         catch (ParsingException e) {
             if (!e.getErrorMessage().matches(expectedErrorMessageRegex)) {
-                Assert.fail(String.format("Expected error message to match '%s', but was: '%s'", expectedErrorMessageRegex, e.getErrorMessage()));
+                fail(format("Expected error message to match '%s', but was: '%s'", expectedErrorMessageRegex, e.getErrorMessage()));
             }
         }
     }

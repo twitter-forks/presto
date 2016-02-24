@@ -15,6 +15,7 @@ package com.facebook.presto.raptor.metadata;
 
 import com.facebook.presto.raptor.backup.BackupStore;
 import com.facebook.presto.raptor.storage.StorageService;
+import com.facebook.presto.raptor.util.DaoSupplier;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PrestoException;
 import com.google.common.annotations.VisibleForTesting;
@@ -43,14 +44,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 import static com.facebook.presto.raptor.RaptorErrorCode.RAPTOR_ERROR;
-import static com.facebook.presto.raptor.util.DatabaseUtil.onDemandDao;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.callable;
 import static java.util.concurrent.Executors.newFixedThreadPool;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class ShardCleaner
@@ -58,12 +57,14 @@ public class ShardCleaner
     private static final Logger log = Logger.get(ShardCleaner.class);
 
     private final IDBI dbi;
-    private final ShardManagerDao dao;
+    private final DaoSupplier<ShardDao> shardDaoSupplier;
+    private final ShardDao dao;
     private final String currentNode;
     private final boolean coordinator;
     private final StorageService storageService;
     private final Optional<BackupStore> backupStore;
     private final Duration maxTransactionAge;
+    private final Duration transactionCleanerInterval;
     private final Duration localCleanerInterval;
     private final Duration localCleanTime;
     private final Duration localPurgeTime;
@@ -78,17 +79,20 @@ public class ShardCleaner
     @Inject
     public ShardCleaner(
             @ForMetadata IDBI dbi,
+            DaoSupplier<ShardDao> shardDaoSupplier,
             NodeManager nodeManager,
             StorageService storageService,
             Optional<BackupStore> backupStore,
             ShardCleanerConfig config)
     {
         this(dbi,
+                shardDaoSupplier,
                 nodeManager.getCurrentNode().getNodeIdentifier(),
                 nodeManager.getCoordinators().contains(nodeManager.getCurrentNode()),
                 storageService,
                 backupStore,
                 config.getMaxTransactionAge(),
+                config.getTransactionCleanerInterval(),
                 config.getLocalCleanerInterval(),
                 config.getLocalCleanTime(),
                 config.getLocalPurgeTime(),
@@ -100,11 +104,13 @@ public class ShardCleaner
 
     public ShardCleaner(
             IDBI dbi,
+            DaoSupplier<ShardDao> shardDaoSupplier,
             String currentNode,
             boolean coordinator,
             StorageService storageService,
             Optional<BackupStore> backupStore,
             Duration maxTransactionAge,
+            Duration transactionCleanerInterval,
             Duration localCleanerInterval,
             Duration localCleanTime,
             Duration localPurgeTime,
@@ -114,12 +120,14 @@ public class ShardCleaner
             int backupDeletionThreads)
     {
         this.dbi = requireNonNull(dbi, "dbi is null");
-        this.dao = onDemandDao(dbi, ShardManagerDao.class);
+        this.shardDaoSupplier = requireNonNull(shardDaoSupplier, "shardDaoSupplier is null");
+        this.dao = shardDaoSupplier.onDemand();
         this.currentNode = requireNonNull(currentNode, "currentNode is null");
         this.coordinator = coordinator;
         this.storageService = requireNonNull(storageService, "storageService is null");
         this.backupStore = requireNonNull(backupStore, "backupStore is null");
         this.maxTransactionAge = requireNonNull(maxTransactionAge, "maxTransactionAge");
+        this.transactionCleanerInterval = requireNonNull(transactionCleanerInterval, "transactionCleanerInterval is null");
         this.localCleanerInterval = requireNonNull(localCleanerInterval, "localCleanerInterval is null");
         this.localCleanTime = requireNonNull(localCleanTime, "localCleanTime is null");
         this.localPurgeTime = requireNonNull(localPurgeTime, "localPurgeTime is null");
@@ -166,7 +174,7 @@ public class ShardCleaner
             catch (Throwable t) {
                 log.error(t, "Error cleaning transactions");
             }
-        }, 0, 5, MINUTES);
+        }, 0, transactionCleanerInterval.toMillis(), MILLISECONDS);
     }
 
     private void startBackupCleanup()
@@ -211,7 +219,7 @@ public class ShardCleaner
     void deleteOldShards()
     {
         try (Handle handle = dbi.open()) {
-            ShardManagerDao dao = handle.attach(ShardManagerDao.class);
+            ShardDao dao = shardDaoSupplier.attach(handle);
 
             dao.dropTableTemporaryCreatedShards();
             dao.createTableTemporaryCreatedShards();

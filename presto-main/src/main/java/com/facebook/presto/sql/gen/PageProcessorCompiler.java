@@ -33,6 +33,7 @@ import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.DictionaryBlock;
+import com.facebook.presto.spi.block.DictionaryId;
 import com.facebook.presto.spi.block.LazyBlock;
 import com.facebook.presto.spi.block.RunLengthEncodedBlock;
 import com.facebook.presto.spi.type.Type;
@@ -44,16 +45,17 @@ import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.RowExpressionVisitor;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.google.common.primitives.Primitives;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.stream.IntStream;
 
 import static com.facebook.presto.bytecode.Access.FINAL;
 import static com.facebook.presto.bytecode.Access.PRIVATE;
@@ -69,7 +71,6 @@ import static com.facebook.presto.bytecode.expression.BytecodeExpressions.consta
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.equal;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeStatic;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.lessThan;
-import static com.facebook.presto.bytecode.expression.BytecodeExpressions.multiply;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.newArray;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.newInstance;
 import static com.facebook.presto.bytecode.instruction.JumpInstruction.jump;
@@ -78,8 +79,9 @@ import static com.facebook.presto.sql.gen.BytecodeUtils.loadConstant;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.Iterables.concat;
-import static io.airlift.slice.SizeOf.SIZE_OF_INT;
+import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.String.format;
+import static java.util.Collections.singletonList;
 import static java.util.stream.Collectors.toList;
 
 public class PageProcessorCompiler
@@ -102,7 +104,8 @@ public class PageProcessorCompiler
         for (int i = 0; i < projections.size(); i++) {
             MethodDefinition project = generateProjectMethod(classDefinition, callSiteBinder, cachedInstanceBinder, "project_" + i, projections.get(i));
             MethodDefinition projectColumnar = generateProjectColumnarMethod(classDefinition, callSiteBinder, "projectColumnar_" + i, projections.get(i), project);
-            MethodDefinition projectDictionary = generateProjectDictionaryMethod(classDefinition, "projectDictionary_" + i, projections.get(i), project, projectColumnar);
+            MethodDefinition projectRLE = generateProjectRLEMethod(classDefinition, "projectRLE_" + i, projections.get(i), project, projectColumnar);
+            MethodDefinition projectDictionary = generateProjectDictionaryMethod(classDefinition, "projectDictionary_" + i, projections.get(i), project, projectColumnar, projectRLE);
 
             projectMethods.add(project);
             projectColumnarMethods.add(projectColumnar);
@@ -116,7 +119,7 @@ public class PageProcessorCompiler
         generateProcessMethod(classDefinition, filter, projections, projectMethodDefinitions);
         generateGetNonLazyPageMethod(classDefinition, filter, projections);
         generateProcessColumnarMethod(classDefinition, projections, projectColumnarMethodDefinitions);
-        generateProcessColumnarDictionaryMethod(classDefinition, projections, projectColumnarMethodDefinitions, projectDictionaryMethodDefinitions);
+        generateProcessColumnarDictionaryMethod(classDefinition, projections, projectDictionaryMethodDefinitions);
 
         generateFilterPageMethod(classDefinition, filter);
         generateFilterMethod(classDefinition, callSiteBinder, cachedInstanceBinder, filter);
@@ -129,6 +132,9 @@ public class PageProcessorCompiler
         FieldDefinition inputDictionaries = classDefinition.declareField(a(PRIVATE, FINAL), "inputDictionaries", Block[].class);
         FieldDefinition outputDictionaries = classDefinition.declareField(a(PRIVATE, FINAL), "outputDictionaries", Block[].class);
 
+        FieldDefinition inputFilterDictionary = classDefinition.declareField(a(PRIVATE), "inputFilterDictionary", Block.class);
+        FieldDefinition filterResult = classDefinition.declareField(a(PRIVATE), "filterResult", boolean[].class);
+
         BytecodeBlock body = constructorDefinition.getBody();
         Variable thisVariable = constructorDefinition.getThis();
 
@@ -138,6 +144,10 @@ public class PageProcessorCompiler
 
         body.append(thisVariable.setField(inputDictionaries, newArray(type(Block[].class), projectionCount)));
         body.append(thisVariable.setField(outputDictionaries, newArray(type(Block[].class), projectionCount)));
+
+        body.append(thisVariable.setField(inputFilterDictionary, constantNull(Block.class)));
+        body.append(thisVariable.setField(filterResult, constantNull(boolean[].class)));
+
         cachedInstanceBinder.generateInitializations(thisVariable, body);
         body.ret();
     }
@@ -318,11 +328,11 @@ public class PageProcessorCompiler
         return method;
     }
 
-    private static MethodDefinition generateProjectDictionaryMethod(
+    private static MethodDefinition generateProjectRLEMethod(
             ClassDefinition classDefinition,
             String methodName,
             RowExpression projection,
-            MethodDefinition project,
+            MethodDefinition projectionMethod,
             MethodDefinition projectColumnar)
     {
         Parameter session = arg("session", ConnectorSession.class);
@@ -338,6 +348,74 @@ public class PageProcessorCompiler
                 .add(pageBuilder)
                 .add(projectionIndex)
                 .build();
+        MethodDefinition method = classDefinition.declareMethod(a(PRIVATE), methodName, type(Block.class), params);
+
+        BytecodeBlock body = method.getBody();
+        Scope scope = method.getScope();
+        Variable thisVariable = method.getThis();
+        List<Integer> inputChannels = getInputChannels(projection);
+
+        if (inputChannels.size() != 1) {
+            body.append(thisVariable.invoke(projectColumnar, params)
+                    .ret());
+            return method;
+        }
+
+        Variable inputBlock = scope.declareVariable("inputBlock", body, page.invoke("getBlock", Block.class, constantInt(getOnlyElement(inputChannels))));
+        body.append(new IfStatement()
+                .condition(inputBlock.instanceOf(RunLengthEncodedBlock.class))
+                .ifFalse(thisVariable.invoke(projectColumnar, params)
+                        .ret()));
+
+        Variable valueBlock = scope.declareVariable("valueBlock", body, inputBlock.cast(RunLengthEncodedBlock.class).invoke("getValue", Block.class));
+        Variable blockBuilder = scope.declareVariable("blockBuilder", body, pageBuilder.invoke("getBlockBuilder", BlockBuilder.class, projectionIndex));
+
+        body.append(invokeProject(
+                thisVariable,
+                session,
+                singletonList(valueBlock),
+                constantInt(0),
+                pageBuilder,
+                projectionIndex,
+                projectionMethod));
+        Variable outputValueBlock = scope.declareVariable("outputValueBlock", body, blockBuilder.invoke("build", Block.class));
+        body.append(newInstance(RunLengthEncodedBlock.class, outputValueBlock, selectedPositions.length())
+                .ret());
+
+        return method;
+    }
+
+    private static MethodDefinition generateProjectDictionaryMethod(
+            ClassDefinition classDefinition,
+            String methodName,
+            RowExpression projection,
+            MethodDefinition project,
+            MethodDefinition projectColumnar,
+            MethodDefinition projectRLE)
+    {
+        Parameter session = arg("session", ConnectorSession.class);
+        Parameter page = arg("page", Page.class);
+        Parameter selectedPositions = arg("selectedPositions", int[].class);
+        Parameter pageBuilder = arg("pageBuilder", PageBuilder.class);
+        Parameter projectionIndex = arg("projectionIndex", int.class);
+        Parameter dictionarySourceIds = arg("dictionarySourceIds", Map.class);
+
+        List<Parameter> params = ImmutableList.<Parameter>builder()
+                .add(session)
+                .add(page)
+                .add(selectedPositions)
+                .add(pageBuilder)
+                .add(projectionIndex)
+                .add(dictionarySourceIds)
+                .build();
+
+        List<Parameter> columnarParams = ImmutableList.<Parameter>builder()
+                .add(session)
+                .add(page)
+                .add(selectedPositions)
+                .add(pageBuilder)
+                .add(projectionIndex)
+                .build();
 
         MethodDefinition method = classDefinition.declareMethod(a(PRIVATE), methodName, type(Block.class), params);
         BytecodeBlock body = method.getBody();
@@ -347,15 +425,22 @@ public class PageProcessorCompiler
         List<Integer> inputChannels = getInputChannels(projection);
 
         if (inputChannels.size() != 1) {
-            body.append(thisVariable.invoke(projectColumnar, params).ret());
+            body.append(thisVariable.invoke(projectColumnar, columnarParams)
+                    .ret());
             return method;
         }
 
-        Variable inputBlock = scope.declareVariable("inputBlock", body, page.invoke("getBlock", Block.class, constantInt(Iterables.getOnlyElement(inputChannels))));
-        IfStatement ifStatement = new IfStatement()
+        Variable inputBlock = scope.declareVariable("inputBlock", body, page.invoke("getBlock", Block.class, constantInt(getOnlyElement(inputChannels))));
+
+        body.append(new IfStatement()
+                .condition(inputBlock.instanceOf(RunLengthEncodedBlock.class))
+                .ifTrue(thisVariable.invoke(projectRLE, columnarParams)
+                        .ret()));
+
+        body.append(new IfStatement()
                 .condition(inputBlock.instanceOf(DictionaryBlock.class))
-                .ifFalse(thisVariable.invoke(projectColumnar, params).ret());
-        body.append(ifStatement);
+                .ifFalse(thisVariable.invoke(projectColumnar, columnarParams)
+                        .ret()));
 
         Variable blockBuilder = scope.declareVariable("blockBuilder", body, pageBuilder.invoke("getBlockBuilder", BlockBuilder.class, projectionIndex));
         Variable cardinality = scope.declareVariable("cardinality", body, selectedPositions.length());
@@ -363,6 +448,8 @@ public class PageProcessorCompiler
         Variable dictionary = scope.declareVariable(Block.class, "dictionary");
         Variable ids = scope.declareVariable(Slice.class, "ids");
         Variable dictionaryCount = scope.declareVariable(int.class, "dictionaryCount");
+        Variable inputSourceId = scope.declareVariable(DictionaryId.class, "inputSourceId");
+        Variable outputSourceId = scope.declareVariable(DictionaryId.class, "outputSourceId");
 
         Variable outputDictionary = scope.declareVariable(Block.class, "outputDictionary");
         Variable outputIds = scope.declareVariable(int[].class, "outputIds");
@@ -372,10 +459,12 @@ public class PageProcessorCompiler
 
         Variable position = scope.declareVariable("position", body, constantInt(0));
 
-        body.comment("Extract dictionary and ids")
-                .append(dictionary.set(inputBlock.cast(DictionaryBlock.class).invoke("getDictionary", Block.class)))
-                .append(ids.set(inputBlock.cast(DictionaryBlock.class).invoke("getIds", Slice.class)))
-                .append(dictionaryCount.set(dictionary.invoke("getPositionCount", int.class)));
+        BytecodeExpression castDictionaryBlock = inputBlock.cast(DictionaryBlock.class);
+        body.comment("Extract dictionary, ids, positionCount and dictionarySourceId")
+                .append(dictionary.set(castDictionaryBlock.invoke("getDictionary", Block.class)))
+                .append(ids.set(castDictionaryBlock.invoke("getIds", Slice.class)))
+                .append(dictionaryCount.set(dictionary.invoke("getPositionCount", int.class)))
+                .append(inputSourceId.set(castDictionaryBlock.invoke("getDictionarySourceId", DictionaryId.class)));
 
         BytecodeBlock projectDictionary = new BytecodeBlock()
                 .comment("Project dictionary")
@@ -401,16 +490,26 @@ public class PageProcessorCompiler
                         .initialize(position.set(constantInt(0)))
                         .condition(lessThan(position, cardinality))
                         .update(position.increment())
-                        .body(outputIds.setElement(position, ids.invoke("getInt", int.class, multiply(selectedPositions.getElement(position), constantInt(SIZE_OF_INT))))));
+                        .body(outputIds.setElement(position, castDictionaryBlock.invoke("getId", int.class, selectedPositions.getElement(position)))));
 
-        body.append(newInstance(DictionaryBlock.class, cardinality, outputDictionary, invokeStatic(Slices.class, "wrappedIntArray", Slice.class, outputIds)).cast(Block.class).ret());
+        body.append(outputSourceId.set(dictionarySourceIds.invoke("get", Object.class, inputSourceId.cast(Object.class)).cast(DictionaryId.class)));
+        body.append(new IfStatement()
+                .condition(equal(outputSourceId, constantNull(DictionaryId.class)))
+                .ifTrue(new BytecodeBlock()
+                        .append(outputSourceId.set(invokeStatic(DictionaryId.class, "randomDictionaryId", DictionaryId.class)))
+                        .append(dictionarySourceIds.invoke("put", Object.class, inputSourceId.cast(Object.class), outputSourceId.cast(Object.class)))
+                        .pop()));
+
+        BytecodeExpression idsSlice = invokeStatic(Slices.class, "wrappedIntArray", Slice.class, outputIds);
+        body.append(newInstance(DictionaryBlock.class, cardinality, outputDictionary, idsSlice, constantFalse(), outputSourceId)
+                .cast(Block.class)
+                .ret());
         return method;
     }
 
     private static void generateProcessColumnarDictionaryMethod(
             ClassDefinition classDefinition,
             List<RowExpression> projections,
-            List<MethodDefinition> projectColumnarMethods,
             List<MethodDefinition> projectDictionaryMethods)
     {
         Parameter session = arg("session", ConnectorSession.class);
@@ -424,13 +523,15 @@ public class PageProcessorCompiler
 
         Variable selectedPositions = scope.declareVariable("selectedPositions", body, thisVariable.invoke("filterPage", int[].class, session, page));
         Variable cardinality = scope.declareVariable("cardinality", body, selectedPositions.length());
+        Variable dictionarySourceIds = scope.declareVariable(type(Map.class, DictionaryId.class, DictionaryId.class), "dictionarySourceIds");
+        body.append(dictionarySourceIds.set(newInstance(type(HashMap.class, DictionaryId.class, DictionaryId.class))));
 
         body.comment("if no rows selected return null")
                 .append(new IfStatement()
                         .condition(equal(cardinality, constantInt(0)))
                         .ifTrue(constantNull(Page.class).ret()));
 
-        if (projectColumnarMethods.isEmpty()) {
+        if (projections.isEmpty()) {
             // if no projections, return new page with selected rows
             body.append(newInstance(Page.class, cardinality, newArray(type(Block[].class), 0)).ret());
             return;
@@ -450,6 +551,7 @@ public class PageProcessorCompiler
                     .add(selectedPositions)
                     .add(pageBuilder)
                     .add(constantInt(projectionIndex))
+                    .add(dictionarySourceIds)
                     .build();
 
             body.append(outputBlocks.setElement(projectionIndex, thisVariable.invoke(projectDictionaryMethods.get(projectionIndex), params)));
@@ -515,6 +617,8 @@ public class PageProcessorCompiler
 
         Variable positionCount = scope.declareVariable("positionCount", body, page.invoke("getPositionCount", int.class));
         Variable selectedPositions = scope.declareVariable("selectedPositions", body, newArray(type(int[].class), positionCount));
+        Variable selectedCount = scope.declareVariable("selectedCount", body, constantInt(0));
+        Variable position = scope.declareVariable(int.class, "position");
 
         List<Integer> filterChannels = getInputChannels(filter);
 
@@ -525,23 +629,103 @@ public class PageProcessorCompiler
             blockVariablesBuilder.add(blockVariable);
         }
         List<Variable> blockVariables = blockVariablesBuilder.build();
+        if (filterChannels.size() == 1) {
+            BytecodeBlock ifFilterOnDictionaryBlock = getBytecodeFilterOnDictionary(session, scope, blockVariables.get(0));
+            BytecodeBlock ifFilterOnRLEBlock = getBytecodeFilterOnRLE(session, scope, blockVariables.get(0));
 
-        Variable selectedCount = scope.declareVariable("selectedCount", body, constantInt(0));
-        Variable position = scope.declareVariable(int.class, "position");
+            body.append(new IfStatement()
+                    .condition(blockVariables.get(0).instanceOf(DictionaryBlock.class))
+                    .ifTrue(ifFilterOnDictionaryBlock));
 
-        IfStatement ifStatement = new IfStatement();
-        ifStatement.condition(invokeFilter(thisVariable, session, blockVariables, position))
-                .ifTrue()
-                .append(selectedPositions.setElement(selectedCount, position))
-                .append(selectedCount.increment());
+            body.append(new IfStatement()
+                    .condition(blockVariables.get(0).instanceOf(RunLengthEncodedBlock.class))
+                    .ifTrue(ifFilterOnRLEBlock));
+        }
 
         body.append(new ForLoop()
                 .initialize(position.set(constantInt(0)))
                 .condition(lessThan(position, positionCount))
                 .update(position.increment())
-                .body(ifStatement));
+                .body(new IfStatement()
+                        .condition(invokeFilter(thisVariable, session, blockVariables, position))
+                        .ifTrue(new BytecodeBlock()
+                                .append(selectedPositions.setElement(selectedCount, position))
+                                .append(selectedCount.increment()))));
 
-        body.append(invokeStatic(Arrays.class, "copyOf", int[].class, selectedPositions, selectedCount).ret());
+        body.append(invokeStatic(Arrays.class, "copyOf", int[].class, selectedPositions, selectedCount)
+                .ret());
+    }
+
+    private static BytecodeBlock getBytecodeFilterOnRLE(Parameter session, Scope scope, Variable blockVariable)
+    {
+        Variable positionCount = scope.getVariable("positionCount");
+        Variable thisVariable = scope.getThis();
+
+        BytecodeBlock ifFilterOnRLEBlock = new BytecodeBlock();
+        Variable rleBlock = scope.declareVariable("rleBlock", ifFilterOnRLEBlock, blockVariable.cast(RunLengthEncodedBlock.class));
+        Variable rleValue = scope.declareVariable("rleValue", ifFilterOnRLEBlock, rleBlock.invoke("getValue", Block.class));
+
+        ifFilterOnRLEBlock.append(new IfStatement()
+                .condition(invokeFilter(thisVariable, session, singletonList(rleValue), constantInt(0)))
+                .ifTrue(invokeStatic(IntStream.class, "range", IntStream.class, constantInt(0), positionCount)
+                        .invoke("toArray", int[].class)
+                        .ret())
+                .ifFalse(newArray(type(int[].class), constantInt(0))
+                        .ret()));
+
+        return ifFilterOnRLEBlock;
+    }
+
+    @NotNull
+    private static BytecodeBlock getBytecodeFilterOnDictionary(
+            Parameter session,
+            Scope scope,
+            Variable blockVariable)
+    {
+        Variable position = scope.getVariable("position");
+        Variable positionCount = scope.getVariable("positionCount");
+        Variable selectedCount = scope.getVariable("selectedCount");
+        Variable selectedPositions = scope.getVariable("selectedPositions");
+        Variable thisVariable = scope.getThis();
+
+        BytecodeExpression inputFilterDictionary = thisVariable.getField("inputFilterDictionary", Block.class);
+        BytecodeExpression filterResult = thisVariable.getField("filterResult", boolean[].class);
+
+        BytecodeBlock ifFilterOnDictionaryBlock = new BytecodeBlock();
+
+        Variable dictionaryBlock = scope.declareVariable("dictionaryBlock", ifFilterOnDictionaryBlock, blockVariable.cast(DictionaryBlock.class));
+        Variable dictionary = scope.declareVariable("dictionary", ifFilterOnDictionaryBlock, dictionaryBlock.invoke("getDictionary", Block.class));
+        Variable dictionaryPositionCount = scope.declareVariable("dictionaryPositionCount", ifFilterOnDictionaryBlock, dictionary.invoke("getPositionCount", int.class));
+        Variable selectedDictionaryPositions = scope.declareVariable("selectedDictionaryPositions", ifFilterOnDictionaryBlock, newArray(type(boolean[].class), dictionaryPositionCount));
+
+        // if cached value is available use it else filter dictionary and cache it
+        ifFilterOnDictionaryBlock.append(new IfStatement()
+            .condition(equal(dictionary, inputFilterDictionary))
+            .ifTrue(selectedDictionaryPositions.set(filterResult))
+            .ifFalse(new BytecodeBlock()
+                .append(new ForLoop()
+                            .initialize(position.set(constantInt(0)))
+                            .condition(lessThan(position, dictionaryPositionCount))
+                            .update(position.increment())
+                            .body(selectedDictionaryPositions.setElement(position, invokeFilter(thisVariable, session, singletonList(dictionary), position))))
+                .append(thisVariable.setField("inputFilterDictionary", dictionary))
+                .append(thisVariable.setField("filterResult", selectedDictionaryPositions))));
+
+        // create selected positions
+        ifFilterOnDictionaryBlock.append(new ForLoop()
+                .initialize(position.set(constantInt(0)))
+                .condition(lessThan(position, positionCount))
+                .update(position.increment())
+                .body(new IfStatement()
+                        .condition(selectedDictionaryPositions.getElement(dictionaryBlock.invoke("getId", int.class, position)))
+                        .ifTrue(new BytecodeBlock()
+                                .append(selectedPositions.setElement(selectedCount, position))
+                                .append(selectedCount.increment()))));
+
+        // return selectedPositions
+        ifFilterOnDictionaryBlock.append(invokeStatic(Arrays.class, "copyOf", int[].class, selectedPositions, selectedCount)
+                .ret());
+        return ifFilterOnDictionaryBlock;
     }
 
     private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, RowExpression filter)
@@ -605,7 +789,11 @@ public class PageProcessorCompiler
         BytecodeBlock body = method.getBody();
 
         Variable wasNullVariable = scope.declareVariable("wasNull", body, constantFalse());
-        BytecodeExpressionVisitor visitor = new BytecodeExpressionVisitor(callSiteBinder, cachedInstanceBinder, fieldReferenceCompiler(callSiteBinder, position, wasNullVariable), metadata.getFunctionRegistry());
+        BytecodeExpressionVisitor visitor = new BytecodeExpressionVisitor(
+                callSiteBinder,
+                cachedInstanceBinder,
+                fieldReferenceCompiler(callSiteBinder, position, wasNullVariable),
+                metadata.getFunctionRegistry());
 
         body.getVariable(output)
                 .comment("evaluate projection: " + projection.toString())
@@ -618,15 +806,15 @@ public class PageProcessorCompiler
     private static boolean isIdentityExpression(RowExpression expression)
     {
         List<RowExpression> rowExpressions = Expressions.subExpressions(ImmutableList.of(expression));
-        return rowExpressions.size() == 1 && Iterables.getOnlyElement(rowExpressions) instanceof InputReferenceExpression;
+        return rowExpressions.size() == 1 && getOnlyElement(rowExpressions) instanceof InputReferenceExpression;
     }
 
     private static boolean isConstantExpression(RowExpression expression)
     {
         List<RowExpression> rowExpressions = Expressions.subExpressions(ImmutableList.of(expression));
         return rowExpressions.size() == 1 &&
-                Iterables.getOnlyElement(rowExpressions) instanceof ConstantExpression &&
-                ((ConstantExpression) Iterables.getOnlyElement(rowExpressions)).getValue() != null;
+                getOnlyElement(rowExpressions) instanceof ConstantExpression &&
+                ((ConstantExpression) getOnlyElement(rowExpressions)).getValue() != null;
     }
 
     private static List<Integer> getInputChannels(Iterable<RowExpression> expressions)

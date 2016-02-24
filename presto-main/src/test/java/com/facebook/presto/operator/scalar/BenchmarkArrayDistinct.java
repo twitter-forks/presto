@@ -123,7 +123,7 @@ public class BenchmarkArrayDistinct
             }
 
             ImmutableList<RowExpression> projections = projectionsBuilder.build();
-            pageProcessor = compiler.compilePageProcessor(new ConstantExpression(true, BooleanType.BOOLEAN), projections);
+            pageProcessor = compiler.compilePageProcessor(new ConstantExpression(true, BooleanType.BOOLEAN), projections).get();
             pageBuilder = new PageBuilder(projections.stream().map(RowExpression::getType).collect(Collectors.toList()));
             page = new Page(blocks);
         }
@@ -181,8 +181,8 @@ public class BenchmarkArrayDistinct
     }
 
     @ScalarFunction
-    @SqlType("array<varchar>")
-    public static Block oldArrayDistinct(@SqlType("array<varchar>") Block array)
+    @SqlType("array(varchar)")
+    public static Block oldArrayDistinct(@SqlType("array(varchar)") Block array)
     {
         if (array.getPositionCount() == 0) {
             return array;
