@@ -13,34 +13,28 @@
  */
 package com.facebook.presto.metadata;
 
-import com.facebook.presto.connector.informationSchema.InformationSchemaHandleResolver;
 import com.facebook.presto.connector.informationSchema.InformationSchemaTableHandle;
-import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.ConnectorTableHandle;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.google.inject.Stage;
-import com.google.inject.multibindings.MapBinder;
 import io.airlift.json.JsonModule;
-import io.airlift.testing.Assertions;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 
+import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 @Test(singleThreaded = true)
 public class TestInformationSchemaTableHandle
 {
-    private static final String CONNECTOR_ID = "information_connector_id";
     private static final Map<String, Object> SCHEMA_AS_MAP = ImmutableMap.<String, Object>of(
-            "@type", "information_schema",
-            "connectorId", CONNECTOR_ID,
+            "@type", "$info_schema",
             "catalogName", "information_schema_catalog",
             "schemaName", "information_schema_schema",
             "tableName", "information_schema_table"
@@ -51,13 +45,7 @@ public class TestInformationSchemaTableHandle
     @BeforeMethod
     public void startUp()
     {
-        Injector injector = Guice.createInjector(Stage.PRODUCTION,
-                new JsonModule(),
-                new HandleJsonModule(),
-                binder -> {
-                    MapBinder<String, ConnectorHandleResolver> connectorHandleResolverBinder = MapBinder.newMapBinder(binder, String.class, ConnectorHandleResolver.class);
-                    connectorHandleResolverBinder.addBinding("information_schema").toInstance(new InformationSchemaHandleResolver(CONNECTOR_ID));
-                });
+        Injector injector = Guice.createInjector(new JsonModule(), new HandleJsonModule());
 
         objectMapper = injector.getInstance(ObjectMapper.class);
     }
@@ -67,7 +55,6 @@ public class TestInformationSchemaTableHandle
             throws Exception
     {
         InformationSchemaTableHandle informationSchemaTableHandle = new InformationSchemaTableHandle(
-                CONNECTOR_ID,
                 "information_schema_catalog",
                 "information_schema_schema",
                 "information_schema_table");
@@ -87,7 +74,6 @@ public class TestInformationSchemaTableHandle
         assertEquals(tableHandle.getClass(), InformationSchemaTableHandle.class);
         InformationSchemaTableHandle informationSchemaHandle = (InformationSchemaTableHandle) tableHandle;
 
-        assertEquals(informationSchemaHandle.getConnectorId(), CONNECTOR_ID);
         assertEquals(informationSchemaHandle.getCatalogName(), "information_schema_catalog");
         assertEquals(informationSchemaHandle.getSchemaName(), "information_schema_schema");
         assertEquals(informationSchemaHandle.getTableName(), "information_schema_table");
@@ -97,6 +83,6 @@ public class TestInformationSchemaTableHandle
             throws Exception
     {
         Map<String, Object> jsonMap = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-        Assertions.assertEqualsIgnoreOrder(jsonMap.entrySet(), expectedMap.entrySet());
+        assertEqualsIgnoreOrder(jsonMap.entrySet(), expectedMap.entrySet());
     }
 }

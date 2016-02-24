@@ -14,9 +14,7 @@
 package com.facebook.presto.transaction;
 
 import com.facebook.presto.security.LegacyConnectorAccessControl;
-import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.ConnectorIndexResolver;
-import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.connector.Connector;
 import com.facebook.presto.spi.connector.ConnectorAccessControl;
@@ -37,8 +35,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-import static com.facebook.presto.spi.StandardErrorCode.UNSUPPORTED_ISOLATION_LEVEL;
-import static java.lang.String.format;
+import static com.facebook.presto.spi.transaction.IsolationLevel.checkConnectorSupports;
 import static java.util.Objects.requireNonNull;
 
 public class LegacyTransactionConnector
@@ -57,16 +54,8 @@ public class LegacyTransactionConnector
     @Override
     public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly)
     {
-        if (!connector.getIsolationLevel().meetsRequirementOf(isolationLevel)) {
-            throw new PrestoException(UNSUPPORTED_ISOLATION_LEVEL, format("Connector supported isolation level %s does not meet requested isolation level %s", connector.getIsolationLevel(), isolationLevel));
-        }
+        checkConnectorSupports(connector.getIsolationLevel(), isolationLevel);
         return LegacyTransactionHandle.create(connectorId);
-    }
-
-    @Override
-    public ConnectorHandleResolver getHandleResolver()
-    {
-        return new LegacyTransactionHandleResolver(connectorId, connector.getHandleResolver());
     }
 
     @Override

@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.connector.system;
 
-import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
@@ -22,7 +21,6 @@ import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.transaction.IsolationLevel;
 import com.facebook.presto.transaction.InternalConnector;
-import com.facebook.presto.transaction.TransactionHandle;
 import com.facebook.presto.transaction.TransactionId;
 
 import java.util.Set;
@@ -34,17 +32,16 @@ public class SystemConnector
         implements InternalConnector
 {
     private final String connectorId;
-    private final SystemHandleResolver handleResolver;
     private final ConnectorMetadata metadata;
     private final ConnectorSplitManager splitManager;
     private final ConnectorRecordSetProvider recordSetProvider;
-    private final Function<TransactionId, TransactionHandle> transactionHandleFunction;
+    private final Function<TransactionId, ConnectorTransactionHandle> transactionHandleFunction;
 
     public SystemConnector(
             String connectorId,
             NodeManager nodeManager,
             Set<SystemTable> tables,
-            Function<TransactionId, TransactionHandle> transactionHandleFunction)
+            Function<TransactionId, ConnectorTransactionHandle> transactionHandleFunction)
     {
         requireNonNull(connectorId, "connectorId is null");
         requireNonNull(nodeManager, "nodeManager is null");
@@ -52,7 +49,6 @@ public class SystemConnector
         requireNonNull(transactionHandleFunction, "transactionHandleFunction is null");
 
         this.connectorId = connectorId;
-        this.handleResolver = new SystemHandleResolver(connectorId);
         this.metadata = new SystemTablesMetadata(connectorId, tables);
         this.splitManager = new SystemSplitManager(nodeManager, tables);
         this.recordSetProvider = new SystemRecordSetProvider(tables);
@@ -75,12 +71,6 @@ public class SystemConnector
     public ConnectorSplitManager getSplitManager()
     {
         return splitManager;
-    }
-
-    @Override
-    public ConnectorHandleResolver getHandleResolver()
-    {
-        return handleResolver;
     }
 
     @Override

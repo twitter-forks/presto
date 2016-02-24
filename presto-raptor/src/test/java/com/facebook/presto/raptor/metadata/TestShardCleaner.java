@@ -17,6 +17,7 @@ import com.facebook.presto.raptor.backup.BackupStore;
 import com.facebook.presto.raptor.backup.FileBackupStore;
 import com.facebook.presto.raptor.storage.FileStorageService;
 import com.facebook.presto.raptor.storage.StorageService;
+import com.facebook.presto.raptor.util.DaoSupplier;
 import com.facebook.presto.raptor.util.UuidUtil.UuidArgumentFactory;
 import org.intellij.lang.annotations.Language;
 import org.skife.jdbi.v2.DBI;
@@ -82,11 +83,13 @@ public class TestShardCleaner
         ShardCleanerConfig config = new ShardCleanerConfig();
         cleaner = new ShardCleaner(
                 dbi,
+                new DaoSupplier<>(dbi, ShardDao.class),
                 "node1",
                 true,
                 storageService,
                 Optional.of(backupStore),
                 config.getMaxTransactionAge(),
+                config.getTransactionCleanerInterval(),
                 config.getLocalCleanerInterval(),
                 config.getLocalCleanTime(),
                 config.getLocalPurgeTime(),
@@ -117,7 +120,7 @@ public class TestShardCleaner
         long txn2 = dao.insertTransaction(new Timestamp(now - HOURS.toMillis(25)));
         long txn3 = dao.insertTransaction(new Timestamp(now));
 
-        ShardManagerDao shardDao = dbi.onDemand(ShardManagerDao.class);
+        ShardDao shardDao = dbi.onDemand(ShardDao.class);
         assertEquals(shardDao.finalizeTransaction(txn1, true), 1);
 
         assertQuery("SELECT transaction_id, successful FROM transactions",
@@ -137,7 +140,7 @@ public class TestShardCleaner
     public void testDeleteOldShards()
             throws Exception
     {
-        ShardManagerDao dao = dbi.onDemand(ShardManagerDao.class);
+        ShardDao dao = dbi.onDemand(ShardDao.class);
 
         UUID shard1 = randomUUID();
         UUID shard2 = randomUUID();
@@ -200,7 +203,7 @@ public class TestShardCleaner
             throws Exception
     {
         TestingDao dao = dbi.onDemand(TestingDao.class);
-        ShardManagerDao shardDao = dbi.onDemand(ShardManagerDao.class);
+        ShardDao shardDao = dbi.onDemand(ShardDao.class);
 
         UUID shard1 = randomUUID();
         UUID shard2 = randomUUID();
@@ -247,7 +250,7 @@ public class TestShardCleaner
             throws Exception
     {
         TestingDao dao = dbi.onDemand(TestingDao.class);
-        ShardManagerDao shardDao = dbi.onDemand(ShardManagerDao.class);
+        ShardDao shardDao = dbi.onDemand(ShardDao.class);
 
         UUID shard1 = randomUUID();
         UUID shard2 = randomUUID();

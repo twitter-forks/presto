@@ -113,6 +113,7 @@ public class HiveClientConfig
 
     private boolean assumeCanonicalPartitionKeys;
 
+    private boolean useOrcColumnNames;
     private DataSize orcMaxMergeDistance = new DataSize(1, MEGABYTE);
     private DataSize orcMaxBufferSize = new DataSize(8, MEGABYTE);
     private DataSize orcStreamBufferSize = new DataSize(8, MEGABYTE);
@@ -813,6 +814,19 @@ public class HiveClientConfig
         return this;
     }
 
+    public boolean isUseOrcColumnNames()
+    {
+        return useOrcColumnNames;
+    }
+
+    @Config("hive.orc.use-column-names")
+    @ConfigDescription("Access ORC columns using names from the file")
+    public HiveClientConfig setUseOrcColumnNames(boolean useOrcColumnNames)
+    {
+        this.useOrcColumnNames = useOrcColumnNames;
+        return this;
+    }
+
     @NotNull
     public DataSize getOrcMaxMergeDistance()
     {
@@ -865,7 +879,7 @@ public class HiveClientConfig
     }
 
     public boolean isUseParquetColumnNames()
-   {
+    {
         return useParquetColumnNames;
     }
 

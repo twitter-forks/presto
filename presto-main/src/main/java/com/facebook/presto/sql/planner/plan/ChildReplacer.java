@@ -84,7 +84,6 @@ public class ChildReplacer
                 node.getType(),
                 node.getPartitionFunction(),
                 newChildren,
-                node.getOutputSymbols(),
                 node.getInputs());
     }
 
@@ -215,7 +214,15 @@ public class ChildReplacer
     @Override
     public PlanNode visitTableWriter(TableWriterNode node, List<PlanNode> newChildren)
     {
-        return new TableWriterNode(node.getId(), Iterables.getOnlyElement(newChildren), node.getTarget(), node.getColumns(), node.getColumnNames(), node.getOutputSymbols(), node.getSampleWeightSymbol());
+        return new TableWriterNode(
+                node.getId(),
+                Iterables.getOnlyElement(newChildren),
+                node.getTarget(),
+                node.getColumns(),
+                node.getColumnNames(),
+                node.getOutputSymbols(),
+                node.getSampleWeightSymbol(),
+                node.getPartitionFunction());
     }
 
     @Override
@@ -227,7 +234,7 @@ public class ChildReplacer
     @Override
     public PlanNode visitUnion(UnionNode node, List<PlanNode> newChildren)
     {
-        return new UnionNode(node.getId(), newChildren, node.getSymbolMapping());
+        return new UnionNode(node.getId(), newChildren, node.getSymbolMapping(), node.getOutputSymbols());
     }
 
     @Override

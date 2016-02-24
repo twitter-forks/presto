@@ -47,8 +47,14 @@ import org.apache.hadoop.hive.serde2.io.DoubleWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.objectinspector.SettableStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
+import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.io.BooleanWritable;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.LongWritable;
@@ -79,6 +85,7 @@ import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.isArrayType;
 import static com.facebook.presto.hive.HiveUtil.isMapType;
 import static com.facebook.presto.hive.HiveUtil.isRowType;
+import static com.facebook.presto.hive.util.Types.checkType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.lang.String.format;
@@ -134,7 +141,7 @@ public final class HiveWriteUtils
         else if (type.equals(DoubleType.DOUBLE)) {
             return javaDoubleObjectInspector;
         }
-        else if (type.equals(VarcharType.VARCHAR)) {
+        else if (type instanceof VarcharType) {
             return writableStringObjectInspector;
         }
         else if (type.equals(VarbinaryType.VARBINARY)) {
@@ -156,8 +163,8 @@ public final class HiveWriteUtils
         }
         else if (isRowType(type)) {
             return ObjectInspectorFactory.getStandardStructObjectInspector(
-                    type.getTypeSignature().getLiteralParameters().stream()
-                            .map(String.class::cast)
+                    type.getTypeSignature().getParameters().stream()
+                            .map(parameter -> parameter.getNamedTypeSignature().getName())
                             .collect(toList()),
                     type.getTypeParameters().stream()
                             .map(HiveWriteUtils::getJavaObjectInspector)
@@ -180,7 +187,7 @@ public final class HiveWriteUtils
         if (DoubleType.DOUBLE.equals(type)) {
             return type.getDouble(block, position);
         }
-        if (VarcharType.VARCHAR.equals(type)) {
+        if (type instanceof VarcharType) {
             return new Text(type.getSlice(block, position).getBytes());
         }
         if (VarbinaryType.VARBINARY.equals(type)) {
@@ -408,6 +415,45 @@ public final class HiveWriteUtils
         }
     }
 
+    public static boolean isWritableType(HiveType hiveType)
+    {
+        return isWritableType(hiveType.getTypeInfo());
+    }
+
+    private static boolean isWritableType(TypeInfo typeInfo)
+    {
+        switch (typeInfo.getCategory()) {
+            case PRIMITIVE:
+                PrimitiveCategory primitiveCategory = ((PrimitiveTypeInfo) typeInfo).getPrimitiveCategory();
+                return isWritablePrimitiveType(primitiveCategory);
+            case MAP:
+                MapTypeInfo mapTypeInfo = checkType(typeInfo, MapTypeInfo.class, "typeInfo");
+                return isWritableType(mapTypeInfo.getMapKeyTypeInfo()) && isWritableType(mapTypeInfo.getMapValueTypeInfo());
+            case LIST:
+                ListTypeInfo listTypeInfo = checkType(typeInfo, ListTypeInfo.class, "typeInfo");
+                return isWritableType(listTypeInfo.getListElementTypeInfo());
+            case STRUCT:
+                StructTypeInfo structTypeInfo = checkType(typeInfo, StructTypeInfo.class, "typeInfo");
+                return structTypeInfo.getAllStructFieldTypeInfos().stream().allMatch(HiveType::isSupportedType);
+        }
+        return false;
+    }
+
+    private static boolean isWritablePrimitiveType(PrimitiveCategory primitiveCategory)
+    {
+        switch (primitiveCategory) {
+            case BOOLEAN:
+            case LONG:
+            case DOUBLE:
+            case STRING:
+            case DATE:
+            case TIMESTAMP:
+            case BINARY:
+                return true;
+        }
+        return false;
+    }
+
     public static List<ObjectInspector> getRowColumnInspectors(List<Type> types)
     {
         return types.stream()
@@ -466,7 +512,7 @@ public final class HiveWriteUtils
             return new DoubleFieldSetter(rowInspector, row, field);
         }
 
-        if (type.equals(VarcharType.VARCHAR)) {
+        if (type instanceof VarcharType) {
             return new VarcharFieldSetter(rowInspector, row, field);
         }
 

@@ -26,9 +26,11 @@ public class FeaturesConfig
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
     private boolean pushTableWriteThroughUnion = true;
-    private boolean intermediateAggregationsEnabled = false;
-    private boolean columnarProcessing = false;
-    private boolean columnarProcessingDictionary = false;
+    private boolean intermediateAggregationsEnabled;
+
+    private boolean columnarProcessing;
+    private boolean columnarProcessingDictionary;
+    private boolean dictionaryAggregation;
 
     @LegacyConfig("analyzer.experimental-syntax-enabled")
     @Config("experimental-syntax-enabled")
@@ -160,6 +162,18 @@ public class FeaturesConfig
     public FeaturesConfig setColumnarProcessingDictionary(boolean columnarProcessingDictionary)
     {
         this.columnarProcessingDictionary = columnarProcessingDictionary;
+        return this;
+    }
+
+    public boolean isDictionaryAggregation()
+    {
+        return dictionaryAggregation;
+    }
+
+    @Config("optimizer.dictionary-aggregation")
+    public FeaturesConfig setDictionaryAggregation(boolean dictionaryAggregation)
+    {
+        this.dictionaryAggregation = dictionaryAggregation;
         return this;
     }
 }

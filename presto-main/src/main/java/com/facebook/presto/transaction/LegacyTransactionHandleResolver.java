@@ -28,62 +28,11 @@ import static java.util.Objects.requireNonNull;
 public class LegacyTransactionHandleResolver
         implements ConnectorHandleResolver
 {
-    private final String connectorId;
     private final ConnectorHandleResolver handleResolver;
 
-    public LegacyTransactionHandleResolver(String connectorId, ConnectorHandleResolver handleResolver)
+    public LegacyTransactionHandleResolver(ConnectorHandleResolver handleResolver)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.handleResolver = requireNonNull(handleResolver, "handleResolver is null");
-    }
-
-    @Override
-    public boolean canHandle(ConnectorTableHandle tableHandle)
-    {
-        return handleResolver.canHandle(tableHandle);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorTableLayoutHandle handle)
-    {
-        return handleResolver.canHandle(handle);
-    }
-
-    @Override
-    public boolean canHandle(ColumnHandle columnHandle)
-    {
-        return handleResolver.canHandle(columnHandle);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorSplit split)
-    {
-        return handleResolver.canHandle(split);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorIndexHandle indexHandle)
-    {
-        return handleResolver.canHandle(indexHandle);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorOutputTableHandle tableHandle)
-    {
-        return handleResolver.canHandle(tableHandle);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorInsertTableHandle tableHandle)
-    {
-        return handleResolver.canHandle(tableHandle);
-    }
-
-    @Override
-    public boolean canHandle(ConnectorTransactionHandle transactionHandle)
-    {
-        return (transactionHandle instanceof LegacyTransactionHandle) &&
-                ((LegacyTransactionHandle) transactionHandle).getConnectorId().equals(connectorId);
     }
 
     @Override

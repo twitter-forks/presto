@@ -29,7 +29,6 @@ import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.MapType;
 import com.google.common.collect.ComparisonChain;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Ordering;
 import io.airlift.json.JsonCodec;
 import io.airlift.json.JsonCodecFactory;
@@ -144,7 +143,7 @@ public final class SessionPropertyManager
                     sessionProperty.getCatalogName(),
                     sessionProperty.getPropertyName(),
                     propertyMetadata.getDescription(),
-                    propertyMetadata.getSqlType().getTypeSignature().toString(),
+                    propertyMetadata.getSqlType().getDisplayName(),
                     propertyMetadata.isHidden()));
         }
 
@@ -191,7 +190,7 @@ public final class SessionPropertyManager
     @NotNull
     public static Object evaluatePropertyValue(Expression expression, Type expectedType, Session session, Metadata metadata)
     {
-        Object value = evaluateConstantExpression(expression, expectedType, metadata, session, ImmutableSet.of());
+        Object value = evaluateConstantExpression(expression, expectedType, metadata, session);
 
         // convert to object value type of SQL type
         BlockBuilder blockBuilder = expectedType.createBlockBuilder(new BlockBuilderStatus(), 1);

@@ -26,6 +26,7 @@ import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
+import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.Symbol;
@@ -77,6 +78,7 @@ import com.facebook.presto.type.RowType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
+import io.airlift.slice.SliceUtf8;
 
 import javax.annotation.Nullable;
 
@@ -304,7 +306,7 @@ public class ExpressionAnalyzer
 
             Type baseType = process(node.getBase(), context);
             if (!(baseType instanceof RowType)) {
-                throw new SemanticException(SemanticErrorCode.TYPE_MISMATCH, node.getBase(), "Expression %s is not of type ROW", node.getBase());
+                throw new SemanticException(TYPE_MISMATCH, node.getBase(), "Expression %s is not of type ROW", node.getBase());
             }
 
             RowType rowType = (RowType) baseType;
@@ -330,7 +332,7 @@ public class ExpressionAnalyzer
             while (qualifiedName.getPrefix().isPresent()) {
                 qualifiedName = qualifiedName.getPrefix().get();
                 List<Field> matches = tupleDescriptor.resolveFields(qualifiedName);
-                if (matches.size() > 0) {
+                if (!matches.isEmpty()) {
                     // The AMBIGUOUS_ATTRIBUTE exception will be thrown later with the right node if matches.size() > 1
                     return;
                 }
@@ -516,14 +518,26 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitLikePredicate(LikePredicate node, StackableAstVisitorContext<AnalysisContext> context)
         {
-            coerceType(context, node.getValue(), VARCHAR, "Left side of LIKE expression");
-            coerceType(context, node.getPattern(), VARCHAR, "Pattern for LIKE expression");
+            Type valueType = getVarcharType(node.getValue(), context);
+            Type patternType = getVarcharType(node.getPattern(), context);
+            coerceType(context, node.getValue(), valueType, "Left side of LIKE expression");
+            coerceType(context, node.getPattern(), patternType, "Pattern for LIKE expression");
             if (node.getEscape() != null) {
-                coerceType(context, node.getEscape(), VARCHAR, "Escape for LIKE expression");
+                Type escapeType = getVarcharType(node.getEscape(), context);
+                coerceType(context, node.getEscape(), escapeType, "Escape for LIKE expression");
             }
 
             expressionTypes.put(node, BOOLEAN);
             return BOOLEAN;
+        }
+
+        private Type getVarcharType(Expression value, StackableAstVisitorContext<AnalysisContext> context)
+        {
+            Type type = process(value, context);
+            if (!(type instanceof VarcharType)) {
+                return VARCHAR;
+            }
+            return type;
         }
 
         @Override
@@ -544,10 +558,12 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitStringLiteral(StringLiteral node, StackableAstVisitorContext<AnalysisContext> context)
         {
-            expressionTypes.put(node, VARCHAR);
-            return VARCHAR;
+            VarcharType type = VarcharType.createVarcharType(SliceUtf8.countCodePoints(node.getSlice()));
+            expressionTypes.put(node, type);
+            return type;
         }
 
+        @Override
         protected Type visitBinaryLiteral(BinaryLiteral node, StackableAstVisitorContext<AnalysisContext> context)
         {
             expressionTypes.put(node, VARBINARY);
@@ -714,7 +730,7 @@ public class ExpressionAnalyzer
                 if (node.isDistinct() && !type.isComparable()) {
                     throw new SemanticException(TYPE_MISMATCH, node, "DISTINCT can only be applied to comparable types (actual: %s)", type);
                 }
-                coerceType(context, expression, type, String.format("Function %s argument %d", function, i));
+                coerceType(context, expression, type, format("Function %s argument %d", function, i));
             }
             resolvedFunctions.put(node, function);
 
@@ -770,7 +786,7 @@ public class ExpressionAnalyzer
             }
 
             Type value = process(node.getExpression(), context);
-            if (!value.equals(UNKNOWN)) {
+            if (!value.equals(UNKNOWN) && !node.isTypeOnly()) {
                 try {
                     functionRegistry.getCoercion(value, type);
                 }
@@ -869,13 +885,13 @@ public class ExpressionAnalyzer
                 operatorSignature = functionRegistry.resolveOperator(operatorType, argumentTypes.build());
             }
             catch (OperatorNotFoundException e) {
-                throw new SemanticException(TYPE_MISMATCH, node, e.getMessage());
+                throw new SemanticException(TYPE_MISMATCH, node, "%s", e.getMessage());
             }
 
             for (int i = 0; i < arguments.length; i++) {
                 Expression expression = arguments[i];
                 Type type = typeManager.getType(operatorSignature.getArgumentTypes().get(i));
-                coerceType(context, expression, type, String.format("Operator %s argument %d", operatorSignature, i));
+                coerceType(context, expression, type, format("Operator %s argument %d", operatorSignature, i));
             }
 
             Type type = typeManager.getType(operatorSignature.getReturnType());

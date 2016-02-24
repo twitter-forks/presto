@@ -71,6 +71,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
@@ -155,6 +156,7 @@ public final class HttpRemoteTask
     private final RequestErrorTracker getErrorTracker;
 
     private final AtomicBoolean needsUpdate = new AtomicBoolean(true);
+    private final AtomicBoolean sendPlan = new AtomicBoolean(true);
 
     private final PartitionedSplitCountTracker partitionedSplitCountTracker;
 
@@ -229,7 +231,8 @@ public final class HttpRemoteTask
                     new SharedBufferInfo(BufferState.OPEN, true, true, 0, 0, 0, 0, bufferStates),
                     ImmutableSet.<PlanNodeId>of(),
                     taskStats,
-                    ImmutableList.<ExecutionFailureInfo>of()));
+                    ImmutableList.<ExecutionFailureInfo>of(),
+                    true));
 
             long timeout = minErrorDuration.toMillis() / 3;
             requestTimeout = new Duration(timeout + refreshMaxWait.toMillis(), MILLISECONDS);
@@ -442,8 +445,13 @@ public final class HttpRemoteTask
         }
 
         List<TaskSource> sources = getSources();
+
+        Optional<PlanFragment> fragment = Optional.empty();
+        if (sendPlan.get()) {
+            fragment = Optional.of(planFragment);
+        }
         TaskUpdateRequest updateRequest = new TaskUpdateRequest(session.toSessionRepresentation(),
-                planFragment,
+                fragment,
                 sources,
                 outputBuffers.get());
 
@@ -546,7 +554,8 @@ public final class HttpRemoteTask
                     taskInfo.getOutputBuffers(),
                     taskInfo.getNoMoreSplits(),
                     taskInfo.getStats(),
-                    ImmutableList.<ExecutionFailureInfo>of()));
+                    ImmutableList.<ExecutionFailureInfo>of(),
+                    taskInfo.isNeedsPlan()));
 
             // send abort to task and ignore response
             Request request = prepareDelete()
@@ -610,7 +619,8 @@ public final class HttpRemoteTask
                 taskInfo.getOutputBuffers(),
                 taskInfo.getNoMoreSplits(),
                 taskInfo.getStats(),
-                ImmutableList.of(toFailure(cause))));
+                ImmutableList.of(toFailure(cause)),
+                taskInfo.isNeedsPlan()));
     }
 
     @Override
@@ -638,6 +648,7 @@ public final class HttpRemoteTask
                 try {
                     synchronized (HttpRemoteTask.this) {
                         currentRequest = null;
+                        sendPlan.set(value.isNeedsPlan());
                     }
                     updateTaskInfo(value, sources);
                     updateErrorTracker.requestSucceeded();

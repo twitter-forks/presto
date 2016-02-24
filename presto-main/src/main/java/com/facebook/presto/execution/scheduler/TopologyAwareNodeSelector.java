@@ -20,30 +20,26 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
-import com.google.common.cache.Cache;
-import com.google.common.cache.LoadingCache;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Multimap;
-import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.airlift.log.Logger;
 import io.airlift.stats.CounterStat;
 
 import javax.annotation.Nullable;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.facebook.presto.execution.scheduler.NodeScheduler.NEGATIVE_CACHE_DURATION;
+import static com.facebook.presto.execution.scheduler.NetworkLocation.ROOT_LOCATION;
 import static com.facebook.presto.execution.scheduler.NodeScheduler.randomizedNodes;
+import static com.facebook.presto.execution.scheduler.NodeScheduler.selectDistributionNodes;
 import static com.facebook.presto.execution.scheduler.NodeScheduler.selectExactNodes;
 import static com.facebook.presto.execution.scheduler.NodeScheduler.selectNodes;
 import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
@@ -64,8 +60,7 @@ public class TopologyAwareNodeSelector
     private final int maxSplitsPerNodePerTaskWhenFull;
     private final List<CounterStat> topologicalSplitCounters;
     private final List<String> networkLocationSegmentNames;
-    private final LoadingCache<HostAddress, NetworkLocation> networkLocationCache;
-    private final Cache<HostAddress, Boolean> negativeNetworkLocationCache;
+    private final NetworkLocationCache networkLocationCache;
 
     public TopologyAwareNodeSelector(
             NodeManager nodeManager,
@@ -78,8 +73,7 @@ public class TopologyAwareNodeSelector
             int maxSplitsPerNodePerTaskWhenFull,
             List<CounterStat> topologicalSplitCounters,
             List<String> networkLocationSegmentNames,
-            LoadingCache<HostAddress, NetworkLocation> networkLocationCache,
-            Cache<HostAddress, Boolean> negativeNetworkLocationCache)
+            NetworkLocationCache networkLocationCache)
     {
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
@@ -92,7 +86,6 @@ public class TopologyAwareNodeSelector
         this.topologicalSplitCounters = requireNonNull(topologicalSplitCounters, "topologicalSplitCounters is null");
         this.networkLocationSegmentNames = requireNonNull(networkLocationSegmentNames, "networkLocationSegmentNames is null");
         this.networkLocationCache = requireNonNull(networkLocationCache, "networkLocationCache is null");
-        this.negativeNetworkLocationCache = requireNonNull(negativeNetworkLocationCache, "negativeNetworkLocationCache is null");
     }
 
     @Override
@@ -124,7 +117,6 @@ public class TopologyAwareNodeSelector
     public Multimap<Node, Split> computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks)
     {
         NodeMap nodeMap = this.nodeMap.get().get();
-        Collection<Node> allNodes = nodeMap.getNodesByHostAndPort().values();
         Multimap<Node, Split> assignment = HashMultimap.create();
         NodeAssignmentStats assignmentStats = new NodeAssignmentStats(nodeTaskMap, nodeMap, existingTasks);
 
@@ -148,28 +140,23 @@ public class TopologyAwareNodeSelector
             Node chosenNode = null;
             int depth = networkLocationSegmentNames.size();
             int chosenDepth = 0;
-            List<NetworkLocation> locations = new ArrayList<>();
+            Set<NetworkLocation> locations = new HashSet<>();
             for (HostAddress host : split.getAddresses()) {
-                try {
-                    if (negativeNetworkLocationCache.getIfPresent(host) != null) {
-                        continue;
-                    }
-                    locations.add(networkLocationCache.get(host));
-                }
-                catch (ExecutionException | UncheckedExecutionException e) {
-                    // Skip addresses we can't locate
-                    negativeNetworkLocationCache.put(host, true);
-                    log.warn(e, "Unable to determine location of %s. Will attempt again in %s", host, NEGATIVE_CACHE_DURATION);
-                }
+                locations.add(networkLocationCache.get(host));
             }
             if (locations.isEmpty()) {
                 // Add the root location
-                locations.add(new NetworkLocation());
+                locations.add(ROOT_LOCATION);
                 depth = 0;
             }
             // Try each address at progressively shallower network locations
             for (int i = depth; i >= 0 && chosenNode == null; i--) {
                 for (NetworkLocation location : locations) {
+                    // Skip locations which are only shallower than this level
+                    // For example, locations which couldn't be located will be at the "root" location
+                    if (location.getSegments().size() < i) {
+                        continue;
+                    }
                     location = location.subLocation(0, i);
                     if (filledLocations.contains(location)) {
                         continue;
@@ -196,6 +183,12 @@ public class TopologyAwareNodeSelector
             }
         }
         return assignment;
+    }
+
+    @Override
+    public Multimap<Node, Split> computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, NodePartitionMap partitioning)
+    {
+        return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsPerNode, splits, existingTasks, partitioning);
     }
 
     @Nullable

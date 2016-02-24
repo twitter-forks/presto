@@ -22,9 +22,7 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.RemoteSplit;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
-import com.facebook.presto.transaction.TransactionHandle;
 import com.facebook.presto.type.TypeRegistry;
-import com.google.common.base.Function;
 import com.google.common.base.Splitter;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -159,7 +157,7 @@ public class TestExchangeOperator
 
     private Split newRemoteSplit(String taskId)
     {
-        return new Split("remote", new TransactionHandle("remote", new RemoteTransactionHandle()), new RemoteSplit(URI.create("http://localhost/" + taskId)));
+        return new Split("remote", new RemoteTransactionHandle(), new RemoteSplit(URI.create("http://localhost/" + taskId)));
     }
 
     @Test
@@ -353,7 +351,7 @@ public class TestExchangeOperator
     }
 
     private static class HttpClientHandler
-            implements Function<Request, Response>
+            implements TestingHttpClient.Processor
     {
         private final LoadingCache<String, TaskBuffer> taskBuffers;
 
@@ -363,7 +361,7 @@ public class TestExchangeOperator
         }
 
         @Override
-        public Response apply(Request request)
+        public Response handle(Request request)
         {
             ImmutableList<String> parts = ImmutableList.copyOf(Splitter.on("/").omitEmptyStrings().split(request.getUri().getPath()));
             if (request.getMethod().equals("DELETE")) {

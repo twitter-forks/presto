@@ -2,9 +2,17 @@
 Release 0.132
 =============
 
+.. warning::
+
+   :func:`concat` on :ref:`array_type`, or enabling ``columnar_processing_dictionary``
+   may cause queries to fail in this release. This is fixed in :doc:`/release/release-0.133`.
+
 General Changes
 ---------------
 
+* Fix a correctness issue that can occur when any join depends on the output
+  of another outer join that has an inner side (or either side for the full outer
+  case) for which the connector declares that it has no data during planning.
 * Improve error messages for unresolved operators.
 * Add support for creating constant arrays with more than 255 elements.
 * Fix analyzer for queries with ``GROUP BY ()`` such that errors are raised
@@ -34,7 +42,4 @@ Hive Changes
 * Report metastore and namenode latency in milliseconds rather than seconds in
   JMX stats.
 * Fix ``NullPointerException`` when inserting a null value for a partition column.
-* Fix a correctness issue that can occur when any join depends on the output
-  of another outer join that has an inner side (or either side for the full outer
-  case) for which the connector declares that it has no data during planning.
 * Improve CPU efficiency when writing data.

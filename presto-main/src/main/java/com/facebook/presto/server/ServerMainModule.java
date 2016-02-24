@@ -21,7 +21,7 @@ import com.facebook.presto.client.NodeVersion;
 import com.facebook.presto.client.QueryResults;
 import com.facebook.presto.client.ServerInfo;
 import com.facebook.presto.connector.ConnectorManager;
-import com.facebook.presto.connector.system.SystemTablesModule;
+import com.facebook.presto.connector.system.SystemConnectorModule;
 import com.facebook.presto.event.query.QueryCompletionEvent;
 import com.facebook.presto.event.query.QueryCreatedEvent;
 import com.facebook.presto.event.query.QueryMonitor;
@@ -251,8 +251,8 @@ public class ServerMainModule
         // connector
         binder.bind(ConnectorManager.class).in(Scopes.SINGLETON);
 
-        // system tables
-        binder.install(new SystemTablesModule());
+        // system connector
+        binder.install(new SystemConnectorModule());
 
         // splits
         jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
@@ -272,7 +272,7 @@ public class ServerMainModule
         // Determine the NodeVersion
         String prestoVersion = serverConfig.getPrestoVersion();
         if (prestoVersion == null) {
-            prestoVersion = detectPrestoVersion();
+            prestoVersion = getClass().getPackage().getImplementationVersion();
         }
         checkState(prestoVersion != null, "presto.version must be provided when it cannot be automatically determined");
 
@@ -390,13 +390,6 @@ public class ServerMainModule
             @ForTransactionManager ExecutorService finishingExecutor)
     {
         return TransactionManager.create(config, idleCheckExecutor, finishingExecutor);
-    }
-
-    private static String detectPrestoVersion()
-    {
-        String title = PrestoServer.class.getPackage().getImplementationTitle();
-        String version = PrestoServer.class.getPackage().getImplementationVersion();
-        return ((title == null) || (version == null)) ? null : (title + ":" + version);
     }
 
     private static void bindFailureDetector(Binder binder, boolean coordinator)

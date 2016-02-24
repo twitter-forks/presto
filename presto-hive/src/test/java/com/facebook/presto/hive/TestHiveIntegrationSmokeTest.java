@@ -43,6 +43,8 @@ import static com.facebook.presto.hive.HiveQueryRunner.createQueryRunner;
 import static com.facebook.presto.hive.HiveQueryRunner.createSampledSession;
 import static com.facebook.presto.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
+import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.transaction.TransactionBuilder.transaction;
 import static io.airlift.tpch.TpchTable.ORDERS;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -142,13 +144,13 @@ public class TestHiveIntegrationSmokeTest
     {
         @Language("SQL") String createTable = "" +
                 "CREATE TABLE test_partitioned_table (" +
-                "  _partition_varchar VARCHAR" +
-                ", _partition_bigint BIGINT" +
-                ", _varchar VARCHAR" +
+                "  _varchar VARCHAR" +
                 ", _varbinary VARBINARY" +
                 ", _bigint BIGINT" +
                 ", _double DOUBLE" +
                 ", _boolean BOOLEAN" +
+                ", _partition_varchar VARCHAR" +
+                ", _partition_bigint BIGINT" +
                 ") " +
                 "WITH (" +
                 "format = '" + storageFormat + "', " +
@@ -242,12 +244,50 @@ public class TestHiveIntegrationSmokeTest
         List<HivePartition> partitions = getPartitions("test_create_partitioned_table_as");
         assertEquals(partitions.size(), 3);
 
-        // Hive will reorder the partition keys to the end
         assertQuery("SELECT * from test_create_partitioned_table_as", "SELECT orderkey, shippriority, orderstatus FROM orders");
 
         assertUpdate("DROP TABLE test_create_partitioned_table_as");
 
         assertFalse(queryRunner.tableExists(getSession(), "test_create_partitioned_table_as"));
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Partition keys must be the last columns in the table and in the same order as the table properties.*")
+    public void testCreatePartitionedTableInvalidColumnOrdering()
+    {
+        assertUpdate("" +
+                "CREATE TABLE test_create_table_invalid_column_ordering\n" +
+                "(grape bigint, apple varchar, orange bigint, pear varchar)\n" +
+                "WITH (partitioned_by = ARRAY['apple'])");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Partition keys must be the last columns in the table and in the same order as the table properties.*")
+    public void testCreatePartitionedTableAsInvalidColumnOrdering()
+            throws Exception
+    {
+        assertUpdate("" +
+                "CREATE TABLE test_create_table_as_invalid_column_ordering " +
+                "WITH (partitioned_by = ARRAY['SHIP_PRIORITY', 'ORDER_STATUS']) " +
+                "AS " +
+                "SELECT shippriority AS ship_priority, orderkey AS order_key, orderstatus AS order_status " +
+                "FROM tpch.tiny.orders");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Table contains only partition columns")
+    public void testCreateTableOnlyPartitionColumns()
+    {
+        assertUpdate("" +
+                "CREATE TABLE test_create_table_only_partition_columns\n" +
+                "(grape bigint, apple varchar, orange bigint, pear varchar)\n" +
+                "WITH (partitioned_by = ARRAY['grape', 'apple', 'orange', 'pear'])");
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Partition columns .* not present in schema")
+    public void testCreateTableNonExistentPartitionColumns()
+    {
+        assertUpdate("" +
+                "CREATE TABLE test_create_table_nonexistent_partition_columns\n" +
+                "(grape bigint, apple varchar, orange bigint, pear varchar)\n" +
+                "WITH (partitioned_by = ARRAY['dragonfruit'])");
     }
 
     @Test
@@ -315,9 +355,9 @@ public class TestHiveIntegrationSmokeTest
         @Language("SQL") String createTable = "" +
                 "CREATE TABLE test_insert_partitioned_table " +
                 "(" +
-                "  ORDER_STATUS VARCHAR," +
+                "  ORDER_KEY BIGINT," +
                 "  SHIP_PRIORITY BIGINT," +
-                "  ORDER_KEY BIGINT" +
+                "  ORDER_STATUS VARCHAR" +
                 ") " +
                 "WITH (" +
                 "format = '" + storageFormat + "', " +
@@ -378,9 +418,9 @@ public class TestHiveIntegrationSmokeTest
         @Language("SQL") String createTable = "" +
                 "CREATE TABLE test_metadata_delete " +
                 "(" +
-                "  LINE_STATUS VARCHAR," +
+                "  ORDER_KEY BIGINT," +
                 "  LINE_NUMBER BIGINT," +
-                "  ORDER_KEY BIGINT" +
+                "  LINE_STATUS VARCHAR" +
                 ") " +
                 "WITH (" +
                 STORAGE_FORMAT_PROPERTY + " = '" + storageFormat + "', " +
@@ -389,7 +429,6 @@ public class TestHiveIntegrationSmokeTest
 
         assertUpdate(createTable);
 
-        // Hive will reorder the partition keys, so we must insert into the table assuming the partition keys have been moved to the end
         assertUpdate("" +
                         "INSERT INTO test_metadata_delete " +
                         "SELECT orderkey, linenumber, linestatus " +
@@ -450,6 +489,24 @@ public class TestHiveIntegrationSmokeTest
                     TableLayout layout = Iterables.getOnlyElement(layouts).getLayout();
                     return ((HiveTableLayoutHandle) layout.getHandle().getConnectorHandle()).getPartitions().get();
                 });
+    }
+
+    @Test
+    public void testShowColumnsPartitionKey()
+    {
+        assertUpdate("" +
+                "CREATE TABLE test_show_columns_partition_key\n" +
+                "(grape bigint, orange bigint, pear varchar, apple varchar)\n" +
+                "WITH (partitioned_by = ARRAY['apple'])");
+
+        MaterializedResult actual = computeActual("SHOW COLUMNS FROM test_show_columns_partition_key");
+        MaterializedResult expected = resultBuilder(getSession(), VARCHAR, VARCHAR, VARCHAR)
+                .row("grape", "bigint", "")
+                .row("orange", "bigint", "")
+                .row("pear", "varchar", "")
+                .row("apple", "varchar", "Partition Key")
+                .build();
+        assertEquals(actual, expected);
     }
 
     // TODO: These should be moved to another class, when more connectors support arrays

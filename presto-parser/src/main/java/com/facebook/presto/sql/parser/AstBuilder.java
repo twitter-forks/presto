@@ -25,6 +25,8 @@ import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BinaryLiteral;
 import com.facebook.presto.sql.tree.BooleanLiteral;
+import com.facebook.presto.sql.tree.Call;
+import com.facebook.presto.sql.tree.CallArgument;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.Commit;
@@ -136,6 +138,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -296,6 +299,15 @@ class AstBuilder
     public Node visitSerializable(SqlBaseParser.SerializableContext context)
     {
         return new Isolation(getLocation(context), Isolation.Level.SERIALIZABLE);
+    }
+
+    @Override
+    public Node visitCall(SqlBaseParser.CallContext context)
+    {
+        return new Call(
+                getLocation(context),
+                getQualifiedName(context.qualifiedName()),
+                visit(context.callArgument(), CallArgument.class));
     }
 
     // ********************** query expressions ********************
@@ -1194,6 +1206,20 @@ class AstBuilder
                         .map(AstBuilder::getIntervalFieldType));
     }
 
+    // ***************** arguments *****************
+
+    @Override
+    public Node visitPositionalArgument(SqlBaseParser.PositionalArgumentContext context)
+    {
+        return new CallArgument(getLocation(context), (Expression) visit(context.expression()));
+    }
+
+    @Override
+    public Node visitNamedArgument(SqlBaseParser.NamedArgumentContext context)
+    {
+        return new CallArgument(getLocation(context), context.identifier().getText(), (Expression) visit(context.expression()));
+    }
+
     // ***************** helpers *****************
 
     @Override
@@ -1452,19 +1478,39 @@ class AstBuilder
 
     private static String getType(SqlBaseParser.TypeContext type)
     {
-        if (type.simpleType() != null) {
-            return type.simpleType().getText();
+        if (type.baseType() != null) {
+            String signature = type.baseType().getText();
+            if (!type.typeParameter().isEmpty()) {
+                String typeParameterSignature = type
+                        .typeParameter()
+                        .stream()
+                        .map(AstBuilder::typeParameterToString)
+                        .collect(Collectors.joining(","));
+                signature += "(" + typeParameterSignature + ")";
+            }
+            return signature;
         }
 
         if (type.ARRAY() != null) {
-            return "ARRAY<" + getType(type.type(0)) + ">";
+            return "ARRAY(" + getType(type.type(0)) + ")";
         }
 
         if (type.MAP() != null) {
-            return "MAP<" + getType(type.type(0)) + "," + getType(type.type(1)) + ">";
+            return "MAP(" + getType(type.type(0)) + "," + getType(type.type(1)) + ")";
         }
 
         throw new IllegalArgumentException("Unsupported type specification: " + type.getText());
+    }
+
+    private static String typeParameterToString(SqlBaseParser.TypeParameterContext typeParameter)
+    {
+        if (typeParameter.INTEGER_VALUE() != null) {
+            return typeParameter.INTEGER_VALUE().toString();
+        }
+        if (typeParameter.type() != null) {
+            return getType(typeParameter.type());
+        }
+        throw new IllegalArgumentException("Unsupported typeParameter: " + typeParameter.getText());
     }
 
     private static void check(boolean condition, String message, ParserRuleContext context)

@@ -62,6 +62,7 @@ public class TestScanFilterAndProjectOperator
 
         ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory factory = new ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory(
                 0,
+                new PlanNodeId("test"),
                 new PlanNodeId("0"),
                 new PageSourceProvider() {
                     @Override
@@ -71,7 +72,7 @@ public class TestScanFilterAndProjectOperator
                     }
                 },
                 new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
-                new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
+                () -> new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 ImmutableList.<ColumnHandle>of(),
                 ImmutableList.<Type>of(VARCHAR));
 
@@ -95,6 +96,7 @@ public class TestScanFilterAndProjectOperator
 
         ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory factory = new ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory(
                 0,
+                new PlanNodeId("test"),
                 new PlanNodeId("0"),
                 new PageSourceProvider() {
                     @Override
@@ -104,7 +106,7 @@ public class TestScanFilterAndProjectOperator
                     }
                 },
                 new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
-                new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
+                () -> new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 ImmutableList.<ColumnHandle>of(),
                 ImmutableList.<Type>of(VARCHAR));
 

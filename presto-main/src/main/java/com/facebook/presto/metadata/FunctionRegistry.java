@@ -19,6 +19,7 @@ import com.facebook.presto.operator.aggregation.ApproximateCountAggregation;
 import com.facebook.presto.operator.aggregation.ApproximateCountColumnAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateCountDistinctAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateDoublePercentileAggregations;
+import com.facebook.presto.operator.aggregation.ApproximateDoublePercentileArrayAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateLongPercentileAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateLongPercentileArrayAggregations;
 import com.facebook.presto.operator.aggregation.ApproximateSetAggregation;
@@ -39,6 +40,7 @@ import com.facebook.presto.operator.aggregation.NumericHistogramAggregation;
 import com.facebook.presto.operator.aggregation.RegressionAggregation;
 import com.facebook.presto.operator.aggregation.VarianceAggregation;
 import com.facebook.presto.operator.scalar.ArrayFunctions;
+import com.facebook.presto.operator.scalar.BitwiseFunctions;
 import com.facebook.presto.operator.scalar.ColorFunctions;
 import com.facebook.presto.operator.scalar.CombineHashFunction;
 import com.facebook.presto.operator.scalar.DateTimeFunctions;
@@ -72,6 +74,7 @@ import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
+import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.type.BigintOperators;
 import com.facebook.presto.type.BooleanOperators;
@@ -189,6 +192,7 @@ import static com.facebook.presto.operator.scalar.RowHashCodeOperator.ROW_HASH_C
 import static com.facebook.presto.operator.scalar.RowNotEqualOperator.ROW_NOT_EQUAL;
 import static com.facebook.presto.operator.scalar.RowToJsonCast.ROW_TO_JSON;
 import static com.facebook.presto.operator.scalar.TryCastFunction.TRY_CAST;
+import static com.facebook.presto.operator.scalar.VarcharToVarcharCast.VARCHAR_TO_VARCHAR_CAST;
 import static com.facebook.presto.operator.window.AggregateWindowFunction.supplier;
 import static com.facebook.presto.spi.StandardErrorCode.FUNCTION_IMPLEMENTATION_MISSING;
 import static com.facebook.presto.spi.StandardErrorCode.FUNCTION_NOT_FOUND;
@@ -197,14 +201,12 @@ import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.type.TypeUtils.resolveTypes;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.facebook.presto.util.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Verify.verify;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -296,6 +298,7 @@ public class FunctionRegistry
                 .aggregate(ApproximateLongPercentileAggregations.class)
                 .aggregate(ApproximateLongPercentileArrayAggregations.class)
                 .aggregate(ApproximateDoublePercentileAggregations.class)
+                .aggregate(ApproximateDoublePercentileArrayAggregations.class)
                 .aggregate(CountIfAggregation.class)
                 .aggregate(BooleanAndAggregation.class)
                 .aggregate(BooleanOrAggregation.class)
@@ -315,6 +318,7 @@ public class FunctionRegistry
                 .scalar(RegexpFunctions.class)
                 .scalar(UrlFunctions.class)
                 .scalar(MathFunctions.class)
+                .scalar(BitwiseFunctions.class)
                 .scalar(DateTimeFunctions.class)
                 .scalar(JsonFunctions.class)
                 .scalar(ColorFunctions.class)
@@ -351,6 +355,8 @@ public class FunctionRegistry
                 .functions(MAP_AGG, MULTIMAP_AGG)
                 .function(HISTOGRAM)
                 .function(CHECKSUM_AGGREGATION)
+                .function(VARCHAR_TO_VARCHAR_CAST)
+                .function(IDENTITY_CAST)
                 .function(ARBITRARY_AGGREGATION)
                 .function(ARRAY_AGGREGATION)
                 .functions(GREATEST, LEAST)
@@ -381,10 +387,10 @@ public class FunctionRegistry
         }
         ImmutableList.Builder<TypeSignature> boundArguments = ImmutableList.builder();
         for (int i = 0; i < argumentTypes.size() - 1; i++) {
-            boundArguments.add(bindParameters(argumentTypes.get(i), boundParameters));
+            boundArguments.add(argumentTypes.get(i).bindParameters(boundParameters));
         }
         if (!argumentTypes.isEmpty()) {
-            TypeSignature lastArgument = bindParameters(argumentTypes.get(argumentTypes.size() - 1), boundParameters);
+            TypeSignature lastArgument = argumentTypes.get(argumentTypes.size() - 1).bindParameters(boundParameters);
             if (signature.isVariableArity()) {
                 for (int i = 0; i < types.size() - (argumentTypes.size() - 1); i++) {
                     boundArguments.add(lastArgument);
@@ -394,18 +400,7 @@ public class FunctionRegistry
                 boundArguments.add(lastArgument);
             }
         }
-        return new Signature(signature.getName(), signature.getKind(), bindParameters(signature.getReturnType(), boundParameters), boundArguments.build());
-    }
-
-    private static TypeSignature bindParameters(TypeSignature typeSignature, Map<String, Type> boundParameters)
-    {
-        List<TypeSignature> parameters = typeSignature.getParameters().stream().map(signature -> bindParameters(signature, boundParameters)).collect(toImmutableList());
-        String base = typeSignature.getBase();
-        if (boundParameters.containsKey(base)) {
-            verify(typeSignature.getLiteralParameters().isEmpty() && typeSignature.getParameters().isEmpty(), "Type parameters cannot have parameters");
-            return boundParameters.get(base).getTypeSignature();
-        }
-        return new TypeSignature(base, parameters, typeSignature.getLiteralParameters());
+        return new Signature(signature.getName(), signature.getKind(), signature.getReturnType().bindParameters(boundParameters), boundArguments.build());
     }
 
     public final synchronized void addFunctions(List<? extends SqlFunction> functions)
@@ -448,7 +443,7 @@ public class FunctionRegistry
         }
 
         if (match != null) {
-            return match;
+            return match.resolveCalculatedTypes(parameterTypes);
         }
 
         // search for coerced match
@@ -456,8 +451,13 @@ public class FunctionRegistry
             Signature signature = bindSignature(function.getSignature(), resolvedTypes, true, typeManager);
             if (signature != null) {
                 // TODO: This should also check for ambiguities
-                return signature;
+                match = signature;
+                break;
             }
+        }
+
+        if (match != null) {
+            return match.resolveCalculatedTypes(parameterTypes);
         }
 
         List<String> expectedParameters = new ArrayList<>();
@@ -465,7 +465,7 @@ public class FunctionRegistry
             expectedParameters.add(format("%s(%s) %s",
                                     name,
                                     Joiner.on(", ").join(function.getSignature().getArgumentTypes()),
-                                    Joiner.on(", ").join(function.getSignature().getTypeParameters())));
+                                    Joiner.on(", ").join(function.getSignature().getTypeParameterRequirements())));
         }
         String parameters = Joiner.on(", ").join(parameterTypes);
         String message = format("Function %s not registered", name);
@@ -521,7 +521,7 @@ public class FunctionRegistry
     public WindowFunctionSupplier getWindowFunctionImplementation(Signature signature)
     {
         checkArgument(signature.getKind() == WINDOW || signature.getKind() == AGGREGATE, "%s is not a window function", signature);
-        checkArgument(signature.getTypeParameters().isEmpty(), "%s has unbound type parameters", signature);
+        checkArgument(signature.getTypeParameterRequirements().isEmpty(), "%s has unbound type parameters", signature);
         Iterable<SqlFunction> candidates = functions.get(QualifiedName.of(signature.getName()));
         // search for exact match
         for (SqlFunction operator : candidates) {
@@ -543,7 +543,7 @@ public class FunctionRegistry
     public InternalAggregationFunction getAggregateFunctionImplementation(Signature signature)
     {
         checkArgument(signature.getKind() == AGGREGATE || signature.getKind() == APPROXIMATE_AGGREGATE, "%s is not an aggregate function", signature);
-        checkArgument(signature.getTypeParameters().isEmpty(), "%s has unbound type parameters", signature);
+        checkArgument(signature.getTypeParameterRequirements().isEmpty(), "%s has unbound type parameters", signature);
         Iterable<SqlFunction> candidates = functions.get(QualifiedName.of(signature.getName()));
         // search for exact match
         for (SqlFunction operator : candidates) {
@@ -565,7 +565,7 @@ public class FunctionRegistry
     public ScalarFunctionImplementation getScalarFunctionImplementation(Signature signature)
     {
         checkArgument(signature.getKind() == SCALAR, "%s is not a scalar function", signature);
-        checkArgument(signature.getTypeParameters().isEmpty(), "%s has unbound type parameters", signature);
+        checkArgument(signature.getTypeParameterRequirements().isEmpty(), "%s has unbound type parameters", signature);
         Iterable<SqlFunction> candidates = functions.get(QualifiedName.of(signature.getName()));
         // search for exact match
         Type returnType = typeManager.getType(signature.getReturnType());
@@ -708,8 +708,8 @@ public class FunctionRegistry
             return DOUBLE;
         }
         if (!clazz.isPrimitive()) {
-            if (type.equals(VARCHAR)) {
-                return VARCHAR;
+            if (type instanceof VarcharType) {
+                return type;
             }
             else {
                 return VARBINARY;
