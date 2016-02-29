@@ -26,6 +26,7 @@ import io.airlift.discovery.client.ServiceDescriptor;
 import io.airlift.discovery.client.ServiceSelector;
 import io.airlift.discovery.client.ServiceType;
 import io.airlift.http.client.HttpClient;
+import io.airlift.log.Logger;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
 
@@ -60,6 +61,8 @@ import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 public final class DiscoveryNodeManager
         implements InternalNodeManager
 {
+    private static final Logger log = Logger.get(DiscoveryNodeManager.class);
+
     private static final Duration MAX_AGE = new Duration(5, TimeUnit.SECONDS);
 
     private static final Splitter DATASOURCES_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
@@ -124,11 +127,17 @@ public final class DiscoveryNodeManager
                 Set<String> deadNodes = difference(nodeStates.keySet(), aliveNodeIds).immutableCopy();
                 nodeStates.keySet().removeAll(deadNodes);
 
+                if (deadNodes.size() > 0) {
+                    log.warn("Dead nodes: %s", deadNodes);
+                }
+
                 // Add new nodes
                 for (Node node : aliveNodes) {
                     nodeStates.putIfAbsent(node.getNodeIdentifier(),
                             new RemoteNodeState(httpClient, uriBuilderFrom(node.getHttpUri()).appendPath("/v1/info/state").build()));
                 }
+
+                log.debug("Number of alive nodes: %d", nodeStates.size());
 
                 // Schedule refresh
                 nodeStates.values().forEach(RemoteNodeState::asyncRefresh);
