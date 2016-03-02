@@ -26,21 +26,35 @@ public final class ParquetTypeUtils
     public static parquet.schema.Type getParquetType(HiveColumnHandle column, MessageType messageType, boolean useParquetColumnNames)
     {
         if (useParquetColumnNames) {
-            String name = column.getName();
-            Type type = getParquetTypeByName(name, messageType);
-
-            // when a parquet field is a hive keyword we append an _ to it in hive. When doing
-            // a name-based lookup, we need to strip it off again if we didn't get a direct match.
-            if (type == null && name.endsWith("_")) {
-                type = getParquetTypeByName(name.substring(0, name.length() - 1), messageType);
-            }
-            return type;
+            return findParquetTypeByName(column, messageType);
         }
 
         if (column.getHiveColumnIndex() < messageType.getFieldCount()) {
             return messageType.getType(column.getHiveColumnIndex());
         }
         return null;
+    }
+
+    /**
+     * Find the column type by name using returning the first match with the following logic:
+     * <ul>
+     * <li>direct match</li>
+     * <li>case-insensitive match</li>
+     * <li>if the name ends with _, remove it and direct match</li>
+     * <li>if the name ends with _, remove it and case-insensitive match</li>
+     * </ul>
+     */
+    private static parquet.schema.Type findParquetTypeByName(HiveColumnHandle column, MessageType messageType)
+    {
+        String name = column.getName();
+        Type type = getParquetTypeByName(name, messageType);
+
+        // when a parquet field is a hive keyword we append an _ to it in hive. When doing
+        // a name-based lookup, we need to strip it off again if we didn't get a direct match.
+        if (type == null && name.endsWith("_")) {
+            type = getParquetTypeByName(name.substring(0, name.length() - 1), messageType);
+        }
+        return type;
     }
 
     private static parquet.schema.Type getParquetTypeByName(String columnName, MessageType messageType)
