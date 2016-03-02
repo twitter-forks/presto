@@ -26,22 +26,36 @@ public final class ParquetTypeUtils
     public static parquet.schema.Type getParquetType(HiveColumnHandle column, MessageType messageType, boolean useParquetColumnNames)
     {
         if (useParquetColumnNames) {
-            if (messageType.containsField(column.getName())) {
-                return messageType.getType(column.getName());
+            String name = column.getName();
+            Type type = getParquetTypeByName(name, messageType);
+
+            // when a parquet field is a hive keyword we append an _ to it in hive. When doing
+            // a name-based lookup, we need to strip it off again if we didn't get a direct match.
+            if (type == null && name.endsWith("_")) {
+                type = getParquetTypeByName(name.substring(0, name.length() - 1), messageType);
             }
-            // parquet is case-sensitive, but hive is not. all hive columns get converted to lowercase
-            // check for direct match above but if no match found, try case-insensitive match
-            for (Type type : messageType.getFields()) {
-                if (type.getName().equalsIgnoreCase(column.getName())) {
-                    return type;
-                }
-            }
-            return null;
+            return type;
         }
 
         if (column.getHiveColumnIndex() < messageType.getFieldCount()) {
             return messageType.getType(column.getHiveColumnIndex());
         }
+        return null;
+    }
+
+    private static parquet.schema.Type getParquetTypeByName(String columnName, MessageType messageType)
+    {
+        if (messageType.containsField(columnName)) {
+            return messageType.getType(columnName);
+        }
+        // parquet is case-sensitive, but hive is not. all hive columns get converted to lowercase
+        // check for direct match above but if no match found, try case-insensitive match
+        for (Type type : messageType.getFields()) {
+            if (type.getName().equalsIgnoreCase(columnName)) {
+                return type;
+            }
+        }
+
         return null;
     }
 }
