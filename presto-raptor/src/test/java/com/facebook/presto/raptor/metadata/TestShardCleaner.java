@@ -82,7 +82,6 @@ public class TestShardCleaner
 
         ShardCleanerConfig config = new ShardCleanerConfig();
         cleaner = new ShardCleaner(
-                dbi,
                 new DaoSupplier<>(dbi, ShardDao.class),
                 "node1",
                 true,
@@ -265,13 +264,13 @@ public class TestShardCleaner
         Timestamp time2 = new Timestamp(now - DAYS.toMillis(2));
 
         // shard 1: should be purged
-        dao.insertDeletedShardNode(shard1, node1, time1);
+        dao.insertCleanedDeletedShardNode(shard1, node1, time1);
 
         // shard 2: should be purged
-        dao.insertDeletedShardNode(shard2, node1, time1);
+        dao.insertCleanedDeletedShardNode(shard2, node1, time1);
 
-        // shard 3: deleted too recently
-        dao.insertDeletedShardNode(shard3, node1, time2);
+        // shard 3: cleaned too recently
+        dao.insertCleanedDeletedShardNode(shard3, node1, time2);
 
         // shard 4: on different node
         dao.insertDeletedShardNode(shard4, node2, time1);
@@ -285,11 +284,9 @@ public class TestShardCleaner
         assertTrue(shardFileExists(shard3));
         assertTrue(shardFileExists(shard4));
 
-        assertQuery("SELECT shard_uuid, node_id, purge_time IS NULL FROM deleted_shard_nodes",
-                row(shard1, node1, false),
-                row(shard2, node1, false),
-                row(shard3, node1, true),
-                row(shard4, node2, true));
+        assertQuery("SELECT shard_uuid, node_id FROM deleted_shard_nodes",
+                row(shard3, node1),
+                row(shard4, node2));
     }
 
     @Test
@@ -344,13 +341,13 @@ public class TestShardCleaner
         Timestamp time2 = new Timestamp(now - DAYS.toMillis(2));
 
         // shard 1: should be purged
-        dao.insertDeletedShard(shard1, time1);
+        dao.insertCleanedDeletedShard(shard1, time1);
 
         // shard 2: should be purged
-        dao.insertDeletedShard(shard2, time1);
+        dao.insertCleanedDeletedShard(shard2, time1);
 
-        // shard 3: deleted too recently
-        dao.insertDeletedShard(shard3, time2);
+        // shard 3: cleaned too recently
+        dao.insertCleanedDeletedShard(shard3, time2);
 
         createShardBackups(shard1, shard2, shard3);
 
@@ -360,10 +357,8 @@ public class TestShardCleaner
         assertFalse(shardBackupExists(shard2));
         assertTrue(shardBackupExists(shard3));
 
-        assertQuery("SELECT shard_uuid, purge_time IS NULL FROM deleted_shards",
-                row(shard1, false),
-                row(shard2, false),
-                row(shard3, true));
+        assertQuery("SELECT shard_uuid FROM deleted_shards",
+                row(shard3));
     }
 
     private boolean shardFileExists(UUID uuid)
@@ -446,5 +441,18 @@ public class TestShardCleaner
                 @Bind("shardUuid") UUID shardUuid,
                 @Bind("nodeId") int nodeId,
                 @Bind("deleteTime") Timestamp deleteTime);
+
+        @SqlUpdate("INSERT INTO deleted_shards (shard_uuid, delete_time, clean_time)\n" +
+                "VALUES (:shardUuid, :cleanTime, :cleanTime)")
+        void insertCleanedDeletedShard(
+                @Bind("shardUuid") UUID shardUuid,
+                @Bind("cleanTime") Timestamp cleanTime);
+
+        @SqlUpdate("INSERT INTO deleted_shard_nodes (shard_uuid, node_id, delete_time, clean_time)\n" +
+                "VALUES (:shardUuid, :nodeId, :cleanTime, :cleanTime)")
+        void insertCleanedDeletedShardNode(
+                @Bind("shardUuid") UUID shardUuid,
+                @Bind("nodeId") int nodeId,
+                @Bind("cleanTime") Timestamp cleanTime);
     }
 }

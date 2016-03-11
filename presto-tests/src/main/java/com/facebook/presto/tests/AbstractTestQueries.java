@@ -129,6 +129,13 @@ public abstract class AbstractTestQueries
         super(queryRunner);
     }
 
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "line 1:16: no viable alternative at input.*")
+    public void testParsingError()
+            throws Exception
+    {
+        computeActual("SELECT foo FROM");
+    }
+
     @Test
     public void selectNull()
             throws Exception
@@ -155,6 +162,17 @@ public abstract class AbstractTestQueries
 
         materializedResult = computeActual("SELECT u, v, w FROM ( SELECT if(rand() > 0.5, 0, 1) AS u, 4*4 as v, 'abc' as w ) WHERE v > 10");
         assertEquals(materializedResult.getRowCount(), 1);
+    }
+
+    @Test
+    public void testNonDeterministicProjection()
+    {
+        MaterializedResult materializedResult = computeActual("select r, r + 1 from (select rand(100) r from orders) limit 10");
+        assertEquals(materializedResult.getRowCount(), 10);
+        for (MaterializedRow materializedRow : materializedResult) {
+            assertEquals(materializedRow.getFieldCount(), 2);
+            assertEquals(((Number) materializedRow.getField(0)).longValue() + 1, materializedRow.getField(1));
+        }
     }
 
     @Test
@@ -3360,6 +3378,14 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testTryInvalidCast()
+            throws Exception
+    {
+        assertQuery("SELECT TRY(CAST('a' AS BIGINT))",
+                "SELECT NULL");
+    }
+
+    @Test
     public void testConcatOperator()
             throws Exception
     {
@@ -3584,11 +3610,17 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT x FROM (values DATE '1970-01-01', DATE '1970-01-03') t(x) WHERE x IN (DATE '1970-01-01')", "values DATE '1970-01-01'");
         assertQuery("SELECT x FROM (values TIMESTAMP '1970-01-01 00:01:00+00:00', TIMESTAMP '1970-01-01 08:01:00+08:00', TIMESTAMP '1970-01-01 00:01:00+08:00') t(x) WHERE x IN (TIMESTAMP '1970-01-01 00:01:00+00:00')", "values TIMESTAMP '1970-01-01 00:01:00+00:00', TIMESTAMP '1970-01-01 08:01:00+08:00'");
         assertQuery("SELECT COUNT(*) FROM (values 1) t(x) WHERE x IN (null, 0)", "SELECT 0");
+    }
 
-        String longValues =  range(0, 20_000).asLongStream()
+    @Test
+    public void testLargeIn()
+        throws Exception
+    {
+        String longValues =  range(0, 5000).asLongStream()
                 .mapToObj(Long::toString)
                 .collect(joining(", "));
         assertQuery("SELECT orderkey FROM orders WHERE orderkey IN (" + longValues + ")");
+        assertQuery("SELECT orderkey FROM orders WHERE orderkey NOT IN (" + longValues + ")");
 
         String arrayValues = range(0, 5000).asLongStream()
                 .mapToObj(i -> format("ARRAY[%s, %s, %s]", i, i + 1, i + 2))
@@ -3895,28 +3927,6 @@ public abstract class AbstractTestQueries
     }
 
     @Test
-    public void testShowPartitions()
-            throws Exception
-    {
-        MaterializedResult result = computeActual("SHOW PARTITIONS FROM orders");
-        // table is not partitioned
-        // TODO: add a partitioned table for tests and test where/order/limit
-        assertEquals(result.getMaterializedRows().size(), 0);
-    }
-
-    @Test
-    public void testShowPartitionsLimitAll()
-            throws Exception
-    {
-        MaterializedResult result = computeActual("SHOW PARTITIONS FROM orders");
-        MaterializedResult resultWithLimitAll = computeActual("SHOW PARTITIONS FROM orders LIMIT ALL");
-
-        // table is not partitioned
-        // TODO: add a partitioned table for limit all
-        assertEquals(result.getMaterializedRows().size(), resultWithLimitAll.getMaterializedRows().size());
-    }
-
-    @Test
     public void testShowFunctions()
             throws Exception
     {
@@ -4004,6 +4014,26 @@ public abstract class AbstractTestQueries
         assertEquals(properties.get("test_long"), new MaterializedRow(1, "test_long", "424242", "42", "bigint", "test long property"));
         assertEquals(properties.get("connector.connector_string"), new MaterializedRow(1, "connector.connector_string", "bar string", "connector default", "varchar", "connector string property"));
         assertEquals(properties.get("connector.connector_long"), new MaterializedRow(1, "connector.connector_long", "11", "33", "bigint", "connector long property"));
+    }
+
+    @Test
+    public void testTry()
+            throws Exception
+    {
+        // divide by zero
+        assertQuery(
+                "SELECT linenumber, sum(TRY(100/(CAST (tax*10 AS BIGINT)))) FROM lineitem GROUP BY linenumber",
+                "SELECT linenumber, sum(100/(CAST (tax*10 AS BIGINT))) FROM lineitem WHERE CAST(tax*10 AS BIGINT) <> 0 GROUP BY linenumber");
+
+        // invalid cast
+        assertQuery(
+                "SELECT TRY(CAST(IF(round(totalprice) % 2 = 0, CAST(totalprice AS VARCHAR), '^&$' || CAST(totalprice AS VARCHAR)) AS DOUBLE)) FROM orders",
+                "SELECT CASE WHEN round(totalprice) % 2 = 0 THEN totalprice ELSE null END FROM orders");
+
+        // invalid function argument
+        assertQuery(
+                "SELECT COUNT(TRY(to_base(100, CAST(round(totalprice/100) AS BIGINT)))) FROM orders",
+                "SELECT SUM(CASE WHEN CAST(round(totalprice/100) AS BIGINT) BETWEEN 2 AND 36 THEN 1 ELSE 0 END) FROM orders");
     }
 
     @Test

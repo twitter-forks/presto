@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>48</version>
+        <version>49</version>
     </parent>
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.139-tw-0.19</version>
+    <version>0.141-tw-0.20</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -30,7 +30,7 @@
     <scm>
         <connection>scm:git:git://github.com/twitter-forks/presto.git</connection>
         <url>https://github.com/twitter-forks/presto</url>
-        <tag>0.139-tw-0.19</tag>
+        <tag>0.141-tw-0.20</tag>
     </scm>
 
     <properties>

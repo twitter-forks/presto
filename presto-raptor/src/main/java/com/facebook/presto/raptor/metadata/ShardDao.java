@@ -17,6 +17,7 @@ import com.facebook.presto.raptor.util.UuidUtil.UuidArgumentFactory;
 import com.facebook.presto.raptor.util.UuidUtil.UuidMapperFactory;
 import com.google.common.annotations.VisibleForTesting;
 import org.skife.jdbi.v2.sqlobject.Bind;
+import org.skife.jdbi.v2.sqlobject.BindBean;
 import org.skife.jdbi.v2.sqlobject.GetGeneratedKeys;
 import org.skife.jdbi.v2.sqlobject.SqlBatch;
 import org.skife.jdbi.v2.sqlobject.SqlQuery;
@@ -126,6 +127,9 @@ public interface ShardDao
             @Bind("transactionId") long transactionId,
             @Bind("successful") boolean successful);
 
+    @SqlQuery("SELECT successful FROM transactions WHERE transaction_id = :transactionId")
+    Boolean transactionSuccessful(@Bind("transactionId") long transactionId);
+
     @SqlUpdate("UPDATE transactions SET\n" +
             "  successful = FALSE\n" +
             ", end_time = CURRENT_TIMESTAMP\n" +
@@ -149,8 +153,16 @@ public interface ShardDao
     @SqlUpdate("DELETE FROM created_shards WHERE transaction_id = :transactionId")
     void deleteCreatedShards(@Bind("transactionId") long transactionId);
 
+    @SqlBatch("DELETE FROM created_shards WHERE shard_uuid = :shardUuid")
+    void deleteCreatedShards(@Bind("shardUuid") Iterable<UUID> shardUuids);
+
     @SqlUpdate("DELETE FROM created_shard_nodes WHERE transaction_id = :transactionId")
     void deleteCreatedShardNodes(@Bind("transactionId") long transactionId);
+
+    @SqlBatch("DELETE FROM created_shard_nodes\n" +
+            "WHERE shard_uuid = :shardUuid\n" +
+            "  AND node_id = :nodeId")
+    void deleteCreatedShardNodes(@BindBean Iterable<ShardNodeId> shardNodes);
 
     @SqlBatch("INSERT INTO deleted_shards (shard_uuid, delete_time)\n" +
             "VALUES (:shardUuid, CURRENT_TIMESTAMP)")
@@ -158,9 +170,7 @@ public interface ShardDao
 
     @SqlBatch("INSERT INTO deleted_shard_nodes (shard_uuid, node_id, delete_time)\n" +
             "VALUES (:shardUuid, :nodeId, CURRENT_TIMESTAMP)")
-    void insertDeletedShardNodes(
-            @Bind("shardUuid") List<UUID> shardUuids,
-            @Bind("nodeId") List<Integer> nodeIds);
+    void insertDeletedShardNodes(@BindBean Iterable<ShardNodeId> shardNodes);
 
     @SqlUpdate("INSERT INTO deleted_shards (shard_uuid, delete_time)\n" +
             "SELECT shard_uuid, CURRENT_TIMESTAMP\n" +
@@ -175,62 +185,20 @@ public interface ShardDao
             "WHERE s.table_id = :tableId")
     void insertDeletedShardNodes(@Bind("tableId") long tableId);
 
-    @SqlUpdate("DROP TABLE IF EXISTS tmp_created_shards")
-    void dropTableTemporaryCreatedShards();
-
-    @SqlUpdate("CREATE TEMPORARY TABLE tmp_created_shards (\n" +
-            "  shard_uuid BINARY(16) NOT NULL PRIMARY KEY\n" +
-            ")")
-    void createTableTemporaryCreatedShards();
-
-    @SqlUpdate("INSERT INTO tmp_created_shards (shard_uuid)\n" +
-            "SELECT DISTINCT s.shard_uuid\n" +
+    @SqlQuery("SELECT s.shard_uuid\n" +
             "FROM created_shards s\n" +
             "JOIN transactions t ON (s.transaction_id = t.transaction_id)\n" +
-            "WHERE NOT t.successful")
-    void insertTemporaryCreatedShards();
+            "WHERE NOT t.successful\n" +
+            "LIMIT 10000")
+    List<UUID> getOldCreatedShardsBatch();
 
-    @SqlUpdate("INSERT INTO deleted_shards (shard_uuid, delete_time)\n" +
-            "SELECT shard_uuid, CURRENT_TIMESTAMP\n" +
-            "FROM tmp_created_shards\n")
-    void insertDeletedShardsFromCreated();
-
-    @SqlUpdate("DELETE FROM created_shards\n" +
-            "WHERE shard_uuid IN (\n" +
-            "  SELECT shard_uuid\n" +
-            "  FROM tmp_created_shards)")
-    void deleteOldCreatedShards();
-
-    @SqlUpdate("DROP TABLE IF EXISTS tmp_created_shard_nodes")
-    void dropTableTemporaryCreatedShardNodes();
-
-    @SqlUpdate("CREATE TEMPORARY TABLE tmp_created_shard_nodes (\n" +
-            "  shard_uuid BINARY(16) NOT NULL,\n" +
-            "  node_id INT NOT NULL,\n" +
-            "  PRIMARY KEY (shard_uuid, node_id)\n" +
-            ")")
-    void createTableTemporaryCreatedShardNodes();
-
-    @SqlUpdate("INSERT INTO tmp_created_shard_nodes (shard_uuid, node_id)\n" +
-            "SELECT DISTINCT s.shard_uuid, s.node_id\n" +
+    @SqlQuery("SELECT s.shard_uuid, s.node_id\n" +
             "FROM created_shard_nodes s\n" +
             "JOIN transactions t ON (s.transaction_id = t.transaction_id)\n" +
-            "WHERE NOT t.successful")
-    void insertTemporaryCreatedShardNodes();
-
-    @SqlUpdate("INSERT INTO deleted_shard_nodes (shard_uuid, node_id, delete_time)\n" +
-            "SELECT shard_uuid, node_id, CURRENT_TIMESTAMP\n" +
-            "FROM tmp_created_shard_nodes")
-    void insertDeletedShardNodesFromCreated();
-
-    // use EXISTS instead of IN because H2 does not support row values
-    @SqlUpdate("DELETE FROM created_shard_nodes\n" +
-            "WHERE EXISTS (\n" +
-            "  SELECT TRUE\n" +
-            "  FROM tmp_created_shard_nodes t\n" +
-            "  WHERE created_shard_nodes.shard_uuid = t.shard_uuid\n" +
-            "    AND created_shard_nodes.node_id = t.node_id)")
-    void deleteOldCreatedShardNodes();
+            "WHERE NOT t.successful\n" +
+            "LIMIT 10000")
+    @Mapper(ShardNodeId.Mapper.class)
+    List<ShardNodeId> getOldCreatedShardNodesBatch();
 
     @SqlQuery("SELECT shard_uuid\n" +
             "FROM deleted_shards\n" +
@@ -241,10 +209,9 @@ public interface ShardDao
 
     @SqlQuery("SELECT shard_uuid\n" +
             "FROM deleted_shards\n" +
-            "WHERE delete_time < :maxDeleteTime\n" +
-            "  AND purge_time IS NULL\n" +
+            "WHERE clean_time < :maxCleanTime\n" +
             "LIMIT 1000")
-    List<UUID> getPurgableShardsBatch(@Bind("maxDeleteTime") Timestamp maxDeleteTime);
+    List<UUID> getPurgableShardsBatch(@Bind("maxCleanTime") Timestamp maxCleanTime);
 
     @SqlQuery("SELECT shard_uuid\n" +
             "FROM deleted_shard_nodes d\n" +
@@ -261,22 +228,20 @@ public interface ShardDao
             "FROM deleted_shard_nodes d\n" +
             "JOIN nodes n ON (d.node_id = n.node_id)\n" +
             "WHERE n.node_identifier = :nodeIdentifier\n" +
-            "  AND d.delete_time < :maxDeleteTime\n" +
-            "  AND d.purge_time IS NULL\n" +
+            "  AND d.clean_time < :maxCleanTime\n" +
             "LIMIT 1000")
     List<UUID> getPurgableShardNodesBatch(
             @Bind("nodeIdentifier") String nodeIdentifier,
-            @Bind("maxDeleteTime") Timestamp maxDeleteTime);
+            @Bind("maxCleanTime") Timestamp maxCleanTime);
 
-    @SqlUpdate("UPDATE deleted_shards SET clean_time = CURRENT_TIMESTAMP\n" +
+    @SqlBatch("UPDATE deleted_shards SET clean_time = CURRENT_TIMESTAMP\n" +
             "WHERE shard_uuid = :shardUuid\n" +
             "  AND clean_time IS NULL\n")
-    void updateCleanedShard(@Bind("shardUuid") UUID shardUuid);
+    void updateCleanedShards(@Bind("shardUuid") Iterable<UUID> shardUuids);
 
-    @SqlUpdate("UPDATE deleted_shards SET purge_time = CURRENT_TIMESTAMP\n" +
-            "WHERE shard_uuid = :shardUuid\n" +
-            "  AND purge_time IS NULL\n")
-    void updatePurgedShard(@Bind("shardUuid") UUID shardUuid);
+    @SqlBatch("DELETE FROM deleted_shards\n" +
+            "WHERE shard_uuid = :shardUuid")
+    void deletePurgedShards(@Bind("shardUuid") Iterable<UUID> shardUuids);
 
     @SqlBatch("UPDATE deleted_shard_nodes SET clean_time = CURRENT_TIMESTAMP\n" +
             "WHERE shard_uuid = :shardUuid\n" +
@@ -286,11 +251,10 @@ public interface ShardDao
             @Bind("shardUuid") Iterable<UUID> shardUuids,
             @Bind("nodeId") int nodeId);
 
-    @SqlBatch("UPDATE deleted_shard_nodes SET purge_time = CURRENT_TIMESTAMP\n" +
+    @SqlBatch("DELETE FROM deleted_shard_nodes\n" +
             "WHERE shard_uuid = :shardUuid\n" +
-            "  AND node_id = :nodeId\n" +
-            "  AND purge_time IS NULL\n")
-    void updatePurgedShardNodes(
+            "  AND node_id = :nodeId")
+    void deletePurgedShardNodes(
             @Bind("shardUuid") Iterable<UUID> shardUuids,
             @Bind("nodeId") int nodeId);
 
