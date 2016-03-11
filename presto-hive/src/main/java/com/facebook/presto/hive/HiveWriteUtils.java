@@ -79,7 +79,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_DATABASE_LOCATION_ERRO
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILESYSTEM_ERROR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_PATH_ALREADY_EXISTS;
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_ERROR;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_DATA_ERROR;
 import static com.facebook.presto.hive.HiveSplitManager.PRESTO_OFFLINE;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.isArrayType;
@@ -126,7 +126,7 @@ public final class HiveWriteUtils
             return ((HiveOutputFormat<?, ?>) writer).getHiveRecordWriter(conf, target, Text.class, isCompressed, properties, Reporter.NULL);
         }
         catch (IOException | ReflectiveOperationException e) {
-            throw new PrestoException(HIVE_WRITER_ERROR, e);
+            throw new PrestoException(HIVE_WRITER_DATA_ERROR, e);
         }
     }
 

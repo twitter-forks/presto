@@ -407,6 +407,11 @@ public abstract class AstVisitor<R, C>
         return visitExpression(node, context);
     }
 
+    protected R visitTryExpression(TryExpression node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
     protected R visitCast(Cast node, C context)
     {
         return visitExpression(node, context);
@@ -498,6 +503,11 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitStartTransaction(StartTransaction node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitGrant(Grant node, C context)
     {
         return visitStatement(node, context);
     }

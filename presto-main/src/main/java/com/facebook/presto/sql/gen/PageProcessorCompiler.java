@@ -39,6 +39,7 @@ import com.facebook.presto.spi.block.RunLengthEncodedBlock;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.relational.CallExpression;
 import com.facebook.presto.sql.relational.ConstantExpression;
+import com.facebook.presto.sql.relational.DeterminismEvaluator;
 import com.facebook.presto.sql.relational.Expressions;
 import com.facebook.presto.sql.relational.InputReferenceExpression;
 import com.facebook.presto.sql.relational.RowExpression;
@@ -76,6 +77,7 @@ import static com.facebook.presto.bytecode.expression.BytecodeExpressions.newIns
 import static com.facebook.presto.bytecode.instruction.JumpInstruction.jump;
 import static com.facebook.presto.sql.gen.BytecodeUtils.generateWrite;
 import static com.facebook.presto.sql.gen.BytecodeUtils.loadConstant;
+import static com.facebook.presto.sql.gen.TryCodeGenerator.defineTryMethod;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.Iterables.concat;
@@ -88,10 +90,12 @@ public class PageProcessorCompiler
         implements BodyCompiler<PageProcessor>
 {
     private final Metadata metadata;
+    private final DeterminismEvaluator determinismEvaluator;
 
     public PageProcessorCompiler(Metadata metadata)
     {
         this.metadata = metadata;
+        this.determinismEvaluator = new DeterminismEvaluator(metadata.getFunctionRegistry());
     }
 
     @Override
@@ -328,7 +332,7 @@ public class PageProcessorCompiler
         return method;
     }
 
-    private static MethodDefinition generateProjectRLEMethod(
+    private MethodDefinition generateProjectRLEMethod(
             ClassDefinition classDefinition,
             String methodName,
             RowExpression projection,
@@ -355,7 +359,7 @@ public class PageProcessorCompiler
         Variable thisVariable = method.getThis();
         List<Integer> inputChannels = getInputChannels(projection);
 
-        if (inputChannels.size() != 1) {
+        if (inputChannels.size() != 1 || !determinismEvaluator.isDeterministic(projection)) {
             body.append(thisVariable.invoke(projectColumnar, params)
                     .ret());
             return method;
@@ -385,7 +389,7 @@ public class PageProcessorCompiler
         return method;
     }
 
-    private static MethodDefinition generateProjectDictionaryMethod(
+    private MethodDefinition generateProjectDictionaryMethod(
             ClassDefinition classDefinition,
             String methodName,
             RowExpression projection,
@@ -424,7 +428,7 @@ public class PageProcessorCompiler
 
         List<Integer> inputChannels = getInputChannels(projection);
 
-        if (inputChannels.size() != 1) {
+        if (inputChannels.size() != 1 || !determinismEvaluator.isDeterministic(projection)) {
             body.append(thisVariable.invoke(projectColumnar, columnarParams)
                     .ret());
             return method;
@@ -603,7 +607,7 @@ public class PageProcessorCompiler
         body.append(page.ret());
     }
 
-    private static void generateFilterPageMethod(ClassDefinition classDefinition, RowExpression filter)
+    private void generateFilterPageMethod(ClassDefinition classDefinition, RowExpression filter)
     {
         Parameter session = arg("session", ConnectorSession.class);
         Parameter page = arg("page", Page.class);
@@ -629,7 +633,7 @@ public class PageProcessorCompiler
             blockVariablesBuilder.add(blockVariable);
         }
         List<Variable> blockVariables = blockVariablesBuilder.build();
-        if (filterChannels.size() == 1) {
+        if (filterChannels.size() == 1 && determinismEvaluator.isDeterministic(filter)) {
             BytecodeBlock ifFilterOnDictionaryBlock = getBytecodeFilterOnDictionary(session, scope, blockVariables.get(0));
             BytecodeBlock ifFilterOnRLEBlock = getBytecodeFilterOnRLE(session, scope, blockVariables.get(0));
 
@@ -728,21 +732,76 @@ public class PageProcessorCompiler
         return ifFilterOnDictionaryBlock;
     }
 
+    private Map<CallExpression, MethodDefinition> generateTryMethods(
+            ClassDefinition containerClassDefinition,
+            CallSiteBinder callSiteBinder,
+            CachedInstanceBinder cachedInstanceBinder,
+            RowExpression projection,
+            String methodPrefix)
+    {
+        TryExpressionExtractor tryExtractor = new TryExpressionExtractor();
+        projection.accept(tryExtractor, null);
+        List<CallExpression> tryExpressions = tryExtractor.getTryExpressionsPreOrder();
+
+        ImmutableMap.Builder<CallExpression, MethodDefinition> tryMethodMap = ImmutableMap.builder();
+
+        int methodId = 0;
+        for (CallExpression tryExpression : tryExpressions) {
+            Parameter session = arg("session", ConnectorSession.class);
+            List<Parameter> blocks = toBlockParameters(getInputChannels(tryExpression.getArguments()));
+            Parameter position = arg("position", int.class);
+            Parameter wasNullVariable = arg("wasNull", boolean.class);
+
+            List<Parameter> inputParameters = ImmutableList.<Parameter>builder()
+                    .add(session)
+                    .addAll(blocks)
+                    .add(position)
+                    .add(wasNullVariable)
+                    .build();
+
+            BytecodeExpressionVisitor innerExpressionVisitor = new BytecodeExpressionVisitor(
+                    callSiteBinder,
+                    cachedInstanceBinder,
+                    fieldReferenceCompiler(callSiteBinder, position, wasNullVariable),
+                    metadata.getFunctionRegistry(),
+                    inputParameters,
+                    tryMethodMap.build());
+
+            MethodDefinition tryMethod = defineTryMethod(
+                    innerExpressionVisitor,
+                    containerClassDefinition,
+                    methodPrefix + "_try_" + methodId,
+                    inputParameters,
+                    Primitives.wrap(tryExpression.getType().getJavaType()),
+                    tryExpression,
+                    callSiteBinder);
+
+            tryMethodMap.put(tryExpression, tryMethod);
+            methodId++;
+        }
+
+        return tryMethodMap.build();
+    }
+
     private void generateFilterMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, RowExpression filter)
     {
+        Map<CallExpression, MethodDefinition> tryMethodMap = generateTryMethods(classDefinition, callSiteBinder, cachedInstanceBinder, filter, "filter");
+
         Parameter session = arg("session", ConnectorSession.class);
+        List<Parameter> blocks = toBlockParameters(getInputChannels(filter));
         Parameter position = arg("position", int.class);
 
-        List<Parameter> blocks = toBlockParameters(getInputChannels(filter));
+        List<Parameter> expressionInputs = ImmutableList.<Parameter>builder()
+                .add(session)
+                .addAll(blocks)
+                .add(position)
+                .build();
+
         MethodDefinition method = classDefinition.declareMethod(
                 a(PUBLIC),
                 "filter",
                 type(boolean.class),
-                ImmutableList.<Parameter>builder()
-                        .add(session)
-                        .addAll(blocks)
-                        .add(position)
-                        .build());
+                expressionInputs);
 
         method.comment("Filter: %s", filter.toString());
         BytecodeBlock body = method.getBody();
@@ -754,7 +813,13 @@ public class PageProcessorCompiler
                 callSiteBinder,
                 cachedInstanceBinder,
                 fieldReferenceCompiler(callSiteBinder, position, wasNullVariable),
-                metadata.getFunctionRegistry());
+                metadata.getFunctionRegistry(),
+                ImmutableList.<Variable>builder()
+                        .addAll(expressionInputs)
+                        .add(wasNullVariable)
+                        .build(),
+                tryMethodMap);
+
         BytecodeNode visitorBody = filter.accept(visitor, scope);
 
         Variable result = scope.declareVariable(boolean.class, "result");
@@ -768,18 +833,25 @@ public class PageProcessorCompiler
 
     private MethodDefinition generateProjectMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, CachedInstanceBinder cachedInstanceBinder, String methodName, RowExpression projection)
     {
+        Map<CallExpression, MethodDefinition> tryMethodMap = generateTryMethods(classDefinition, callSiteBinder, cachedInstanceBinder, projection, methodName);
+
         Parameter session = arg("session", ConnectorSession.class);
-        List<Parameter> inputs = toBlockParameters(getInputChannels(projection));
+        List<Parameter> blocks = toBlockParameters(getInputChannels(projection));
         Parameter position = arg("position", int.class);
         Parameter output = arg("output", BlockBuilder.class);
+
+        List<Parameter> expressionInputs = ImmutableList.<Parameter>builder()
+                .add(session)
+                .addAll(blocks)
+                .add(position)
+                .build();
+
         MethodDefinition method = classDefinition.declareMethod(
                 a(PUBLIC),
                 methodName,
                 type(void.class),
                 ImmutableList.<Parameter>builder()
-                        .add(session)
-                        .addAll(inputs)
-                        .add(position)
+                        .addAll(expressionInputs)
                         .add(output)
                         .build());
 
@@ -793,7 +865,13 @@ public class PageProcessorCompiler
                 callSiteBinder,
                 cachedInstanceBinder,
                 fieldReferenceCompiler(callSiteBinder, position, wasNullVariable),
-                metadata.getFunctionRegistry());
+                metadata.getFunctionRegistry(),
+                ImmutableList.<Variable>builder()
+                    .addAll(expressionInputs)
+                    .add(wasNullVariable)
+                    .build(),
+                tryMethodMap
+        );
 
         body.getVariable(output)
                 .comment("evaluate projection: " + projection.toString())
