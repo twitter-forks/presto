@@ -1244,11 +1244,15 @@ public class HiveMetadata
 
         HivePartitionResult hivePartitionResult = partitionManager.getPartitions(session, metastore, tableHandle, constraint.getSummary());
 
+        List<HivePartition> partitions = hivePartitionResult.getPartitions().stream()
+                .filter(partition -> constraint.predicate().test(partition.getKeys()))
+                .collect(toList());
+
         return ImmutableList.of(new ConnectorTableLayoutResult(
                 getTableLayout(session, new HiveTableLayoutHandle(
                         handle.getClientId(),
                         ImmutableList.copyOf(hivePartitionResult.getPartitionColumns()),
-                        hivePartitionResult.getPartitions(),
+                        partitions,
                         hivePartitionResult.getEnforcedConstraint())),
                 hivePartitionResult.getUnenforcedConstraint()));
     }
