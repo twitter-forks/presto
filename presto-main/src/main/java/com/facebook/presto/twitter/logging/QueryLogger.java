@@ -23,6 +23,9 @@ import io.airlift.units.Duration;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Class that listens for query completion events and logs them to a file
+ */
 public class QueryLogger extends AbstractEventClient
 {
     private static final int MAX_QUERY_LENGTH = 1000;

@@ -24,6 +24,7 @@ import com.facebook.presto.security.AccessControlManager;
 import com.facebook.presto.security.AccessControlModule;
 import com.facebook.presto.server.security.ServerSecurityModule;
 import com.facebook.presto.sql.parser.SqlParserOptions;
+import com.facebook.presto.twitter.TwitterModuleLoader;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -154,7 +155,7 @@ public class PrestoServer
 
     protected Iterable<? extends Module> getAdditionalModules()
     {
-        return com.facebook.presto.twitter.ModuleLoader.getAdditionalModules();
+        return TwitterModuleLoader.getAdditionalModules();
     }
 
     private static void updateDatasources(Announcer announcer, Metadata metadata, ServerConfig serverConfig, NodeSchedulerConfig schedulerConfig)
