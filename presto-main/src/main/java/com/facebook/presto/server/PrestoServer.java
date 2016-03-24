@@ -154,7 +154,7 @@ public class PrestoServer
 
     protected Iterable<? extends Module> getAdditionalModules()
     {
-        return ImmutableList.of();
+        return com.facebook.presto.twitter.ModuleLoader.getAdditionalModules();
     }
 
     private static void updateDatasources(Announcer announcer, Metadata metadata, ServerConfig serverConfig, NodeSchedulerConfig schedulerConfig)
