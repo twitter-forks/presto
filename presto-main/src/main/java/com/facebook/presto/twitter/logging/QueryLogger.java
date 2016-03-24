@@ -67,10 +67,10 @@ public class QueryLogger extends AbstractEventClient
                 event.getCreateTime().getMillis(), TimeUnit.MILLISECONDS))
                 .convertToMostSuccinctTimeUnit();
 
-        log.info(String.format("Query complete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+        log.info(String.format("Query complete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
                 event.getQueryId(), toLogValue(event.getRemoteClientAddress()),
-                event.getQueryState(), errorType, errorCode,
-                event.getUser(), duration,
+                event.getQueryState(), errorType, errorCode, event.getUser(), duration,
+                event.getSplits(), event.getTotalRows(), event.getTotalBytes(),
                 cleanseAndTrimQuery(event.getQuery())));
     }
 
