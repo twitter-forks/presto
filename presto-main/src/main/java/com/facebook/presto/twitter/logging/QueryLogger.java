@@ -33,6 +33,7 @@ public class QueryLogger extends AbstractEventClient
     private static final String COLON = ":";
     private static final String SPACE = " ";
     private static final String ELIPSIS = "...";
+    private static final String QUERY_COMPLETION = "QueryCompletion";
 
     private static final Logger log = Logger.get(QueryLogger.class);
 
@@ -46,7 +47,7 @@ public class QueryLogger extends AbstractEventClient
         }
 
         // other event types exist, like QueryCreatedEvent and SplitCompletionEvent
-        if (eventTypeAnnotation.value().equals("QueryCompletion")) {
+        if (eventTypeAnnotation.value().equals(QUERY_COMPLETION)) {
             logQueryComplete((QueryCompletionEvent) event);
         }
     }
@@ -67,8 +68,8 @@ public class QueryLogger extends AbstractEventClient
                 event.getCreateTime().getMillis(), TimeUnit.MILLISECONDS))
                 .convertToMostSuccinctTimeUnit();
 
-        log.info(String.format("Query complete\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
-                event.getQueryId(), toLogValue(event.getRemoteClientAddress()),
+        log.info(String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+                QUERY_COMPLETION, event.getQueryId(), toLogValue(event.getRemoteClientAddress()),
                 event.getQueryState(), errorType, errorCode, event.getUser(), duration,
                 event.getSplits(), event.getTotalRows(), event.getTotalBytes(),
                 cleanseAndTrimQuery(event.getQuery())));
