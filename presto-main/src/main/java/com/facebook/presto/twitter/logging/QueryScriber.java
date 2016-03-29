@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.twitter.logging;
 
-import com.facebook.presto.event.query.QueryCompletionEvent;
 import com.facebook.presto.event.query.QueryEventHandler;
 import com.google.common.base.Optional;
 import com.twitter.logging.BareFormatter$;
 import com.twitter.logging.Level;
 import com.twitter.logging.QueueingHandler;
 import com.twitter.logging.ScribeHandler;
+import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TBase;
@@ -32,7 +32,7 @@ import java.util.logging.LogRecord;
 /**
  * Class that scribes query completion events
  */
-public class QueryScriber implements QueryEventHandler<QueryCompletionEvent>
+public class QueryScriber implements QueryEventHandler<com.facebook.presto.event.query.QueryCompletionEvent>
 {
     private static final String SCRIBE_CATEGORY = "test_presto_query_complete";
     private static final int MAX_QUEUE_SIZE = 1000;
@@ -66,17 +66,17 @@ public class QueryScriber implements QueryEventHandler<QueryCompletionEvent>
     }
 
     @Override
-    public void handle(QueryCompletionEvent event)
+    public void handle(com.facebook.presto.event.query.QueryCompletionEvent event)
     {
         com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent = toThriftQueryCompletionEvent(event);
         Optional<String> message = serializeThriftToString(thriftEvent);
 
         if (message.isPresent()) {
-          LogRecord logRecord = new LogRecord(Level.ALL, message.get());
-          queueingHandler.publish(logRecord);
+            LogRecord logRecord = new LogRecord(Level.ALL, message.get());
+            queueingHandler.publish(logRecord);
         }
         else {
-          log.warn("Unable to serialize QueryCompletionEvent: " + event);
+            log.warn("Unable to serialize QueryCompletionEvent: " + event);
         }
     }
 
@@ -95,10 +95,9 @@ public class QueryScriber implements QueryEventHandler<QueryCompletionEvent>
         }
     }
 
-    private static com.twitter.presto.thriftjava.QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletionEvent event)
+    private static QueryCompletionEvent toThriftQueryCompletionEvent(com.facebook.presto.event.query.QueryCompletionEvent event)
     {
-        com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent =
-                new com.twitter.presto.thriftjava.QueryCompletionEvent();
+        QueryCompletionEvent thriftEvent = new QueryCompletionEvent();
 
         thriftEvent.query_id = event.getQueryId();
         thriftEvent.transaction_id = event.getTransactionId();

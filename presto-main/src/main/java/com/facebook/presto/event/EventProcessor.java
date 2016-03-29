@@ -27,6 +27,9 @@ import io.airlift.log.Logger;
 import java.io.IOException;
 import java.util.Set;
 
+/**
+ * Class that listens for airlift events and sends presto events to handlers
+ */
 public class EventProcessor extends AbstractEventClient
 {
     private static final String QUERY_CREATED = "QueryCreated";

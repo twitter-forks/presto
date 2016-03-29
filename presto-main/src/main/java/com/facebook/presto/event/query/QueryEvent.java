@@ -13,9 +13,6 @@
  */
 package com.facebook.presto.event.query;
 
-/**
- *
- */
 public interface QueryEvent
 {
     String getQueryId();
