@@ -18,7 +18,6 @@ import com.facebook.presto.event.query.QueryCreatedEvent;
 import com.facebook.presto.event.query.QueryEvent;
 import com.facebook.presto.event.query.QueryEventHandler;
 import com.facebook.presto.event.query.SplitCompletionEvent;
-import com.facebook.presto.twitter.logging.QueryLogger;
 import com.google.inject.Inject;
 import io.airlift.event.client.AbstractEventClient;
 import io.airlift.event.client.EventType;
@@ -35,7 +34,7 @@ public class EventProcessor extends AbstractEventClient
     private static final String QUERY_CREATED = "QueryCreated";
     private static final String QUERY_COMPLETION = "QueryCompletion";
     private static final String SPLIT_COMPLETION = "SplitCompletion";
-    private static final Logger log = Logger.get(QueryLogger.class);
+    private static final Logger log = Logger.get(EventProcessor.class);
 
     private Set<QueryEventHandler<QueryCreatedEvent>> queryCreatedEventHandlers;
     private Set<QueryEventHandler<QueryCompletionEvent>> queryCompletionEventHandlers;
