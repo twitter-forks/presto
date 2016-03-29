@@ -296,6 +296,24 @@
             <artifactId>tpch</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- twitter deps -->
+        <dependency>
+            <groupId>com.twitter</groupId>
+            <artifactId>presto-thrift-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.twitter</groupId>
+            <artifactId>util-logging_2.11</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libthrift</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
