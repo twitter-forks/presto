@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.twitter.logging;
 
+import com.facebook.presto.event.query.QueryCompletionEvent;
 import com.facebook.presto.event.query.QueryEventHandler;
 import com.google.common.base.Optional;
 import com.twitter.logging.BareFormatter$;
 import com.twitter.logging.Level;
 import com.twitter.logging.QueueingHandler;
 import com.twitter.logging.ScribeHandler;
-import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TBase;
@@ -32,7 +32,7 @@ import java.util.logging.LogRecord;
 /**
  * Class that scribes query completion events
  */
-public class QueryScriber implements QueryEventHandler<com.facebook.presto.event.query.QueryCompletionEvent>
+public class QueryScriber implements QueryEventHandler<QueryCompletionEvent>
 {
     private static final String SCRIBE_CATEGORY = "test_presto_query_complete";
     private static final int MAX_QUEUE_SIZE = 1000;
@@ -66,7 +66,7 @@ public class QueryScriber implements QueryEventHandler<com.facebook.presto.event
     }
 
     @Override
-    public void handle(com.facebook.presto.event.query.QueryCompletionEvent event)
+    public void handle(QueryCompletionEvent event)
     {
         com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent = toThriftQueryCompletionEvent(event);
         Optional<String> message = serializeThriftToString(thriftEvent);
@@ -95,9 +95,10 @@ public class QueryScriber implements QueryEventHandler<com.facebook.presto.event
         }
     }
 
-    private static QueryCompletionEvent toThriftQueryCompletionEvent(com.facebook.presto.event.query.QueryCompletionEvent event)
+    private static com.twitter.presto.thriftjava.QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletionEvent event)
     {
-        QueryCompletionEvent thriftEvent = new QueryCompletionEvent();
+        com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent =
+                new com.twitter.presto.thriftjava.QueryCompletionEvent();
 
         thriftEvent.query_id = event.getQueryId();
         thriftEvent.transaction_id = event.getTransactionId();
