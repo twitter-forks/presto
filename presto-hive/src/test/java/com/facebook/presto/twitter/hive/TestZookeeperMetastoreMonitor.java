@@ -11,10 +11,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive;
+package com.facebook.presto.twitter.hive;
 
 import com.facebook.presto.hadoop.shaded.com.google.common.collect.ImmutableList;
-import com.facebook.presto.hive.util.TestUtils;
+import com.facebook.presto.twitter.hive.util.TestUtils;
 import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
 import org.I0Itec.zkclient.ZkClient;

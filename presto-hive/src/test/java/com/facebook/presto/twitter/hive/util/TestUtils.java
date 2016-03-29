@@ -11,21 +11,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive;
+package com.facebook.presto.twitter.hive.util;
 
-import com.google.inject.Binder;
-import com.google.inject.Module;
-import com.google.inject.Scopes;
+import java.io.IOException;
+import java.net.ServerSocket;
 
-import static io.airlift.configuration.ConfigBinder.configBinder;
-
-public class MetastoreStaticClusterModule
-        implements Module
+public final class TestUtils
 {
-    @Override
-    public void configure(Binder binder)
+    private TestUtils() {}
+
+    public static int findUnusedPort()
+            throws IOException
     {
-        binder.bind(HiveCluster.class).to(StaticHiveCluster.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(StaticMetastoreConfig.class);
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        }
     }
 }
