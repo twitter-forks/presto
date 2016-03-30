@@ -14,19 +14,17 @@
 package com.facebook.presto.twitter.logging;
 
 import com.facebook.presto.event.query.QueryCompletionEvent;
+import com.facebook.presto.event.query.QueryEventHandler;
 import com.facebook.presto.spi.StandardErrorCode;
-import io.airlift.event.client.AbstractEventClient;
-import io.airlift.event.client.EventType;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Class that listens for query completion events and logs them to a file
+ * Class that logs query events to a file
  */
-public class QueryLogger extends AbstractEventClient
+public class QueryLogger implements QueryEventHandler<QueryCompletionEvent>
 {
     private static final int MAX_QUERY_LENGTH = 1000;
     private static final String DASH = "-";
@@ -38,21 +36,7 @@ public class QueryLogger extends AbstractEventClient
     private static final Logger log = Logger.get(QueryLogger.class);
 
     @Override
-    protected <T> void postEvent(T event)
-            throws IOException
-    {
-        EventType eventTypeAnnotation = event.getClass().getAnnotation(EventType.class);
-        if (eventTypeAnnotation == null) {
-            return;
-        }
-
-        // other event types exist, like QueryCreatedEvent and SplitCompletionEvent
-        if (eventTypeAnnotation.value().equals(QUERY_COMPLETION)) {
-            logQueryComplete((QueryCompletionEvent) event);
-        }
-    }
-
-    private static void logQueryComplete(QueryCompletionEvent event)
+    public void handle(QueryCompletionEvent event)
     {
         String errorType = DASH;
         String errorCode = DASH;
@@ -64,8 +48,7 @@ public class QueryLogger extends AbstractEventClient
         }
 
         Duration duration = (new Duration(
-                event.getEndTime().getMillis() -
-                event.getCreateTime().getMillis(), TimeUnit.MILLISECONDS))
+                event.getQueryWallTimeMs(), TimeUnit.MILLISECONDS))
                 .convertToMostSuccinctTimeUnit();
 
         log.info(String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
