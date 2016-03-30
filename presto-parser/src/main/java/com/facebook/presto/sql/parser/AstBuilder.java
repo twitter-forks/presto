@@ -22,6 +22,7 @@ import com.facebook.presto.sql.tree.Approximate;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
 import com.facebook.presto.sql.tree.ArrayConstructor;
+import com.facebook.presto.sql.tree.AtTimeZone;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BinaryLiteral;
 import com.facebook.presto.sql.tree.BooleanLiteral;
@@ -53,6 +54,7 @@ import com.facebook.presto.sql.tree.FrameBound;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.GenericLiteral;
 import com.facebook.presto.sql.tree.Grant;
+import com.facebook.presto.sql.tree.GroupBy;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.GroupingSets;
 import com.facebook.presto.sql.tree.IfExpression;
@@ -172,7 +174,7 @@ class AstBuilder
     @Override
     public Node visitCreateTableAsSelect(SqlBaseParser.CreateTableAsSelectContext context)
     {
-        return new CreateTableAsSelect(getLocation(context), getQualifiedName(context.qualifiedName()), (Query) visit(context.query()), processTableProperties(context.tableProperties()), context.NO() == null);
+        return new CreateTableAsSelect(getLocation(context), getQualifiedName(context.qualifiedName()), (Query) visit(context.query()), context.EXISTS() != null, processTableProperties(context.tableProperties()), context.NO() == null);
     }
 
     @Override
@@ -405,10 +407,16 @@ class AstBuilder
                 new Select(getLocation(context.SELECT()), isDistinct(context.setQuantifier()), visit(context.selectItem(), SelectItem.class)),
                 from,
                 visitIfPresent(context.where, Expression.class),
-                visit(context.groupingElement(), GroupingElement.class),
+                visitIfPresent(context.groupBy(), GroupBy.class),
                 visitIfPresent(context.having, Expression.class),
                 ImmutableList.of(),
                 Optional.<String>empty());
+    }
+
+    @Override
+    public Node visitGroupBy(SqlBaseParser.GroupByContext context)
+    {
+        return new GroupBy(getLocation(context), isDistinct(context.setQuantifier()), visit(context.groupingElement(), GroupingElement.class));
     }
 
     @Override
@@ -502,7 +510,7 @@ class AstBuilder
     @Override
     public Node visitExplain(SqlBaseParser.ExplainContext context)
     {
-        return new Explain(getLocation(context), (Statement) visit(context.statement()), visit(context.explainOption(), ExplainOption.class));
+        return new Explain(getLocation(context), context.ANALYZE() != null, (Statement) visit(context.statement()), visit(context.explainOption(), ExplainOption.class));
     }
 
     @Override
@@ -907,11 +915,10 @@ class AstBuilder
     @Override
     public Node visitAtTimeZone(SqlBaseParser.AtTimeZoneContext context)
     {
-        return new FunctionCall(
+        return new AtTimeZone(
                 getLocation(context.AT()),
-                QualifiedName.of("at_timezone"), ImmutableList.of(
                 (Expression) visit(context.valueExpression()),
-                (Expression) visit(context.timeZoneSpecifier())));
+                (Expression) visit(context.timeZoneSpecifier()));
     }
 
     @Override

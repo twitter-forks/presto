@@ -18,7 +18,6 @@ import com.facebook.presto.execution.StageState;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.plan.IndexJoinNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
-import com.facebook.presto.sql.planner.plan.JoinNode.Type;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.PlanVisitor;
@@ -153,7 +152,12 @@ public class PhasedExecutionSchedule
         for (DefaultEdge edge : graph.edgeSet()) {
             PlanFragmentId source = graph.getEdgeSource(edge);
             PlanFragmentId target = graph.getEdgeTarget(edge);
-            componentGraph.addEdge(componentMembership.get(source), componentMembership.get(target));
+
+            Set<PlanFragmentId> from = componentMembership.get(source);
+            Set<PlanFragmentId> to = componentMembership.get(target);
+            if (!from.equals(to)) { // the topological order iterator below doesn't include vertices that have self-edges, so don't add them
+                componentGraph.addEdge(from, to);
+            }
         }
 
         List<Set<PlanFragmentId>> schedulePhases = ImmutableList.copyOf(new TopologicalOrderIterator<>(componentGraph));
@@ -188,12 +192,7 @@ public class PhasedExecutionSchedule
         @Override
         public Set<PlanFragmentId> visitJoin(JoinNode node, PlanFragmentId currentFragmentId)
         {
-            if (node.getType() == Type.RIGHT) {
-                return processJoin(node.getLeft(), node.getRight(), currentFragmentId);
-            }
-            else {
-                return processJoin(node.getRight(), node.getLeft(), currentFragmentId);
-            }
+            return processJoin(node.getRight(), node.getLeft(), currentFragmentId);
         }
 
         @Override
@@ -274,7 +273,7 @@ public class PhasedExecutionSchedule
         {
             List<PlanNode> sources = node.getSources();
             if (sources.isEmpty()) {
-                return ImmutableSet.of();
+                return ImmutableSet.of(currentFragmentId);
             }
             if (sources.size() == 1) {
                 return sources.get(0).accept(this, currentFragmentId);

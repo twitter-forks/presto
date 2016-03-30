@@ -47,6 +47,7 @@ public final class SystemSessionProperties
     public static final String QUERY_MAX_MEMORY = "query_max_memory";
     public static final String QUERY_MAX_RUN_TIME = "query_max_run_time";
     public static final String RESOURCE_OVERCOMMIT = "resource_overcommit";
+    public static final String QUERY_MAX_CPU_TIME = "query_max_cpu_time";
     public static final String REDISTRIBUTE_WRITES = "redistribute_writes";
     public static final String PUSH_TABLE_WRITE_THROUGH_UNION = "push_table_write_through_union";
     public static final String EXECUTION_POLICY = "execution_policy";
@@ -56,6 +57,7 @@ public final class SystemSessionProperties
     public static final String PLAN_WITH_TABLE_NODE_PARTITIONING = "plan_with_table_node_partitioning";
     public static final String INITIAL_SPLITS_PER_NODE = "initial_splits_per_node";
     public static final String SPLIT_CONCURRENCY_ADJUSTMENT_INTERVAL = "split_concurrency_adjustment_interval";
+    public static final String OPTIMIZE_METADATA_QUERIES = "optimize_metadata_queries";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -151,6 +153,14 @@ public final class SystemSessionProperties
                         false,
                         value -> Duration.valueOf((String) value)),
                 new PropertyMetadata<>(
+                        QUERY_MAX_CPU_TIME,
+                        "Maximum CPU time of a query",
+                        VARCHAR,
+                        Duration.class,
+                        queryManagerConfig.getQueryMaxCpuTime(),
+                        false,
+                        value -> Duration.valueOf((String) value)),
+                new PropertyMetadata<>(
                         QUERY_MAX_MEMORY,
                         "Maximum amount of distributed memory a query can use",
                         VARCHAR,
@@ -191,6 +201,11 @@ public final class SystemSessionProperties
                         taskManagerConfig.getSplitConcurrencyAdjustmentInterval(),
                         false,
                         value -> Duration.valueOf((String) value)),
+                booleanSessionProperty(
+                        OPTIMIZE_METADATA_QUERIES,
+                        "Enable optimization for metadata queries",
+                        featuresConfig.isOptimizeMetadataQueries(),
+                        false),
                 booleanSessionProperty(
                         PLAN_WITH_TABLE_NODE_PARTITIONING,
                         "Experimental: Adapt plan to pre-partitioned tables",
@@ -288,6 +303,11 @@ public final class SystemSessionProperties
         return session.getProperty(DICTIONARY_AGGREGATION, Boolean.class);
     }
 
+    public static boolean isOptimizeMetadataQueries(Session session)
+    {
+        return session.getProperty(OPTIMIZE_METADATA_QUERIES, Boolean.class);
+    }
+
     public static DataSize getQueryMaxMemory(Session session)
     {
         return session.getProperty(QUERY_MAX_MEMORY, DataSize.class);
@@ -316,5 +336,10 @@ public final class SystemSessionProperties
     public static Duration getSplitConcurrencyAdjustmentInterval(Session session)
     {
         return session.getProperty(SPLIT_CONCURRENCY_ADJUSTMENT_INTERVAL, Duration.class);
+    }
+
+    public static Duration getQueryMaxCpuTime(Session session)
+    {
+        return session.getProperty(QUERY_MAX_CPU_TIME, Duration.class);
     }
 }

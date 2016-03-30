@@ -84,7 +84,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.SetMultimap;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -110,6 +109,7 @@ import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DI
 import static com.facebook.presto.sql.planner.optimizations.ActualProperties.Global.partitionedOn;
 import static com.facebook.presto.sql.planner.optimizations.ActualProperties.Global.singleStreamPartition;
 import static com.facebook.presto.sql.planner.optimizations.LocalProperties.grouped;
+import static com.facebook.presto.sql.planner.optimizations.ScalarQueryUtil.isScalar;
 import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.FINAL;
 import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.PARTIAL;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.gatheringExchange;
@@ -315,7 +315,6 @@ public class AddExchanges
             }
         }
 
-        @NotNull
         private PlanWithProperties splitAggregation(AggregationNode node, PlanWithProperties newChild, Function<PlanNode, PlanNode> exchanger)
         {
             // otherwise, add a partial and final with an exchange in between
@@ -783,8 +782,7 @@ public class AddExchanges
             PlanWithProperties right;
 
             boolean isCrossJoin = type == INNER && leftSymbols.isEmpty();
-            boolean joinWithNonScalar = node.getRight().accept(new IsScalarPlanVisitor(), null);
-            if ((distributedJoins && !isCrossJoin && !joinWithNonScalar) || type == FULL || type == RIGHT) {
+            if ((distributedJoins && !isCrossJoin && !isScalar(node.getRight())) || type == FULL || type == RIGHT) {
                 // The implementation of full outer join only works if the data is hash partitioned. See LookupJoinOperators#buildSideOuterJoinUnvisitedPositions
 
                 left = node.getLeft().accept(this, context.withPreferredProperties(PreferredProperties.hashPartitioned(leftSymbols)));
@@ -1249,28 +1247,6 @@ public class AddExchanges
         public ActualProperties getProperties()
         {
             return properties;
-        }
-    }
-
-    private static final class IsScalarPlanVisitor
-            extends PlanVisitor<Void, Boolean>
-    {
-        @Override
-        protected Boolean visitPlan(PlanNode node, Void context)
-        {
-            return false;
-        }
-
-        @Override
-        public Boolean visitEnforceSingleRow(EnforceSingleRowNode node, Void context)
-        {
-            return true;
-        }
-
-        @Override
-        public Boolean visitProject(ProjectNode node, Void context)
-        {
-            return node.getSource().accept(this, null);
         }
     }
 }

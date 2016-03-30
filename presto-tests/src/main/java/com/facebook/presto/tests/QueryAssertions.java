@@ -61,7 +61,7 @@ public final class QueryAssertions
             if (!count.isPresent()) {
                 fail("update count should not be present");
             }
-            assertEquals(results.getUpdateCount().isPresent(), count.isPresent(), "update count");
+            assertEquals(results.getUpdateCount().getAsLong(), count.getAsLong(), "update count");
         }
         else if (count.isPresent()) {
             fail("update count is not present");
@@ -207,17 +207,6 @@ public final class QueryAssertions
             copyTable(queryRunner, sourceCatalog, sourceSchema, table.getTableName().toLowerCase(ENGLISH), session);
         }
         log.info("Loading from %s.%s complete in %s", sourceCatalog, sourceSchema, nanosSince(startTime).toString(SECONDS));
-    }
-
-    public static void copyAllTables(QueryRunner queryRunner, String sourceCatalog, String sourceSchema, Session session)
-            throws Exception
-    {
-        for (QualifiedObjectName table : queryRunner.listTables(session, sourceCatalog, sourceSchema)) {
-            if (table.getObjectName().equalsIgnoreCase("dual")) {
-                continue;
-            }
-            copyTable(queryRunner, table, session);
-        }
     }
 
     public static void copyTable(QueryRunner queryRunner, String sourceCatalog, String sourceSchema, String sourceTable, Session session)

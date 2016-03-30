@@ -49,6 +49,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.facebook.presto.PrestoMediaTypes.PRESTO_PAGES_TYPE;
 import static com.facebook.presto.block.PagesSerde.readPages;
@@ -131,6 +132,7 @@ public final class HttpPageBufferClient
     @GuardedBy("this")
     private String taskInstanceId;
 
+    private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
 
     private final AtomicInteger requestsScheduled = new AtomicInteger();
@@ -195,6 +197,7 @@ public final class HttpPageBufferClient
                 location,
                 state,
                 lastUpdate,
+                rowsReceived.get(),
                 pagesReceived.get(),
                 requestsScheduled.get(),
                 requestsCompleted.get(),
@@ -275,9 +278,9 @@ public final class HttpPageBufferClient
         lastUpdate = DateTime.now();
     }
 
-    private void sendGetResults()
+    private synchronized void sendGetResults()
     {
-        final URI uri = HttpUriBuilder.uriBuilderFrom(location).appendPath(String.valueOf(token)).build();
+        URI uri = HttpUriBuilder.uriBuilderFrom(location).appendPath(String.valueOf(token)).build();
         HttpResponseFuture<PagesResponse> resultFuture = httpClient.executeAsync(
                 prepareGet()
                         .setHeader(PRESTO_MAX_SIZE, maxResponseSize.toString())
@@ -316,13 +319,14 @@ public final class HttpPageBufferClient
                     }
                 }
                 catch (PrestoException e) {
-                    handleFailure(e);
+                    handleFailure(e, resultFuture);
                     return;
                 }
 
                 // add pages
                 for (Page page : pages) {
                     pagesReceived.incrementAndGet();
+                    rowsReceived.addAndGet(page.getPositionCount());
                     clientCallback.addPage(HttpPageBufferClient.this, page);
                 }
 
@@ -331,9 +335,11 @@ public final class HttpPageBufferClient
                     if (result.isClientComplete()) {
                         completed = true;
                     }
-                    future = null;
+                    if (future == resultFuture) {
+                        future = null;
+                        errorDelayMillis = 0;
+                    }
                     lastUpdate = DateTime.now();
-                    errorDelayMillis = 0;
                 }
                 requestsCompleted.incrementAndGet();
                 clientCallback.requestComplete(HttpPageBufferClient.this);
@@ -352,12 +358,12 @@ public final class HttpPageBufferClient
                     String message = format("%s (%s - requests failed for %s)", WORKER_NODE_ERROR, uri, errorDuration);
                     t = new PageTransportTimeoutException(message, t);
                 }
-                handleFailure(t);
+                handleFailure(t, resultFuture);
             }
         }, executor);
     }
 
-    private void sendDelete()
+    private synchronized void sendDelete()
     {
         HttpResponseFuture<StatusResponse> resultFuture = httpClient.executeAsync(prepareDelete().setUri(location).build(), createStatusResponseHandler());
         future = resultFuture;
@@ -369,9 +375,11 @@ public final class HttpPageBufferClient
                 checkNotHoldsLock();
                 synchronized (HttpPageBufferClient.this) {
                     closed = true;
-                    future = null;
+                    if (future == resultFuture) {
+                        future = null;
+                        errorDelayMillis = 0;
+                    }
                     lastUpdate = DateTime.now();
-                    errorDelayMillis = 0;
                 }
                 requestsCompleted.incrementAndGet();
                 clientCallback.clientFinished(HttpPageBufferClient.this);
@@ -388,7 +396,7 @@ public final class HttpPageBufferClient
                     String message = format("Error closing remote buffer (%s - requests failed for %s)", location, errorDuration);
                     t = new PrestoException(REMOTE_BUFFER_CLOSE_FAILED, message, t);
                 }
-                handleFailure(t);
+                handleFailure(t, resultFuture);
             }
         }, executor);
     }
@@ -400,7 +408,7 @@ public final class HttpPageBufferClient
         }
     }
 
-    private void handleFailure(Throwable t)
+    private void handleFailure(Throwable t, HttpResponseFuture<?> expectedFuture)
     {
         // Can not delegate to other callback while holding a lock on this
         checkNotHoldsLock();
@@ -414,7 +422,9 @@ public final class HttpPageBufferClient
 
         synchronized (HttpPageBufferClient.this) {
             increaseErrorDelay();
-            future = null;
+            if (future == expectedFuture) {
+                future = null;
+            }
             lastUpdate = DateTime.now();
         }
         clientCallback.requestComplete(HttpPageBufferClient.this);
@@ -528,9 +538,12 @@ public final class HttpPageBufferClient
                 throw new PageTransportErrorException(format("Expected response code to be 200, but was %s %s: %s", response.getStatusCode(), response.getStatusMessage(), request.getUri()));
             }
 
+            // invalid content type can happen when an error page is returned, but is unlikely given the above 200
             String contentType = response.getHeader(CONTENT_TYPE);
-            if ((contentType == null) || !mediaTypeMatches(contentType, PRESTO_PAGES_TYPE)) {
-                // this can happen when an error page is returned, but is unlikely given the above 200
+            if (contentType == null) {
+                throw new PageTransportErrorException(format("%s header is not set: %s %s", CONTENT_TYPE, request.getUri(), response));
+            }
+            if (!mediaTypeMatches(contentType, PRESTO_PAGES_TYPE)) {
                 throw new PageTransportErrorException(format("Expected %s response from server but got %s: %s", PRESTO_PAGES_TYPE, contentType, request.getUri()));
             }
 
