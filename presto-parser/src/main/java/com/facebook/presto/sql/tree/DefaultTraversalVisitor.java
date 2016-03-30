@@ -58,6 +58,15 @@ public abstract class DefaultTraversalVisitor<R, C>
     }
 
     @Override
+    protected R visitAtTimeZone(AtTimeZone node, C context)
+    {
+        process(node.getValue(), context);
+        process(node.getTimeZone(), context);
+
+        return null;
+    }
+
+    @Override
     protected R visitArrayConstructor(ArrayConstructor node, C context)
     {
         for (Expression expression : node.getValues()) {
@@ -342,8 +351,10 @@ public abstract class DefaultTraversalVisitor<R, C>
         if (node.getWhere().isPresent()) {
             process(node.getWhere().get(), context);
         }
-        for (GroupingElement groupingElement : node.getGroupBy()) {
-            process(groupingElement, context);
+        if (node.getGroupBy().isPresent()) {
+            for (GroupingElement groupingElement : node.getGroupBy().get().getGroupingElements()) {
+                process(groupingElement, context);
+            }
         }
         if (node.getHaving().isPresent()) {
             process(node.getHaving().get(), context);

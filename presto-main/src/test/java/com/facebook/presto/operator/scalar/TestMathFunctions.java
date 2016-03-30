@@ -115,6 +115,21 @@ public class TestMathFunctions
     }
 
     @Test
+    public void testTruncate()
+    {
+        final String maxDouble = Double.toString(Double.MAX_VALUE);
+        final String minDouble = Double.toString(-Double.MAX_VALUE);
+        assertFunction("truncate(17.18)", DOUBLE, 17.0);
+        assertFunction("truncate(-17.18)", DOUBLE, -17.0);
+        assertFunction("truncate(17.88)", DOUBLE, 17.0);
+        assertFunction("truncate(-17.88)", DOUBLE, -17.0);
+        assertFunction("truncate(NULL)", DOUBLE, null);
+        assertFunction("truncate(CAST(NULL AS DOUBLE))", DOUBLE, null);
+        assertFunction("truncate(" + maxDouble + ")", DOUBLE, Double.MAX_VALUE);
+        assertFunction("truncate(" + minDouble + ")", DOUBLE, -Double.MAX_VALUE);
+    }
+
+    @Test
     public void testCos()
     {
         for (double doubleValue : DOUBLE_VALUES) {
@@ -338,6 +353,8 @@ public class TestMathFunctions
         functionAssertions.tryEvaluateWithAll("random()", DOUBLE, TEST_SESSION);
         functionAssertions.tryEvaluateWithAll("rand(1000)", BIGINT, TEST_SESSION);
         functionAssertions.tryEvaluateWithAll("random(2000)", BIGINT, TEST_SESSION);
+
+        assertInvalidFunction("rand(-1)", "bound must be positive");
     }
 
     @Test
@@ -516,5 +533,71 @@ public class TestMathFunctions
         assertInvalidFunction("from_base('Z', 37)", BIGINT, "Radix must be between 2 and 36");
         assertInvalidFunction("from_base('Z', 35)", BIGINT, "Not a valid base-35 number: Z");
         assertInvalidFunction("from_base('9223372036854775808', 10)", BIGINT, "Not a valid base-10 number: 9223372036854775808");
+    }
+
+    @Test
+    public void testWidthBucket()
+            throws Exception
+    {
+        assertFunction("width_bucket(3.14, 0, 4, 3)", BIGINT, 3);
+        assertFunction("width_bucket(2, 0, 4, 3)", BIGINT, 2);
+        assertFunction("width_bucket(infinity(), 0, 4, 3)", BIGINT, 4);
+        assertFunction("width_bucket(-1, 0, 3.2, 4)", BIGINT, 0);
+
+        // bound1 > bound2 is not symmetric with bound2 > bound1
+        assertFunction("width_bucket(3.14, 4, 0, 3)", BIGINT, 1);
+        assertFunction("width_bucket(2, 4, 0, 3)", BIGINT, 2);
+        assertFunction("width_bucket(infinity(), 4, 0, 3)", BIGINT, 0);
+        assertFunction("width_bucket(-1, 3.2, 0, 4)", BIGINT, 5);
+
+        // failure modes
+        assertInvalidFunction("width_bucket(3.14, 0, 4, 0)", "bucketCount must be greater than 0");
+        assertInvalidFunction("width_bucket(3.14, 0, 4, -1)", "bucketCount must be greater than 0");
+        assertInvalidFunction("width_bucket(nan(), 0, 4, 3)", "operand must not be NaN");
+        assertInvalidFunction("width_bucket(3.14, -1, -1, 3)", "bounds cannot equal each other");
+        assertInvalidFunction("width_bucket(3.14, nan(), -1, 3)", "first bound must be finite");
+        assertInvalidFunction("width_bucket(3.14, -1, nan(), 3)", "second bound must be finite");
+        assertInvalidFunction("width_bucket(3.14, infinity(), -1, 3)", "first bound must be finite");
+        assertInvalidFunction("width_bucket(3.14, -1, infinity(), 3)", "second bound must be finite");
+    }
+
+    @Test(expectedExceptions = PrestoException.class, expectedExceptionsMessageRegExp = "Bucket for value Infinity is out of range")
+    public void testWidthBucketOverflowAscending()
+            throws Exception
+    {
+        functionAssertions.tryEvaluate("width_bucket(infinity(), 0, 4, " + Long.MAX_VALUE + ")", DOUBLE);
+    }
+
+    @Test(expectedExceptions = PrestoException.class, expectedExceptionsMessageRegExp = "Bucket for value Infinity is out of range")
+    public void testWidthBucketOverflowDescending()
+            throws Exception
+    {
+        functionAssertions.tryEvaluate("width_bucket(infinity(), 4, 0, " + Long.MAX_VALUE + ")", DOUBLE);
+    }
+
+    @Test
+    public void testWidthBucketArray()
+            throws Exception
+    {
+        assertFunction("width_bucket(3.14, array[0.0, 2.0, 4.0])", BIGINT, 2);
+        assertFunction("width_bucket(infinity(), array[0.0, 2.0, 4.0])", BIGINT, 3);
+        assertFunction("width_bucket(-1, array[0.0, 1.2, 3.3, 4.5])", BIGINT, 0);
+
+        // edge case of only a single bin
+        assertFunction("width_bucket(3.145, array[0.0])", BIGINT, 1);
+        assertFunction("width_bucket(-3.145, array[0.0])", BIGINT, 0);
+
+        // failure modes
+        assertInvalidFunction("width_bucket(3.14, array[])", "Bins cannot be an empty array");
+        assertInvalidFunction("width_bucket(nan(), array[1.0, 2.0, 3.0])", "Operand cannot be NaN");
+        assertInvalidFunction("width_bucket(3.14, array[0.0, infinity()])", "Bin value must be finite, got Infinity");
+
+        // fail if we aren't sorted
+        assertInvalidFunction("width_bucket(3.145, array[1.0, 0.0])", "Bin values are not sorted in ascending order");
+        assertInvalidFunction("width_bucket(3.145, array[1.0, 0.0, -1.0])", "Bin values are not sorted in ascending order");
+        assertInvalidFunction("width_bucket(3.145, array[1.0, 0.3, 0.0, -1.0])", "Bin values are not sorted in ascending order");
+
+        // this is a case that we can't catch because we are using binary search to bisect the bins array
+        assertFunction("width_bucket(1.5, array[1.0, 2.3, 2.0])", BIGINT, 1);
     }
 }

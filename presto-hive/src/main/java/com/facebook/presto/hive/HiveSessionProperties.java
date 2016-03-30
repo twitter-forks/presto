@@ -48,11 +48,6 @@ public final class HiveSessionProperties
                         config.isForceLocalScheduling(),
                         false),
                 booleanSessionProperty(
-                        OPTIMIZED_READER_ENABLED,
-                        "Enable optimized readers",
-                        config.isOptimizedReaderEnabled(),
-                        true),
-                booleanSessionProperty(
                         READ_AS_QUERY_USER,
                         "Query reads happen as the user submitting the query",
                         config.getReadAsQueryUser(),
@@ -92,11 +87,6 @@ public final class HiveSessionProperties
     public static boolean isForceLocalScheduling(ConnectorSession session)
     {
         return session.getProperty(FORCE_LOCAL_SCHEDULING, Boolean.class);
-    }
-
-    public static boolean isOptimizedReaderEnabled(ConnectorSession session)
-    {
-        return session.getProperty(OPTIMIZED_READER_ENABLED, Boolean.class);
     }
 
     public static boolean isParquetOptimizedReaderEnabled(ConnectorSession session)

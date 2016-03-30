@@ -40,6 +40,7 @@ import static io.airlift.units.DataSize.Unit.MEGABYTE;
 @DefunctConfig({
         "hive.file-system-cache-ttl",
         "hive.max-global-split-iterator-threads",
+        "hive.optimized-reader.enabled"
 })
 public class HiveClientConfig
 {
@@ -100,13 +101,13 @@ public class HiveClientConfig
     private boolean pinS3ClientToCurrentRegion;
 
     private HiveStorageFormat hiveStorageFormat = HiveStorageFormat.RCBINARY;
+    private HiveCompressionCodec hiveCompressionCodec = HiveCompressionCodec.GZIP;
     private boolean respectTableFormat = true;
     private boolean immutablePartitions;
     private int maxPartitionsPerWriter = 100;
 
     private List<String> resourceConfigFiles;
 
-    private boolean optimizedReaderEnabled = true;
     private boolean parquetOptimizedReaderEnabled;
 
     private boolean parquetPredicatePushdownEnabled;
@@ -494,6 +495,18 @@ public class HiveClientConfig
         return this;
     }
 
+    public HiveCompressionCodec getHiveCompressionCodec()
+    {
+        return hiveCompressionCodec;
+    }
+
+    @Config("hive.compression-codec")
+    public HiveClientConfig setHiveCompressionCodec(HiveCompressionCodec hiveCompressionCodec)
+    {
+        this.hiveCompressionCodec = hiveCompressionCodec;
+        return this;
+    }
+
     public boolean isRespectTableFormat()
     {
         return respectTableFormat;
@@ -769,20 +782,6 @@ public class HiveClientConfig
     public HiveClientConfig setPinS3ClientToCurrentRegion(boolean pinS3ClientToCurrentRegion)
     {
         this.pinS3ClientToCurrentRegion = pinS3ClientToCurrentRegion;
-        return this;
-    }
-
-    @Deprecated
-    public boolean isOptimizedReaderEnabled()
-    {
-        return optimizedReaderEnabled;
-    }
-
-    @Deprecated
-    @Config("hive.optimized-reader.enabled")
-    public HiveClientConfig setOptimizedReaderEnabled(boolean optimizedReaderEnabled)
-    {
-        this.optimizedReaderEnabled = optimizedReaderEnabled;
         return this;
     }
 

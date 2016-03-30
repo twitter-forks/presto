@@ -18,7 +18,7 @@ import com.facebook.presto.hive.metastore.HiveMetastore;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
-import com.facebook.presto.spi.ConnectorMetadata;
+import com.facebook.presto.spi.ConnectorNewTableLayout;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableHandle;
@@ -34,18 +34,19 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.ViewNotFoundException;
+import com.facebook.presto.spi.connector.ConnectorMetadata;
 import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.security.Privilege;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.concurrent.MoreFutures;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
@@ -64,8 +65,6 @@ import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.joda.time.DateTimeZone;
 
-import javax.inject.Inject;
-
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -77,7 +76,8 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -113,6 +113,7 @@ import static com.facebook.presto.spi.StandardErrorCode.USER_ERROR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.Iterables.concat;
@@ -144,59 +145,32 @@ public class HiveMetadata
     private final LocationService locationService;
     private final TableParameterCodec tableParameterCodec;
     private final JsonCodec<PartitionUpdate> partitionUpdateCodec;
-    private final BoundedExecutor renameExecution;
+    private final Executor renameExecutor;
+    private final boolean respectTableFormat;
+    private final HiveStorageFormat defaultStorageFormat;
 
-    @Inject
-    @SuppressWarnings("deprecation")
-    public HiveMetadata(
-            HiveConnectorId connectorId,
-            HiveClientConfig hiveClientConfig,
-            HiveMetastore metastore,
-            HdfsEnvironment hdfsEnvironment,
-            HivePartitionManager partitionManager,
-            @ForHiveClient ExecutorService executorService,
-            TypeManager typeManager,
-            LocationService locationService,
-            TableParameterCodec tableParameterCodec,
-            JsonCodec<PartitionUpdate> partitionUpdateCodec)
-    {
-        this(connectorId,
-                metastore,
-                hdfsEnvironment,
-                partitionManager,
-                hiveClientConfig.getDateTimeZone(),
-                hiveClientConfig.getMaxConcurrentFileRenames(),
-                hiveClientConfig.getAllowDropTable(),
-                hiveClientConfig.getAllowRenameTable(),
-                hiveClientConfig.getAllowAddColumn(),
-                hiveClientConfig.getAllowRenameColumn(),
-                hiveClientConfig.getAllowCorruptWritesForTesting(),
-                typeManager,
-                locationService,
-                tableParameterCodec,
-                partitionUpdateCodec,
-                executorService);
-    }
+    private final AtomicReference<Runnable> rollbackAction = new AtomicReference<>();
 
     public HiveMetadata(
-            HiveConnectorId connectorId,
+            String connectorId,
             HiveMetastore metastore,
             HdfsEnvironment hdfsEnvironment,
             HivePartitionManager partitionManager,
             DateTimeZone timeZone,
-            int maxConcurrentFileRenames,
             boolean allowDropTable,
             boolean allowRenameTable,
             boolean allowAddColumn,
             boolean allowRenameColumn,
             boolean allowCorruptWritesForTesting,
+            boolean respectTableFormat,
+            HiveStorageFormat defaultStorageFormat,
             TypeManager typeManager,
             LocationService locationService,
             TableParameterCodec tableParameterCodec,
             JsonCodec<PartitionUpdate> partitionUpdateCodec,
-            ExecutorService executorService)
+            Executor renameExecutor)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
+        this.connectorId = requireNonNull(connectorId, "connectorId is null");
 
         this.allowDropTable = allowDropTable;
         this.allowRenameTable = allowRenameTable;
@@ -212,15 +186,10 @@ public class HiveMetadata
         this.locationService = requireNonNull(locationService, "locationService is null");
         this.tableParameterCodec = requireNonNull(tableParameterCodec, "tableParameterCodec is null");
         this.partitionUpdateCodec = requireNonNull(partitionUpdateCodec, "partitionUpdateCodec is null");
+        this.respectTableFormat = respectTableFormat;
+        this.defaultStorageFormat = requireNonNull(defaultStorageFormat, "defaultStorageFormat is null");
 
-        if (!allowCorruptWritesForTesting && !timeZone.equals(DateTimeZone.getDefault())) {
-            log.warn("Hive writes are disabled. " +
-                            "To write data to Hive, your JVM timezone must match the Hive storage timezone. " +
-                            "Add -Duser.timezone=%s to your JVM arguments",
-                    timeZone.getID());
-        }
-
-        renameExecution = new BoundedExecutor(executorService, maxConcurrentFileRenames);
+        this.renameExecutor = requireNonNull(renameExecutor, "renameExecution is null");
     }
 
     public HiveMetastore getMetastore()
@@ -450,19 +419,6 @@ public class HiveMetadata
             }
         }
 
-        SerDeInfo serdeInfo = new SerDeInfo();
-        serdeInfo.setName(tableName);
-        serdeInfo.setSerializationLib(hiveStorageFormat.getSerDe());
-        serdeInfo.setParameters(ImmutableMap.of());
-
-        StorageDescriptor sd = new StorageDescriptor();
-        sd.setLocation(targetPath.toString());
-        sd.setCols(columns.build());
-        sd.setSerdeInfo(serdeInfo);
-        sd.setInputFormat(hiveStorageFormat.getInputFormat());
-        sd.setOutputFormat(hiveStorageFormat.getOutputFormat());
-        sd.setParameters(ImmutableMap.of());
-
         Table table = new Table();
         table.setDbName(schemaName);
         table.setTableName(tableName);
@@ -477,7 +433,7 @@ public class HiveMetadata
                 .putAll(additionalTableParameters)
                 .build());
         table.setPartitionKeys(partitionColumns);
-        table.setSd(sd);
+        table.setSd(makeStorageDescriptor(tableName, hiveStorageFormat, targetPath, columns.build()));
 
         PrivilegeGrantInfo allPrivileges = new PrivilegeGrantInfo("all", 0, tableOwner, PrincipalType.USER, true);
         table.setPrivileges(new PrincipalPrivilegeSet(
@@ -584,13 +540,15 @@ public class HiveMetadata
     }
 
     @Override
-    public HiveOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata)
+    public HiveOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorNewTableLayout> layout)
     {
+        checkNoRollback();
+
         verifyJvmTimeZone();
 
         checkArgument(!isNullOrEmpty(tableMetadata.getOwner()), "Table owner is null or empty");
 
-        HiveStorageFormat hiveStorageFormat = getHiveStorageFormat(tableMetadata.getProperties());
+        HiveStorageFormat tableStorageFormat = getHiveStorageFormat(tableMetadata.getProperties());
         List<String> partitionedBy = getPartitionedBy(tableMetadata.getProperties());
         Map<String, String> additionalTableParameters = tableParameterCodec.encode(tableMetadata.getProperties());
 
@@ -601,21 +559,25 @@ public class HiveMetadata
 
         List<HiveColumnHandle> columnHandles = getColumnHandles(connectorId, tableMetadata, ImmutableSet.copyOf(partitionedBy));
 
-        return new HiveOutputTableHandle(
+        HiveOutputTableHandle result = new HiveOutputTableHandle(
                 connectorId,
                 schemaName,
                 tableName,
                 columnHandles,
                 session.getQueryId(),
                 locationService.forNewTable(session.getQueryId(), schemaName, tableName),
-                hiveStorageFormat,
+                tableStorageFormat,
+                respectTableFormat ? tableStorageFormat : defaultStorageFormat,
                 partitionedBy,
                 tableMetadata.getOwner(),
                 additionalTableParameters);
+
+        setRollback(() -> rollbackCreateTable(result));
+        return result;
     }
 
     @Override
-    public void commitCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    public void finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
         HiveOutputTableHandle handle = checkType(tableHandle, HiveOutputTableHandle.class, "tableHandle");
 
@@ -649,12 +611,15 @@ public class HiveMetadata
                     handle.getTableName(),
                     handle.getTableOwner(),
                     handle.getInputColumns(),
-                    handle.getHiveStorageFormat(),
+                    handle.getTableStorageFormat(),
                     handle.getPartitionedBy(),
                     handle.getAdditionalTableParameters(),
                     targetPath);
 
             if (!handle.getPartitionedBy().isEmpty()) {
+                if (respectTableFormat) {
+                    Verify.verify(handle.getPartitionStorageFormat() == handle.getTableStorageFormat());
+                }
                 partitionUpdates.stream()
                         .map(partitionUpdate -> createPartition(table, partitionUpdate))
                         .forEach(partitionCommitter::addPartition);
@@ -666,10 +631,11 @@ public class HiveMetadata
             rollbackPartitionUpdates(partitionUpdates, "table creation");
             throw throwable;
         }
+
+        clearRollback();
     }
 
-    @Override
-    public void rollbackCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle)
+    private void rollbackCreateTable(ConnectorOutputTableHandle tableHandle)
     {
         HiveOutputTableHandle handle = checkType(tableHandle, HiveOutputTableHandle.class, "tableHandle");
         cleanupTempDirectory(locationService.writePathRoot(handle.getLocationHandle()).get().toString(), handle.getFilePrefix(), "create table");
@@ -680,6 +646,8 @@ public class HiveMetadata
     @Override
     public HiveInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
+        checkNoRollback();
+
         verifyJvmTimeZone();
 
         SchemaTableName tableName = schemaTableName(tableHandle);
@@ -690,8 +658,6 @@ public class HiveMetadata
 
         checkTableIsWritable(table.get());
 
-        HiveStorageFormat hiveStorageFormat = extractHiveStorageFormat(table.get());
-
         List<HiveColumnHandle> handles = hiveColumnHandles(connectorId, table.get());
 
         for (HiveColumnHandle hiveColumnHandle : handles) {
@@ -700,14 +666,19 @@ public class HiveMetadata
             }
         }
 
-        return new HiveInsertTableHandle(
+        HiveStorageFormat tableStorageFormat = extractHiveStorageFormat(table.get());
+        HiveInsertTableHandle result = new HiveInsertTableHandle(
                 connectorId,
                 tableName.getSchemaName(),
                 tableName.getTableName(),
                 handles,
                 session.getQueryId(),
                 locationService.forExistingTable(session.getQueryId(), table.get()),
-                hiveStorageFormat);
+                tableStorageFormat,
+                respectTableFormat ? tableStorageFormat : defaultStorageFormat);
+
+        setRollback(() -> rollbackInsert(result));
+        return result;
     }
 
     private static class PartitionCommitter
@@ -770,7 +741,7 @@ public class HiveMetadata
     }
 
     @Override
-    public void commitInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
+    public void finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
     {
         HiveInsertTableHandle handle = checkType(insertHandle, HiveInsertTableHandle.class, "invalid insertTableHandle");
 
@@ -779,7 +750,7 @@ public class HiveMetadata
                 .map(partitionUpdateCodec::fromJson)
                 .collect(toList());
 
-        HiveStorageFormat storageFormat = handle.getHiveStorageFormat();
+        HiveStorageFormat tableStorageFormat = handle.getTableStorageFormat();
         PartitionCommitter partitionCommitter = new PartitionCommitter(handle.getSchemaName(), handle.getTableName(), metastore, PARTITION_COMMIT_BATCH_SIZE);
         try {
             partitionUpdates = PartitionUpdate.mergePartitionUpdates(partitionUpdates);
@@ -788,7 +759,7 @@ public class HiveMetadata
             if (!table.isPresent()) {
                 throw new TableNotFoundException(new SchemaTableName(handle.getSchemaName(), handle.getTableName()));
             }
-            if (!table.get().getSd().getInputFormat().equals(storageFormat.getInputFormat())) {
+            if (!table.get().getSd().getInputFormat().equals(tableStorageFormat.getInputFormat()) && respectTableFormat) {
                 throw new PrestoException(HIVE_CONCURRENT_MODIFICATION_DETECTED, "Table format changed during insert");
             }
 
@@ -805,7 +776,7 @@ public class HiveMetadata
                     }
                     // add new partition
                     Partition partition = createPartition(table.get(), partitionUpdate);
-                    if (!partition.getSd().getInputFormat().equals(storageFormat.getInputFormat())) {
+                    if (!partition.getSd().getInputFormat().equals(handle.getPartitionStorageFormat().getInputFormat()) && respectTableFormat) {
                         throw new PrestoException(HIVE_CONCURRENT_MODIFICATION_DETECTED, "Partition format changed during insert");
                     }
                     partitionCommitter.addPartition(partition);
@@ -834,7 +805,7 @@ public class HiveMetadata
                                 catch (IOException e) {
                                     throw new PrestoException(HIVE_FILESYSTEM_ERROR, format("Error moving INSERT data from %s to final location %s", source, target), e);
                                 }
-                            }, renameExecution));
+                            }, renameExecutor));
                         }
                     }
                 }
@@ -849,22 +820,30 @@ public class HiveMetadata
             rollbackPartitionUpdates(partitionUpdates, "insert");
             throw t;
         }
+
+        clearRollback();
     }
 
-    private static Partition createPartition(Table table, PartitionUpdate partitionUpdate)
+    private Partition createPartition(Table table, PartitionUpdate partitionUpdate)
     {
         List<String> values = HivePartitionManager.extractPartitionKeyValues(partitionUpdate.getName());
         Partition partition = new Partition();
         partition.setDbName(table.getDbName());
         partition.setTableName(table.getTableName());
         partition.setValues(values);
-        partition.setSd(table.getSd().deepCopy());
-        partition.getSd().setLocation(partitionUpdate.getTargetPath());
+
+        if (respectTableFormat) {
+            partition.setSd(table.getSd().deepCopy());
+            partition.getSd().setLocation(partitionUpdate.getTargetPath());
+        }
+        else {
+            partition.setSd(makeStorageDescriptor(table.getTableName(), defaultStorageFormat, new Path(partitionUpdate.getTargetPath()), table.getSd().getCols()));
+        }
+
         return partition;
     }
 
-    @Override
-    public void rollbackInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle)
+    private void rollbackInsert(ConnectorInsertTableHandle insertHandle)
     {
         HiveInsertTableHandle handle = checkType(insertHandle, HiveInsertTableHandle.class, "invalid insertHandle");
 
@@ -1244,11 +1223,15 @@ public class HiveMetadata
 
         HivePartitionResult hivePartitionResult = partitionManager.getPartitions(session, metastore, tableHandle, constraint.getSummary());
 
+        List<HivePartition> partitions = hivePartitionResult.getPartitions().stream()
+                .filter(partition -> constraint.predicate().test(partition.getKeys()))
+                .collect(toList());
+
         return ImmutableList.of(new ConnectorTableLayoutResult(
                 getTableLayout(session, new HiveTableLayoutHandle(
                         handle.getClientId(),
                         ImmutableList.copyOf(hivePartitionResult.getPartitionColumns()),
-                        hivePartitionResult.getPartitions(),
+                        partitions,
                         hivePartitionResult.getEnforcedConstraint())),
                 hivePartitionResult.getUnenforcedConstraint()));
     }
@@ -1409,5 +1392,45 @@ public class HiveMetadata
                 typeManager.getType(handle.getTypeSignature()),
                 annotateColumnComment(columnComment.get(handle.getName()), handle.isPartitionKey()),
                 false);
+    }
+
+    private void checkNoRollback()
+    {
+        checkState(rollbackAction.get() == null, "Cannot begin a new write while in an existing one");
+    }
+
+    private void setRollback(Runnable action)
+    {
+        checkState(rollbackAction.compareAndSet(null, action), "Should not have to override existing rollback action");
+    }
+
+    private void clearRollback()
+    {
+        rollbackAction.set(null);
+    }
+
+    public void rollback()
+    {
+        Runnable rollbackAction = this.rollbackAction.getAndSet(null);
+        if (rollbackAction != null) {
+            rollbackAction.run();
+        }
+    }
+
+    private static StorageDescriptor makeStorageDescriptor(String tableName, HiveStorageFormat format, Path targetPath, List<FieldSchema> columns)
+    {
+        SerDeInfo serdeInfo = new SerDeInfo();
+        serdeInfo.setName(tableName);
+        serdeInfo.setSerializationLib(format.getSerDe());
+        serdeInfo.setParameters(ImmutableMap.of());
+
+        StorageDescriptor sd = new StorageDescriptor();
+        sd.setLocation(targetPath.toString());
+        sd.setCols(columns);
+        sd.setSerdeInfo(serdeInfo);
+        sd.setInputFormat(format.getInputFormat());
+        sd.setOutputFormat(format.getOutputFormat());
+        sd.setParameters(ImmutableMap.of());
+        return sd;
     }
 }

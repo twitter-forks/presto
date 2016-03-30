@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.twitter.hive;
 
-import com.facebook.presto.hadoop.shaded.com.google.common.collect.ImmutableList;
 import com.facebook.presto.twitter.hive.util.TestUtils;
+import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
 import org.I0Itec.zkclient.ZkClient;

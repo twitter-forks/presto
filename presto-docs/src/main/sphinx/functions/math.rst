@@ -118,6 +118,21 @@ Mathematical Functions
 
     Returns the base-``radix`` representation of ``x``.
 
+.. function:: truncate(x) -> double
+
+    Returns ``x`` rounded to integer by dropping digits after decimal point.
+
+.. function:: width_bucket(x, bound1, bound2, n) -> bigint
+
+    Returns the bin number of ``x`` in an equi-width histogram with the
+    specified ``bound1`` and ``bound2`` bounds and ``n`` number of buckets.
+
+.. function:: width_bucket(x, bins) -> bigint
+
+    Returns the bin number of ``x`` according to the bins specified by the
+    array ``bins``. The ``bins`` parameter must be an array of doubles and is
+    assumed to be in sorted ascending order.
+
 Trigonometric Functions
 -----------------------
 

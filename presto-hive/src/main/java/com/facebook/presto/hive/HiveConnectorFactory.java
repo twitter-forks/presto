@@ -14,20 +14,18 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.metastore.HiveMetastore;
-import com.facebook.presto.spi.Connector;
-import com.facebook.presto.spi.ConnectorFactory;
 import com.facebook.presto.spi.ConnectorHandleResolver;
-import com.facebook.presto.spi.ConnectorMetadata;
-import com.facebook.presto.spi.ConnectorPageSinkProvider;
-import com.facebook.presto.spi.ConnectorPageSourceProvider;
-import com.facebook.presto.spi.ConnectorSplitManager;
 import com.facebook.presto.spi.PageIndexerFactory;
-import com.facebook.presto.spi.classloader.ClassLoaderSafeConnectorMetadata;
-import com.facebook.presto.spi.classloader.ClassLoaderSafeConnectorPageSinkProvider;
-import com.facebook.presto.spi.classloader.ClassLoaderSafeConnectorPageSourceProvider;
-import com.facebook.presto.spi.classloader.ClassLoaderSafeConnectorSplitManager;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
-import com.facebook.presto.spi.security.ConnectorAccessControl;
+import com.facebook.presto.spi.connector.Connector;
+import com.facebook.presto.spi.connector.ConnectorAccessControl;
+import com.facebook.presto.spi.connector.ConnectorFactory;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeConnectorPageSinkProvider;
+import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeConnectorPageSourceProvider;
+import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeConnectorSplitManager;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.twitter.hive.MetastoreStaticClusterModule;
 import com.facebook.presto.twitter.hive.MetastoreZkDiscoveryBasedModule;
@@ -136,7 +134,7 @@ public class HiveConnectorFactory
                     .initialize();
 
             LifeCycleManager lifeCycleManager = injector.getInstance(LifeCycleManager.class);
-            ConnectorMetadata metadata = injector.getInstance(ConnectorMetadata.class);
+            HiveMetadataFactory metadataFactory = injector.getInstance(HiveMetadataFactory.class);
             ConnectorSplitManager splitManager = injector.getInstance(ConnectorSplitManager.class);
             ConnectorPageSourceProvider connectorPageSource = injector.getInstance(ConnectorPageSourceProvider.class);
             ConnectorPageSinkProvider pageSinkProvider = injector.getInstance(ConnectorPageSinkProvider.class);
@@ -146,14 +144,15 @@ public class HiveConnectorFactory
 
             return new HiveConnector(
                     lifeCycleManager,
-                    new ClassLoaderSafeConnectorMetadata(metadata, classLoader),
+                    metadataFactory,
                     new ClassLoaderSafeConnectorSplitManager(splitManager, classLoader),
                     new ClassLoaderSafeConnectorPageSourceProvider(connectorPageSource, classLoader),
                     new ClassLoaderSafeConnectorPageSinkProvider(pageSinkProvider, classLoader),
                     ImmutableSet.of(),
                     hiveSessionProperties.getSessionProperties(),
                     hiveTableProperties.getTableProperties(),
-                    accessControl);
+                    accessControl,
+                    classLoader);
         }
         catch (Exception e) {
             throw Throwables.propagate(e);

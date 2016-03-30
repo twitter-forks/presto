@@ -72,8 +72,6 @@ public class EventProcessor extends AbstractEventClient
             case SPLIT_COMPLETION:
                 handle(splitCompletionEventHandlers, type, (SplitCompletionEvent) event);
                 break;
-            default:
-                log.warn("Unrecognized event found: " + type);
         }
     }
 
