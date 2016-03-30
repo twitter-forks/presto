@@ -11,21 +11,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive;
+package com.facebook.presto.twitter.hive;
 
+import com.facebook.presto.hive.HiveCluster;
+import com.facebook.presto.hive.StaticHiveCluster;
+import com.facebook.presto.hive.StaticMetastoreConfig;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
-public class MetastoreZkDiscoveryBasedModule
+public class MetastoreStaticClusterModule
         implements Module
 {
     @Override
     public void configure(Binder binder)
     {
-        binder.bind(HiveCluster.class).to(ZookeeperServersetHiveCluster.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(ZookeeperServersetMetastoreConfig.class);
+        binder.bind(HiveCluster.class).to(StaticHiveCluster.class).in(Scopes.SINGLETON);
+        configBinder(binder).bindConfig(StaticMetastoreConfig.class);
     }
 }
