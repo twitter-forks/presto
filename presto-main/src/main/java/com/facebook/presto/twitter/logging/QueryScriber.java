@@ -34,7 +34,7 @@ import java.util.logging.LogRecord;
  */
 public class QueryScriber implements QueryEventHandler<QueryCompletionEvent>
 {
-    private static final String SCRIBE_CATEGORY = "presto_query_complete";
+    private static final String SCRIBE_CATEGORY = "presto_query_completion";
     private static final int MAX_QUEUE_SIZE = 1000;
 
     private static final Logger log = Logger.get(QueryScriber.class);
