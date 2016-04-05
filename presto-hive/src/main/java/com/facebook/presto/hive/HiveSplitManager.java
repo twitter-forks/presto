@@ -233,7 +233,7 @@ public class HiveSplitManager
                 }
 
                 verifySchemaEvolution(tableName, table.getSd().getCols(),
-                                      partName, table.getSd().getCols());
+                                      partName, partition.getSd().getCols());
 
                 results.add(new HivePartitionMetadata(hivePartition, partition));
             }
