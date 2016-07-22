@@ -768,12 +768,25 @@
                         <groupId>org.scala-lang.modules</groupId>
                         <artifactId>scala-parser-combinators_2.11</artifactId>
                     </exclusion>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>scrooge-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.scala-lang</groupId>
+                        <artifactId>scala-library</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.scala-lang</groupId>
+                        <artifactId>scala-reflect</artifactId>
+                    </exclusion>
+
                 </exclusions>
             </dependency>
             <dependency>
                 <groupId>com.twitter</groupId>
-                <artifactId>util-logging_2.11</artifactId>
-                <version>6.33.0</version>
+                <artifactId>util-logging_2.10</artifactId>
+                <version>6.34.0</version>
                 <exclusions>
                     <exclusion>
                         <groupId>commons-logging</groupId>
@@ -784,7 +797,7 @@
             <dependency>
                 <groupId>org.scala-lang</groupId>
                 <artifactId>scala-library</artifactId>
-                <version>2.11.7</version>
+                <version>2.10.6</version>
                 <exclusions>
                     <exclusion>
                         <groupId>commons-logging</groupId>

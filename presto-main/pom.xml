@@ -304,7 +304,7 @@
         </dependency>
         <dependency>
             <groupId>com.twitter</groupId>
-            <artifactId>util-logging_2.11</artifactId>
+            <artifactId>util-logging_2.10</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.thrift</groupId>
