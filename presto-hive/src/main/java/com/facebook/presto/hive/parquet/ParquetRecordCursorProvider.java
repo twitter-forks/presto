@@ -13,12 +13,12 @@
  */
 package com.facebook.presto.hive.parquet;
 
+import com.facebook.presto.hive.HdfsEnvironment;
 import com.facebook.presto.hive.HiveClientConfig;
 import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.HivePartitionKey;
 import com.facebook.presto.hive.HiveRecordCursor;
 import com.facebook.presto.hive.HiveRecordCursorProvider;
-import com.facebook.presto.hive.HiveType;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.TypeManager;
@@ -37,7 +37,6 @@ import java.util.Set;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetPredicatePushdownEnabled;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toList;
 
 public class ParquetRecordCursorProvider
         implements HiveRecordCursorProvider
@@ -48,16 +47,18 @@ public class ParquetRecordCursorProvider
             .build();
 
     private final boolean useParquetColumnNames;
+    private final HdfsEnvironment hdfsEnvironment;
 
     @Inject
-    public ParquetRecordCursorProvider(HiveClientConfig hiveClientConfig)
+    public ParquetRecordCursorProvider(HiveClientConfig hiveClientConfig, HdfsEnvironment hdfsEnvironment)
     {
-        this(requireNonNull(hiveClientConfig, "hiveClientConfig is null").isUseParquetColumnNames());
+        this(requireNonNull(hiveClientConfig, "hiveClientConfig is null").isUseParquetColumnNames(), hdfsEnvironment);
     }
 
-    public ParquetRecordCursorProvider(boolean useParquetColumnNames)
+    public ParquetRecordCursorProvider(boolean useParquetColumnNames, HdfsEnvironment hdfsEnvironment)
     {
         this.useParquetColumnNames = useParquetColumnNames;
+        this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
     }
 
     @Override
@@ -79,16 +80,9 @@ public class ParquetRecordCursorProvider
             return Optional.empty();
         }
 
-        // are all columns supported by Parquet code
-        List<HiveColumnHandle> unsupportedColumns = columns.stream()
-                .filter(columnHandle -> !columnHandle.isPartitionKey())
-                .filter(columnHandle -> columnHandle.getHiveType().equals(HiveType.HIVE_DATE))
-                .collect(toList());
-        if (!unsupportedColumns.isEmpty()) {
-            throw new IllegalArgumentException("Can not read Parquet column: " + unsupportedColumns);
-        }
-
         return Optional.<HiveRecordCursor>of(new ParquetHiveRecordCursor(
+                hdfsEnvironment,
+                session.getUser(),
                 configuration,
                 path,
                 start,

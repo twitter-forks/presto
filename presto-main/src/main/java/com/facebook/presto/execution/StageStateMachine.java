@@ -46,8 +46,7 @@ import static com.facebook.presto.execution.StageState.SCHEDULED;
 import static com.facebook.presto.execution.StageState.SCHEDULING;
 import static com.facebook.presto.execution.StageState.SCHEDULING_SPLITS;
 import static com.facebook.presto.execution.StageState.TERMINAL_STAGE_STATES;
-import static io.airlift.units.DataSize.Unit.BYTE;
-import static io.airlift.units.DataSize.succinctDataSize;
+import static io.airlift.units.DataSize.succinctBytes;
 import static io.airlift.units.Duration.succinctDuration;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -220,7 +219,8 @@ public class StageStateMachine
         Set<BlockedReason> blockedReasons = new HashSet<>();
 
         for (TaskInfo taskInfo : taskInfos) {
-            if (taskInfo.getState().isDone()) {
+            TaskState taskState = taskInfo.getTaskStatus().getState();
+            if (taskState.isDone()) {
                 completedTasks++;
             }
             else {
@@ -241,7 +241,7 @@ public class StageStateMachine
             totalCpuTime += taskStats.getTotalCpuTime().roundTo(NANOSECONDS);
             totalUserTime += taskStats.getTotalUserTime().roundTo(NANOSECONDS);
             totalBlockedTime += taskStats.getTotalBlockedTime().roundTo(NANOSECONDS);
-            if (!taskInfo.getState().isDone()) {
+            if (!taskState.isDone()) {
                 fullyBlocked &= taskStats.isFullyBlocked();
                 blockedReasons.addAll(taskStats.getBlockedReasons());
             }
@@ -272,8 +272,8 @@ public class StageStateMachine
                 completedDrivers,
 
                 cumulativeMemory,
-                succinctDataSize(totalMemoryReservation, BYTE),
-                succinctDataSize(peakMemoryReservation, BYTE),
+                succinctBytes(totalMemoryReservation),
+                succinctBytes(peakMemoryReservation),
                 succinctDuration(totalScheduledTime, NANOSECONDS),
                 succinctDuration(totalCpuTime, NANOSECONDS),
                 succinctDuration(totalUserTime, NANOSECONDS),
@@ -281,11 +281,11 @@ public class StageStateMachine
                 fullyBlocked && runningTasks > 0,
                 blockedReasons,
 
-                succinctDataSize(rawInputDataSize, BYTE),
+                succinctBytes(rawInputDataSize),
                 rawInputPositions,
-                succinctDataSize(processedInputDataSize, BYTE),
+                succinctBytes(processedInputDataSize),
                 processedInputPositions,
-                succinctDataSize(outputDataSize, BYTE),
+                succinctBytes(outputDataSize),
                 outputPositions);
 
         ExecutionFailureInfo failureInfo = null;

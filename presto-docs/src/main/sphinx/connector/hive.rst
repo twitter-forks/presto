@@ -67,6 +67,23 @@ The configuration files must exist on all Presto nodes. If you are
 referencing existing Hadoop config files, make sure to copy them to
 any Presto nodes that are not running Hadoop.
 
+Accessing Hadoop clusters protected with Kerberos authentication
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Kerberos authentication is currently supported for both HDFS and the Hive
+metastore.
+
+However there are still a few limitations:
+
+* Kerberos authentication is only supported for the ``hive-hadoop2`` and
+  ``hive-cdh5`` connectors.
+* Kerberos authentication by ticket cache is not yet supported.
+
+The properties that apply to Hive connector security are listed in the
+`Configuration Properties`_ table. Please see the
+:doc:`/connector/hive-security` section for a more detailed discussion of the
+security options in the Hive connector.
+
 Configuration Properties
 ------------------------
 
@@ -107,6 +124,26 @@ Property Name                                      Description                  
 ``hive.max-partitions-per-writers``                Maximum number of partitions per writer.                     100
 
 ``hive.s3.sse.enabled``                            Enable S3 server-side encryption.                            ``false``
+
+``hive.metastore.authentication.type``             Hive metastore authentication type.                          ``NONE``
+                                                   Possible values are ``NONE`` or ``KERBEROS``.
+
+``hive.metastore.service.principal``               The Kerberos principal of the Hive metastore service.
+
+``hive.metastore.client.principal``                The Kerberos principal that Presto will use when connecting
+                                                   to the Hive metastore service.
+
+``hive.metastore.client.keytab``                   Hive metastore client keytab location.
+
+``hive.hdfs.authentication.type``                  HDFS authentication type.                                    ``NONE``
+                                                   Possible values are ``NONE`` or ``KERBEROS``.
+
+``hive.hdfs.impersonation.enabled``                Enable HDFS end user impersonation.                          ``false``
+
+``hive.hdfs.presto.principal``                     The Kerberos principal that Presto will use when connecting
+                                                   to HDFS.
+
+``hive.hdfs.presto.keytab``                        HDFS client keytab location.
 ================================================== ============================================================ ==========
 
 Querying Hive Tables
@@ -153,3 +190,8 @@ Hive, this table can be described in Presto::
 This table can then be queried in Presto::
 
     SELECT * FROM hive.web.page_view;
+
+Hive Connector Limitations
+--------------------------
+
+:doc:`/sql/delete` is only supported if the ``WHERE`` clause matches entire partitions.

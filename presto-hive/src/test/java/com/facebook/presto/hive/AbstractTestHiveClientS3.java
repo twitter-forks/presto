@@ -14,6 +14,7 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.GroupByHashPageIndexerFactory;
+import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
 import com.facebook.presto.hive.metastore.CachingHiveMetastore;
 import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.facebook.presto.spi.ColumnHandle;
@@ -59,9 +60,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 
 import static com.facebook.presto.hadoop.HadoopFileStatus.isDirectory;
+import static com.facebook.presto.hive.AbstractTestHiveClient.createTableProperties;
 import static com.facebook.presto.hive.AbstractTestHiveClient.listAllDataPaths;
-import static com.facebook.presto.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
-import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveTestUtils.getDefaultHiveDataStreamFactories;
@@ -147,9 +147,9 @@ public abstract class AbstractTestHiveClientS3
         HiveCluster hiveCluster = new TestingHiveCluster(hiveClientConfig, host, port);
         ExecutorService executor = newCachedThreadPool(daemonThreadsNamed("hive-s3-%s"));
         HdfsConfiguration hdfsConfiguration = new HiveHdfsConfiguration(new HdfsConfigurationUpdater(hiveClientConfig));
-        HivePartitionManager hivePartitionManager = new HivePartitionManager(connectorId, hiveClientConfig);
+        HivePartitionManager hivePartitionManager = new HivePartitionManager(connectorId, TYPE_MANAGER, hiveClientConfig);
 
-        hdfsEnvironment = new HdfsEnvironment(hdfsConfiguration, hiveClientConfig);
+        hdfsEnvironment = new HdfsEnvironment(hdfsConfiguration, hiveClientConfig, new NoHdfsAuthentication());
         metastoreClient = new TestingHiveMetastore(hiveCluster, executor, hiveClientConfig, writableBucket, hdfsEnvironment);
         locationService = new HiveLocationService(metastoreClient, hdfsEnvironment);
         TypeRegistry typeManager = new TypeRegistry();
@@ -214,7 +214,7 @@ public abstract class AbstractTestHiveClientS3
         Path basePath = new Path("s3://presto-test-hive/");
         Path tablePath = new Path(basePath, "presto_test_s3");
         Path filePath = new Path(tablePath, "test1.csv");
-        FileSystem fs = hdfsEnvironment.getFileSystem(basePath);
+        FileSystem fs = hdfsEnvironment.getFileSystem("user", basePath);
 
         assertTrue(isDirectory(fs.getFileStatus(basePath)));
         assertTrue(isDirectory(fs.getFileStatus(tablePath)));
@@ -227,7 +227,7 @@ public abstract class AbstractTestHiveClientS3
             throws Exception
     {
         Path basePath = new Path(format("s3://%s/rename/%s/", writableBucket, UUID.randomUUID()));
-        FileSystem fs = hdfsEnvironment.getFileSystem(basePath);
+        FileSystem fs = hdfsEnvironment.getFileSystem("user", basePath);
         assertFalse(fs.exists(basePath));
 
         // create file foo.txt
@@ -311,17 +311,13 @@ public abstract class AbstractTestHiveClientS3
                 .add(new ColumnMetadata("id", BIGINT))
                 .build();
 
-        Map<String, Object> properties = ImmutableMap.<String, Object>builder()
-                .put(STORAGE_FORMAT_PROPERTY, storageFormat)
-                .put(PARTITIONED_BY_PROPERTY, ImmutableList.of())
-                .build();
-        ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(tableName, columns, properties, tableOwner);
+        ConnectorTableMetadata tableMetadata = new ConnectorTableMetadata(tableName, columns, createTableProperties(storageFormat), tableOwner);
         HiveOutputTableHandle outputHandle = metadata.beginCreateTable(SESSION, tableMetadata, Optional.empty());
 
         MaterializedResult data = MaterializedResult.resultBuilder(SESSION, BIGINT)
-                .row(1)
-                .row(3)
-                .row(2)
+                .row(1L)
+                .row(3L)
+                .row(2L)
                 .build();
 
         // write the records
@@ -453,7 +449,7 @@ public abstract class AbstractTestHiveClientS3
                 // drop data
                 for (String location : locations) {
                     Path path = new Path(location);
-                    hdfsEnvironment.getFileSystem(path).delete(path, true);
+                    hdfsEnvironment.getFileSystem("user", path).delete(path, true);
                 }
             }
             catch (Exception e) {

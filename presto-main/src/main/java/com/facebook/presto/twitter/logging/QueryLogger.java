@@ -15,7 +15,6 @@ package com.facebook.presto.twitter.logging;
 
 import com.facebook.presto.event.query.QueryCompletionEvent;
 import com.facebook.presto.event.query.QueryEventHandler;
-import com.facebook.presto.spi.StandardErrorCode;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 
@@ -38,10 +37,8 @@ public class QueryLogger implements QueryEventHandler<QueryCompletionEvent>
     @Override
     public void handle(QueryCompletionEvent event)
     {
-        String errorType = DASH;
         String errorCode = DASH;
         if (event.getErrorCode() != null) {
-            errorType = StandardErrorCode.toErrorType(event.getErrorCode()).toString();
             if (event.getErrorCodeName() != null) {
                 errorCode = event.getErrorCodeName() + COLON + event.getErrorCode();
             }
@@ -51,9 +48,9 @@ public class QueryLogger implements QueryEventHandler<QueryCompletionEvent>
                 event.getQueryWallTimeMs(), TimeUnit.MILLISECONDS))
                 .convertToMostSuccinctTimeUnit();
 
-        log.info(String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
+        log.info(String.format("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s",
                 QUERY_COMPLETION, event.getQueryId(), toLogValue(event.getRemoteClientAddress()),
-                event.getQueryState(), errorType, errorCode, event.getUser(), duration,
+                event.getQueryState(), errorCode, event.getUser(), duration,
                 event.getSplits(), event.getTotalRows(), event.getTotalBytes(),
                 cleanseAndTrimQuery(event.getQuery())));
     }

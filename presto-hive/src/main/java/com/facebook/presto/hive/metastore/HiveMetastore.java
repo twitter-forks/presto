@@ -71,13 +71,13 @@ public interface HiveMetastore
 
     Set<String> getRoles(String user);
 
-    Set<HivePrivilege> getDatabasePrivileges(String user, String databaseName);
+    Set<HivePrivilegeInfo> getDatabasePrivileges(String user, String databaseName);
 
-    Set<HivePrivilege> getTablePrivileges(String user, String databaseName, String tableName);
+    Set<HivePrivilegeInfo> getTablePrivileges(String user, String databaseName, String tableName);
 
     void grantTablePrivileges(String databaseName, String tableName, String grantee, Set<PrivilegeGrantInfo> privilegeGrantInfoSet);
 
-    boolean hasPrivilegeWithGrantOptionOnTable(String user, String databaseName, String tableName, HivePrivilege hivePrivilege);
+    void revokeTablePrivileges(String databaseName, String tableName, String grantee, Set<PrivilegeGrantInfo> privilegeGrantInfoSet);
 
     default boolean isDatabaseOwner(String user, String databaseName)
     {
