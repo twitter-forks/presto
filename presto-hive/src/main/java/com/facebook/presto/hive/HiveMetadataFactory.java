@@ -31,12 +31,10 @@ public class HiveMetadataFactory
     private static final Logger log = Logger.get(HiveMetadataFactory.class);
 
     private final String connectorId;
-    private final boolean allowDropTable;
-    private final boolean allowRenameTable;
-    private final boolean allowAddColumn;
-    private final boolean allowRenameColumn;
     private final boolean allowCorruptWritesForTesting;
     private final boolean respectTableFormat;
+    private final boolean bucketExecutionEnabled;
+    private final boolean bucketWritingEnabled;
     private final HiveStorageFormat defaultStorageFormat;
     private final HiveMetastore metastore;
     private final HdfsEnvironment hdfsEnvironment;
@@ -68,12 +66,10 @@ public class HiveMetadataFactory
                 partitionManager,
                 hiveClientConfig.getDateTimeZone(),
                 hiveClientConfig.getMaxConcurrentFileRenames(),
-                hiveClientConfig.getAllowDropTable(),
-                hiveClientConfig.getAllowRenameTable(),
-                hiveClientConfig.getAllowAddColumn(),
-                hiveClientConfig.getAllowRenameColumn(),
                 hiveClientConfig.getAllowCorruptWritesForTesting(),
                 hiveClientConfig.isRespectTableFormat(),
+                hiveClientConfig.isBucketExecutionEnabled(),
+                hiveClientConfig.isBucketWritingEnabled(),
                 hiveClientConfig.getHiveStorageFormat(),
                 typeManager,
                 locationService,
@@ -89,12 +85,10 @@ public class HiveMetadataFactory
             HivePartitionManager partitionManager,
             DateTimeZone timeZone,
             int maxConcurrentFileRenames,
-            boolean allowDropTable,
-            boolean allowRenameTable,
-            boolean allowAddColumn,
-            boolean allowRenameColumn,
             boolean allowCorruptWritesForTesting,
             boolean respectTableFormat,
+            boolean bucketExecutionEnabled,
+            boolean bucketWritingEnabled,
             HiveStorageFormat defaultStorageFormat,
             TypeManager typeManager,
             LocationService locationService,
@@ -104,12 +98,10 @@ public class HiveMetadataFactory
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
 
-        this.allowDropTable = allowDropTable;
-        this.allowRenameTable = allowRenameTable;
-        this.allowAddColumn = allowAddColumn;
-        this.allowRenameColumn = allowRenameColumn;
         this.allowCorruptWritesForTesting = allowCorruptWritesForTesting;
         this.respectTableFormat = respectTableFormat;
+        this.bucketExecutionEnabled = bucketExecutionEnabled;
+        this.bucketWritingEnabled = bucketWritingEnabled;
         this.defaultStorageFormat = requireNonNull(defaultStorageFormat, "defaultStorageFormat is null");
 
         this.metastore = requireNonNull(metastore, "metastore is null");
@@ -139,12 +131,10 @@ public class HiveMetadataFactory
                 hdfsEnvironment,
                 partitionManager,
                 timeZone,
-                allowDropTable,
-                allowRenameTable,
-                allowAddColumn,
-                allowRenameColumn,
                 allowCorruptWritesForTesting,
                 respectTableFormat,
+                bucketExecutionEnabled,
+                bucketWritingEnabled,
                 defaultStorageFormat,
                 typeManager,
                 locationService,

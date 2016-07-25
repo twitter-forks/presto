@@ -39,8 +39,8 @@ public class TestVerifierConfig
                 .setControlPasswordOverride(null)
                 .setSuite(null)
                 .setSuites(null)
-                .setControlQueryTypes(Joiner.on(",").join(CREATE, READ, MODIFY))
-                .setTestQueryTypes(Joiner.on(",").join(CREATE, READ, MODIFY))
+                .setControlQueryTypes(Joiner.on(",").join(READ, CREATE))
+                .setTestQueryTypes(Joiner.on(",").join(READ, CREATE))
                 .setSource(null)
                 .setRunId(new DateTime().toString("yyyy-MM-dd"))
                 .setEventClients("human-readable")
@@ -57,8 +57,10 @@ public class TestVerifierConfig
                 .setAlwaysReport(false)
                 .setSuiteRepetitions(1)
                 .setCheckCorrectnessEnabled(true)
+                .setCheckCpuEnabled(true)
                 .setExplainOnly(false)
                 .setSkipCorrectnessRegex("^$")
+                .setSkipCpuCheckRegex("(?i)(?s).*LIMIT.*")
                 .setQueryRepetitions(1)
                 .setTestCatalogOverride(null)
                 .setTestSchemaOverride(null)
@@ -71,7 +73,12 @@ public class TestVerifierConfig
                 .setTestJdbcDriverName(null)
                 .setControlJdbcDriverName(null)
                 .setDoublePrecision(3)
-                .setRegressionMinCpuTime(new Duration(5, TimeUnit.MINUTES)));
+                .setRegressionMinCpuTime(new Duration(5, TimeUnit.MINUTES))
+                .setShadowWrites(true)
+                .setShadowTestTablePrefix("tmp_verifier_")
+                .setShadowControlTablePrefix("tmp_verifier_")
+                .setControlTeardownRetries(1)
+                .setTestTeardownRetries(1));
     }
 
     @Test
@@ -80,7 +87,7 @@ public class TestVerifierConfig
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("suites", "my_suite")
                 .put("suite", "my_suite")
-                .put("control.query-types", READ.name())
+                .put("control.query-types", Joiner.on(",").join(CREATE, READ, MODIFY))
                 .put("test.query-types", MODIFY.name())
                 .put("source", "my_source")
                 .put("run-id", "my_run_id")
@@ -95,8 +102,10 @@ public class TestVerifierConfig
                 .put("suite-repetitions", "2")
                 .put("query-repetitions", "2")
                 .put("check-correctness", "false")
+                .put("check-cpu", "false")
                 .put("explain-only", "true")
                 .put("skip-correctness-regex", "limit")
+                .put("skip-cpu-check-regex", "LIMIT")
                 .put("quiet", "true")
                 .put("event-log-file", "./test")
                 .put("query-database", "jdbc:mysql://localhost:3306/my_database?user=my_username&password=my_password")
@@ -117,12 +126,17 @@ public class TestVerifierConfig
                 .put("control.jdbc-driver-class", "com.facebook.exampleclass")
                 .put("expected-double-precision", "5")
                 .put("regression.min-cpu-time", "30s")
+                .put("shadow-writes.enabled", "false")
+                .put("shadow-writes.test-table-prefix", "tmp_")
+                .put("shadow-writes.control-table-prefix", "schema.tmp_")
+                .put("control.teardown-retries", "5")
+                .put("test.teardown-retries", "7")
                 .build();
 
         VerifierConfig expected = new VerifierConfig().setTestUsernameOverride("verifier-test")
                 .setSuites("my_suite")
                 .setSuite("my_suite")
-                .setControlQueryTypes(READ.name())
+                .setControlQueryTypes(Joiner.on(",").join(CREATE, READ, MODIFY))
                 .setTestQueryTypes(MODIFY.name())
                 .setSource("my_source")
                 .setRunId("my_run_id")
@@ -137,8 +151,10 @@ public class TestVerifierConfig
                 .setSuiteRepetitions(2)
                 .setQueryRepetitions(2)
                 .setCheckCorrectnessEnabled(false)
+                .setCheckCpuEnabled(false)
                 .setExplainOnly(true)
                 .setSkipCorrectnessRegex("limit")
+                .setSkipCpuCheckRegex("LIMIT")
                 .setQuiet(true)
                 .setEventLogFile("./test")
                 .setQueryDatabase("jdbc:mysql://localhost:3306/my_database?user=my_username&password=my_password")
@@ -158,7 +174,12 @@ public class TestVerifierConfig
                 .setTestJdbcDriverName("com.facebook.exampleclass")
                 .setControlJdbcDriverName("com.facebook.exampleclass")
                 .setDoublePrecision(5)
-                .setRegressionMinCpuTime(new Duration(30, TimeUnit.SECONDS));
+                .setRegressionMinCpuTime(new Duration(30, TimeUnit.SECONDS))
+                .setShadowWrites(false)
+                .setShadowTestTablePrefix("tmp_")
+                .setShadowControlTablePrefix("schema.tmp_")
+                .setControlTeardownRetries(5)
+                .setTestTeardownRetries(7);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

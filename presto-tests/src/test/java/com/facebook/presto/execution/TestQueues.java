@@ -26,8 +26,10 @@ import java.util.Set;
 import static com.facebook.presto.execution.QueryState.FAILED;
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.QueryState.RUNNING;
+import static com.facebook.presto.spi.StandardErrorCode.QUERY_REJECTED;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static org.testng.Assert.assertEquals;
 
 public class TestQueues
 {
@@ -37,16 +39,39 @@ public class TestQueues
     public void testSqlQueryQueueManager()
             throws Exception
     {
-        Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"))
-                .build();
+        testBasic(false);
+    }
+
+    @Test(timeOut = 240_000)
+    public void testResourceGroupManager()
+            throws Exception
+    {
+        testBasic(true);
+    }
+
+    private void testBasic(boolean resourceGroups)
+            throws Exception
+    {
+        ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
+        if (resourceGroups) {
+            builder.put("experimental.resource-groups-enabled", "true");
+            builder.put("resource-groups.config-file", getResourceFilePath("resource_groups_config_dashboard.json"));
+        }
+        else {
+            builder.put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"));
+        }
+        Map<String, String> properties = builder.build();
 
         try (DistributedQueryRunner queryRunner = createQueryRunner(properties)) {
+            QueryManager queryManager = queryRunner.getCoordinator().getQueryManager();
+
             // submit first "dashboard" query
             QueryId firstDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
 
             // wait for the first "dashboard" query to start
             waitForQueryState(queryRunner, firstDashboardQuery, RUNNING);
+
+            assertEquals(queryManager.getStats().getRunningQueries(), 1);
 
             // submit second "dashboard" query
             QueryId secondDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
@@ -54,24 +79,31 @@ public class TestQueues
             // wait for the second "dashboard" query to be queued ("dashboard.${USER}" queue strategy only allows one "dashboard" query to be accepted for execution)
             waitForQueryState(queryRunner, secondDashboardQuery, QUEUED);
 
+            assertEquals(queryManager.getStats().getRunningQueries(), 1);
+
             // submit first non "dashboard" query
             QueryId firstNonDashboardQuery = createQuery(queryRunner, newSession(), LONG_LASTING_QUERY);
 
             // wait for the first non "dashboard" query to start
             waitForQueryState(queryRunner, firstNonDashboardQuery, RUNNING);
 
+            assertEquals(queryManager.getStats().getRunningQueries(), 2);
+
             // submit second non "dashboard" query
             QueryId secondNonDashboardQuery = createQuery(queryRunner, newSession(), LONG_LASTING_QUERY);
 
-            // wait for the second non "dashboard" query to be queued ("user.${USER}" queue strategy only allows three user queries to be accepted for execution,
-            // two "dashboard" and one non "dashboard" queries are already accepted by "user.${USER}" queue)
-            waitForQueryState(queryRunner, secondNonDashboardQuery, QUEUED);
+            // wait for the second non "dashboard" query to start
+            waitForQueryState(queryRunner, secondNonDashboardQuery, RUNNING);
+
+            assertEquals(queryManager.getStats().getRunningQueries(), 3);
 
             // cancel first "dashboard" query, second "dashboard" query and second non "dashboard" query should start running
             cancelQuery(queryRunner, firstDashboardQuery);
             waitForQueryState(queryRunner, firstDashboardQuery, FAILED);
             waitForQueryState(queryRunner, secondDashboardQuery, RUNNING);
-            waitForQueryState(queryRunner, secondNonDashboardQuery, RUNNING);
+
+            assertEquals(queryManager.getStats().getRunningQueries(), 3);
+            assertEquals(queryManager.getStats().getCompletedQueries().getTotalCount(), 1);
         }
     }
 
@@ -79,9 +111,28 @@ public class TestQueues
     public void testSqlQueryQueueManagerWithTwoDashboardQueriesRequestedAtTheSameTime()
             throws Exception
     {
-        Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"))
-                .build();
+        testTwoQueriesAtSameTime(false);
+    }
+
+    @Test(timeOut = 240_000)
+    public void testResourceGroupManagerWithTwoDashboardQueriesRequestedAtTheSameTime()
+            throws Exception
+    {
+        testTwoQueriesAtSameTime(true);
+    }
+
+    private void testTwoQueriesAtSameTime(boolean resourceGroups)
+            throws Exception
+    {
+        ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
+        if (resourceGroups) {
+            builder.put("experimental.resource-groups-enabled", "true");
+            builder.put("resource-groups.config-file", getResourceFilePath("resource_groups_config_dashboard.json"));
+        }
+        else {
+            builder.put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"));
+        }
+        Map<String, String> properties = builder.build();
 
         try (DistributedQueryRunner queryRunner = createQueryRunner(properties)) {
             QueryId firstDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
@@ -97,9 +148,28 @@ public class TestQueues
     public void testSqlQueryQueueManagerWithTooManyQueriesScheduled()
             throws Exception
     {
-        Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"))
-                .build();
+        testTooManyQueries(false);
+    }
+
+    @Test(timeOut = 240_000)
+    public void testResourceGroupManagerWithTooManyQueriesScheduled()
+            throws Exception
+    {
+        testTooManyQueries(true);
+    }
+
+    private void testTooManyQueries(boolean resourceGroups)
+            throws Exception
+    {
+        ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
+        if (resourceGroups) {
+            builder.put("experimental.resource-groups-enabled", "true");
+            builder.put("resource-groups.config-file", getResourceFilePath("resource_groups_config_dashboard.json"));
+        }
+        else {
+            builder.put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"));
+        }
+        Map<String, String> properties = builder.build();
 
         try (DistributedQueryRunner queryRunner = createQueryRunner(properties)) {
             QueryId firstDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
@@ -110,6 +180,41 @@ public class TestQueues
 
             QueryId thirdDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
             waitForQueryState(queryRunner, thirdDashboardQuery, FAILED);
+        }
+    }
+
+    @Test(timeOut = 240_000)
+    public void testSqlQueryQueueManagerRejection()
+            throws Exception
+    {
+        testRejection(false);
+    }
+
+    @Test(timeOut = 240_000)
+    public void testResourceGroupManagerRejection()
+            throws Exception
+    {
+        testRejection(true);
+    }
+
+    private void testRejection(boolean resourceGroups)
+            throws Exception
+    {
+        ImmutableMap.Builder<String, String> builder = ImmutableMap.builder();
+        if (resourceGroups) {
+            builder.put("experimental.resource-groups-enabled", "true");
+            builder.put("resource-groups.config-file", getResourceFilePath("resource_groups_config_dashboard.json"));
+        }
+        else {
+            builder.put("query.queue-config-file", getResourceFilePath("queue_config_dashboard.json"));
+        }
+        Map<String, String> properties = builder.build();
+
+        try (DistributedQueryRunner queryRunner = createQueryRunner(properties)) {
+            QueryId queryId = createQuery(queryRunner, newRejectionSession(), LONG_LASTING_QUERY);
+            waitForQueryState(queryRunner, queryId, FAILED);
+            QueryManager queryManager = queryRunner.getCoordinator().getQueryManager();
+            assertEquals(queryManager.getQueryInfo(queryId).getErrorCode(), QUERY_REJECTED.toErrorCode());
         }
     }
 
@@ -147,7 +252,7 @@ public class TestQueues
     private static DistributedQueryRunner createQueryRunner(Map<String, String> properties)
             throws Exception
     {
-        DistributedQueryRunner queryRunner = new DistributedQueryRunner(testSessionBuilder().build(), 2, properties);
+        DistributedQueryRunner queryRunner = new DistributedQueryRunner(testSessionBuilder().build(), 2, ImmutableMap.of(), properties);
 
         try {
             queryRunner.installPlugin(new TpchPlugin());
@@ -165,6 +270,7 @@ public class TestQueues
         return testSessionBuilder()
                 .setCatalog("tpch")
                 .setSchema("sf100000")
+                .setSource("adhoc")
                 .build();
     }
 
@@ -174,6 +280,15 @@ public class TestQueues
                 .setCatalog("tpch")
                 .setSchema("sf100000")
                 .setSource("dashboard")
+                .build();
+    }
+
+    private static Session newRejectionSession()
+    {
+        return testSessionBuilder()
+                .setCatalog("tpch")
+                .setSchema("sf100000")
+                .setSource("reject")
                 .build();
     }
 }

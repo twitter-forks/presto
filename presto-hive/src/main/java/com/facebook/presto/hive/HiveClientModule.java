@@ -19,8 +19,9 @@ import com.facebook.presto.hive.orc.DwrfPageSourceFactory;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetRecordCursorProvider;
-import com.facebook.presto.hive.rcfile.RcFilePageSourceFactory;
+import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PageIndexerFactory;
+import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
@@ -50,13 +51,15 @@ public class HiveClientModule
     private final HiveMetastore metastore;
     private final TypeManager typeManager;
     private final PageIndexerFactory pageIndexerFactory;
+    private final NodeManager nodeManager;
 
-    public HiveClientModule(String connectorId, HiveMetastore metastore, TypeManager typeManager, PageIndexerFactory pageIndexerFactory)
+    public HiveClientModule(String connectorId, HiveMetastore metastore, TypeManager typeManager, PageIndexerFactory pageIndexerFactory, NodeManager nodeManager)
     {
         this.connectorId = connectorId;
         this.metastore = metastore;
         this.typeManager = typeManager;
         this.pageIndexerFactory = pageIndexerFactory;
+        this.nodeManager = nodeManager;
     }
 
     @Override
@@ -87,6 +90,7 @@ public class HiveClientModule
 
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
 
+        binder.bind(NodeManager.class).toInstance(nodeManager);
         binder.bind(TypeManager.class).toInstance(typeManager);
         binder.bind(PageIndexerFactory.class).toInstance(pageIndexerFactory);
 
@@ -103,11 +107,11 @@ public class HiveClientModule
         binder.bind(ConnectorSplitManager.class).to(HiveSplitManager.class).in(Scopes.SINGLETON);
         binder.bind(ConnectorPageSourceProvider.class).to(HivePageSourceProvider.class).in(Scopes.SINGLETON);
         binder.bind(ConnectorPageSinkProvider.class).to(HivePageSinkProvider.class).in(Scopes.SINGLETON);
+        binder.bind(ConnectorNodePartitioningProvider.class).to(HiveNodePartitioningProvider.class).in(Scopes.SINGLETON);
 
         jsonCodecBinder(binder).bindJsonCodec(PartitionUpdate.class);
 
         Multibinder<HivePageSourceFactory> pageSourceFactoryBinder = Multibinder.newSetBinder(binder, HivePageSourceFactory.class);
-        pageSourceFactoryBinder.addBinding().to(RcFilePageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(OrcPageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(DwrfPageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(ParquetPageSourceFactory.class).in(Scopes.SINGLETON);

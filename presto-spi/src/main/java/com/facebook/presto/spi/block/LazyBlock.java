@@ -78,20 +78,6 @@ public class LazyBlock
     }
 
     @Override
-    public float getFloat(int position, int offset)
-    {
-        assureLoaded();
-        return block.getFloat(position, offset);
-    }
-
-    @Override
-    public double getDouble(int position, int offset)
-    {
-        assureLoaded();
-        return block.getDouble(position, offset);
-    }
-
-    @Override
     public Slice getSlice(int position, int offset, int length)
     {
         assureLoaded();
@@ -151,7 +137,7 @@ public class LazyBlock
     }
 
     @Override
-    public int hash(int position, int offset, int length)
+    public long hash(int position, int offset, int length)
     {
         assureLoaded();
         return block.hash(position, offset, length);
