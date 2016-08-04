@@ -92,16 +92,7 @@ final class PrestoSystemRequirements
         }
 
         String majorVersion = versionParts[0];
-        int minorVersion = 0;
-        try {
-            minorVersion = Integer.parseInt(versionParts[1]);
-        }
-        catch (NumberFormatException e) {
-            failRequirement("Java minor version is not a number: %s", javaVersion);
-        }
-
-        if ((majorVersion.compareTo("1.8.0") < 0) ||
-                ((majorVersion.compareTo("1.8.0") == 0) && (minorVersion < 60))) {
+        if ((majorVersion.compareTo("1.8.0") < 0)) {
             failRequirement("Presto requires Java 8u60+ (found %s)", javaVersion);
         }
     }
