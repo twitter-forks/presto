@@ -36,10 +36,12 @@ import static com.facebook.presto.sql.relational.Expressions.constant;
 import static com.facebook.presto.sql.relational.Expressions.constantNull;
 import static com.facebook.presto.sql.relational.Signatures.CAST;
 import static com.facebook.presto.sql.relational.Signatures.COALESCE;
+import static com.facebook.presto.sql.relational.Signatures.DEREFERENCE;
 import static com.facebook.presto.sql.relational.Signatures.IF;
 import static com.facebook.presto.sql.relational.Signatures.IN;
 import static com.facebook.presto.sql.relational.Signatures.IS_NULL;
 import static com.facebook.presto.sql.relational.Signatures.NULL_IF;
+import static com.facebook.presto.sql.relational.Signatures.ROW_CONSTRUCTOR;
 import static com.facebook.presto.sql.relational.Signatures.SWITCH;
 import static com.facebook.presto.sql.relational.Signatures.TRY;
 import static com.facebook.presto.sql.relational.Signatures.TRY_CAST;
@@ -93,7 +95,7 @@ public class ExpressionOptimizer
             else {
                 switch (signature.getName()) {
                     // TODO: optimize these special forms
-                    case IF:
+                    case IF: {
                         checkState(call.getArguments().size() == 3, "IF function should have 3 arguments. Get " + call.getArguments().size());
                         RowExpression optimizedOperand = call.getArguments().get(0).accept(this, context);
                         if (optimizedOperand instanceof ConstantExpression) {
@@ -107,10 +109,24 @@ public class ExpressionOptimizer
                                 return call.getArguments().get(2).accept(this, context);
                             }
                         }
+                        List<RowExpression> arguments = call.getArguments().stream()
+                                .map(argument -> argument.accept(this, null))
+                                .collect(toImmutableList());
+                        return call(signature, call.getType(), arguments);
+                    }
+                    case TRY: {
+                        checkState(call.getArguments().size() == 1, "try call expressions must have a single argument");
+                        if (!(Iterables.getOnlyElement(call.getArguments()) instanceof CallExpression)) {
+                            return Iterables.getOnlyElement(call.getArguments()).accept(this, null);
+                        }
+                        List<RowExpression> arguments = call.getArguments().stream()
+                                .map(argument -> argument.accept(this, null))
+                                .collect(toImmutableList());
+                        return call(signature, call.getType(), arguments);
+                    }
                     case NULL_IF:
                     case SWITCH:
                     case "WHEN":
-                    case TRY:
                     case TRY_CAST:
                     case IS_NULL:
                     case "IS_DISTINCT_FROM":
@@ -118,10 +134,13 @@ public class ExpressionOptimizer
                     case "AND":
                     case "OR":
                     case IN:
+                    case DEREFERENCE:
+                    case ROW_CONSTRUCTOR: {
                         List<RowExpression> arguments = call.getArguments().stream()
                                 .map(argument -> argument.accept(this, null))
                                 .collect(toImmutableList());
                         return call(signature, call.getType(), arguments);
+                    }
                     default:
                         function = registry.getScalarFunctionImplementation(signature);
                 }

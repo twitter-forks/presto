@@ -13,6 +13,7 @@ package com.facebook.presto.operator.scalar;
  * limitations under the License.
  */
 
+import com.facebook.presto.metadata.BoundVariables;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.SqlOperator;
 import com.facebook.presto.spi.PrestoException;
@@ -24,13 +25,13 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
-import java.util.Map;
 
 import static com.facebook.presto.metadata.OperatorType.LESS_THAN;
 import static com.facebook.presto.metadata.Signature.internalOperator;
 import static com.facebook.presto.metadata.Signature.orderableTypeParameter;
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.TypeUtils.readNativeValue;
 import static com.facebook.presto.type.ArrayType.ARRAY_NULL_ELEMENT_MSG;
 import static com.facebook.presto.type.TypeUtils.checkElementNotNull;
@@ -44,13 +45,17 @@ public class ArrayLessThanOperator
 
     private ArrayLessThanOperator()
     {
-        super(LESS_THAN, ImmutableList.of(orderableTypeParameter("T")), StandardTypes.BOOLEAN, ImmutableList.of("array(T)", "array(T)"));
+        super(LESS_THAN,
+                ImmutableList.of(orderableTypeParameter("T")),
+                ImmutableList.of(),
+                parseTypeSignature(StandardTypes.BOOLEAN),
+                ImmutableList.of(parseTypeSignature("array(T)"), parseTypeSignature("array(T)")));
     }
 
     @Override
-    public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
-        Type elementType = types.get("T");
+        Type elementType = boundVariables.getTypeVariable("T");
         MethodHandle lessThanFunction = functionRegistry.getScalarFunctionImplementation(internalOperator(LESS_THAN, BOOLEAN, ImmutableList.of(elementType, elementType))).getMethodHandle();
         MethodHandle method = METHOD_HANDLE.bindTo(lessThanFunction).bindTo(elementType);
         return new ScalarFunctionImplementation(false, ImmutableList.of(false, false), method, isDeterministic());
@@ -77,7 +82,7 @@ public class ArrayLessThanOperator
                 Throwables.propagateIfInstanceOf(t, Error.class);
                 Throwables.propagateIfInstanceOf(t, PrestoException.class);
 
-                throw new PrestoException(INTERNAL_ERROR, t);
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, t);
             }
             index++;
         }

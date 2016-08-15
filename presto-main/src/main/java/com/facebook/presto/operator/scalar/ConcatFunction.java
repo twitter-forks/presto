@@ -22,11 +22,12 @@ import com.facebook.presto.bytecode.Parameter;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.bytecode.Variable;
 import com.facebook.presto.bytecode.expression.BytecodeExpression;
+import com.facebook.presto.metadata.BoundVariables;
+import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.FunctionRegistry;
+import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -36,7 +37,6 @@ import io.airlift.slice.Slices;
 import java.lang.invoke.MethodHandle;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.IntStream;
 
 import static com.facebook.presto.bytecode.Access.FINAL;
@@ -51,6 +51,7 @@ import static com.facebook.presto.bytecode.expression.BytecodeExpressions.add;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeStatic;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static java.lang.Math.addExact;
@@ -62,7 +63,15 @@ public final class ConcatFunction
 
     public ConcatFunction()
     {
-        super("concat", ImmutableList.of(), StandardTypes.VARCHAR, ImmutableList.of(StandardTypes.VARCHAR), true);
+        // TODO design new variadic functions binding mechanism that will allow to produce VARCHAR(x) where x < MAX_LENGTH.
+        super(new Signature(
+                "concat",
+                FunctionKind.SCALAR,
+                ImmutableList.of(),
+                ImmutableList.of(),
+                createUnboundedVarcharType().getTypeSignature(),
+                ImmutableList.of(createUnboundedVarcharType().getTypeSignature()),
+                true));
     }
 
     @Override
@@ -84,7 +93,7 @@ public final class ConcatFunction
     }
 
     @Override
-    public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
         if (arity < 2) {
             throw new PrestoException(INVALID_FUNCTION_ARGUMENT, "There must be two or more concatenation arguments");

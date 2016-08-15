@@ -14,9 +14,6 @@
 package com.facebook.presto.server;
 
 import com.facebook.presto.discovery.EmbeddedDiscoveryModule;
-import com.facebook.presto.execution.scheduler.FlatNetworkTopology;
-import com.facebook.presto.execution.scheduler.LegacyNetworkTopology;
-import com.facebook.presto.execution.scheduler.NetworkTopology;
 import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
 import com.facebook.presto.metadata.CatalogManager;
 import com.facebook.presto.metadata.Metadata;
@@ -29,7 +26,6 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Injector;
 import com.google.inject.Module;
-import com.google.inject.Scopes;
 import io.airlift.bootstrap.Bootstrap;
 import io.airlift.discovery.client.Announcer;
 import io.airlift.discovery.client.DiscoveryModule;
@@ -52,8 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.facebook.presto.execution.scheduler.NodeSchedulerConfig.LEGACY_NETWORK_TOPOLOGY;
-import static com.facebook.presto.server.ConditionalModule.installModuleIf;
 import static com.facebook.presto.server.PrestoSystemRequirements.verifyJvmRequirements;
 import static com.facebook.presto.server.PrestoSystemRequirements.verifySystemTimeIsReasonable;
 import static com.google.common.base.Strings.nullToEmpty;
@@ -107,17 +101,7 @@ public class PrestoServer
                 new ServerSecurityModule(),
                 new AccessControlModule(),
                 new ServerMainModule(sqlParserOptions),
-                new GracefulShutdownModule(),
-                installModuleIf(
-                        NodeSchedulerConfig.class,
-                        config -> LEGACY_NETWORK_TOPOLOGY.equalsIgnoreCase(config.getNetworkTopology()),
-                        binder -> binder.bind(NetworkTopology.class).to(LegacyNetworkTopology.class).in(Scopes.SINGLETON)),
-                installModuleIf(
-                        NodeSchedulerConfig.class,
-                        config -> "flat".equalsIgnoreCase(config.getNetworkTopology()),
-                        binder -> binder.bind(NetworkTopology.class).to(FlatNetworkTopology.class).in(Scopes.SINGLETON))
-
-        );
+                new GracefulShutdownModule());
 
         modules.addAll(getAdditionalModules());
 

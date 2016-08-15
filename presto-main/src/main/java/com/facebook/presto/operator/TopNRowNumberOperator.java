@@ -190,7 +190,7 @@ public class TopNRowNumberOperator
             this.groupByHash = Optional.empty();
         }
         else {
-            this.groupByHash = Optional.of(createGroupByHash(operatorContext.getSession(), partitionTypes, Ints.toArray(partitionChannels), Optional.<Integer>empty(), hashChannel, expectedPositions));
+            this.groupByHash = Optional.of(createGroupByHash(operatorContext.getSession(), partitionTypes, Ints.toArray(partitionChannels), hashChannel, expectedPositions));
         }
         this.flushingPartition = Optional.empty();
         this.pageBuilder = new PageBuilder(types);
@@ -315,7 +315,7 @@ public class TopNRowNumberOperator
                 pageBuilder.declarePosition();
                 for (int i = 0; i < outputChannels.length; i++) {
                     int channel = outputChannels[i];
-                    Type type = types.get(channel);
+                    Type type = types.get(i);
                     type.appendTo(next[channel], 0, pageBuilder.getBlockBuilder(i));
                 }
                 if (generateRowNumber) {

@@ -23,7 +23,7 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
@@ -164,7 +164,7 @@ public interface ConnectorMetadata
      */
     default void commitCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
-        throw new PrestoException(INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without commitCreateTable()");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without commitCreateTable()");
     }
 
     /**
@@ -185,7 +185,7 @@ public interface ConnectorMetadata
      */
     default void commitInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
     {
-        throw new PrestoException(INTERNAL_ERROR, "ConnectorMetadata beginInsert() is implemented without commitInsert()");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginInsert() is implemented without commitInsert()");
     }
 
     /**
@@ -282,5 +282,13 @@ public interface ConnectorMetadata
     default void grantTablePrivileges(ConnectorSession session, SchemaTableName tableName, Set<Privilege> privileges, String grantee, boolean grantOption)
     {
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support grants");
+    }
+
+    /**
+     * Revokes the specified privilege on the specified table from the specified user
+     */
+    default void revokeTablePrivileges(ConnectorSession session, SchemaTableName tableName, Set<Privilege> privileges, String grantee, boolean grantOption)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support revokes");
     }
 }

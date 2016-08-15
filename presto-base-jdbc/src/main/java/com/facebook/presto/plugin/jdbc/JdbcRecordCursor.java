@@ -17,8 +17,11 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.DateType;
+import com.facebook.presto.spi.type.IntegerType;
+import com.facebook.presto.spi.type.SmallintType;
 import com.facebook.presto.spi.type.TimeType;
 import com.facebook.presto.spi.type.TimestampType;
+import com.facebook.presto.spi.type.TinyintType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.spi.type.VarcharType;
@@ -38,7 +41,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -136,6 +139,15 @@ public class JdbcRecordCursor
         checkState(!closed, "cursor is closed");
         try {
             Type type = getType(field);
+            if (type.equals(TinyintType.TINYINT)) {
+                return (long) resultSet.getByte(field + 1);
+            }
+            if (type.equals(SmallintType.SMALLINT)) {
+                return (long) resultSet.getShort(field + 1);
+            }
+            if (type.equals(IntegerType.INTEGER)) {
+                return (long) resultSet.getInt(field + 1);
+            }
             if (type.equals(BigintType.BIGINT)) {
                 return resultSet.getLong(field + 1);
             }
@@ -155,7 +167,7 @@ public class JdbcRecordCursor
                 Timestamp timestamp = resultSet.getTimestamp(field + 1);
                 return timestamp.getTime();
             }
-            throw new PrestoException(INTERNAL_ERROR, "Unhandled type for long: " + type.getTypeSignature());
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for long: " + type.getTypeSignature());
         }
         catch (SQLException e) {
             throw handleSqlException(e);
@@ -180,13 +192,13 @@ public class JdbcRecordCursor
         checkState(!closed, "cursor is closed");
         try {
             Type type = getType(field);
-            if (type.equals(VarcharType.VARCHAR)) {
+            if (type instanceof VarcharType) {
                 return utf8Slice(resultSet.getString(field + 1));
             }
             if (type.equals(VarbinaryType.VARBINARY)) {
                 return wrappedBuffer(resultSet.getBytes(field + 1));
             }
-            throw new PrestoException(INTERNAL_ERROR, "Unhandled type for slice: " + type.getTypeSignature());
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled type for slice: " + type.getTypeSignature());
         }
         catch (SQLException e) {
             throw handleSqlException(e);

@@ -27,14 +27,25 @@ public interface LookupSource
 
     int getJoinPositionCount();
 
-    long getJoinPosition(int position, Page page, int rawHash);
+    long getJoinPosition(int position, Page hashChannelsPage, Page allChannelsPage, long rawHash);
 
-    long getJoinPosition(int position, Page page);
+    long getJoinPosition(int position, Page hashChannelsPage, Page allChannelsPage);
 
-    long getNextJoinPosition(long currentPosition);
+    long getNextJoinPosition(long currentJoinPosition, int probePosition, Page allProbeChannelsPage);
 
     void appendTo(long position, PageBuilder pageBuilder, int outputChannelOffset);
 
+    default OuterPositionIterator getOuterPositionIterator()
+    {
+        return (pageBuilder, outputChannelOffset) -> false;
+    }
+
+    // this is only here for index lookup source
     @Override
     void close();
+
+    interface OuterPositionIterator
+    {
+        boolean appendToNext(PageBuilder pageBuilder, int outputChannelOffset);
+    }
 }

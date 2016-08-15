@@ -14,6 +14,7 @@
 package com.facebook.presto.hive.benchmark;
 
 import com.facebook.presto.hadoop.HadoopNative;
+import com.facebook.presto.hive.HdfsEnvironment;
 import com.facebook.presto.hive.HiveClientConfig;
 import com.facebook.presto.hive.HiveCompressionCodec;
 import com.facebook.presto.hive.HiveSessionProperties;
@@ -22,6 +23,10 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.type.BigintType;
+import com.facebook.presto.spi.type.DateType;
+import com.facebook.presto.spi.type.DoubleType;
+import com.facebook.presto.spi.type.IntegerType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.testing.TestingConnectorSession;
 import com.google.common.collect.ImmutableList;
@@ -54,10 +59,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.DateType.DATE;
-import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.hive.HiveTestUtils.createTestHdfsEnvironment;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static io.airlift.testing.FileUtils.createTempDir;
 import static io.airlift.testing.FileUtils.deleteRecursively;
 import static java.lang.String.format;
@@ -76,10 +79,13 @@ public class HiveFileFormatBenchmark
     }
 
     @SuppressWarnings("deprecation")
-    public static final ConnectorSession SESSION = new TestingConnectorSession(new HiveSessionProperties(
-            new HiveClientConfig()
-                    .setParquetOptimizedReaderEnabled(true))
+    public static final HiveClientConfig CONFIG = new HiveClientConfig()
+            .setParquetOptimizedReaderEnabled(true);
+
+    public static final ConnectorSession SESSION = new TestingConnectorSession(new HiveSessionProperties(CONFIG)
             .getSessionProperties());
+
+    public static final HdfsEnvironment HDFS_ENVIRONMENT = createTestHdfsEnvironment(CONFIG);
 
     @Param({
             "NONE",
@@ -121,7 +127,7 @@ public class HiveFileFormatBenchmark
         columnNames = columns.stream().map(LineItemColumn::getColumnName).collect(toList());
         columnTypes = columns.stream().map(HiveFileFormatBenchmark::getColumnType).collect(toList());
         noDateColumnTypes = columnTypes.stream()
-                .map(type -> DATE.equals(type) ? VARCHAR : type)
+                .map(type -> DateType.DATE.equals(type) ? createUnboundedVarcharType() : type)
                 .collect(toList());
         columns.stream().map(HiveFileFormatBenchmark::getColumnType).collect(toList());
         PageBuilder pageBuilder = new PageBuilder(columnTypes);
@@ -134,22 +140,26 @@ public class HiveFileFormatBenchmark
                 LineItemColumn column = columns.get(i);
                 BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(i);
                 BlockBuilder noDateBlockBuilder = noDatePageBuilder.getBlockBuilder(i);
-                switch (column.getType()) {
-                    case BIGINT:
-                        BIGINT.writeLong(blockBuilder, column.getLong(lineItem));
-                        BIGINT.writeLong(noDateBlockBuilder, column.getLong(lineItem));
+                switch (column.getType().getBase()) {
+                    case IDENTIFIER:
+                        BigintType.BIGINT.writeLong(blockBuilder, column.getIdentifier(lineItem));
+                        BigintType.BIGINT.writeLong(noDateBlockBuilder, column.getIdentifier(lineItem));
+                        break;
+                    case INTEGER:
+                        IntegerType.INTEGER.writeLong(blockBuilder, column.getIdentifier(lineItem));
+                        IntegerType.INTEGER.writeLong(noDateBlockBuilder, column.getIdentifier(lineItem));
                         break;
                     case DATE:
-                        DATE.writeLong(blockBuilder, column.getDate(lineItem));
-                        VARCHAR.writeString(noDateBlockBuilder, column.getString(lineItem));
+                        DateType.DATE.writeLong(blockBuilder, column.getDate(lineItem));
+                        createUnboundedVarcharType().writeString(noDateBlockBuilder, column.getString(lineItem));
                         break;
                     case DOUBLE:
-                        DOUBLE.writeDouble(blockBuilder, column.getDouble(lineItem));
-                        DOUBLE.writeDouble(noDateBlockBuilder, column.getDouble(lineItem));
+                        DoubleType.DOUBLE.writeDouble(blockBuilder, column.getDouble(lineItem));
+                        DoubleType.DOUBLE.writeDouble(noDateBlockBuilder, column.getDouble(lineItem));
                         break;
                     case VARCHAR:
-                        VARCHAR.writeSlice(blockBuilder, Slices.utf8Slice(column.getString(lineItem)));
-                        VARCHAR.writeSlice(noDateBlockBuilder, Slices.utf8Slice(column.getString(lineItem)));
+                        createUnboundedVarcharType().writeSlice(blockBuilder, Slices.utf8Slice(column.getString(lineItem)));
+                        createUnboundedVarcharType().writeSlice(noDateBlockBuilder, Slices.utf8Slice(column.getString(lineItem)));
                         break;
                     default:
                         throw new IllegalArgumentException("Unsupported type " + column.getType());
@@ -179,6 +189,7 @@ public class HiveFileFormatBenchmark
         List<Page> pages = new ArrayList<>(100);
         try (ConnectorPageSource pageSource = fileFormat.createFileFormatReader(
                 SESSION,
+                HDFS_ENVIRONMENT,
                 dataFile,
                 columnNames,
                 fileFormat.supportsDate() ? columnTypes : noDateColumnTypes)) {
@@ -223,15 +234,17 @@ public class HiveFileFormatBenchmark
 
     private static Type getColumnType(TpchColumn<?> input)
     {
-        switch (input.getType()) {
-            case BIGINT:
-                return BIGINT;
+        switch (input.getType().getBase()) {
+            case IDENTIFIER:
+                return BigintType.BIGINT;
+            case INTEGER:
+                return IntegerType.INTEGER;
             case DATE:
-                return DATE;
+                return DateType.DATE;
             case DOUBLE:
-                return DOUBLE;
+                return DoubleType.DOUBLE;
             case VARCHAR:
-                return VARCHAR;
+                return createUnboundedVarcharType();
         }
         throw new IllegalArgumentException("Unsupported type " + input.getType());
     }

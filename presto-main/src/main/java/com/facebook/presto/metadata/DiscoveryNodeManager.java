@@ -22,6 +22,8 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
+import com.google.common.collect.Sets;
+import com.google.common.collect.Sets.SetView;
 import io.airlift.discovery.client.ServiceDescriptor;
 import io.airlift.discovery.client.ServiceSelector;
 import io.airlift.discovery.client.ServiceType;
@@ -62,7 +64,6 @@ public final class DiscoveryNodeManager
         implements InternalNodeManager
 {
     private static final Logger log = Logger.get(DiscoveryNodeManager.class);
-
     private static final Duration MAX_AGE = new Duration(5, TimeUnit.SECONDS);
 
     private static final Splitter DATASOURCES_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
@@ -94,7 +95,7 @@ public final class DiscoveryNodeManager
             NodeInfo nodeInfo,
             FailureDetector failureDetector,
             NodeVersion expectedNodeVersion,
-            @ForGracefulShutdown HttpClient httpClient)
+            @ForNodeManager HttpClient httpClient)
     {
         this.serviceSelector = requireNonNull(serviceSelector, "serviceSelector is null");
         this.nodeInfo = requireNonNull(nodeInfo, "nodeInfo is null");
@@ -216,6 +217,14 @@ public final class DiscoveryNodeManager
                     default:
                         throw new IllegalArgumentException("Unknown node state " + nodeState);
                 }
+            }
+        }
+
+        if (allNodes != null) {
+            // log node that are no longer active (but not shutting down)
+            SetView<Node> missingNodes = difference(allNodes.getActiveNodes(), Sets.union(activeNodesBuilder.build(), shuttingDownNodesBuilder.build()));
+            for (Node missingNode : missingNodes) {
+                log.info("Previously active node is missing: %s (last seen at %s)", missingNode.getNodeIdentifier(), missingNode.getHostAndPort());
             }
         }
 

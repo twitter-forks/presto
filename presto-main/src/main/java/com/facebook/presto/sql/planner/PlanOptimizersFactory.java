@@ -17,13 +17,14 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.optimizations.AddExchanges;
-import com.facebook.presto.sql.planner.optimizations.AddIntermediateAggregation;
+import com.facebook.presto.sql.planner.optimizations.AddLocalExchanges;
 import com.facebook.presto.sql.planner.optimizations.BeginTableWrite;
 import com.facebook.presto.sql.planner.optimizations.CanonicalizeExpressions;
 import com.facebook.presto.sql.planner.optimizations.CountConstantOptimizer;
 import com.facebook.presto.sql.planner.optimizations.DesugaringOptimizer;
 import com.facebook.presto.sql.planner.optimizations.EmptyDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.HashGenerationOptimizer;
+import com.facebook.presto.sql.planner.optimizations.ImplementIntersectAsUnion;
 import com.facebook.presto.sql.planner.optimizations.ImplementSampleAsFilter;
 import com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer;
 import com.facebook.presto.sql.planner.optimizations.LimitPushDown;
@@ -40,6 +41,8 @@ import com.facebook.presto.sql.planner.optimizations.PushTableWriteThroughUnion;
 import com.facebook.presto.sql.planner.optimizations.SetFlatteningOptimizer;
 import com.facebook.presto.sql.planner.optimizations.SimplifyExpressions;
 import com.facebook.presto.sql.planner.optimizations.SingleDistinctOptimizer;
+import com.facebook.presto.sql.planner.optimizations.TransformUncorrelatedInPredicateSubqueryToSemiJoin;
+import com.facebook.presto.sql.planner.optimizations.TransformUncorrelatedScalarToJoin;
 import com.facebook.presto.sql.planner.optimizations.UnaliasSymbolReferences;
 import com.facebook.presto.sql.planner.optimizations.WindowFilterPushDown;
 import com.google.common.collect.ImmutableList;
@@ -65,12 +68,15 @@ public class PlanOptimizersFactory
         ImmutableList.Builder<PlanOptimizer> builder = ImmutableList.builder();
 
         builder.add(new DesugaringOptimizer(metadata, sqlParser), // Clean up all the sugar in expressions, e.g. AtTimeZone, must be run before all the other optimizers
+                new TransformUncorrelatedScalarToJoin(),
+                new TransformUncorrelatedInPredicateSubqueryToSemiJoin(),
                 new ImplementSampleAsFilter(),
                 new CanonicalizeExpressions(),
                 new SimplifyExpressions(metadata, sqlParser),
                 new UnaliasSymbolReferences(),
                 new PruneIdentityProjections(),
                 new SetFlatteningOptimizer(),
+                new ImplementIntersectAsUnion(),
                 new LimitPushDown(), // Run the LimitPushDown after flattening set operators to make it easier to do the set flattening
                 new PredicatePushDown(metadata, sqlParser),
                 new MergeProjections(),
@@ -94,7 +100,6 @@ public class PlanOptimizersFactory
         if (!forceSingleNode) {
             builder.add(new PushTableWriteThroughUnion()); // Must run before AddExchanges
             builder.add(new AddExchanges(metadata, sqlParser));
-            builder.add(new AddIntermediateAggregation(metadata)); // Must run after AddExchanges
         }
 
         builder.add(new PickLayout(metadata));
@@ -107,6 +112,9 @@ public class PlanOptimizersFactory
         builder.add(new UnaliasSymbolReferences()); // Run unalias after merging projections to simplify projections more efficiently
         builder.add(new PruneUnreferencedOutputs());
         builder.add(new PruneIdentityProjections());
+
+        // Optimizers above this don't understand local exchanges, so be careful moving this.
+        builder.add(new AddLocalExchanges(metadata, sqlParser));
 
         // DO NOT add optimizers that change the plan shape (computations) after this point
 

@@ -103,6 +103,24 @@ class ColumnInfo
                 builder.setScale(0);
                 builder.setColumnDisplaySize(20);
                 break;
+            case "integer":
+                builder.setSigned(true);
+                builder.setPrecision(10);
+                builder.setScale(0);
+                builder.setColumnDisplaySize(11);
+                break;
+            case "smallint":
+                builder.setSigned(true);
+                builder.setPrecision(5);
+                builder.setScale(0);
+                builder.setColumnDisplaySize(6);
+                break;
+            case "tinyint":
+                builder.setSigned(true);
+                builder.setPrecision(3);
+                builder.setScale(0);
+                builder.setColumnDisplaySize(4);
+                break;
             case "double":
                 builder.setSigned(true);
                 builder.setPrecision(17);
@@ -156,6 +174,12 @@ class ColumnInfo
             case "interval day to second":
                 builder.setColumnDisplaySize(TIMESTAMP_MAX);
                 break;
+            case "decimal":
+                builder.setSigned(true);
+                builder.setColumnDisplaySize(type.getParameters().get(0).getLongLiteral().intValue() + 2); // dot and sign
+                builder.setPrecision(type.getParameters().get(0).getLongLiteral().intValue());
+                builder.setScale(type.getParameters().get(1).getLongLiteral().intValue());
+                break;
         }
     }
 
@@ -179,6 +203,12 @@ class ColumnInfo
                 return Types.BOOLEAN;
             case "bigint":
                 return Types.BIGINT;
+            case "integer":
+                return Types.INTEGER;
+            case "smallint":
+                return Types.SMALLINT;
+            case "tinyint":
+                return Types.TINYINT;
             case "double":
                 return Types.DOUBLE;
             case "varchar":
@@ -195,6 +225,8 @@ class ColumnInfo
                 return Types.TIMESTAMP;
             case "date":
                 return Types.DATE;
+            case "decimal":
+                return Types.DECIMAL;
             default:
                 return Types.JAVA_OBJECT;
         }
