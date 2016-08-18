@@ -74,7 +74,7 @@ StatementClient.prototype.advance = function(lastRecordNumber) {
     var statementClient = this;
     $.ajax({
         type: "GET",
-        url: this.isHttps ? this.currentResults.nextUri.replace("http", "https") : this.currentResults.nextUri,
+        url: this.isHttps ? this.currentResults.nextUri.replace(/^http:/, 'https:') : this.currentResults.nextUri,
         headers: this.headers,
         dataType: 'json',
         // FIXME having problems when async: true
