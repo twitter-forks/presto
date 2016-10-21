@@ -13,13 +13,15 @@
  */
 package com.facebook.presto.operator.scalar;
 
-import com.facebook.presto.operator.Description;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.Description;
+import com.facebook.presto.spi.function.LiteralParameters;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.type.SqlType;
-import com.facebook.presto.util.ThreadLocalCache;
 import com.google.common.primitives.Ints;
+import io.airlift.concurrent.ThreadLocalCache;
 import io.airlift.slice.Slice;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeField;
@@ -53,14 +55,8 @@ import static org.joda.time.DateTimeZone.UTC;
 
 public final class DateTimeFunctions
 {
-    private static final ThreadLocalCache<Slice, DateTimeFormatter> DATETIME_FORMATTER_CACHE = new ThreadLocalCache<Slice, DateTimeFormatter>(100)
-    {
-        @Override
-        protected DateTimeFormatter load(Slice format)
-        {
-            return createDateTimeFormatter(format);
-        }
-    };
+    private static final ThreadLocalCache<Slice, DateTimeFormatter> DATETIME_FORMATTER_CACHE =
+            new ThreadLocalCache<>(100, DateTimeFunctions::createDateTimeFormatter);
 
     private static final ISOChronology UTC_CHRONOLOGY = ISOChronology.getInstance(UTC);
     private static final DateTimeField SECOND_OF_MINUTE = UTC_CHRONOLOGY.secondOfMinute();
@@ -76,6 +72,7 @@ public final class DateTimeFunctions
     private static final int MILLISECONDS_IN_MINUTE = 60 * MILLISECONDS_IN_SECOND;
     private static final int MILLISECONDS_IN_HOUR = 60 * MILLISECONDS_IN_MINUTE;
     private static final int MILLISECONDS_IN_DAY = 24 * MILLISECONDS_IN_HOUR;
+    private static final int PIVOT_YEAR = 2020; // yy = 70 will correspond to 1970 but 69 to 2069
 
     private DateTimeFunctions() {}
 
@@ -215,8 +212,9 @@ public final class DateTimeFunctions
     }
 
     @ScalarFunction(value = "at_timezone", hidden = true)
+    @LiteralParameters("x")
     @SqlType(StandardTypes.TIME_WITH_TIME_ZONE)
-    public static long timeAtTimeZone(@SqlType(StandardTypes.TIME_WITH_TIME_ZONE) long timeWithTimeZone, @SqlType(StandardTypes.VARCHAR) Slice zoneId)
+    public static long timeAtTimeZone(@SqlType(StandardTypes.TIME_WITH_TIME_ZONE) long timeWithTimeZone, @SqlType("varchar(x)") Slice zoneId)
     {
         return packDateTimeWithZone(unpackMillisUtc(timeWithTimeZone), zoneId.toStringUtf8());
     }
@@ -231,8 +229,9 @@ public final class DateTimeFunctions
     }
 
     @ScalarFunction(value = "at_timezone", hidden = true)
+    @LiteralParameters("x")
     @SqlType(StandardTypes.TIMESTAMP_WITH_TIME_ZONE)
-    public static long timestampAtTimeZone(@SqlType(StandardTypes.TIMESTAMP_WITH_TIME_ZONE) long timestampWithTimeZone, @SqlType(StandardTypes.VARCHAR) Slice zoneId)
+    public static long timestampAtTimeZone(@SqlType(StandardTypes.TIMESTAMP_WITH_TIME_ZONE) long timestampWithTimeZone, @SqlType("varchar(x)") Slice zoneId)
     {
         return packDateTimeWithZone(unpackMillisUtc(timestampWithTimeZone), zoneId.toStringUtf8());
     }
@@ -940,7 +939,7 @@ public final class DateTimeFunctions
                         builder.appendDayOfMonth(1);
                         break;
                     case 'f': // %f Microseconds (000000..999999)
-                        builder.appendFractionOfSecond(6, 6);
+                        builder.appendFractionOfSecond(6, 9);
                         break;
                     case 'H': // %H Hour (00..23)
                         builder.appendHourOfDay(2);
@@ -999,15 +998,13 @@ public final class DateTimeFunctions
                     case 'W': // %W Weekday name (Sunday..Saturday)
                         builder.appendDayOfWeekText();
                         break;
-                    case 'w': // %w Day of the week (0=Sunday..6=Saturday)
-                        builder.appendDayOfWeek(1);
-                        break;
                     case 'Y': // %Y Year, numeric, four digits
                         builder.appendYear(4, 4);
                         break;
                     case 'y': // %y Year, numeric (two digits)
-                        builder.appendYearOfCentury(2, 2);
+                        builder.appendTwoDigitYear(PIVOT_YEAR);
                         break;
+                    case 'w': // %w Day of the week (0=Sunday..6=Saturday)
                     case 'U': // %U Week (00..53), where Sunday is the first day of the week
                     case 'u': // %u Week (00..53), where Monday is the first day of the week
                     case 'V': // %V Week (01..53), where Sunday is the first day of the week; used with %X

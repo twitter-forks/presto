@@ -14,9 +14,11 @@
 package com.facebook.presto.execution;
 
 import com.facebook.presto.OutputBuffers;
+import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.Session;
 import com.facebook.presto.TaskSource;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
+import com.facebook.presto.execution.buffer.BufferResult;
 import com.facebook.presto.memory.MemoryPoolAssignmentsRequest;
 import com.facebook.presto.sql.planner.PlanFragment;
 import io.airlift.units.DataSize;
@@ -43,6 +45,11 @@ public interface TaskManager
     TaskInfo getTaskInfo(TaskId taskId);
 
     /**
+     * Gets the status for the specified task.
+     */
+    TaskStatus getTaskStatus(TaskId taskId);
+
+    /**
      * Gets future info for the task after the state changes from
      * {@code current state}. If the task has not been created yet, an
      * uninitialized task is created and the future is returned.  If the task
@@ -52,6 +59,23 @@ public interface TaskManager
      * queried.
      */
     CompletableFuture<TaskInfo> getTaskInfo(TaskId taskId, TaskState currentState);
+
+    /**
+     * Gets the unique instance id of a task.  This can be used to detect a task
+     * that was destroyed and recreated.
+     */
+    String getTaskInstanceId(TaskId taskId);
+
+    /**
+     * Gets future status for the task after the state changes from
+     * {@code current state}. If the task has not been created yet, an
+     * uninitialized task is created and the future is returned.  If the task
+     * is already in a final state, the status is returned immediately.
+     *
+     * NOTE: this design assumes that only tasks that will eventually exist are
+     * queried.
+     */
+    CompletableFuture<TaskStatus> getTaskStatus(TaskId taskId, TaskState currentState);
 
     void updateMemoryPoolAssignments(MemoryPoolAssignmentsRequest assignments);
 
@@ -81,7 +105,7 @@ public interface TaskManager
      * NOTE: this design assumes that only tasks and buffers that will
      * eventually exist are queried.
      */
-    CompletableFuture<BufferResult> getTaskResults(TaskId taskId, TaskId outputName, long startingSequenceId, DataSize maxSize);
+    CompletableFuture<BufferResult> getTaskResults(TaskId taskId, OutputBufferId bufferId, long startingSequenceId, DataSize maxSize);
 
     /**
      * Aborts a result buffer for a task.  If the task or buffer has not been
@@ -91,7 +115,7 @@ public interface TaskManager
      * NOTE: this design assumes that only tasks and buffers that will
      * eventually exist are queried.
      */
-    TaskInfo abortTaskResults(TaskId taskId, TaskId outputId);
+    TaskInfo abortTaskResults(TaskId taskId, OutputBufferId bufferId);
 
     /**
      * Adds a state change listener to the specified task.

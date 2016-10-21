@@ -24,6 +24,8 @@ import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.BooleanType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
@@ -32,7 +34,6 @@ import com.facebook.presto.sql.relational.ConstantExpression;
 import com.facebook.presto.sql.relational.InputReferenceExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.SqlType;
 import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slices;
@@ -110,7 +111,7 @@ public class BenchmarkArrayDistinct
         public void setup()
         {
             MetadataManager metadata = MetadataManager.createTestMetadataManager();
-            metadata.addFunctions(new FunctionListBuilder(metadata.getTypeManager()).scalar(BenchmarkArrayDistinct.class).getFunctions());
+            metadata.addFunctions(new FunctionListBuilder().scalar(BenchmarkArrayDistinct.class).getFunctions());
             ExpressionCompiler compiler = new ExpressionCompiler(metadata);
             ImmutableList.Builder<RowExpression> projectionsBuilder = ImmutableList.builder();
             Block[] blocks = new Block[TYPES.size()];

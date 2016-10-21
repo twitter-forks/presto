@@ -33,6 +33,7 @@ import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.testing.TestingConnectorContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.cassandraunit.utils.EmbeddedCassandraServerHelper;
@@ -46,7 +47,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.facebook.presto.cassandra.CassandraTestingUtils.HOSTNAME;
-import static com.facebook.presto.cassandra.CassandraTestingUtils.KEYSPACE_NAME;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.PORT;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_NAME;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.initializeTestData;
@@ -54,9 +54,10 @@ import static com.facebook.presto.cassandra.util.Types.checkType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -87,16 +88,18 @@ public class TestCassandraConnector
     {
         EmbeddedCassandraServerHelper.startEmbeddedCassandra();
 
-        initializeTestData(DATE);
+        String keyspace = "test_connector";
+        initializeTestData(DATE, keyspace);
 
         String connectorId = "cassandra-test";
         CassandraConnectorFactory connectorFactory = new CassandraConnectorFactory(
-                connectorId,
-                ImmutableMap.<String, String>of());
+                connectorId
+        );
 
         Connector connector = connectorFactory.create(connectorId, ImmutableMap.of(
                 "cassandra.contact-points", HOSTNAME,
-                "cassandra.native-protocol-port", Integer.toString(PORT)));
+                "cassandra.native-protocol-port", Integer.toString(PORT)),
+                new TestingConnectorContext());
 
         metadata = connector.getMetadata(CassandraTransactionHandle.INSTANCE);
         assertInstanceOf(metadata, CassandraMetadata.class);
@@ -107,7 +110,7 @@ public class TestCassandraConnector
         recordSetProvider = connector.getRecordSetProvider();
         assertInstanceOf(recordSetProvider, CassandraRecordSetProvider.class);
 
-        database = KEYSPACE_NAME.toLowerCase();
+        database = keyspace;
         table = new SchemaTableName(database, TABLE_NAME.toLowerCase());
         tableUnpartitioned = new SchemaTableName(database, "presto_test_unpartitioned");
         invalidTable = new SchemaTableName(database, "totally_invalid_table_name");
@@ -222,6 +225,9 @@ public class TestCassandraConnector
                 if (BOOLEAN.equals(type)) {
                     cursor.getBoolean(columnIndex);
                 }
+                else if (INTEGER.equals(type)) {
+                    cursor.getLong(columnIndex);
+                }
                 else if (BIGINT.equals(type)) {
                     cursor.getLong(columnIndex);
                 }
@@ -231,7 +237,7 @@ public class TestCassandraConnector
                 else if (DOUBLE.equals(type)) {
                     cursor.getDouble(columnIndex);
                 }
-                else if (VARCHAR.equals(type) || VARBINARY.equals(type)) {
+                else if (isVarcharType(type) || VARBINARY.equals(type)) {
                     try {
                         cursor.getSlice(columnIndex);
                     }

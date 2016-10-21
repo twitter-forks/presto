@@ -13,17 +13,23 @@
  */
 package com.facebook.presto.operator.aggregation;
 
-import com.facebook.presto.operator.aggregation.state.AccumulatorState;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AccumulatorState;
+import com.facebook.presto.spi.function.AggregationFunction;
+import com.facebook.presto.spi.function.CombineFunction;
+import com.facebook.presto.spi.function.InputFunction;
+import com.facebook.presto.spi.function.OutputFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.type.SqlType;
 
 import static com.facebook.presto.operator.aggregation.ApproximateUtils.formatApproximateResult;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 
 @AggregationFunction(value = "avg", approximate = true)
 public final class ApproximateAverageAggregations
 {
+    private static final int OUTPUT_VARCHAR_SIZE = 57;
+
     private ApproximateAverageAggregations() {}
 
     @InputFunction
@@ -79,7 +85,7 @@ public final class ApproximateAverageAggregations
         }
     }
 
-    @OutputFunction(StandardTypes.VARCHAR)
+    @OutputFunction("varchar(57)")
     public static void output(ApproximateAverageState state, double confidence, BlockBuilder out)
     {
         if (state.getCount() == 0) {
@@ -87,7 +93,7 @@ public final class ApproximateAverageAggregations
         }
         else {
             String result = formatApproximateAverage(state.getSamples(), state.getMean(), state.getM2() / state.getCount(), confidence);
-            VARCHAR.writeString(out, result);
+            createVarcharType(OUTPUT_VARCHAR_SIZE).writeString(out, result);
         }
     }
 

@@ -13,19 +13,39 @@
  */
 package com.facebook.presto.jdbc;
 
+import com.facebook.presto.execution.QueryState;
 import com.facebook.presto.plugin.blackhole.BlackHolePlugin;
 import com.facebook.presto.server.testing.TestingPrestoServer;
+import com.facebook.presto.spi.type.BigintType;
+import com.facebook.presto.spi.type.BooleanType;
+import com.facebook.presto.spi.type.DateType;
+import com.facebook.presto.spi.type.DoubleType;
+import com.facebook.presto.spi.type.IntegerType;
+import com.facebook.presto.spi.type.RealType;
+import com.facebook.presto.spi.type.SmallintType;
+import com.facebook.presto.spi.type.TimeType;
+import com.facebook.presto.spi.type.TimeWithTimeZoneType;
+import com.facebook.presto.spi.type.TimeZoneKey;
+import com.facebook.presto.spi.type.TimestampType;
+import com.facebook.presto.spi.type.TimestampWithTimeZoneType;
+import com.facebook.presto.spi.type.TinyintType;
+import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.tpch.TpchMetadata;
 import com.facebook.presto.tpch.TpchPlugin;
+import com.facebook.presto.type.ArrayType;
+import com.facebook.presto.type.ColorType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.log.Logging;
+import io.airlift.units.Duration;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.DriverManager;
@@ -41,11 +61,29 @@ import java.util.ArrayList;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Set;
+import java.util.TimeZone;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static com.facebook.presto.execution.QueryState.FAILED;
+import static com.facebook.presto.spi.type.CharType.createCharType;
+import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
+import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.testing.Assertions.assertInstanceOf;
+import static io.airlift.testing.Assertions.assertLessThan;
+import static io.airlift.units.Duration.nanosSince;
+import static java.lang.Float.POSITIVE_INFINITY;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
+import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.Executors.newCachedThreadPool;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -61,6 +99,7 @@ public class TestDriver
     private static final String TEST_CATALOG = "test_catalog";
 
     private TestingPrestoServer server;
+    private ExecutorService executorService;
 
     @BeforeClass
     public void setup()
@@ -72,8 +111,19 @@ public class TestDriver
         server.createCatalog(TEST_CATALOG, "tpch");
         server.installPlugin(new BlackHolePlugin());
         server.createCatalog("blackhole", "blackhole");
-
+        waitForNodeRefresh(server);
         setupTestTables();
+        executorService = newCachedThreadPool(daemonThreadsNamed("test-%s"));
+    }
+
+    private static void waitForNodeRefresh(TestingPrestoServer server)
+            throws InterruptedException
+    {
+        long start = System.nanoTime();
+        while (server.refreshNodes().getActiveNodes().size() < 1) {
+            assertLessThan(nanosSince(start), new Duration(10, SECONDS));
+            MILLISECONDS.sleep(10);
+        }
     }
 
     private void setupTestTables()
@@ -85,10 +135,12 @@ public class TestDriver
         }
     }
 
-    @AfterClass
+    @AfterClass(alwaysRun = true)
     public void teardown()
+            throws Exception
     {
         closeQuietly(server);
+        executorService.shutdownNow();
     }
 
     @Test
@@ -99,54 +151,77 @@ public class TestDriver
             try (Statement statement = connection.createStatement()) {
                 try (ResultSet rs = statement.executeQuery("" +
                         "SELECT " +
-                        "  123 _bigint" +
+                        "  123 _integer" +
+                        ",  12300000000 _bigint" +
                         ", 'foo' _varchar" +
                         ", 0.1 _double" +
                         ", true _boolean" +
                         ", cast('hello' as varbinary) _varbinary" +
-                        ", approx_set(42) _hll")) {
+                        ", DECIMAL '1234567890.1234567' _decimal_short" +
+                        ", DECIMAL '.12345678901234567890123456789012345678' _decimal_long" +
+                        ", approx_set(42) _hll" +
+                        ", cast('foo' as char(5)) _char")) {
                     ResultSetMetaData metadata = rs.getMetaData();
 
-                    assertEquals(metadata.getColumnCount(), 6);
+                    assertEquals(metadata.getColumnCount(), 10);
 
-                    assertEquals(metadata.getColumnLabel(1), "_bigint");
-                    assertEquals(metadata.getColumnType(1), Types.BIGINT);
+                    assertEquals(metadata.getColumnLabel(1), "_integer");
+                    assertEquals(metadata.getColumnType(1), Types.INTEGER);
 
-                    assertEquals(metadata.getColumnLabel(2), "_varchar");
-                    assertEquals(metadata.getColumnType(2), Types.LONGNVARCHAR);
+                    assertEquals(metadata.getColumnLabel(2), "_bigint");
+                    assertEquals(metadata.getColumnType(2), Types.BIGINT);
 
-                    assertEquals(metadata.getColumnLabel(3), "_double");
-                    assertEquals(metadata.getColumnType(3), Types.DOUBLE);
+                    assertEquals(metadata.getColumnLabel(3), "_varchar");
+                    assertEquals(metadata.getColumnType(3), Types.LONGNVARCHAR);
 
-                    assertEquals(metadata.getColumnLabel(4), "_boolean");
-                    assertEquals(metadata.getColumnType(4), Types.BOOLEAN);
+                    assertEquals(metadata.getColumnLabel(4), "_double");
+                    assertEquals(metadata.getColumnType(4), Types.DOUBLE);
 
-                    assertEquals(metadata.getColumnLabel(5), "_varbinary");
-                    assertEquals(metadata.getColumnType(5), Types.LONGVARBINARY);
+                    assertEquals(metadata.getColumnLabel(5), "_boolean");
+                    assertEquals(metadata.getColumnType(5), Types.BOOLEAN);
 
-                    assertEquals(metadata.getColumnLabel(6), "_hll");
-                    assertEquals(metadata.getColumnType(6), Types.JAVA_OBJECT);
+                    assertEquals(metadata.getColumnLabel(6), "_varbinary");
+                    assertEquals(metadata.getColumnType(6), Types.LONGVARBINARY);
+
+                    assertEquals(metadata.getColumnLabel(7), "_decimal_short");
+                    assertEquals(metadata.getColumnType(7), Types.DECIMAL);
+
+                    assertEquals(metadata.getColumnLabel(8), "_decimal_long");
+                    assertEquals(metadata.getColumnType(8), Types.DECIMAL);
+
+                    assertEquals(metadata.getColumnLabel(9), "_hll");
+                    assertEquals(metadata.getColumnType(9), Types.JAVA_OBJECT);
+
+                    assertEquals(metadata.getColumnLabel(10), "_char");
+                    assertEquals(metadata.getColumnType(10), Types.CHAR);
 
                     assertTrue(rs.next());
 
-                    assertEquals(rs.getObject(1), 123L);
-                    assertEquals(rs.getObject("_bigint"), 123L);
-                    assertEquals(rs.getLong(1), 123);
-                    assertEquals(rs.getLong("_bigint"), 123);
+                    assertEquals(rs.getObject(1), 123);
+                    assertEquals(rs.getObject("_integer"), 123);
+                    assertEquals(rs.getInt(1), 123);
+                    assertEquals(rs.getInt("_integer"), 123);
+                    assertEquals(rs.getLong(1), 123L);
+                    assertEquals(rs.getLong("_integer"), 123L);
 
-                    assertEquals(rs.getObject(2), "foo");
+                    assertEquals(rs.getObject(2), 12300000000L);
+                    assertEquals(rs.getObject("_bigint"), 12300000000L);
+                    assertEquals(rs.getLong(2), 12300000000L);
+                    assertEquals(rs.getLong("_bigint"), 12300000000L);
+
+                    assertEquals(rs.getObject(3), "foo");
                     assertEquals(rs.getObject("_varchar"), "foo");
-                    assertEquals(rs.getString(2), "foo");
+                    assertEquals(rs.getString(3), "foo");
                     assertEquals(rs.getString("_varchar"), "foo");
 
-                    assertEquals(rs.getObject(3), 0.1);
+                    assertEquals(rs.getObject(4), 0.1);
                     assertEquals(rs.getObject("_double"), 0.1);
-                    assertEquals(rs.getDouble(3), 0.1);
+                    assertEquals(rs.getDouble(4), 0.1);
                     assertEquals(rs.getDouble("_double"), 0.1);
 
-                    assertEquals(rs.getObject(4), true);
+                    assertEquals(rs.getObject(5), true);
                     assertEquals(rs.getObject("_boolean"), true);
-                    assertEquals(rs.getBoolean(4), true);
+                    assertEquals(rs.getBoolean(5), true);
                     assertEquals(rs.getBoolean("_boolean"), true);
                     assertEquals(rs.getByte("_boolean"), 1);
                     assertEquals(rs.getShort("_boolean"), 1);
@@ -155,15 +230,34 @@ public class TestDriver
                     assertEquals(rs.getFloat("_boolean"), 1.0f);
                     assertEquals(rs.getDouble("_boolean"), 1.0);
 
-                    assertEquals(rs.getObject(5), "hello".getBytes(UTF_8));
+                    assertEquals(rs.getObject(6), "hello".getBytes(UTF_8));
                     assertEquals(rs.getObject("_varbinary"), "hello".getBytes(UTF_8));
-                    assertEquals(rs.getBytes(5), "hello".getBytes(UTF_8));
+                    assertEquals(rs.getBytes(6), "hello".getBytes(UTF_8));
                     assertEquals(rs.getBytes("_varbinary"), "hello".getBytes(UTF_8));
 
-                    assertInstanceOf(rs.getObject(6), byte[].class);
+                    assertEquals(rs.getObject(7), new BigDecimal("1234567890.1234567"));
+                    assertEquals(rs.getObject("_decimal_short"), new BigDecimal("1234567890.1234567"));
+                    assertEquals(rs.getBigDecimal(7), new BigDecimal("1234567890.1234567"));
+                    assertEquals(rs.getBigDecimal("_decimal_short"), new BigDecimal("1234567890.1234567"));
+                    assertEquals(rs.getBigDecimal(7, 1), new BigDecimal("1234567890.1"));
+                    assertEquals(rs.getBigDecimal("_decimal_short", 1), new BigDecimal("1234567890.1"));
+
+                    assertEquals(rs.getObject(8), new BigDecimal(".12345678901234567890123456789012345678"));
+                    assertEquals(rs.getObject("_decimal_long"), new BigDecimal(".12345678901234567890123456789012345678"));
+                    assertEquals(rs.getBigDecimal(8), new BigDecimal(".12345678901234567890123456789012345678"));
+                    assertEquals(rs.getBigDecimal("_decimal_long"), new BigDecimal(".12345678901234567890123456789012345678"));
+                    assertEquals(rs.getBigDecimal(8, 6), new BigDecimal(".123457"));
+                    assertEquals(rs.getBigDecimal("_decimal_long", 6), new BigDecimal(".123457"));
+
+                    assertInstanceOf(rs.getObject(9), byte[].class);
                     assertInstanceOf(rs.getObject("_hll"), byte[].class);
-                    assertInstanceOf(rs.getBytes(6), byte[].class);
+                    assertInstanceOf(rs.getBytes(9), byte[].class);
                     assertInstanceOf(rs.getBytes("_hll"), byte[].class);
+
+                    assertEquals(rs.getObject(10), "foo  ");
+                    assertEquals(rs.getObject("_char"), "foo  ");
+                    assertEquals(rs.getString(10), "foo  ");
+                    assertEquals(rs.getString("_char"), "foo  ");
 
                     assertFalse(rs.next());
                 }
@@ -187,6 +281,8 @@ public class TestDriver
                         ", DATE '2013-03-22' as g" +
                         ", INTERVAL '123-11' YEAR TO MONTH as h" +
                         ", INTERVAL '11 22:33:44.555' DAY TO SECOND as i" +
+                        ", REAL '123.45' as j" +
+                        ", REAL 'Infinity' as k" +
                         "")) {
                     assertTrue(rs.next());
 
@@ -244,6 +340,15 @@ public class TestDriver
                     assertEquals(rs.getObject(9), new PrestoIntervalDayTime(11, 22, 33, 44, 555));
                     assertEquals(rs.getObject("i"), new PrestoIntervalDayTime(11, 22, 33, 44, 555));
 
+                    assertEquals(rs.getFloat(10), 123.45f);
+                    assertEquals(rs.getObject(10), 123.45f);
+                    assertEquals(rs.getFloat("j"), 123.45f);
+                    assertEquals(rs.getObject("j"), 123.45f);
+
+                    assertEquals(rs.getFloat(11), POSITIVE_INFINITY);
+                    assertEquals(rs.getObject(11), POSITIVE_INFINITY);
+                    assertEquals(rs.getFloat("k"), POSITIVE_INFINITY);
+                    assertEquals(rs.getObject("k"), POSITIVE_INFINITY);
                     assertFalse(rs.next());
                 }
             }
@@ -680,6 +785,70 @@ public class TestDriver
                 assertFalse(rs.next());
             }
         }
+
+        try (Connection connection = createConnection("blackhole", "blackhole");
+                Statement statement = connection.createStatement()) {
+            assertEquals(statement.executeUpdate(
+                    "CREATE TABLE test_get_columns_table (" +
+                            "c_boolean boolean, " +
+                            "c_bigint bigint, " +
+                            "c_integer integer, " +
+                            "c_smallint smallint, " +
+                            "c_tinyint tinyint, " +
+                            "c_real real, " +
+                            "c_double double, " +
+                            "c_varchar_1234 varchar(1234), " +
+                            "c_varchar varchar, " +
+                            "c_char_345 char(345), " +
+                            "c_varbinary varbinary, " +
+                            "c_time time, " +
+                            "c_time_with_time_zone \"time with time zone\", " +
+                            "c_timestamp timestamp, " +
+                            "c_timestamp_with_time_zone \"timestamp with time zone\", " +
+                            "c_date date, " +
+                            "c_decimal_8_2 decimal(8,2), " +
+                            "c_decimal_38_0 decimal(38,0), " +
+                            "c_array array<bigint>, " +
+                            "c_color color" +
+                            ")"), 0);
+
+            try (ResultSet rs = connection.getMetaData().getColumns("blackhole", "blackhole", "test_get_columns_table", null)) {
+                assertColumnMetadata(rs);
+                assertColumnSpec(rs, Types.BOOLEAN, null, null, null, null, BooleanType.BOOLEAN);
+                assertColumnSpec(rs, Types.BIGINT, 19L, 10L, null, null, BigintType.BIGINT);
+                assertColumnSpec(rs, Types.INTEGER, 10L, 10L, null, null, IntegerType.INTEGER);
+                assertColumnSpec(rs, Types.SMALLINT, 5L, 10L, null, null, SmallintType.SMALLINT);
+                assertColumnSpec(rs, Types.TINYINT, 3L, 10L, null, null, TinyintType.TINYINT);
+                assertColumnSpec(rs, Types.REAL, 24L, 2L, null, null, RealType.REAL);
+                assertColumnSpec(rs, Types.DOUBLE, 53L, 2L, null, null, DoubleType.DOUBLE);
+                assertColumnSpec(rs, Types.LONGNVARCHAR, 1234L, null, null, 1234L, createVarcharType(1234));
+                assertColumnSpec(rs, Types.LONGNVARCHAR, (long) Integer.MAX_VALUE, null, null, (long) Integer.MAX_VALUE, createUnboundedVarcharType());
+                assertColumnSpec(rs, Types.CHAR, 345L, null, null, 345L, createCharType(345));
+                assertColumnSpec(rs, Types.LONGVARBINARY, (long) Integer.MAX_VALUE, null, null, (long) Integer.MAX_VALUE, VarbinaryType.VARBINARY);
+                assertColumnSpec(rs, Types.TIME, 8L, null, null, null, TimeType.TIME);
+                assertColumnSpec(rs, Types.TIME_WITH_TIMEZONE, 14L, null, null, null, TimeWithTimeZoneType.TIME_WITH_TIME_ZONE);
+                assertColumnSpec(rs, Types.TIMESTAMP, 23L, null, null, null, TimestampType.TIMESTAMP);
+                assertColumnSpec(rs, Types.TIMESTAMP_WITH_TIMEZONE, 29L, null, null, null, TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE);
+                assertColumnSpec(rs, Types.DATE, 14L, null, null, null, DateType.DATE);
+                assertColumnSpec(rs, Types.DECIMAL, 8L, 10L, 2L, null, createDecimalType(8, 2));
+                assertColumnSpec(rs, Types.DECIMAL, 38L, 10L, 0L, null, createDecimalType(38, 0));
+                assertColumnSpec(rs, Types.ARRAY, null, null, null, null, new ArrayType(BigintType.BIGINT));
+                assertColumnSpec(rs, Types.JAVA_OBJECT, null, null, null, null, ColorType.COLOR);
+                assertFalse(rs.next());
+            }
+        }
+    }
+
+    private static void assertColumnSpec(ResultSet rs, int jdbcType, Long columnSize, Long numPrecRadix, Long decimalDigits, Long charOctetLength, Type type)
+            throws SQLException
+    {
+        String message = " of " + type.getDisplayName() + ": ";
+        assertTrue(rs.next());
+        assertEquals(rs.getObject("DATA_TYPE"), (long) jdbcType, "DATA_TYPE" + message);
+        assertEquals(rs.getObject("COLUMN_SIZE"), columnSize, "COLUMN_SIZE" + message);
+        assertEquals(rs.getObject("NUM_PREC_RADIX"), numPrecRadix, "NUM_PREC_RADIX" + message);
+        assertEquals(rs.getObject("DECIMAL_DIGITS"), decimalDigits, "DECIMAL_DIGITS" + message);
+        assertEquals(rs.getObject("CHAR_OCTET_LENGTH"), charOctetLength, "CHAR_OCTET_LENGTH" + message);
     }
 
     private static void assertColumnMetadata(ResultSet rs)
@@ -1031,6 +1200,32 @@ public class TestDriver
     }
 
     @Test
+    public void testSetTimeZoneId()
+            throws Exception
+    {
+        TimeZoneKey defaultZoneKey = TimeZoneKey.getTimeZoneKey(TimeZone.getDefault().getID());
+        DateTimeZone defaultZone = DateTimeZone.forTimeZone(TimeZone.getDefault());
+        String sql = "SELECT current_timezone() zone, TIMESTAMP '2001-02-03 3:04:05' ts";
+
+        try (Connection connection = createConnection()) {
+            try (Statement statement = connection.createStatement();
+                    ResultSet rs = statement.executeQuery(sql)) {
+                assertTrue(rs.next());
+                assertEquals(rs.getString("zone"), defaultZoneKey.getId());
+                assertEquals(rs.getTimestamp("ts"), new Timestamp(new DateTime(2001, 2, 3, 3, 4, 5, defaultZone).getMillis()));
+            }
+
+            connection.unwrap(PrestoConnection.class).setTimeZoneId("UTC");
+            try (Statement statement = connection.createStatement();
+                    ResultSet rs = statement.executeQuery(sql)) {
+                assertTrue(rs.next());
+                assertEquals(rs.getString("zone"), "UTC");
+                assertEquals(rs.getTimestamp("ts"), new Timestamp(new DateTime(2001, 2, 3, 3, 4, 5, DateTimeZone.UTC).getMillis()));
+            }
+        }
+    }
+
+    @Test
     public void testConnectionStringWithCatalogAndSchema()
             throws Exception
     {
@@ -1149,43 +1344,73 @@ public class TestDriver
         }
     }
 
-    @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Invalid path segments in URL: .*")
-    public void testBadUrlExtraPathSegments()
+    @Test(timeOut = 10000)
+    public void testQueryCancellation()
             throws Exception
     {
-        String url = format("jdbc:presto://%s/hive/default/bad_string", server.getAddress());
-        try (Connection ignored = DriverManager.getConnection(url, "test", null)) {
-            fail("expected exception");
+        try (Connection connection = createConnection("blackhole", "blackhole");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE test_cancellation (key BIGINT) " +
+                    "WITH (" +
+                    "   split_count = 1, " +
+                    "   pages_per_split = 1, " +
+                    "   rows_per_page = 1, " +
+                    "   page_processing_delay = '1m'" +
+                    ")");
+        }
+
+        CountDownLatch queryStarted = new CountDownLatch(1);
+        CountDownLatch queryFinished = new CountDownLatch(1);
+        AtomicReference<String> queryId = new AtomicReference<>();
+        AtomicReference<Throwable> queryFailure = new AtomicReference<>();
+
+        Future<?> queryFuture = executorService.submit(() -> {
+            try (Connection connection = createConnection("blackhole", "default");
+                    Statement statement = connection.createStatement();
+                    ResultSet resultSet = statement.executeQuery("SELECT * FROM test_cancellation")) {
+                queryId.set(resultSet.unwrap(PrestoResultSet.class).getQueryId());
+                queryStarted.countDown();
+                try {
+                    resultSet.next();
+                }
+                catch (SQLException t) {
+                    queryFailure.set(t);
+                }
+                finally {
+                    queryFinished.countDown();
+                }
+            }
+            return null;
+        });
+
+        // start query and make sure it is not finished
+        queryStarted.await(10, SECONDS);
+        assertNotNull(queryId.get());
+        assertFalse(getQueryState(queryId.get()).isDone());
+
+        // interrupt JDBC thread that is waiting for query results
+        queryFuture.cancel(true);
+
+        // make sure the query was aborted
+        queryFinished.await(10, SECONDS);
+        assertNotNull(queryFailure.get());
+        assertEquals(getQueryState(queryId.get()), FAILED);
+
+        try (Connection connection = createConnection("blackhole", "blackhole");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("DROP TABLE test_cancellation");
         }
     }
 
-    @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Catalog name is empty: .*")
-    public void testBadUrlMissingCatalog()
-            throws Exception
+    private QueryState getQueryState(String queryId)
+            throws SQLException
     {
-        String url = format("jdbc:presto://%s//default", server.getAddress());
-        try (Connection ignored = DriverManager.getConnection(url, "test", null)) {
-            fail("expected exception");
-        }
-    }
-
-    @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Catalog name is empty: .*")
-    public void testBadUrlEndsInSlashes()
-            throws Exception
-    {
-        String url = format("jdbc:presto://%s//", server.getAddress());
-        try (Connection ignored = DriverManager.getConnection(url, "test", null)) {
-            fail("expected exception");
-        }
-    }
-
-    @Test(expectedExceptions = SQLException.class, expectedExceptionsMessageRegExp = "Schema name is empty: .*")
-    public void testBadUrlMissingSchema()
-            throws Exception
-    {
-        String url = format("jdbc:presto://%s/a//", server.getAddress());
-        try (Connection ignored = DriverManager.getConnection(url, "test", null)) {
-            fail("expected exception");
+        String sql = format("SELECT state FROM system.runtime.queries WHERE query_id = '%s'", queryId);
+        try (Connection connection = createConnection();
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery(sql)) {
+            assertTrue(resultSet.next(), "Query was not found");
+            return QueryState.valueOf(requireNonNull(resultSet.getString(1)));
         }
     }
 

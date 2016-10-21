@@ -14,6 +14,7 @@
 package com.facebook.presto.metadata;
 
 import com.facebook.presto.client.NodeVersion;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.spi.Node;
@@ -22,6 +23,8 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.SetMultimap;
+import com.google.common.collect.Sets;
+import com.google.common.collect.Sets.SetView;
 import io.airlift.discovery.client.ServiceDescriptor;
 import io.airlift.discovery.client.ServiceSelector;
 import io.airlift.discovery.client.ServiceType;
@@ -29,6 +32,7 @@ import io.airlift.http.client.HttpClient;
 import io.airlift.log.Logger;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
+import org.weakref.jmx.Managed;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
@@ -65,7 +69,7 @@ public final class DiscoveryNodeManager
 
     private static final Duration MAX_AGE = new Duration(5, TimeUnit.SECONDS);
 
-    private static final Splitter DATASOURCES_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
+    private static final Splitter CONNECTOR_ID_SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
     private final ServiceSelector serviceSelector;
     private final NodeInfo nodeInfo;
     private final FailureDetector failureDetector;
@@ -75,7 +79,7 @@ public final class DiscoveryNodeManager
     private final ScheduledExecutorService nodeStateUpdateExecutor;
 
     @GuardedBy("this")
-    private SetMultimap<String, Node> activeNodesByDataSource;
+    private SetMultimap<ConnectorId, Node> activeNodesByConnectorId;
 
     @GuardedBy("this")
     private AllNodes allNodes;
@@ -94,7 +98,7 @@ public final class DiscoveryNodeManager
             NodeInfo nodeInfo,
             FailureDetector failureDetector,
             NodeVersion expectedNodeVersion,
-            @ForGracefulShutdown HttpClient httpClient)
+            @ForNodeManager HttpClient httpClient)
     {
         this.serviceSelector = requireNonNull(serviceSelector, "serviceSelector is null");
         this.nodeInfo = requireNonNull(nodeInfo, "nodeInfo is null");
@@ -173,39 +177,40 @@ public final class DiscoveryNodeManager
         ImmutableSet.Builder<Node> inactiveNodesBuilder = ImmutableSet.builder();
         ImmutableSet.Builder<Node> shuttingDownNodesBuilder = ImmutableSet.builder();
         ImmutableSet.Builder<Node> coordinatorsBuilder = ImmutableSet.builder();
-        ImmutableSetMultimap.Builder<String, Node> byDataSourceBuilder = ImmutableSetMultimap.builder();
+        ImmutableSetMultimap.Builder<ConnectorId, Node> byConnectorIdBuilder = ImmutableSetMultimap.builder();
 
         for (ServiceDescriptor service : services) {
             URI uri = getHttpUri(service);
             NodeVersion nodeVersion = getNodeVersion(service);
+            boolean coordinator = isCoordinator(service);
             if (uri != null && nodeVersion != null) {
-                PrestoNode node = new PrestoNode(service.getNodeId(), uri, nodeVersion);
+                PrestoNode node = new PrestoNode(service.getNodeId(), uri, nodeVersion, coordinator);
                 NodeState nodeState = getNodeState(node);
 
                 // record current node
                 if (node.getNodeIdentifier().equals(nodeInfo.getNodeId())) {
                     currentNode = node;
-                    checkState(currentNode.getNodeVersion().equals(expectedNodeVersion), "INVARIANT: current node version should be equal to expected node version");
+                    checkState(currentNode.getNodeVersion().equals(expectedNodeVersion), "INVARIANT: current node version (%s) should be equal to %s", currentNode.getNodeVersion(), expectedNodeVersion);
                 }
 
                 switch (nodeState) {
                     case ACTIVE:
                         activeNodesBuilder.add(node);
-                        if (Boolean.parseBoolean(service.getProperties().get("coordinator"))) {
+                        if (coordinator) {
                             coordinatorsBuilder.add(node);
                         }
 
-                        // record available active nodes organized by data source
-                        String dataSources = service.getProperties().get("datasources");
-                        if (dataSources != null) {
-                            dataSources = dataSources.toLowerCase(ENGLISH);
-                            for (String dataSource : DATASOURCES_SPLITTER.split(dataSources)) {
-                                byDataSourceBuilder.put(dataSource, node);
+                        // record available active nodes organized by connector id
+                        String connectorIds = service.getProperties().get("connectorIds");
+                        if (connectorIds != null) {
+                            connectorIds = connectorIds.toLowerCase(ENGLISH);
+                            for (String connectorId : CONNECTOR_ID_SPLITTER.split(connectorIds)) {
+                                byConnectorIdBuilder.put(new ConnectorId(connectorId), node);
                             }
                         }
 
-                        // always add system data source
-                        byDataSourceBuilder.put(GlobalSystemConnector.NAME, node);
+                        // always add system connector
+                        byConnectorIdBuilder.put(new ConnectorId(GlobalSystemConnector.NAME), node);
                         break;
                     case INACTIVE:
                         inactiveNodesBuilder.add(node);
@@ -219,8 +224,16 @@ public final class DiscoveryNodeManager
             }
         }
 
+        if (allNodes != null) {
+            // log node that are no longer active (but not shutting down)
+            SetView<Node> missingNodes = difference(allNodes.getActiveNodes(), Sets.union(activeNodesBuilder.build(), shuttingDownNodesBuilder.build()));
+            for (Node missingNode : missingNodes) {
+                log.info("Previously active node is missing: %s (last seen at %s)", missingNode.getNodeIdentifier(), missingNode.getHostAndPort());
+            }
+        }
+
         allNodes = new AllNodes(activeNodesBuilder.build(), inactiveNodesBuilder.build(), shuttingDownNodesBuilder.build());
-        activeNodesByDataSource = byDataSourceBuilder.build();
+        activeNodesByConnectorId = byConnectorIdBuilder.build();
         coordinators = coordinatorsBuilder.build();
 
         checkState(currentNode != null, "INVARIANT: current node not returned from service selector");
@@ -264,6 +277,24 @@ public final class DiscoveryNodeManager
         return allNodes;
     }
 
+    @Managed
+    public int getActiveNodeCount()
+    {
+        return getAllNodes().getActiveNodes().size();
+    }
+
+    @Managed
+    public int getInactiveNodeCount()
+    {
+        return getAllNodes().getInactiveNodes().size();
+    }
+
+    @Managed
+    public int getShuttingDownNodeCount()
+    {
+        return getAllNodes().getShuttingDownNodes().size();
+    }
+
     @Override
     public Set<Node> getNodes(NodeState state)
     {
@@ -280,10 +311,10 @@ public final class DiscoveryNodeManager
     }
 
     @Override
-    public synchronized Set<Node> getActiveDatasourceNodes(String datasourceName)
+    public synchronized Set<Node> getActiveConnectorNodes(ConnectorId connectorId)
     {
         refreshIfNecessary();
-        return activeNodesByDataSource.get(datasourceName);
+        return activeNodesByConnectorId.get(connectorId);
     }
 
     @Override
@@ -318,5 +349,10 @@ public final class DiscoveryNodeManager
     {
         String nodeVersion = descriptor.getProperties().get("node_version");
         return nodeVersion == null ? null : new NodeVersion(nodeVersion);
+    }
+
+    private static boolean isCoordinator(ServiceDescriptor service)
+    {
+        return Boolean.parseBoolean(service.getProperties().get("coordinator"));
     }
 }

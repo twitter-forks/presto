@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.array.LongBigArray;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
-import com.facebook.presto.util.array.LongBigArray;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
 
@@ -145,7 +145,7 @@ public class RowNumberOperator
         }
         else {
             int[] channels = Ints.toArray(partitionChannels);
-            this.groupByHash = Optional.of(createGroupByHash(operatorContext.getSession(), partitionTypes, channels, Optional.<Integer>empty(), hashChannel, expectedPositions));
+            this.groupByHash = Optional.of(createGroupByHash(operatorContext.getSession(), partitionTypes, channels, hashChannel, expectedPositions));
         }
         this.types = toTypes(sourceTypes, outputChannels);
     }
@@ -275,7 +275,7 @@ public class RowNumberOperator
             pageBuilder.declarePosition();
             for (int i = 0; i < outputChannels.length; i++) {
                 int channel = outputChannels[i];
-                Type type = types.get(channel);
+                Type type = types.get(i);
                 type.appendTo(inputPage.getBlock(channel), currentPosition, pageBuilder.getBlockBuilder(i));
             }
             BIGINT.writeLong(pageBuilder.getBlockBuilder(rowNumberChannel), rowCount + 1);

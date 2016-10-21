@@ -632,6 +632,20 @@ public final class ExpressionTreeRewriter<C>
         }
 
         @Override
+        protected Expression visitExists(ExistsPredicate node, Context<C> context)
+        {
+            if (!context.isDefaultRewrite()) {
+                Expression result = rewriter.rewriteExists(node, context.get(), ExpressionTreeRewriter.this);
+                if (result != null) {
+                    return result;
+                }
+            }
+
+            // No default rewrite for ExistsPredicate since we do not want to traverse subqueries
+            return node;
+        }
+
+        @Override
         public Expression visitSubqueryExpression(SubqueryExpression node, Context<C> context)
         {
             if (!context.isDefaultRewrite()) {
@@ -650,6 +664,19 @@ public final class ExpressionTreeRewriter<C>
         {
             if (!context.isDefaultRewrite()) {
                 Expression result = rewriter.rewriteLiteral(node, context.get(), ExpressionTreeRewriter.this);
+                if (result != null) {
+                    return result;
+                }
+            }
+
+            return node;
+        }
+
+        @Override
+        public Expression visitParameter(Parameter node, Context<C> context)
+        {
+            if (!context.isDefaultRewrite()) {
+                Expression result = rewriter.rewriteParameter(node, context.get(), ExpressionTreeRewriter.this);
                 if (result != null) {
                     return result;
                 }
@@ -735,6 +762,32 @@ public final class ExpressionTreeRewriter<C>
 
             if (node.getExpression() != expression) {
                 return new Cast(expression, node.getType(), node.isSafe(), node.isTypeOnly());
+            }
+
+            return node;
+        }
+
+        @Override
+        protected Expression visitFieldReference(FieldReference node, Context<C> context)
+        {
+            if (!context.isDefaultRewrite()) {
+                Expression result = rewriter.rewriteFieldReference(node, context.get(), ExpressionTreeRewriter.this);
+                if (result != null) {
+                    return result;
+                }
+            }
+
+            return node;
+        }
+
+        @Override
+        protected Expression visitSymbolReference(SymbolReference node, Context<C> context)
+        {
+            if (!context.isDefaultRewrite()) {
+                Expression result = rewriter.rewriteSymbolReference(node, context.get(), ExpressionTreeRewriter.this);
+                if (result != null) {
+                    return result;
+                }
             }
 
             return node;

@@ -19,8 +19,10 @@ import com.facebook.presto.orc.metadata.OrcType.OrcTypeKind;
 import com.facebook.presto.orc.metadata.Stream.StreamKind;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Iterables;
 import com.google.common.primitives.Ints;
+import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.apache.hadoop.hive.ql.io.orc.OrcProto;
@@ -28,7 +30,10 @@ import org.apache.hadoop.hive.ql.io.orc.OrcProto.RowIndexEntry;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static com.facebook.presto.orc.metadata.CompressionKind.SNAPPY;
 import static com.facebook.presto.orc.metadata.CompressionKind.UNCOMPRESSED;
@@ -40,6 +45,7 @@ public class OrcMetadataReader
         implements MetadataReader
 {
     private static final Slice MAX_BYTE = Slices.wrappedBuffer(new byte[] { (byte) 0xFF });
+    private static final Logger log = Logger.get(OrcMetadataReader.class);
 
     @Override
     public PostScript readPostScript(byte[] data, int offset, int length)
@@ -86,7 +92,8 @@ public class OrcMetadataReader
                 footer.getRowIndexStride(),
                 toStripeInformation(footer.getStripesList()),
                 toType(footer.getTypesList()),
-                toColumnStatistics(footer.getStatisticsList(), false));
+                toColumnStatistics(footer.getStatisticsList(), false),
+                toUserMetadata(footer.getMetadataList()));
     }
 
     private static List<StripeInformation> toStripeInformation(List<OrcProto.StripeInformation> types)
@@ -142,6 +149,20 @@ public class OrcMetadataReader
         return ImmutableList.copyOf(Iterables.transform(rowIndex.getEntryList(), OrcMetadataReader::toRowGroupIndex));
     }
 
+    @Override
+    public List<HiveBloomFilter> readBloomFilterIndexes(InputStream inputStream)
+            throws IOException
+    {
+        CodedInputStream input = CodedInputStream.newInstance(inputStream);
+        OrcProto.BloomFilterIndex bloomFilter = OrcProto.BloomFilterIndex.parseFrom(input);
+        List<OrcProto.BloomFilter> bloomFilterList = bloomFilter.getBloomFilterList();
+        ImmutableList.Builder<HiveBloomFilter> builder = ImmutableList.builder();
+        for (OrcProto.BloomFilter orcBloomFilter : bloomFilterList) {
+            builder.add(new HiveBloomFilter(orcBloomFilter.getBitsetList(), orcBloomFilter.getBitsetCount() * 64, orcBloomFilter.getNumHashFunctions()));
+        }
+        return builder.build();
+    }
+
     private static RowGroupIndex toRowGroupIndex(RowIndexEntry rowIndexEntry)
     {
         List<Long> positionsList = rowIndexEntry.getPositionsList();
@@ -165,7 +186,9 @@ public class OrcMetadataReader
                 toIntegerStatistics(statistics.getIntStatistics()),
                 toDoubleStatistics(statistics.getDoubleStatistics()),
                 toStringStatistics(statistics.getStringStatistics(), isRowGroup),
-                toDateStatistics(statistics.getDateStatistics(), isRowGroup));
+                toDateStatistics(statistics.getDateStatistics(), isRowGroup),
+                toDecimalStatistics(statistics.getDecimalStatistics()),
+                null);
     }
 
     private static List<ColumnStatistics> toColumnStatistics(List<OrcProto.ColumnStatistics> columnStatistics, final boolean isRowGroup)
@@ -174,6 +197,15 @@ public class OrcMetadataReader
             return ImmutableList.of();
         }
         return ImmutableList.copyOf(Iterables.transform(columnStatistics, statistics -> toColumnStatistics(statistics, isRowGroup)));
+    }
+
+    private Map<String, Slice> toUserMetadata(List<OrcProto.UserMetadataItem> metadataList)
+    {
+        ImmutableMap.Builder<String, Slice> mapBuilder = ImmutableMap.builder();
+        for (OrcProto.UserMetadataItem item : metadataList) {
+            mapBuilder.put(item.getName(), Slices.wrappedBuffer(item.getValue().toByteArray()));
+        }
+        return mapBuilder.build();
     }
 
     private static BooleanStatistics toBooleanStatistics(OrcProto.BucketStatistics bucketStatistics)
@@ -254,6 +286,18 @@ public class OrcMetadataReader
         return new StringStatistics(minimum, maximum);
     }
 
+    private static DecimalStatistics toDecimalStatistics(OrcProto.DecimalStatistics decimalStatistics)
+    {
+        if (!decimalStatistics.hasMinimum() && !decimalStatistics.hasMaximum()) {
+            return null;
+        }
+
+        BigDecimal minimum = decimalStatistics.hasMinimum() ? new BigDecimal(decimalStatistics.getMinimum()) : null;
+        BigDecimal maximum = decimalStatistics.hasMaximum() ? new BigDecimal(decimalStatistics.getMaximum()) : null;
+
+        return new DecimalStatistics(minimum, maximum);
+    }
+
     @VisibleForTesting
     public static Slice getMaxSlice(String maximum)
     {
@@ -324,7 +368,13 @@ public class OrcMetadataReader
 
     private static OrcType toType(OrcProto.Type type)
     {
-        return new OrcType(toTypeKind(type.getKind()), type.getSubtypesList(), type.getFieldNamesList());
+        Optional<Integer> precision = Optional.empty();
+        Optional<Integer> scale = Optional.empty();
+        if (type.getKind() == OrcProto.Type.Kind.DECIMAL) {
+            precision = Optional.of(type.getPrecision());
+            scale = Optional.of(type.getScale());
+        }
+        return new OrcType(toTypeKind(type.getKind()), type.getSubtypesList(), type.getFieldNamesList(), precision, scale);
     }
 
     private static List<OrcType> toType(List<OrcProto.Type> types)
@@ -393,6 +443,8 @@ public class OrcMetadataReader
                 return StreamKind.SECONDARY;
             case ROW_INDEX:
                 return StreamKind.ROW_INDEX;
+            case BLOOM_FILTER:
+                return StreamKind.BLOOM_FILTER;
             default:
                 throw new IllegalStateException(streamKind + " stream type not implemented yet");
         }

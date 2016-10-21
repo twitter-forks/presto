@@ -14,9 +14,9 @@
 package com.facebook.presto.memory;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.execution.QueryId;
 import com.facebook.presto.execution.TaskStateMachine;
 import com.facebook.presto.operator.TaskContext;
+import com.facebook.presto.spi.QueryId;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -31,6 +31,7 @@ import java.util.concurrent.Executor;
 
 import static com.facebook.presto.ExceededMemoryLimitException.exceededLocalLimit;
 import static com.google.common.base.Preconditions.checkArgument;
+import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
 
 @ThreadSafe
@@ -66,8 +67,9 @@ public class QueryContext
     // TODO: This method should be removed, and the correct limit set in the constructor. However, due to the way QueryContext is constructed the memory limit is not known in advance
     public synchronized void setResourceOvercommit()
     {
-        // Don't enforce any limit. The coordinator will kill the query if the cluster runs out of memory.
-        maxMemory = Long.MAX_VALUE;
+        // Allow the query to use the entire pool. This way the worker will kill the query, if it uses the entire local general pool.
+        // The coordinator will kill the query if the cluster runs out of memory.
+        maxMemory = memoryPool.getMaxBytes();
     }
 
     public synchronized ListenableFuture<?> reserveMemory(long bytes)
@@ -75,7 +77,7 @@ public class QueryContext
         checkArgument(bytes >= 0, "bytes is negative");
 
         if (reserved + bytes > maxMemory) {
-            throw exceededLocalLimit(new DataSize(maxMemory, DataSize.Unit.BYTE).convertToMostSuccinctDataSize());
+            throw exceededLocalLimit(succinctBytes(maxMemory));
         }
         ListenableFuture<?> future = memoryPool.reserve(queryId, bytes);
         reserved += bytes;

@@ -15,10 +15,10 @@ package com.facebook.presto.execution.scheduler;
 
 import com.facebook.presto.execution.NodeTaskMap;
 import com.facebook.presto.execution.RemoteTask;
+import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.Node;
-import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
@@ -50,27 +50,27 @@ public class TopologyAwareNodeSelector
 {
     private static final Logger log = Logger.get(TopologyAwareNodeSelector.class);
 
-    private final NodeManager nodeManager;
+    private final InternalNodeManager nodeManager;
     private final NodeTaskMap nodeTaskMap;
     private final boolean includeCoordinator;
     private final boolean doubleScheduling;
     private final AtomicReference<Supplier<NodeMap>> nodeMap;
     private final int minCandidates;
     private final int maxSplitsPerNode;
-    private final int maxSplitsPerNodePerTaskWhenFull;
+    private final int maxPendingSplitsPerNodePerStageWhenFull;
     private final List<CounterStat> topologicalSplitCounters;
     private final List<String> networkLocationSegmentNames;
     private final NetworkLocationCache networkLocationCache;
 
     public TopologyAwareNodeSelector(
-            NodeManager nodeManager,
+            InternalNodeManager nodeManager,
             NodeTaskMap nodeTaskMap,
             boolean includeCoordinator,
             boolean doubleScheduling,
             Supplier<NodeMap> nodeMap,
             int minCandidates,
             int maxSplitsPerNode,
-            int maxSplitsPerNodePerTaskWhenFull,
+            int maxPendingSplitsPerNodePerStageWhenFull,
             List<CounterStat> topologicalSplitCounters,
             List<String> networkLocationSegmentNames,
             NetworkLocationCache networkLocationCache)
@@ -82,7 +82,7 @@ public class TopologyAwareNodeSelector
         this.nodeMap = new AtomicReference<>(nodeMap);
         this.minCandidates = minCandidates;
         this.maxSplitsPerNode = maxSplitsPerNode;
-        this.maxSplitsPerNodePerTaskWhenFull = maxSplitsPerNodePerTaskWhenFull;
+        this.maxPendingSplitsPerNodePerStageWhenFull = maxPendingSplitsPerNodePerStageWhenFull;
         this.topologicalSplitCounters = requireNonNull(topologicalSplitCounters, "topologicalSplitCounters is null");
         this.networkLocationSegmentNames = requireNonNull(networkLocationSegmentNames, "networkLocationSegmentNames is null");
         this.networkLocationCache = requireNonNull(networkLocationCache, "networkLocationCache is null");
@@ -129,7 +129,7 @@ public class TopologyAwareNodeSelector
                     log.debug("No nodes available to schedule %s. Available nodes %s", split, nodeMap.getNodesByHost().keys());
                     throw new PrestoException(NO_NODES_AVAILABLE, "No nodes available to run query");
                 }
-                Node chosenNode = bestNodeSplitCount(candidateNodes.iterator(), minCandidates, maxSplitsPerNodePerTaskWhenFull, assignmentStats);
+                Node chosenNode = bestNodeSplitCount(candidateNodes.iterator(), minCandidates, maxPendingSplitsPerNodePerStageWhenFull, assignmentStats);
                 if (chosenNode != null) {
                     assignment.put(chosenNode, split);
                     assignmentStats.addAssignedSplit(chosenNode);
@@ -163,7 +163,7 @@ public class TopologyAwareNodeSelector
                     }
                     Set<Node> nodes = nodeMap.getWorkersByNetworkPath().get(location);
                     double queueFraction = (1.0 + i) / (1.0 + depth);
-                    chosenNode = bestNodeSplitCount(new ResettableRandomizedIterator<>(nodes), minCandidates, (int) Math.ceil(queueFraction * maxSplitsPerNodePerTaskWhenFull), assignmentStats);
+                    chosenNode = bestNodeSplitCount(new ResettableRandomizedIterator<>(nodes), minCandidates, (int) Math.ceil(queueFraction * maxPendingSplitsPerNodePerStageWhenFull), assignmentStats);
                     if (chosenNode != null) {
                         chosenDepth = i;
                         break;
@@ -188,7 +188,7 @@ public class TopologyAwareNodeSelector
     @Override
     public Multimap<Node, Split> computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, NodePartitionMap partitioning)
     {
-        return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsPerNode, splits, existingTasks, partitioning);
+        return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsPerNode, maxPendingSplitsPerNodePerStageWhenFull, splits, existingTasks, partitioning);
     }
 
     @Nullable
@@ -204,7 +204,7 @@ public class TopologyAwareNodeSelector
                 return node;
             }
             fullCandidatesConsidered++;
-            int totalSplitCount = assignmentStats.getTotalQueuedSplitCount(node);
+            int totalSplitCount = assignmentStats.getQueuedSplitCountForStage(node);
             if (totalSplitCount < min && totalSplitCount < maxSplitsPerNodePerTaskWhenFull) {
                 bestQueueNotFull = node;
             }

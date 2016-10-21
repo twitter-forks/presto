@@ -68,11 +68,11 @@ public class TestOrderByOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT, DOUBLE)
-                .row(1, 0.1)
-                .row(2, 0.2)
+                .row(1L, 0.1)
+                .row(2L, 0.2)
                 .pageBreak()
-                .row(-1, -0.1)
-                .row(4, 0.4)
+                .row(-1L, -0.1)
+                .row(4L, 0.4)
                 .build();
 
         OrderByOperatorFactory operatorFactory = new OrderByOperatorFactory(
@@ -84,8 +84,6 @@ public class TestOrderByOperator
                 ImmutableList.of(0),
                 ImmutableList.of(ASC_NULLS_LAST));
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
         MaterializedResult expected = resultBuilder(driverContext.getSession(), DOUBLE)
                 .row(-0.1)
                 .row(0.1)
@@ -93,7 +91,7 @@ public class TestOrderByOperator
                 .row(0.4)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test
@@ -101,11 +99,11 @@ public class TestOrderByOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(VARCHAR, BIGINT)
-                .row("a", 1)
-                .row("b", 2)
+                .row("a", 1L)
+                .row("b", 2L)
                 .pageBreak()
-                .row("b", 3)
-                .row("a", 4)
+                .row("b", 3L)
+                .row("a", 4L)
                 .build();
 
         OrderByOperatorFactory operatorFactory = new OrderByOperatorFactory(
@@ -117,16 +115,14 @@ public class TestOrderByOperator
                 ImmutableList.of(0, 1),
                 ImmutableList.of(ASC_NULLS_LAST, DESC_NULLS_LAST));
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
         MaterializedResult expected = MaterializedResult.resultBuilder(driverContext.getSession(), VARCHAR, BIGINT)
-                .row("a", 4)
-                .row("a", 1)
-                .row("b", 3)
-                .row("b", 2)
+                .row("a", 4L)
+                .row("a", 1L)
+                .row("b", 3L)
+                .row("b", 2L)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test
@@ -134,11 +130,11 @@ public class TestOrderByOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT, DOUBLE)
-                .row(1, 0.1)
-                .row(2, 0.2)
+                .row(1L, 0.1)
+                .row(2L, 0.2)
                 .pageBreak()
-                .row(-1, -0.1)
-                .row(4, 0.4)
+                .row(-1L, -0.1)
+                .row(4L, 0.4)
                 .build();
 
         OrderByOperatorFactory operatorFactory = new OrderByOperatorFactory(
@@ -150,16 +146,14 @@ public class TestOrderByOperator
                 ImmutableList.of(0),
                 ImmutableList.of(DESC_NULLS_LAST));
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT)
-                .row(4)
-                .row(2)
-                .row(1)
-                .row(-1)
+                .row(4L)
+                .row(2L)
+                .row(1L)
+                .row(-1L)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test(expectedExceptions = ExceededMemoryLimitException.class, expectedExceptionsMessageRegExp = "Query exceeded local memory limit of 10B")
@@ -167,11 +161,11 @@ public class TestOrderByOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT, DOUBLE)
-                .row(1, 0.1)
-                .row(2, 0.2)
+                .row(1L, 0.1)
+                .row(2L, 0.2)
                 .pageBreak()
-                .row(-1, -0.1)
-                .row(4, 0.4)
+                .row(-1L, -0.1)
+                .row(4L, 0.4)
                 .build();
 
         DriverContext driverContext = createTaskContext(executor, TEST_SESSION, new DataSize(10, Unit.BYTE))
@@ -187,8 +181,6 @@ public class TestOrderByOperator
                 ImmutableList.of(0),
                 ImmutableList.of(ASC_NULLS_LAST));
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
-        toPages(operator, input);
+        toPages(operatorFactory, driverContext, input);
     }
 }

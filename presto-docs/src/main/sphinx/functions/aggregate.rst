@@ -65,7 +65,8 @@ General Aggregate Functions
 
 .. function:: max_by(x, y, n) -> array<[same as x]>
 
-    Returns ``n`` values of ``x`` associated with the ``n`` largest of all input values of ``y``.
+    Returns ``n`` values of ``x`` associated with the ``n`` largest of all input values of ``y``,
+    in non-ascending order of ``y``.
 
 .. function:: min_by(x, y) -> [same as x]
 
@@ -73,7 +74,8 @@ General Aggregate Functions
 
 .. function:: min_by(x, y, n) -> array<[same as x]>
 
-    Returns ``n`` values of ``x`` associated with the ``n`` smallest of all input values of ``y``.
+    Returns ``n`` values of ``x`` associated with the ``n`` smallest of all input values of ``y``,
+    in non-descending order of ``y``.
 
 .. function:: max(x) -> [same as input]
 
@@ -105,6 +107,11 @@ Map Aggregate Functions
 .. function:: map_agg(key, value) -> map<K,V>
 
     Returns a map created from the input ``key`` / ``value`` pairs.
+
+.. function:: map_union(x<K,V>) -> map<K,V>
+
+   Returns the union of all the input maps. If a key is found in multiple
+   input maps, that key's value in the resulting map comes from an arbitrary input map.
 
 .. function:: multimap_agg(key, value) -> map<K,array<V>>
 

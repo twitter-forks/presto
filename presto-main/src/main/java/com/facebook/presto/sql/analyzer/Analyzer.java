@@ -17,6 +17,7 @@ import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.sql.parser.SqlParser;
+import com.facebook.presto.sql.rewrite.StatementRewrite;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.Statement;
@@ -37,13 +38,15 @@ public class Analyzer
     private final Session session;
     private final Optional<QueryExplainer> queryExplainer;
     private final boolean experimentalSyntaxEnabled;
+    private final List<Expression> parameters;
 
     public Analyzer(Session session,
             Metadata metadata,
             SqlParser sqlParser,
             AccessControl accessControl,
             Optional<QueryExplainer> queryExplainer,
-            boolean experimentalSyntaxEnabled)
+            boolean experimentalSyntaxEnabled,
+            List<Expression> parameters)
     {
         this.session = requireNonNull(session, "session is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -51,14 +54,20 @@ public class Analyzer
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
         this.queryExplainer = requireNonNull(queryExplainer, "query explainer is null");
         this.experimentalSyntaxEnabled = experimentalSyntaxEnabled;
+        this.parameters = parameters;
     }
 
     public Analysis analyze(Statement statement)
     {
-        Analysis analysis = new Analysis();
-        StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session, experimentalSyntaxEnabled, queryExplainer);
-        RelationType outputDescriptor = analyzer.process(statement, new AnalysisContext());
-        analysis.setOutputDescriptor(outputDescriptor);
+        return analyze(statement, false);
+    }
+
+    public Analysis analyze(Statement statement, boolean isDescribe)
+    {
+        Statement rewrittenStatement = StatementRewrite.rewrite(session, metadata, sqlParser, queryExplainer, statement, parameters, accessControl, experimentalSyntaxEnabled);
+        Analysis analysis = new Analysis(rewrittenStatement, parameters, isDescribe);
+        StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session, experimentalSyntaxEnabled);
+        analyzer.process(rewrittenStatement, Scope.builder().markQueryBoundary().build());
         return analysis;
     }
 

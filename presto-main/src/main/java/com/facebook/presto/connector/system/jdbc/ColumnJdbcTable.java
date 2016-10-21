@@ -27,7 +27,10 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.spi.type.CharType;
+import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.type.ArrayType;
 
 import javax.inject.Inject;
@@ -44,14 +47,20 @@ import static com.facebook.presto.connector.system.jdbc.FilterUtil.toSession;
 import static com.facebook.presto.metadata.MetadataUtil.TableMetadataBuilder.tableMetadataBuilder;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.Chars.isCharType;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
+import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TimeType.TIME;
 import static com.facebook.presto.spi.type.TimeWithTimeZoneType.TIME_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
+import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static com.facebook.presto.util.Types.checkType;
 import static java.util.Objects.requireNonNull;
 
@@ -61,30 +70,30 @@ public class ColumnJdbcTable
     public static final SchemaTableName NAME = new SchemaTableName("jdbc", "columns");
 
     public static final ConnectorTableMetadata METADATA = tableMetadataBuilder(NAME)
-            .column("table_cat", VARCHAR)
-            .column("table_schem", VARCHAR)
-            .column("table_name", VARCHAR)
-            .column("column_name", VARCHAR)
+            .column("table_cat", createUnboundedVarcharType())
+            .column("table_schem", createUnboundedVarcharType())
+            .column("table_name", createUnboundedVarcharType())
+            .column("column_name", createUnboundedVarcharType())
             .column("data_type", BIGINT)
-            .column("type_name", VARCHAR)
+            .column("type_name", createUnboundedVarcharType())
             .column("column_size", BIGINT)
             .column("buffer_length", BIGINT)
             .column("decimal_digits", BIGINT)
             .column("num_prec_radix", BIGINT)
             .column("nullable", BIGINT)
-            .column("remarks", VARCHAR)
-            .column("column_def", VARCHAR)
+            .column("remarks", createUnboundedVarcharType())
+            .column("column_def", createUnboundedVarcharType())
             .column("sql_data_type", BIGINT)
             .column("sql_datetime_sub", BIGINT)
             .column("char_octet_length", BIGINT)
             .column("ordinal_position", BIGINT)
-            .column("is_nullable", VARCHAR)
-            .column("scope_catalog", VARCHAR)
-            .column("scope_schema", VARCHAR)
-            .column("scope_table", VARCHAR)
+            .column("is_nullable", createUnboundedVarcharType())
+            .column("scope_catalog", createUnboundedVarcharType())
+            .column("scope_schema", createUnboundedVarcharType())
+            .column("scope_table", createUnboundedVarcharType())
             .column("source_data_type", BIGINT)
-            .column("is_autoincrement", VARCHAR)
-            .column("is_generatedcolumn", VARCHAR)
+            .column("is_autoincrement", createUnboundedVarcharType())
+            .column("is_generatedcolumn", createUnboundedVarcharType())
             .build();
 
     private final Metadata metadata;
@@ -134,16 +143,16 @@ public class ColumnJdbcTable
                     column.getName(),
                     jdbcDataType(column.getType()),
                     column.getType().getDisplayName(),
-                    0,
+                    columnSize(column.getType()),
                     0,
                     decimalDigits(column.getType()),
-                    10,
+                    numPrecRadix(column.getType()),
                     DatabaseMetaData.columnNullableUnknown,
                     column.getComment(),
                     null,
                     null,
                     null,
-                    0,
+                    charOctetLength(column.getType()),
                     ordinalPosition,
                     "",
                     null,
@@ -164,11 +173,29 @@ public class ColumnJdbcTable
         if (type.equals(BIGINT)) {
             return Types.BIGINT;
         }
+        if (type.equals(INTEGER)) {
+            return Types.INTEGER;
+        }
+        if (type.equals(SMALLINT)) {
+            return Types.SMALLINT;
+        }
+        if (type.equals(TINYINT)) {
+            return Types.TINYINT;
+        }
+        if (type.equals(REAL)) {
+            return Types.REAL;
+        }
         if (type.equals(DOUBLE)) {
             return Types.DOUBLE;
         }
-        if (type.equals(VARCHAR)) {
+        if (type instanceof DecimalType) {
+            return Types.DECIMAL;
+        }
+        if (isVarcharType(type)) {
             return Types.LONGNVARCHAR;
+        }
+        if (isCharType(type)) {
+            return Types.CHAR;
         }
         if (type.equals(VARBINARY)) {
             return Types.LONGVARBINARY;
@@ -194,10 +221,90 @@ public class ColumnJdbcTable
         return Types.JAVA_OBJECT;
     }
 
-    private static Integer decimalDigits(Type type)
+    private static Integer columnSize(Type type)
     {
         if (type.equals(BIGINT)) {
-            return 19;
+            return 19;  // 2**63-1
+        }
+        if (type.equals(INTEGER)) {
+            return 10;  // 2**31-1
+        }
+        if (type.equals(SMALLINT)) {
+            return 5;   // 2**15-1
+        }
+        if (type.equals(TINYINT)) {
+            return 3;   // 2**7-1
+        }
+        if (type instanceof DecimalType) {
+            return ((DecimalType) type).getPrecision();
+        }
+        if (type.equals(REAL)) {
+            return 24; // IEEE 754
+        }
+        if (type.equals(DOUBLE)) {
+            return 53; // IEEE 754
+        }
+        if (isVarcharType(type)) {
+            return ((VarcharType) type).getLength();
+        }
+        if (isCharType(type)) {
+            return ((CharType) type).getLength();
+        }
+        if (type.equals(VARBINARY)) {
+            return Integer.MAX_VALUE;
+        }
+        if (type.equals(TIME)) {
+            return 8; // 00:00:00
+        }
+        if (type.equals(TIME_WITH_TIME_ZONE)) {
+            return 8 + 6; // 00:00:00+00:00
+        }
+        if (type.equals(DATE)) {
+            return 14; // +5881580-07-11 (2**31-1 days)
+        }
+        if (type.equals(TIMESTAMP)) {
+            return 15 + 8;
+        }
+        if (type.equals(TIMESTAMP_WITH_TIME_ZONE)) {
+            return 15 + 8 + 6;
+        }
+        return null;
+    }
+
+    // DECIMAL_DIGITS is the number of fractional digits
+    private static Integer decimalDigits(Type type)
+    {
+        if (type instanceof DecimalType) {
+            return ((DecimalType) type).getScale();
+        }
+        return null;
+    }
+
+    private static Integer charOctetLength(Type type)
+    {
+        if (isVarcharType(type)) {
+            return ((VarcharType) type).getLength();
+        }
+        if (isCharType(type)) {
+            return ((CharType) type).getLength();
+        }
+        if (type.equals(VARBINARY)) {
+            return Integer.MAX_VALUE;
+        }
+        return null;
+    }
+
+    private static Integer numPrecRadix(Type type)
+    {
+        if (type.equals(BIGINT) ||
+                type.equals(INTEGER) ||
+                type.equals(SMALLINT) ||
+                type.equals(TINYINT) ||
+                (type instanceof DecimalType)) {
+            return 10;
+        }
+        if (type.equals(REAL) || type.equals(DOUBLE)) {
+            return 2;
         }
         return null;
     }

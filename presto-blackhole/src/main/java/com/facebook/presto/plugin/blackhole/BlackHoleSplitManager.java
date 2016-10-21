@@ -42,8 +42,9 @@ public final class BlackHoleSplitManager
                     new BlackHoleSplit(
                             layout.getPagesPerSplit(),
                             layout.getRowsPerPage(),
-                            layout.getFieldsLength()));
+                            layout.getFieldsLength(),
+                            layout.getPageProcessingDelay()));
         }
-        return new FixedSplitSource("blackhole", builder.build());
+        return new FixedSplitSource(builder.build());
     }
 }

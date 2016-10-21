@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.operator.FilterFunction;
+import com.facebook.presto.operator.JoinFilterFunction;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
@@ -31,9 +32,10 @@ import java.util.Set;
 
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
 import static java.lang.Boolean.TRUE;
+import static java.util.Collections.emptyList;
 
 public class InterpretedFilterFunction
-        implements FilterFunction
+        implements FilterFunction, JoinFilterFunction
 {
     private final ExpressionInterpreter evaluator;
     private final Set<Integer> inputChannels;
@@ -54,12 +56,18 @@ public class InterpretedFilterFunction
         for (Map.Entry<Symbol, Integer> entry : symbolToInputMappings.entrySet()) {
             inputTypes.put(entry.getValue(), symbolTypes.get(entry.getKey()));
         }
-        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(session, metadata, sqlParser, inputTypes.build(), rewritten);
+        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(session, metadata, sqlParser, inputTypes.build(), rewritten, emptyList() /* parameters already rewritten */);
 
         evaluator = ExpressionInterpreter.expressionInterpreter(rewritten, metadata, session, expressionTypes);
         InputReferenceExtractor inputReferenceExtractor = new InputReferenceExtractor();
         inputReferenceExtractor.process(rewritten, null);
         this.inputChannels = ImmutableSet.copyOf(inputReferenceExtractor.getInputChannels());
+    }
+
+    @Override
+    public boolean filter(int leftPosition, Block[] leftBlocks, int rightPosition, Block[] rightBlocks)
+    {
+        return evaluator.evaluate(leftPosition, leftBlocks, rightPosition, rightBlocks) == TRUE;
     }
 
     @Override

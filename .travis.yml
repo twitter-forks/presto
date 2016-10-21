@@ -1,45 +1,90 @@
 language: java
 
-jdk:
-  - oraclejdk8
-
 env:
   global:
     - MAVEN_OPTS="-Xmx256M"
+    - MAVEN_SKIP_CHECKS_AND_DOCS="-Dair.check.skip-all=true -Dmaven.javadoc.skip=true"
   matrix:
-    - TEST_MODULES=!presto-tests,!presto-kafka,!presto-redis,!presto-cassandra,!presto-raptor,!presto-postgresql,!presto-mysql
+    - TEST_MODULES=!presto-tests,!presto-kafka,!presto-redis,!presto-cassandra,!presto-raptor,!presto-postgresql,!presto-mysql,!presto-accumulo
     - TEST_MODULES=presto-tests
+    - TEST_MODULES=presto-accumulo
     - TEST_MODULES=presto-raptor,presto-redis,presto-cassandra,presto-kafka,presto-postgresql,presto-mysql
-    - RUN_PRODUCT_TESTS=true
+    - PRODUCT_TESTS=true
+    - INTEGRATION_TESTS=true
 
 sudo: required
 dist: trusty
+
+addons:
+  apt:
+    packages:
+      - oracle-java8-installer
+
+cache:
+  directories:
+    - $HOME/.m2/repository
 
 services:
   - docker
 
 before_install:
-  # This section can be removed once travis get equipped with docker 1.10 and docker-compose 1.6
-  - |
-    sudo apt-get update
-    sudo apt-get -o "Dpkg::Options::=--force-confold" -y install docker-engine
-    sudo rm /usr/local/bin/docker-compose
-    curl -L https://github.com/docker/compose/releases/download/1.6.2/docker-compose-`uname -s`-`uname -m` > docker-compose
-    chmod +x docker-compose
-    sudo mv docker-compose /usr/local/bin
+  # This is needed until Travis #4629 is fixed (https://github.com/travis-ci/travis-ci/issues/4629)
+  - sed -i.bak -e 's|https://nexus.codehaus.org/snapshots/|https://oss.sonatype.org/content/repositories/codehaus-snapshots/|g' ~/.m2/settings.xml
 
-install: ./mvnw install -DskipTests=true -Dmaven.javadoc.skip=true -B -V -q -T 2
+install: ./mvnw install -DskipTests $MAVEN_SKIP_CHECKS_AND_DOCS -B -q -T C1 -pl '!presto-docs,!presto-server-rpm'
 
 script:
   - |
-    if [ -v TEST_MODULES ]; then
-      ./mvnw test -Dair.check.skip-dependency=true -pl $TEST_MODULES;
-    fi
+    test ! -v TEST_MODULES ||
+      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_MODULES
   - |
-    if [ -v RUN_PRODUCT_TESTS ]; then
-      presto-product-tests/etc/singlenode/run_on_travis.sh -x quarantine,big_query
-    fi
+    test ! -v PRODUCT_TESTS ||
+      presto-product-tests/bin/run_on_docker.sh \
+        multinode -x quarantine,big_query,storage_formats,profile_specific_tests
+  - |
+    test ! -v PRODUCT_TESTS ||
+      presto-product-tests/bin/run_on_docker.sh \
+        singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization
+  - |
+    test ! -v INTEGRATION_TESTS ||
+      presto-hive-hadoop2/bin/run_on_docker.sh
+  - |
+    test ! -v INTEGRATION_TESTS ||
+      ./mvnw install -DskipTests -B
+  - |
+    # Build presto-server-rpm for later artifact upload
+    test ! -v DEPLOY_S3_ACCESS_KEY || test ! -v PRODUCT_TESTS ||
+       ./mvnw install -DskipTests $MAVEN_SKIP_CHECKS_AND_DOCS -B -q -T C1 -pl presto-server-rpm
+
+before_cache:
+  # Make the cache stable between builds by removing build output
+  - rm -rf $HOME/.m2/repository/com/facebook
 
 notifications:
   slack:
     secure: V5eyoGShxFoCcYJcp858vf/T6gC9KeMxL0C1EElcpZRcKBrIVZzvhek3HLHxZOxlghqnvNVsyDtU3u5orkEaAXeXj5c2dN+4XBsAB9oeN5MtQ0Z3VLAhZDqKIW1LzcXrq4DpzM0PkGhjfjum/P94/qFYk0UckPtB6a341AuYRo8=
+
+before_deploy:
+  - mkdir /tmp/artifacts
+  - cp -n presto-server/target/presto-server-*.tar.gz /tmp/artifacts
+  - cp -n presto-server-rpm/target/presto-server-rpm-*.x86_64.rpm /tmp/artifacts
+  - cp -n presto-product-tests/target/presto-product-tests-*-executable.jar /tmp/artifacts
+  - cp -n presto-jdbc/target/presto-jdbc-*.jar /tmp/artifacts
+  - cp -n presto-cli/target/presto-cli-*-executable.jar /tmp/artifacts
+  - echo $TRAVIS_COMMIT > /tmp/artifacts/git-revision.txt
+  - echo "<script>location='https://travis-ci.org/${TRAVIS_REPO_SLUG}/builds/${TRAVIS_BUILD_ID}'</script>"
+    > /tmp/artifacts/travis_build.html
+  - ls -lah /tmp/artifacts
+
+deploy:
+  on:
+    all_branches: true
+    condition: -v DEPLOY_S3_ACCESS_KEY && -v PRODUCT_TESTS
+  provider: s3
+  access_key_id: ${DEPLOY_S3_ACCESS_KEY}
+  secret_access_key: ${DEPLOY_S3_SECRET_KEY}
+  bucket: ${DEPLOY_S3_BUCKET}
+  skip_cleanup: true
+  local-dir: /tmp/artifacts
+  upload-dir: travis_build_artifacts/${TRAVIS_REPO_SLUG}/${TRAVIS_BRANCH}/${TRAVIS_JOB_NUMBER}
+  acl: public_read

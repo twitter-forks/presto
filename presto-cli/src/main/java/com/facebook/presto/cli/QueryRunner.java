@@ -48,6 +48,8 @@ public class QueryRunner
             Optional<HostAndPort> socksProxy,
             Optional<String> keystorePath,
             Optional<String> keystorePassword,
+            Optional<String> truststorePath,
+            Optional<String> truststorePassword,
             Optional<String> kerberosPrincipal,
             Optional<String> kerberosRemoteServiceName,
             boolean authenticationEnabled,
@@ -56,7 +58,15 @@ public class QueryRunner
         this.session = new AtomicReference<>(requireNonNull(session, "session is null"));
         this.queryResultsCodec = requireNonNull(queryResultsCodec, "queryResultsCodec is null");
         this.httpClient = new JettyHttpClient(
-                getHttpClientConfig(socksProxy, keystorePath, keystorePassword, kerberosPrincipal, kerberosRemoteServiceName, authenticationEnabled),
+                getHttpClientConfig(
+                        socksProxy,
+                        keystorePath,
+                        keystorePassword,
+                        truststorePath,
+                        truststorePassword,
+                        kerberosPrincipal,
+                        kerberosRemoteServiceName,
+                        authenticationEnabled),
                 kerberosConfig,
                 Optional.<JettyIoPool>empty(),
                 ImmutableList.<HttpRequestFilter>of());
@@ -93,6 +103,8 @@ public class QueryRunner
             Optional<HostAndPort> socksProxy,
             Optional<String> keystorePath,
             Optional<String> keystorePassword,
+            Optional<String> truststorePath,
+            Optional<String> truststorePassword,
             Optional<String> kerberosPrincipal,
             Optional<String> kerberosRemoteServiceName,
             boolean authenticationEnabled,
@@ -104,6 +116,8 @@ public class QueryRunner
                 socksProxy,
                 keystorePath,
                 keystorePassword,
+                truststorePath,
+                truststorePassword,
                 kerberosPrincipal,
                 kerberosRemoteServiceName,
                 authenticationEnabled,
@@ -114,11 +128,15 @@ public class QueryRunner
             Optional<HostAndPort> socksProxy,
             Optional<String> keystorePath,
             Optional<String> keystorePassword,
+            Optional<String> truststorePath,
+            Optional<String> truststorePassword,
             Optional<String> kerberosPrincipal,
             Optional<String> kerberosRemoteServiceName,
             boolean authenticationEnabled)
     {
-        HttpClientConfig httpClientConfig = new HttpClientConfig().setConnectTimeout(new Duration(10, TimeUnit.SECONDS));
+        HttpClientConfig httpClientConfig = new HttpClientConfig()
+                .setConnectTimeout(new Duration(5, TimeUnit.SECONDS))
+                .setRequestTimeout(new Duration(5, TimeUnit.SECONDS));
 
         socksProxy.ifPresent(httpClientConfig::setSocksProxy);
 
@@ -126,6 +144,8 @@ public class QueryRunner
 
         keystorePath.ifPresent(httpClientConfig::setKeyStorePath);
         keystorePassword.ifPresent(httpClientConfig::setKeyStorePassword);
+        truststorePath.ifPresent(httpClientConfig::setTrustStorePath);
+        truststorePassword.ifPresent(httpClientConfig::setTrustStorePassword);
         kerberosPrincipal.ifPresent(httpClientConfig::setKerberosPrincipal);
         kerberosRemoteServiceName.ifPresent(httpClientConfig::setKerberosRemoteServiceName);
 

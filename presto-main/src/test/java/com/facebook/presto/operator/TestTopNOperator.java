@@ -67,19 +67,19 @@ public class TestTopNOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT, DOUBLE)
-                .row(1, 0.1)
-                .row(2, 0.2)
+                .row(1L, 0.1)
+                .row(2L, 0.2)
                 .pageBreak()
-                .row(-1, -0.1)
-                .row(4, 0.4)
+                .row(-1L, -0.1)
+                .row(4L, 0.4)
                 .pageBreak()
-                .row(5, 0.5)
-                .row(4, 0.41)
-                .row(6, 0.6)
+                .row(5L, 0.5)
+                .row(4L, 0.41)
+                .row(6L, 0.6)
                 .pageBreak()
                 .build();
 
-        TopNOperatorFactory factory = new TopNOperatorFactory(
+        TopNOperatorFactory operatorFactory = new TopNOperatorFactory(
                 0,
                 new PlanNodeId("test"),
                 ImmutableList.of(BIGINT, DOUBLE),
@@ -88,14 +88,12 @@ public class TestTopNOperator
                 ImmutableList.of(DESC_NULLS_LAST),
                 false);
 
-        Operator operator = factory.createOperator(driverContext);
-
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT, DOUBLE)
-                .row(6, 0.6)
-                .row(5, 0.5)
+                .row(6L, 0.6)
+                .row(5L, 0.5)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test
@@ -103,15 +101,15 @@ public class TestTopNOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(VARCHAR, BIGINT)
-                .row("a", 1)
-                .row("b", 2)
+                .row("a", 1L)
+                .row("b", 2L)
                 .pageBreak()
-                .row("f", 3)
-                .row("a", 4)
+                .row("f", 3L)
+                .row("a", 4L)
                 .pageBreak()
-                .row("d", 5)
-                .row("d", 7)
-                .row("e", 6)
+                .row("d", 5L)
+                .row("d", 7L)
+                .row("e", 6L)
                 .build();
 
         TopNOperatorFactory operatorFactory = new TopNOperatorFactory(
@@ -123,15 +121,13 @@ public class TestTopNOperator
                 ImmutableList.of(DESC_NULLS_LAST, DESC_NULLS_LAST),
                 false);
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
         MaterializedResult expected = MaterializedResult.resultBuilder(driverContext.getSession(), VARCHAR, BIGINT)
-                .row("f", 3)
-                .row("e", 6)
-                .row("d", 7)
+                .row("f", 3L)
+                .row("e", 6L)
+                .row("d", 7L)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test
@@ -139,15 +135,15 @@ public class TestTopNOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT, DOUBLE)
-                .row(1, 0.1)
-                .row(2, 0.2)
+                .row(1L, 0.1)
+                .row(2L, 0.2)
                 .pageBreak()
-                .row(-1, -0.1)
-                .row(4, 0.4)
+                .row(-1L, -0.1)
+                .row(4L, 0.4)
                 .pageBreak()
-                .row(5, 0.5)
-                .row(4, 0.41)
-                .row(6, 0.6)
+                .row(5L, 0.5)
+                .row(4L, 0.41)
+                .row(6L, 0.6)
                 .pageBreak()
                 .build();
 
@@ -160,21 +156,19 @@ public class TestTopNOperator
                 ImmutableList.of(ASC_NULLS_LAST),
                 false);
 
-        Operator operator = operatorFactory.createOperator(driverContext);
-
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT, DOUBLE)
-                .row(-1, -0.1)
-                .row(1, 0.1)
+                .row(-1L, -0.1)
+                .row(1L, 0.1)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test
     public void testLimitZero()
             throws Exception
     {
-        List<Page> input = rowPagesBuilder(BIGINT).row(1).build();
+        List<Page> input = rowPagesBuilder(BIGINT).row(1L).build();
 
         TopNOperatorFactory factory = new TopNOperatorFactory(
                 0,
@@ -185,18 +179,18 @@ public class TestTopNOperator
                 ImmutableList.of(DESC_NULLS_LAST),
                 false);
 
-        Operator operator = factory.createOperator(driverContext);
+        try (Operator operator = factory.createOperator(driverContext)) {
+            MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT).build();
 
-        MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT).build();
+            // assertOperatorEquals assumes operators do not start in finished state
+            assertEquals(operator.isFinished(), true);
+            assertEquals(operator.needsInput(), false);
+            assertEquals(operator.getOutput(), null);
 
-        // assertOperatorEquals assumes operators do not start in finished state
-        assertEquals(operator.isFinished(), true);
-        assertEquals(operator.needsInput(), false);
-        assertEquals(operator.getOutput(), null);
-
-        List<Page> pages = OperatorAssertion.toPages(operator, input.iterator());
-        MaterializedResult actual = OperatorAssertion.toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
-        assertEquals(actual, expected);
+            List<Page> pages = OperatorAssertion.toPages(operator, input.iterator());
+            MaterializedResult actual = OperatorAssertion.toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
+            assertEquals(actual, expected);
+        }
     }
 
     @Test
@@ -204,16 +198,16 @@ public class TestTopNOperator
             throws Exception
     {
         List<Page> input = rowPagesBuilder(BIGINT)
-                .row(1)
+                .row(1L)
                 .pageBreak()
-                .row(2)
+                .row(2L)
                 .build();
 
         DriverContext smallDiverContext = createTaskContext(executor, TEST_SESSION, new DataSize(1, BYTE), new DataSize(0, BYTE))
                 .addPipelineContext(true, true)
                 .addDriverContext();
 
-        TopNOperatorFactory factory = new TopNOperatorFactory(
+        TopNOperatorFactory operatorFactory = new TopNOperatorFactory(
                 0,
                 new PlanNodeId("test"),
                 ImmutableList.of(BIGINT),
@@ -222,13 +216,11 @@ public class TestTopNOperator
                 ImmutableList.of(ASC_NULLS_LAST),
                 true);
 
-        Operator operator = factory.createOperator(smallDiverContext);
-
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT)
-                .row(1)
-                .row(2)
+                .row(1L)
+                .row(2L)
                 .build();
 
-        assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, smallDiverContext, input, expected);
     }
 }

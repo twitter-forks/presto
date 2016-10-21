@@ -106,6 +106,8 @@ public class Verifier
                             isCheckCorrectness(query),
                             true,
                             config.isVerboseResultsComparison(),
+                            config.getControlTeardownRetries(),
+                            config.getTestTeardownRetries(),
                             query);
                     completionService.submit(validator::valid, validator);
                     queriesSubmitted++;
@@ -212,12 +214,18 @@ public class Verifier
                 !validator.valid(),
                 queryPair.getTest().getCatalog(),
                 queryPair.getTest().getSchema(),
+                queryPair.getTest().getPreQueries(),
                 queryPair.getTest().getQuery(),
+                queryPair.getTest().getPostQueries(),
+                test.getQueryId(),
                 optionalDurationToSeconds(test.getCpuTime()),
                 optionalDurationToSeconds(test.getWallTime()),
                 queryPair.getControl().getCatalog(),
                 queryPair.getControl().getSchema(),
+                queryPair.getControl().getPreQueries(),
                 queryPair.getControl().getQuery(),
+                queryPair.getControl().getPostQueries(),
+                control.getQueryId(),
                 optionalDurationToSeconds(control.getCpuTime()),
                 optionalDurationToSeconds(control.getWallTime()),
                 errorMessage);

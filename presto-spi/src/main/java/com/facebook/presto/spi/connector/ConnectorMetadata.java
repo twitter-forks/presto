@@ -40,14 +40,25 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import java.util.stream.Collectors;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptyMap;
+import static java.util.stream.Collectors.toList;
 
 public interface ConnectorMetadata
 {
+    /**
+     * Checks if a schema exists. The connector may have schemas that exist
+     * but are not enumerable via {@link #listSchemaNames}.
+     */
+    default boolean schemaExists(ConnectorSession session, String schemaName)
+    {
+        return listSchemaNames(session).contains(schemaName);
+    }
+
     /**
      * Returns the schemas provided by this connector.
      */
@@ -77,6 +88,16 @@ public interface ConnectorMetadata
      * @throws RuntimeException if table handle is no longer valid
      */
     ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table);
+
+    /**
+     * Return the connector-specific metadata for the specified table layout. This is the object that is passed to the event listener framework.
+     *
+     * @throws RuntimeException if table handle is no longer valid
+     */
+    default Optional<Object> getInfo(ConnectorTableLayoutHandle layoutHandle)
+    {
+        return Optional.empty();
+    }
 
     /**
      * List table names, possibly filtered by schema. An empty list is returned if none match.
@@ -119,6 +140,32 @@ public interface ConnectorMetadata
      * Gets the metadata for all columns that match the specified table prefix.
      */
     Map<SchemaTableName, List<ColumnMetadata>> listTableColumns(ConnectorSession session, SchemaTablePrefix prefix);
+
+    /**
+     * Creates a schema.
+     */
+    default void createSchema(ConnectorSession session, String schemaName, Map<String, Object> properties)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support creating schemas");
+    }
+
+    /**
+     * Drops the specified schema.
+     *
+     * @throws PrestoException with {@code SCHEMA_NOT_EMPTY} if the schema is not empty
+     */
+    default void dropSchema(ConnectorSession session, String schemaName)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support dropping schemas");
+    }
+
+    /**
+     * Renames the specified schema.
+     */
+    default void renameSchema(ConnectorSession session, String source, String target)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support renaming schemas");
+    }
 
     /**
      * Creates a table using the specified table metadata.
@@ -171,6 +218,36 @@ public interface ConnectorMetadata
     }
 
     /**
+     * Get the physical layout for a inserting into an existing table.
+     */
+    default Optional<ConnectorNewTableLayout> getInsertLayout(ConnectorSession session, ConnectorTableHandle tableHandle)
+    {
+        List<ConnectorTableLayout> layouts = getTableLayouts(session, tableHandle, new Constraint<>(TupleDomain.all(), map -> true), Optional.empty())
+                .stream()
+                .map(ConnectorTableLayoutResult::getTableLayout)
+                .filter(layout -> layout.getNodePartitioning().isPresent())
+                .collect(toList());
+
+        if (layouts.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (layouts.size() > 1) {
+            throw new PrestoException(NOT_SUPPORTED, "Tables with multiple layouts can not be written");
+        }
+
+        ConnectorTableLayout layout = layouts.get(0);
+        ConnectorPartitioningHandle partitioningHandle = layout.getNodePartitioning().get().getPartitioningHandle();
+        Map<ColumnHandle, String> columnNamesByHandle = getColumnHandles(session, tableHandle).entrySet().stream()
+                .collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+        List<String> partitionColumns = layout.getNodePartitioning().get().getPartitioningColumns().stream()
+                .map(columnNamesByHandle::get)
+                .collect(toList());
+
+        return Optional.of(new ConnectorNewTableLayout(partitioningHandle, partitionColumns));
+    }
+
+    /**
      * Begin the atomic creation of a table with data.
      */
     default ConnectorOutputTableHandle beginCreateTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, Optional<ConnectorNewTableLayout> layout)
@@ -183,7 +260,7 @@ public interface ConnectorMetadata
      */
     default void finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
-        throw new PrestoException(INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without finishCreateTable()");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginCreateTable() is implemented without finishCreateTable()");
     }
 
     /**
@@ -199,7 +276,7 @@ public interface ConnectorMetadata
      */
     default void finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
     {
-        throw new PrestoException(INTERNAL_ERROR, "ConnectorMetadata beginInsert() is implemented without finishInsert()");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata beginInsert() is implemented without finishInsert()");
     }
 
     /**
@@ -294,5 +371,13 @@ public interface ConnectorMetadata
     default void grantTablePrivileges(ConnectorSession session, SchemaTableName tableName, Set<Privilege> privileges, String grantee, boolean grantOption)
     {
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support grants");
+    }
+
+    /**
+     * Revokes the specified privilege on the specified table from the specified user
+     */
+    default void revokeTablePrivileges(ConnectorSession session, SchemaTableName tableName, Set<Privilege> privileges, String grantee, boolean grantOption)
+    {
+        throw new PrestoException(NOT_SUPPORTED, "This connector does not support revokes");
     }
 }

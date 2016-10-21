@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService;
 
 import static com.facebook.presto.RowPagesBuilder.rowPagesBuilder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
+import static com.facebook.presto.operator.OperatorAssertion.assertOperatorEquals;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
@@ -73,17 +74,16 @@ public class TestDistinctLimitOperator
                 .build();
 
         OperatorFactory operatorFactory = new DistinctLimitOperator.DistinctLimitOperatorFactory(0, new PlanNodeId("test"), ImmutableList.of(BIGINT), Ints.asList(0), 5, rowPagesBuilder.getHashChannel());
-        Operator operator = operatorFactory.createOperator(driverContext);
 
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT)
-                .row(1)
-                .row(2)
-                .row(3)
-                .row(4)
-                .row(5)
+                .row(1L)
+                .row(2L)
+                .row(3L)
+                .row(4L)
+                .row(5L)
                 .build();
 
-        OperatorAssertion.assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -97,15 +97,14 @@ public class TestDistinctLimitOperator
                 .build();
 
         OperatorFactory operatorFactory = new DistinctLimitOperator.DistinctLimitOperatorFactory(0, new PlanNodeId("test"), ImmutableList.of(BIGINT), Ints.asList(0), 3, rowPagesBuilder.getHashChannel());
-        Operator operator = operatorFactory.createOperator(driverContext);
 
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT)
-                .row(1)
-                .row(2)
-                .row(3)
+                .row(1L)
+                .row(2L)
+                .row(3L)
                 .build();
 
-        OperatorAssertion.assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -119,15 +118,14 @@ public class TestDistinctLimitOperator
                 .build();
 
         OperatorFactory operatorFactory = new DistinctLimitOperator.DistinctLimitOperatorFactory(0, new PlanNodeId("test"), ImmutableList.of(BIGINT), Ints.asList(0), 5, rowPagesBuilder.getHashChannel());
-        Operator operator = operatorFactory.createOperator(driverContext);
 
         MaterializedResult expected = resultBuilder(driverContext.getSession(), BIGINT)
-                .row(1)
-                .row(2)
-                .row(3)
-                .row(4)
+                .row(1L)
+                .row(2L)
+                .row(3L)
+                .row(4L)
                 .build();
 
-        OperatorAssertion.assertOperatorEquals(operator, input, expected);
+        assertOperatorEquals(operatorFactory, driverContext, input, expected);
     }
 }

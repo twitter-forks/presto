@@ -56,7 +56,7 @@ import static com.facebook.presto.spi.predicate.Range.greaterThan;
 import static com.facebook.presto.spi.predicate.Range.lessThanOrEqual;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DateType.DATE;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.testing.MaterializedResult.DEFAULT_PRECISION;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static io.airlift.json.JsonCodec.jsonCodec;
@@ -123,7 +123,8 @@ public class TestShardMetadataRecordCursor
                         new ColumnInfo(1, BIGINT),
                         new ColumnInfo(2, DATE)),
                 shards,
-                Optional.empty());
+                Optional.empty(),
+                0);
 
         Slice schema = utf8Slice(DEFAULT_TEST_ORDERS.getSchemaName());
         Slice table = utf8Slice(DEFAULT_TEST_ORDERS.getTableName());
@@ -132,8 +133,8 @@ public class TestShardMetadataRecordCursor
         DateTime date2 = DateTime.parse("2015-01-02T00:00");
         TupleDomain<Integer> tupleDomain = TupleDomain.withColumnDomains(
                 ImmutableMap.<Integer, Domain>builder()
-                        .put(0, Domain.singleValue(VARCHAR, schema))
-                        .put(1, Domain.create(ValueSet.ofRanges(lessThanOrEqual(VARCHAR, table)), true))
+                        .put(0, Domain.singleValue(createVarcharType(10), schema))
+                        .put(1, Domain.create(ValueSet.ofRanges(lessThanOrEqual(createVarcharType(10), table)), true))
                         .put(6, Domain.create(ValueSet.ofRanges(lessThanOrEqual(BIGINT, date1.getMillis()), greaterThan(BIGINT, date2.getMillis())), true))
                         .put(7, Domain.create(ValueSet.ofRanges(lessThanOrEqual(BIGINT, date1.getMillis()), greaterThan(BIGINT, date2.getMillis())), true))
                         .build());
@@ -145,9 +146,9 @@ public class TestShardMetadataRecordCursor
         assertEquals(actual.size(), 3);
 
         List<MaterializedRow> expected = ImmutableList.of(
-                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid1.toString()), null, 100, 10, 1, null, null),
-                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid2.toString()), null, 200, 20, 2, null, null),
-                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid3.toString()), null, 300, 30, 3, null, null));
+                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid1.toString()), null, 100L, 10L, 1L, null, null),
+                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid2.toString()), null, 200L, 20L, 2L, null, null),
+                new MaterializedRow(DEFAULT_PRECISION, schema, table, utf8Slice(uuid3.toString()), null, 300L, 30L, 3L, null, null));
 
         assertEquals(actual, expected);
     }
@@ -168,7 +169,7 @@ public class TestShardMetadataRecordCursor
 
         TupleDomain<Integer> tupleDomain = TupleDomain.withColumnDomains(
                 ImmutableMap.<Integer, Domain>builder()
-                        .put(1, Domain.singleValue(VARCHAR, utf8Slice("orders")))
+                        .put(1, Domain.singleValue(createVarcharType(10), utf8Slice("orders")))
                         .build());
 
         MetadataDao metadataDao = dummyHandle.attach(MetadataDao.class);
@@ -195,7 +196,7 @@ public class TestShardMetadataRecordCursor
 
         TupleDomain<Integer> tupleDomain = TupleDomain.withColumnDomains(
                 ImmutableMap.<Integer, Domain>builder()
-                        .put(0, Domain.singleValue(VARCHAR, utf8Slice("test")))
+                        .put(0, Domain.singleValue(createVarcharType(10), utf8Slice("test")))
                         .build());
 
         MetadataDao metadataDao = dummyHandle.attach(MetadataDao.class);

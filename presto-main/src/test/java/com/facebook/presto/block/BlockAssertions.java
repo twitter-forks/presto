@@ -18,10 +18,12 @@ import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.DictionaryBlock;
 import com.facebook.presto.spi.block.RunLengthEncodedBlock;
+import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.type.ArrayType;
 import io.airlift.slice.Slice;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -30,7 +32,10 @@ import java.util.List;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateType.DATE;
+import static com.facebook.presto.spi.type.Decimals.writeBigDecimal;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
@@ -38,6 +43,7 @@ import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.slice.Slices.wrappedIntArray;
+import static java.lang.Float.floatToRawIntBits;
 import static java.util.Objects.requireNonNull;
 import static org.testng.Assert.assertEquals;
 
@@ -197,6 +203,77 @@ public final class BlockAssertions
         return builder.build();
     }
 
+    public static Block createShortDecimalsBlock(String... values)
+    {
+        requireNonNull(values, "varargs 'values' is null");
+
+        return createShortDecimalsBlock(Arrays.asList(values));
+    }
+
+    public static Block createShortDecimalsBlock(Iterable<String> values)
+    {
+        DecimalType shortDecimalType = DecimalType.createDecimalType(1);
+        BlockBuilder builder = shortDecimalType.createBlockBuilder(new BlockBuilderStatus(), 100);
+
+        for (String value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                shortDecimalType.writeLong(builder, new BigDecimal(value).unscaledValue().longValue());
+            }
+        }
+
+        return builder.build();
+    }
+
+    public static Block createLongDecimalsBlock(String... values)
+    {
+        requireNonNull(values, "varargs 'values' is null");
+
+        return createLongDecimalsBlock(Arrays.asList(values));
+    }
+
+    public static Block createLongDecimalsBlock(Iterable<String> values)
+    {
+        DecimalType longDecimalType = (DecimalType) DecimalType.createDecimalType(18);
+        BlockBuilder builder = longDecimalType.createBlockBuilder(new BlockBuilderStatus(), 100);
+
+        for (String value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                writeBigDecimal(longDecimalType, builder, new BigDecimal(value));
+            }
+        }
+
+        return builder.build();
+    }
+
+    public static Block createIntsBlock(Integer... values)
+    {
+        requireNonNull(values, "varargs 'values' is null");
+
+        return createIntsBlock(Arrays.asList(values));
+    }
+
+    public static Block createIntsBlock(Iterable<Integer> values)
+    {
+        BlockBuilder builder = INTEGER.createBlockBuilder(new BlockBuilderStatus(), 100);
+
+        for (Integer value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                INTEGER.writeLong(builder, value);
+            }
+        }
+
+        return builder.build();
+    }
+
     public static Block createEmptyLongsBlock()
     {
         return BIGINT.createFixedSizeBlockBuilder(0).build();
@@ -223,14 +300,19 @@ public final class BlockAssertions
 
     public static Block createLongsBlock(Iterable<Long> values)
     {
-        BlockBuilder builder = BIGINT.createBlockBuilder(new BlockBuilderStatus(), 100);
+        return createTypedLongsBlock(BIGINT, values);
+    }
+
+    public static Block createTypedLongsBlock(Type type, Iterable<Long> values)
+    {
+        BlockBuilder builder = type.createBlockBuilder(new BlockBuilderStatus(), 100);
 
         for (Long value : values) {
             if (value == null) {
                 builder.appendNull();
             }
             else {
-                BIGINT.writeLong(builder, value);
+                type.writeLong(builder, value);
             }
         }
 
@@ -288,6 +370,38 @@ public final class BlockAssertions
 
         for (int i = start; i < end; i++) {
             BOOLEAN.writeBoolean(builder, i % 2 == 0);
+        }
+
+        return builder.build();
+    }
+
+    public static Block createBlockOfReals(Float... values)
+    {
+        requireNonNull(values, "varargs 'values' is null");
+
+        return createBlockOfReals(Arrays.asList(values));
+    }
+
+    private static Block createBlockOfReals(Iterable<Float> values)
+    {
+        BlockBuilder builder = REAL.createBlockBuilder(new BlockBuilderStatus(), 100);
+        for (Float value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                REAL.writeLong(builder, floatToRawIntBits(value));
+            }
+        }
+        return builder.build();
+    }
+
+    public static Block createSequenceBlockOfReal(int start, int end)
+    {
+        BlockBuilder builder = REAL.createFixedSizeBlockBuilder(end - start);
+
+        for (int i = start; i < end; i++) {
+            REAL.writeLong(builder, floatToRawIntBits((float) i));
         }
 
         return builder.build();

@@ -15,6 +15,7 @@ package com.facebook.presto.operator;
 
 import com.facebook.presto.SequencePageBuilder;
 import com.facebook.presto.Session;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.index.PageRecordSet;
 import com.facebook.presto.spi.ColumnHandle;
@@ -71,13 +72,13 @@ public class TestScanFilterAndProjectOperator
                         return new FixedPageSource(ImmutableList.of(input));
                     }
                 },
-                new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
+                () -> new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 () -> new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 ImmutableList.<ColumnHandle>of(),
                 ImmutableList.<Type>of(VARCHAR));
 
         SourceOperator operator = factory.createOperator(driverContext);
-        operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
+        operator.addSplit(new Split(new ConnectorId("test"), TestingTransactionHandle.create(), TestingSplit.createLocalSplit()));
         operator.noMoreSplits();
 
         MaterializedResult expected = toMaterializedResult(driverContext.getSession(), ImmutableList.<Type>of(VARCHAR), ImmutableList.of(input));
@@ -105,13 +106,13 @@ public class TestScanFilterAndProjectOperator
                         return new RecordPageSource(new PageRecordSet(ImmutableList.<Type>of(VARCHAR), input));
                     }
                 },
-                new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
+                () -> new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 () -> new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, ImmutableList.of(singleColumn(VARCHAR, 0))),
                 ImmutableList.<ColumnHandle>of(),
                 ImmutableList.<Type>of(VARCHAR));
 
         SourceOperator operator = factory.createOperator(driverContext);
-        operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
+        operator.addSplit(new Split(new ConnectorId("test"), TestingTransactionHandle.create(), TestingSplit.createLocalSplit()));
         operator.noMoreSplits();
 
         MaterializedResult expected = toMaterializedResult(driverContext.getSession(), ImmutableList.<Type>of(VARCHAR), ImmutableList.of(input));

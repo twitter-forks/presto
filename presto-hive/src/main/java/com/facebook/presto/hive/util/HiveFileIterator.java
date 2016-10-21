@@ -97,7 +97,7 @@ public class HiveFileIterator
             return endOfData();
         }
         catch (IOException e) {
-            throw new PrestoException(HIVE_FILESYSTEM_ERROR, e);
+            throw new PrestoException(HIVE_FILESYSTEM_ERROR, "Failed to list directory: " + path, e);
         }
     }
 

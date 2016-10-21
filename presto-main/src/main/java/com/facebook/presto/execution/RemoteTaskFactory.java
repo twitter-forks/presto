@@ -27,9 +27,9 @@ public interface RemoteTaskFactory
     RemoteTask createRemoteTask(Session session,
             TaskId taskId,
             Node node,
-            int partition,
             PlanFragment fragment,
             Multimap<PlanNodeId, Split> initialSplits,
             OutputBuffers outputBuffers,
-            PartitionedSplitCountTracker partitionedSplitCountTracker);
+            PartitionedSplitCountTracker partitionedSplitCountTracker,
+            boolean summarizeTaskInfo);
 }

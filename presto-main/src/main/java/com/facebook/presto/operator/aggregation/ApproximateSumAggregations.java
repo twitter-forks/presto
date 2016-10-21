@@ -15,19 +15,25 @@ package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.operator.aggregation.state.VarianceState;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AggregationFunction;
+import com.facebook.presto.spi.function.CombineFunction;
+import com.facebook.presto.spi.function.InputFunction;
+import com.facebook.presto.spi.function.OutputFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.type.SqlType;
 import io.airlift.slice.Slices;
 
 import static com.facebook.presto.operator.aggregation.AggregationUtils.mergeVarianceState;
 import static com.facebook.presto.operator.aggregation.AggregationUtils.updateVarianceState;
 import static com.facebook.presto.operator.aggregation.ApproximateUtils.formatApproximateResult;
 import static com.facebook.presto.operator.aggregation.ApproximateUtils.sumError;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 
 @AggregationFunction(value = "sum", approximate = true)
 public final class ApproximateSumAggregations
 {
+    private static final int OUTPUT_VARCHAR_SIZE = 57;
+
     private ApproximateSumAggregations() {}
 
     @InputFunction
@@ -46,7 +52,7 @@ public final class ApproximateSumAggregations
         mergeVarianceState(state, otherState);
     }
 
-    @OutputFunction(StandardTypes.VARCHAR)
+    @OutputFunction("varchar(57)")
     public static void output(ApproximateDoubleSumState state, double confidence, BlockBuilder out)
     {
         if (state.getWeightedCount() == 0) {
@@ -59,7 +65,7 @@ public final class ApproximateSumAggregations
                 sumError(state.getCount(), state.getWeightedCount(), state.getM2(), state.getMean()),
                 confidence,
                 false);
-        VARCHAR.writeSlice(out, Slices.utf8Slice(result));
+        createVarcharType(OUTPUT_VARCHAR_SIZE).writeSlice(out, Slices.utf8Slice(result));
     }
 
     @InputFunction
@@ -78,7 +84,7 @@ public final class ApproximateSumAggregations
         mergeVarianceState(state, otherState);
     }
 
-    @OutputFunction(StandardTypes.VARCHAR)
+    @OutputFunction("varchar(57)")
     public static void evaluateFinal(ApproximateLongSumState state, double confidence, BlockBuilder out)
     {
         if (state.getWeightedCount() == 0) {
@@ -91,7 +97,7 @@ public final class ApproximateSumAggregations
                 sumError(state.getCount(), state.getWeightedCount(), state.getM2(), state.getMean()),
                 confidence,
                 true);
-        VARCHAR.writeSlice(out, Slices.utf8Slice(result));
+        createVarcharType(OUTPUT_VARCHAR_SIZE).writeSlice(out, Slices.utf8Slice(result));
     }
 
     public interface ApproximateDoubleSumState

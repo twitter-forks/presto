@@ -46,6 +46,10 @@ import static com.facebook.presto.orc.metadata.Stream.StreamKind.PRESENT;
 import static com.facebook.presto.orc.metadata.Stream.StreamKind.ROW_GROUP_DICTIONARY;
 import static com.facebook.presto.orc.metadata.Stream.StreamKind.ROW_GROUP_DICTIONARY_LENGTH;
 import static com.facebook.presto.orc.stream.MissingStreamSource.missingStreamSource;
+import static com.facebook.presto.spi.type.Chars.isCharType;
+import static com.facebook.presto.spi.type.Chars.trimSpacesAndTruncateToLength;
+import static com.facebook.presto.spi.type.Varchars.isVarcharType;
+import static com.facebook.presto.spi.type.Varchars.truncateToLength;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
@@ -117,7 +121,7 @@ public class SliceDictionaryStreamReader
             throws IOException
     {
         if (!rowGroupOpen) {
-            openRowGroup();
+            openRowGroup(type);
         }
 
         if (readOffset > 0) {
@@ -216,7 +220,7 @@ public class SliceDictionaryStreamReader
         return new SliceArrayBlock(dictionary.length, dictionary, true);
     }
 
-    private void openRowGroup()
+    private void openRowGroup(Type type)
             throws IOException
     {
         // read the dictionary
@@ -235,7 +239,7 @@ public class SliceDictionaryStreamReader
                 lengthStream.nextIntVector(dictionarySize, dictionaryLength);
 
                 ByteArrayStream dictionaryDataStream = dictionaryDataStreamSource.openStream();
-                readDictionary(dictionaryDataStream, dictionarySize, dictionaryLength, dictionary);
+                readDictionary(dictionaryDataStream, dictionarySize, dictionaryLength, dictionary, type);
             }
         }
         dictionaryOpen = true;
@@ -255,7 +259,7 @@ public class SliceDictionaryStreamReader
             dictionaryLengthStream.nextIntVector(rowGroupDictionarySize, rowGroupDictionaryLength);
 
             ByteArrayStream dictionaryDataStream = rowGroupDictionaryDataStreamSource.openStream();
-            readDictionary(dictionaryDataStream, rowGroupDictionarySize, rowGroupDictionaryLength, rowGroupDictionary);
+            readDictionary(dictionaryDataStream, rowGroupDictionarySize, rowGroupDictionaryLength, rowGroupDictionary, type);
         }
 
         presentStream = presentStreamSource.openStream();
@@ -265,7 +269,7 @@ public class SliceDictionaryStreamReader
         rowGroupOpen = true;
     }
 
-    private static void readDictionary(@Nullable ByteArrayStream dictionaryDataStream, int dictionarySize, int[] dictionaryLength, Slice[] dictionary)
+    private static void readDictionary(@Nullable ByteArrayStream dictionaryDataStream, int dictionarySize, int[] dictionaryLength, Slice[] dictionary, Type type)
             throws IOException
     {
         // build dictionary slices
@@ -275,7 +279,14 @@ public class SliceDictionaryStreamReader
                 dictionary[i] = Slices.EMPTY_SLICE;
             }
             else {
-                dictionary[i] = Slices.wrappedBuffer(dictionaryDataStream.next(length));
+                Slice value = Slices.wrappedBuffer(dictionaryDataStream.next(length));
+                if (isVarcharType(type)) {
+                    value = truncateToLength(value, type);
+                }
+                if (isCharType(type)) {
+                    value = trimSpacesAndTruncateToLength(value, type);
+                }
+                dictionary[i] = value;
             }
         }
     }

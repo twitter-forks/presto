@@ -13,10 +13,12 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.metastore.HivePageSinkMetadata;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 
 import java.util.List;
+import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
@@ -27,7 +29,9 @@ public class HiveWritableTableHandle
     private final String tableName;
     private final List<HiveColumnHandle> inputColumns;
     private final String filePrefix;
+    private HivePageSinkMetadata pageSinkMetadata;
     private final LocationHandle locationHandle;
+    private final Optional<HiveBucketProperty> bucketProperty;
     private final HiveStorageFormat tableStorageFormat;
     private final HiveStorageFormat partitionStorageFormat;
 
@@ -37,7 +41,9 @@ public class HiveWritableTableHandle
             String tableName,
             List<HiveColumnHandle> inputColumns,
             String filePrefix,
+            HivePageSinkMetadata pageSinkMetadata,
             LocationHandle locationHandle,
+            Optional<HiveBucketProperty> bucketProperty,
             HiveStorageFormat tableStorageFormat,
             HiveStorageFormat partitionStorageFormat)
     {
@@ -46,7 +52,9 @@ public class HiveWritableTableHandle
         this.tableName = requireNonNull(tableName, "tableName is null");
         this.inputColumns = ImmutableList.copyOf(requireNonNull(inputColumns, "inputColumns is null"));
         this.filePrefix = requireNonNull(filePrefix, "filePrefix is null");
+        this.pageSinkMetadata = requireNonNull(pageSinkMetadata, "pageSinkMetadata is null");
         this.locationHandle = requireNonNull(locationHandle, "locationHandle is null");
+        this.bucketProperty = requireNonNull(bucketProperty, "bucketProperty is null");
         this.tableStorageFormat = requireNonNull(tableStorageFormat, "tableStorageFormat is null");
         this.partitionStorageFormat = requireNonNull(partitionStorageFormat, "partitionStorageFormat is null");
     }
@@ -82,9 +90,21 @@ public class HiveWritableTableHandle
     }
 
     @JsonProperty
+    public HivePageSinkMetadata getPageSinkMetadata()
+    {
+        return pageSinkMetadata;
+    }
+
+    @JsonProperty
     public LocationHandle getLocationHandle()
     {
         return locationHandle;
+    }
+
+    @JsonProperty
+    public Optional<HiveBucketProperty> getBucketProperty()
+    {
+        return bucketProperty;
     }
 
     @JsonProperty

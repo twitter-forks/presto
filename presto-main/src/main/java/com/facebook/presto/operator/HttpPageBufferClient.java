@@ -41,10 +41,14 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
+import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.util.List;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -95,7 +99,7 @@ public final class HttpPageBufferClient
      */
     public interface ClientCallback
     {
-        void addPage(HttpPageBufferClient client, Page page);
+        boolean addPages(HttpPageBufferClient client, List<Page> pages);
 
         void requestComplete(HttpPageBufferClient client);
 
@@ -134,6 +138,9 @@ public final class HttpPageBufferClient
 
     private final AtomicLong rowsReceived = new AtomicLong();
     private final AtomicInteger pagesReceived = new AtomicInteger();
+
+    private final AtomicLong rowsRejected = new AtomicLong();
+    private final AtomicInteger pagesRejected = new AtomicInteger();
 
     private final AtomicInteger requestsScheduled = new AtomicInteger();
     private final AtomicInteger requestsCompleted = new AtomicInteger();
@@ -193,12 +200,18 @@ public final class HttpPageBufferClient
         if (future != null) {
             httpRequestState = future.getState();
         }
+
+        long rejectedRows = rowsRejected.get();
+        int rejectedPages = pagesRejected.get();
+
         return new PageBufferClientStatus(
                 location,
                 state,
                 lastUpdate,
                 rowsReceived.get(),
                 pagesReceived.get(),
+                rejectedRows == 0 ? OptionalLong.empty() : OptionalLong.of(rejectedRows),
+                rejectedPages == 0 ? OptionalInt.empty() : OptionalInt.of(rejectedPages),
                 requestsScheduled.get(),
                 requestsCompleted.get(),
                 requestsFailed.get(),
@@ -227,7 +240,7 @@ public final class HttpPageBufferClient
             lastUpdate = DateTime.now();
         }
 
-        if (future != null) {
+        if (future != null && !future.isDone()) {
             future.cancel(true);
         }
 
@@ -324,10 +337,13 @@ public final class HttpPageBufferClient
                 }
 
                 // add pages
-                for (Page page : pages) {
-                    pagesReceived.incrementAndGet();
-                    rowsReceived.addAndGet(page.getPositionCount());
-                    clientCallback.addPage(HttpPageBufferClient.this, page);
+                if (clientCallback.addPages(HttpPageBufferClient.this, pages)) {
+                    pagesReceived.addAndGet(pages.size());
+                    rowsReceived.addAndGet(pages.stream().mapToLong(Page::getPositionCount).sum());
+                }
+                else {
+                    pagesRejected.addAndGet(pages.size());
+                    rowsRejected.addAndGet(pages.stream().mapToLong(Page::getPositionCount).sum());
                 }
 
                 synchronized (HttpPageBufferClient.this) {
@@ -527,37 +543,57 @@ public final class HttpPageBufferClient
         @Override
         public PagesResponse handle(Request request, Response response)
         {
-            // no content means no content was created within the wait period, but query is still ok
-            // if job is finished, complete is set in the response
-            if (response.getStatusCode() == HttpStatus.NO_CONTENT.code()) {
-                return createEmptyPagesResponse(getTaskInstanceId(response), getToken(response), getNextToken(response), getComplete(response));
-            }
+            try {
+                // no content means no content was created within the wait period, but query is still ok
+                // if job is finished, complete is set in the response
+                if (response.getStatusCode() == HttpStatus.NO_CONTENT.code()) {
+                    return createEmptyPagesResponse(getTaskInstanceId(response), getToken(response), getNextToken(response), getComplete(response));
+                }
 
-            // otherwise we must have gotten an OK response, everything else is considered fatal
-            if (response.getStatusCode() != HttpStatus.OK.code()) {
-                throw new PageTransportErrorException(format("Expected response code to be 200, but was %s %s: %s", response.getStatusCode(), response.getStatusMessage(), request.getUri()));
-            }
+                // otherwise we must have gotten an OK response, everything else is considered fatal
+                if (response.getStatusCode() != HttpStatus.OK.code()) {
+                    StringBuilder body = new StringBuilder();
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(response.getInputStream()))) {
+                        // Get up to 1000 lines for debugging
+                        for (int i = 0; i < 1000; i++) {
+                            String line = reader.readLine();
+                            // Don't output more than 100KB
+                            if (line == null || body.length() + line.length() > 100 * 1024) {
+                                break;
+                            }
+                            body.append(line + "\n");
+                        }
+                    }
+                    catch (RuntimeException | IOException e) {
+                        // Ignored. Just return whatever message we were able to decode
+                    }
+                    throw new PageTransportErrorException(format("Expected response code to be 200, but was %s %s:%n%s", response.getStatusCode(), response.getStatusMessage(), body.toString()));
+                }
 
-            // invalid content type can happen when an error page is returned, but is unlikely given the above 200
-            String contentType = response.getHeader(CONTENT_TYPE);
-            if (contentType == null) {
-                throw new PageTransportErrorException(format("%s header is not set: %s %s", CONTENT_TYPE, request.getUri(), response));
-            }
-            if (!mediaTypeMatches(contentType, PRESTO_PAGES_TYPE)) {
-                throw new PageTransportErrorException(format("Expected %s response from server but got %s: %s", PRESTO_PAGES_TYPE, contentType, request.getUri()));
-            }
+                // invalid content type can happen when an error page is returned, but is unlikely given the above 200
+                String contentType = response.getHeader(CONTENT_TYPE);
+                if (contentType == null) {
+                    throw new PageTransportErrorException(format("%s header is not set: %s", CONTENT_TYPE, response));
+                }
+                if (!mediaTypeMatches(contentType, PRESTO_PAGES_TYPE)) {
+                    throw new PageTransportErrorException(format("Expected %s response from server but got %s", PRESTO_PAGES_TYPE, contentType));
+                }
 
-            String taskInstanceId = getTaskInstanceId(response);
-            long token = getToken(response);
-            long nextToken = getNextToken(response);
-            boolean complete = getComplete(response);
+                String taskInstanceId = getTaskInstanceId(response);
+                long token = getToken(response);
+                long nextToken = getNextToken(response);
+                boolean complete = getComplete(response);
 
-            try (SliceInput input = new InputStreamSliceInput(response.getInputStream())) {
-                List<Page> pages = ImmutableList.copyOf(readPages(blockEncodingSerde, input));
-                return createPagesResponse(taskInstanceId, token, nextToken, pages, complete);
+                try (SliceInput input = new InputStreamSliceInput(response.getInputStream())) {
+                    List<Page> pages = ImmutableList.copyOf(readPages(blockEncodingSerde, input));
+                    return createPagesResponse(taskInstanceId, token, nextToken, pages, complete);
+                }
+                catch (IOException e) {
+                    throw Throwables.propagate(e);
+                }
             }
-            catch (IOException e) {
-                throw Throwables.propagate(e);
+            catch (PageTransportErrorException e) {
+                throw new PageTransportErrorException(format("Error fetching %s: %s", request.getUri().toASCIIString(), e.getMessage()), e);
             }
         }
 

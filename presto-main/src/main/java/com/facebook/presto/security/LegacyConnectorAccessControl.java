@@ -32,6 +32,24 @@ public class LegacyConnectorAccessControl
     }
 
     @Override
+    public void checkCanCreateSchema(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName)
+    {
+        accessControl.checkCanCreateSchema(identity, schemaName);
+    }
+
+    @Override
+    public void checkCanDropSchema(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName)
+    {
+        accessControl.checkCanDropSchema(identity, schemaName);
+    }
+
+    @Override
+    public void checkCanRenameSchema(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName, String newSchemaName)
+    {
+        accessControl.checkCanRenameSchema(identity, schemaName, newSchemaName);
+    }
+
+    @Override
     public void checkCanCreateTable(ConnectorTransactionHandle transactionHandle, Identity identity, SchemaTableName tableName)
     {
         accessControl.checkCanCreateTable(identity, tableName);
@@ -116,8 +134,14 @@ public class LegacyConnectorAccessControl
     }
 
     @Override
-    public void checkCanGrantTablePrivilege(Identity identity, Privilege privilege, SchemaTableName tableName)
+    public void checkCanGrantTablePrivilege(ConnectorTransactionHandle transactionHandle, Identity identity, Privilege privilege, SchemaTableName tableName)
     {
         accessControl.checkCanGrantTablePrivilege(identity, privilege, tableName);
+    }
+
+    @Override
+    public void checkCanRevokeTablePrivilege(ConnectorTransactionHandle transactionHandle, Identity identity, Privilege privilege, SchemaTableName tableName)
+    {
+        accessControl.checkCanRevokeTablePrivilege(identity, privilege, tableName);
     }
 }

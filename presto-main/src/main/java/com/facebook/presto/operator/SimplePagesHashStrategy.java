@@ -39,6 +39,7 @@ public class SimplePagesHashStrategy
     {
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
         this.channels = ImmutableList.copyOf(requireNonNull(channels, "channels is null"));
+
         checkArgument(types.size() == channels.size(), "Expected types and channels to be the same length");
         this.hashChannels = ImmutableList.copyOf(requireNonNull(hashChannels, "hashChannels is null"));
         if (precomputedHashChannel.isPresent()) {
@@ -77,12 +78,12 @@ public class SimplePagesHashStrategy
     }
 
     @Override
-    public int hashPosition(int blockIndex, int position)
+    public long hashPosition(int blockIndex, int position)
     {
         if (precomputedHashChannel != null) {
-            return (int) BIGINT.getLong(precomputedHashChannel.get(blockIndex), position);
+            return BIGINT.getLong(precomputedHashChannel.get(blockIndex), position);
         }
-        int result = 0;
+        long result = 0;
         for (int hashChannel : hashChannels) {
             Type type = types.get(hashChannel);
             Block block = channels.get(hashChannel).get(blockIndex);
@@ -92,26 +93,26 @@ public class SimplePagesHashStrategy
     }
 
     @Override
-    public int hashRow(int position, Block... blocks)
+    public long hashRow(int position, Page page)
     {
-        int result = 0;
+        long result = 0;
         for (int i = 0; i < hashChannels.size(); i++) {
             int hashChannel = hashChannels.get(i);
             Type type = types.get(hashChannel);
-            Block block = blocks[i];
+            Block block = page.getBlock(i);
             result = result * 31 + TypeUtils.hashPosition(type, block, position);
         }
         return result;
     }
 
     @Override
-    public boolean rowEqualsRow(int leftPosition, Block[] leftBlocks, int rightPosition, Block[] rightBlocks)
+    public boolean rowEqualsRow(int leftPosition, Page leftPage, int rightPosition, Page rightPage)
     {
         for (int i = 0; i < hashChannels.size(); i++) {
             int hashChannel = hashChannels.get(i);
             Type type = types.get(hashChannel);
-            Block leftBlock = leftBlocks[i];
-            Block rightBlock = rightBlocks[i];
+            Block leftBlock = leftPage.getBlock(i);
+            Block rightBlock = rightPage.getBlock(i);
             if (!TypeUtils.positionEqualsPosition(type, leftBlock, leftPosition, rightBlock, rightPosition)) {
                 return false;
             }
@@ -120,13 +121,13 @@ public class SimplePagesHashStrategy
     }
 
     @Override
-    public boolean positionEqualsRow(int leftBlockIndex, int leftPosition, int rightPosition, Block... rightBlocks)
+    public boolean positionEqualsRow(int leftBlockIndex, int leftPosition, int rightPosition, Page rightPage)
     {
         for (int i = 0; i < hashChannels.size(); i++) {
             int hashChannel = hashChannels.get(i);
             Type type = types.get(hashChannel);
             Block leftBlock = channels.get(hashChannel).get(leftBlockIndex);
-            Block rightBlock = rightBlocks[i];
+            Block rightBlock = rightPage.getBlock(i);
             if (!TypeUtils.positionEqualsPosition(type, leftBlock, leftPosition, rightBlock, rightPosition)) {
                 return false;
             }
@@ -135,13 +136,28 @@ public class SimplePagesHashStrategy
     }
 
     @Override
-    public boolean positionEqualsRow(int leftBlockIndex, int leftPosition, int rightPosition, Page page, int[] rightChannels)
+    public boolean positionEqualsRowIgnoreNulls(int leftBlockIndex, int leftPosition, int rightPosition, Page rightPage)
     {
         for (int i = 0; i < hashChannels.size(); i++) {
             int hashChannel = hashChannels.get(i);
             Type type = types.get(hashChannel);
             Block leftBlock = channels.get(hashChannel).get(leftBlockIndex);
-            Block rightBlock = page.getBlock(rightChannels[i]);
+            Block rightBlock = rightPage.getBlock(i);
+            if (!type.equalTo(leftBlock, leftPosition, rightBlock, rightPosition)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean positionEqualsRow(int leftBlockIndex, int leftPosition, int rightPosition, Page page, int[] rightHashChannels)
+    {
+        for (int i = 0; i < hashChannels.size(); i++) {
+            int hashChannel = hashChannels.get(i);
+            Type type = types.get(hashChannel);
+            Block leftBlock = channels.get(hashChannel).get(leftBlockIndex);
+            Block rightBlock = page.getBlock(rightHashChannels[i]);
             if (!TypeUtils.positionEqualsPosition(type, leftBlock, leftPosition, rightBlock, rightPosition)) {
                 return false;
             }
@@ -161,7 +177,34 @@ public class SimplePagesHashStrategy
                 return false;
             }
         }
-
         return true;
+    }
+
+    @Override
+    public boolean positionEqualsPositionIgnoreNulls(int leftBlockIndex, int leftPosition, int rightBlockIndex, int rightPosition)
+    {
+        for (int hashChannel : hashChannels) {
+            Type type = types.get(hashChannel);
+            List<Block> channel = channels.get(hashChannel);
+            Block leftBlock = channel.get(leftBlockIndex);
+            Block rightBlock = channel.get(rightBlockIndex);
+            if (!type.equalTo(leftBlock, leftPosition, rightBlock, rightPosition)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    public boolean isPositionNull(int blockIndex, int blockPosition)
+    {
+        for (int hashChannel : hashChannels) {
+            List<Block> channel = channels.get(hashChannel);
+            Block block = channel.get(blockIndex);
+            if (block.isNull(blockPosition)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

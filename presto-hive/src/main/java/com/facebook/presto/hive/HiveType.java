@@ -14,39 +14,43 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.type.NamedTypeSignature;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
-import com.facebook.presto.spi.type.VarcharType;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.collect.ImmutableList;
-import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
+import org.apache.hadoop.hive.serde2.typeinfo.CharTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.DecimalTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.VarcharTypeInfo;
 
 import javax.annotation.Nonnull;
 
 import java.util.List;
 
-import static com.facebook.presto.hive.HiveUtil.isArrayType;
-import static com.facebook.presto.hive.HiveUtil.isMapType;
-import static com.facebook.presto.hive.HiveUtil.isRowType;
 import static com.facebook.presto.hive.util.Types.checkType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.CharType.createCharType;
 import static com.facebook.presto.spi.type.DateType.DATE;
+import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
+import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
+import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -57,9 +61,6 @@ import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.byteTypeInf
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.dateTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.doubleTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.floatTypeInfo;
-import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.getListTypeInfo;
-import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.getMapTypeInfo;
-import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.getStructTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.intTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.longTypeInfo;
 import static org.apache.hadoop.hive.serde2.typeinfo.TypeInfoFactory.shortTypeInfo;
@@ -149,12 +150,16 @@ public final class HiveType
         return hiveTypeName;
     }
 
+    public boolean isSupportedType()
+    {
+        return isSupportedType(getTypeInfo());
+    }
+
     public static boolean isSupportedType(TypeInfo typeInfo)
     {
         switch (typeInfo.getCategory()) {
             case PRIMITIVE:
-                PrimitiveObjectInspector.PrimitiveCategory primitiveCategory = ((PrimitiveTypeInfo) typeInfo).getPrimitiveCategory();
-                return getPrimitiveType(primitiveCategory) != null;
+                return getPrimitiveType((PrimitiveTypeInfo) typeInfo) != null;
             case MAP:
                 MapTypeInfo mapTypeInfo = checkType(typeInfo, MapTypeInfo.class, "typeInfo");
                 return isSupportedType(mapTypeInfo.getMapKeyTypeInfo()) && isSupportedType(mapTypeInfo.getMapValueTypeInfo());
@@ -187,71 +192,18 @@ public final class HiveType
     }
 
     @Nonnull
-    public static HiveType toHiveType(TypeInfo typeInfo)
+    private static HiveType toHiveType(TypeInfo typeInfo)
     {
         requireNonNull(typeInfo, "typeInfo is null");
-        if (!isSupportedType(typeInfo)) {
-            throw new PrestoException(NOT_SUPPORTED, format("Unsupported Hive type: %s", typeInfo));
-        }
         return new HiveType(typeInfo);
     }
 
     @Nonnull
-    public static HiveType toHiveType(Type type)
+    public static HiveType toHiveType(TypeTranslator typeTranslator, Type type)
     {
+        requireNonNull(typeTranslator, "typeTranslator is null");
         requireNonNull(type, "type is null");
-        return new HiveType(toTypeInfo(type));
-    }
-
-    @Nonnull
-    private static TypeInfo toTypeInfo(Type type)
-    {
-        if (BOOLEAN.equals(type)) {
-            return HIVE_BOOLEAN.typeInfo;
-        }
-        if (BIGINT.equals(type)) {
-            return HIVE_LONG.typeInfo;
-        }
-        if (DOUBLE.equals(type)) {
-            return HIVE_DOUBLE.typeInfo;
-        }
-        if (type instanceof VarcharType) {
-            return HIVE_STRING.typeInfo;
-        }
-        if (VARBINARY.equals(type)) {
-            return HIVE_BINARY.typeInfo;
-        }
-        if (DATE.equals(type)) {
-            return HIVE_DATE.typeInfo;
-        }
-        if (TIMESTAMP.equals(type)) {
-            return HIVE_TIMESTAMP.typeInfo;
-        }
-        if (isArrayType(type)) {
-            TypeInfo elementType = toTypeInfo(type.getTypeParameters().get(0));
-            return getListTypeInfo(elementType);
-        }
-        if (isMapType(type)) {
-            TypeInfo keyType = toTypeInfo(type.getTypeParameters().get(0));
-            TypeInfo valueType = toTypeInfo(type.getTypeParameters().get(1));
-            return getMapTypeInfo(keyType, valueType);
-        }
-        if (isRowType(type)) {
-            ImmutableList.Builder<String> fieldNames = ImmutableList.builder();
-            for (TypeSignatureParameter parameter : type.getTypeSignature().getParameters()) {
-                if (!parameter.isNamedTypeSignature()) {
-                    throw new IllegalArgumentException(format("Expected all parameters to be named type, but got %s", parameter));
-                }
-                NamedTypeSignature namedTypeSignature = parameter.getNamedTypeSignature();
-                fieldNames.add(namedTypeSignature.getName());
-            }
-            return getStructTypeInfo(
-                    fieldNames.build(),
-                    type.getTypeParameters().stream()
-                            .map(HiveType::toTypeInfo)
-                            .collect(toList()));
-        }
-        throw new PrestoException(NOT_SUPPORTED, format("Unsupported Hive type: %s", type));
+        return new HiveType(typeTranslator.translate(type));
     }
 
     @Nonnull
@@ -259,8 +211,7 @@ public final class HiveType
     {
         switch (typeInfo.getCategory()) {
             case PRIMITIVE:
-                PrimitiveObjectInspector.PrimitiveCategory primitiveCategory = ((PrimitiveTypeInfo) typeInfo).getPrimitiveCategory();
-                Type primitiveType = getPrimitiveType(primitiveCategory);
+                Type primitiveType = getPrimitiveType((PrimitiveTypeInfo) typeInfo);
                 if (primitiveType == null) {
                     break;
                 }
@@ -289,31 +240,38 @@ public final class HiveType
         throw new PrestoException(NOT_SUPPORTED, format("Unsupported Hive type: %s", typeInfo));
     }
 
-    private static Type getPrimitiveType(PrimitiveObjectInspector.PrimitiveCategory primitiveCategory)
+    public static Type getPrimitiveType(PrimitiveTypeInfo typeInfo)
     {
-        switch (primitiveCategory) {
+        switch (typeInfo.getPrimitiveCategory()) {
             case BOOLEAN:
                 return BOOLEAN;
             case BYTE:
-                return BIGINT;
+                return TINYINT;
             case SHORT:
-                return BIGINT;
+                return SMALLINT;
             case INT:
-                return BIGINT;
+                return INTEGER;
             case LONG:
                 return BIGINT;
             case FLOAT:
-                return DOUBLE;
+                return REAL;
             case DOUBLE:
                 return DOUBLE;
             case STRING:
-                return VARCHAR;
+                return createUnboundedVarcharType();
+            case VARCHAR:
+                return createVarcharType(((VarcharTypeInfo) typeInfo).getLength());
+            case CHAR:
+                return createCharType(((CharTypeInfo) typeInfo).getLength());
             case DATE:
                 return DATE;
             case TIMESTAMP:
                 return TIMESTAMP;
             case BINARY:
                 return VARBINARY;
+            case DECIMAL:
+                DecimalTypeInfo decimalTypeInfo = (DecimalTypeInfo) typeInfo;
+                return createDecimalType(decimalTypeInfo.precision(), decimalTypeInfo.scale());
             default:
                 return null;
         }

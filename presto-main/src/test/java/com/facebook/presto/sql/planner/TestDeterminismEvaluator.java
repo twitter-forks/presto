@@ -32,6 +32,7 @@ public class TestDeterminismEvaluator
     {
         assertFalse(DeterminismEvaluator.isDeterministic(function("rand")));
         assertFalse(DeterminismEvaluator.isDeterministic(function("random")));
+        assertFalse(DeterminismEvaluator.isDeterministic(function("shuffle")));
         assertTrue(DeterminismEvaluator.isDeterministic(function("abs", input("symbol"))));
         assertFalse(DeterminismEvaluator.isDeterministic(function("abs", function("rand"))));
         assertTrue(DeterminismEvaluator.isDeterministic(function("abs", function("abs", input("symbol")))));
@@ -39,7 +40,7 @@ public class TestDeterminismEvaluator
 
     private static FunctionCall function(String name, Expression... inputs)
     {
-        return new FunctionCall(new QualifiedName(name), Arrays.asList(inputs));
+        return new FunctionCall(QualifiedName.of(name), Arrays.asList(inputs));
     }
 
     private static QualifiedNameReference input(String symbol)

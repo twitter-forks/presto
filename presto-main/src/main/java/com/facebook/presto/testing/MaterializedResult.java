@@ -21,6 +21,7 @@ import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.SqlDate;
+import com.facebook.presto.spi.type.SqlDecimal;
 import com.facebook.presto.spi.type.SqlTime;
 import com.facebook.presto.spi.type.SqlTimeWithTimeZone;
 import com.facebook.presto.spi.type.SqlTimestamp;
@@ -56,18 +57,23 @@ import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateTimeEncoding.packDateTimeWithZone;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
+import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
 import static com.facebook.presto.spi.type.StandardTypes.MAP;
 import static com.facebook.presto.spi.type.TimeType.TIME;
 import static com.facebook.presto.spi.type.TimeWithTimeZoneType.TIME_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
+import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static java.lang.Float.floatToRawIntBits;
 import static java.util.Objects.requireNonNull;
 
 public class MaterializedResult
@@ -190,6 +196,13 @@ public class MaterializedResult
                 .collect(toImmutableSet());
     }
 
+    public Object getOnlyValue()
+    {
+        checkState(rows.size() == 1, "result set must have exactly one row");
+        checkState(types.size() == 1, "result set must have exactly one column");
+        return rows.get(0).getField(0);
+    }
+
     public Page toPage()
     {
         PageBuilder pageBuilder = new PageBuilder(types);
@@ -217,6 +230,18 @@ public class MaterializedResult
         }
         else if (BIGINT.equals(type)) {
             type.writeLong(blockBuilder, ((Number) value).longValue());
+        }
+        else if (INTEGER.equals(type)) {
+            type.writeLong(blockBuilder, ((Number) value).intValue());
+        }
+        else if (SMALLINT.equals(type)) {
+            type.writeLong(blockBuilder, ((Number) value).shortValue());
+        }
+        else if (TINYINT.equals(type)) {
+            type.writeLong(blockBuilder, ((Number) value).byteValue());
+        }
+        else if (REAL.equals(type)) {
+            type.writeLong(blockBuilder, (long) floatToRawIntBits(((Number) value).floatValue()));
         }
         else if (DOUBLE.equals(type)) {
             type.writeDouble(blockBuilder, ((Number) value).doubleValue());
@@ -322,6 +347,9 @@ public class MaterializedResult
             }
             else if (prestoValue instanceof SqlTimestampWithTimeZone) {
                 jdbcValue = new Timestamp(((SqlTimestampWithTimeZone) prestoValue).getMillisUtc());
+            }
+            else if (prestoValue instanceof SqlDecimal) {
+                jdbcValue = ((SqlDecimal) prestoValue).toBigDecimal();
             }
             else {
                 jdbcValue = prestoValue;

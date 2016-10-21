@@ -25,7 +25,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toSet;
 
-public class Cube
+public final class Cube
         extends GroupingElement
 {
     private final List<QualifiedName> columns;
@@ -43,8 +43,7 @@ public class Cube
     private Cube(Optional<NodeLocation> location, List<QualifiedName> columns)
     {
         super(location);
-        requireNonNull(columns, "columns is null");
-        this.columns = columns;
+        this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
     }
 
     public List<QualifiedName> getColumns()
@@ -58,6 +57,12 @@ public class Cube
         return ImmutableList.copyOf(Sets.powerSet(columns.stream()
                 .map(QualifiedNameReference::new)
                 .collect(toSet())));
+    }
+
+    @Override
+    protected <R, C> R accept(AstVisitor<R, C> visitor, C context)
+    {
+        return visitor.visitCube(this, context);
     }
 
     @Override

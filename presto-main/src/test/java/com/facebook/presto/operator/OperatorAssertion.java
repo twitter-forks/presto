@@ -18,8 +18,10 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.testing.MaterializedResult;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
@@ -29,7 +31,9 @@ import java.util.Optional;
 
 import static com.facebook.presto.operator.PageAssertions.assertPageEquals;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.type.TypeJsonUtils.appendToBlockBuilder;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
+import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -92,7 +96,17 @@ public final class OperatorAssertion
         return outputPages.build();
     }
 
-    public static List<Page> toPages(Operator operator, List<Page> input)
+    public static List<Page> toPages(OperatorFactory operatorFactory, DriverContext driverContext, List<Page> input)
+    {
+        try (Operator operator = operatorFactory.createOperator(driverContext)) {
+            return toPages(operator, input);
+        }
+        catch (Exception e) {
+            throw Throwables.propagate(e);
+        }
+    }
+
+    private static List<Page> toPages(Operator operator, List<Page> input)
     {
         // verify initial state
         assertEquals(operator.isFinished(), false);
@@ -102,7 +116,17 @@ public final class OperatorAssertion
         return toPages(operator, input.iterator());
     }
 
-    public static List<Page> toPages(Operator operator)
+    public static List<Page> toPages(OperatorFactory operatorFactory, DriverContext driverContext)
+    {
+        try (Operator operator = operatorFactory.createOperator(driverContext)) {
+            return toPages(operator);
+        }
+        catch (Exception e) {
+            throw Throwables.propagate(e);
+        }
+    }
+
+    private static List<Page> toPages(Operator operator)
     {
         // operator does not have input so should never require input
         assertEquals(operator.needsInput(), false);
@@ -141,69 +165,77 @@ public final class OperatorAssertion
         return resultBuilder.build();
     }
 
-    public static void assertOperatorEquals(Operator operator, List<Page> expected)
+    public static Block toRow(List<Type> parameterTypes, Object... values)
     {
-        List<Page> actual = toPages(operator);
+        checkArgument(parameterTypes.size() == values.length, "parameterTypes.size(" + parameterTypes.size() + ") does not equal to values.length(" + values.length + ")");
+
+        BlockBuilder blockBuilder = new InterleavedBlockBuilder(parameterTypes, new BlockBuilderStatus(), parameterTypes.size());
+        for (int i = 0; i < values.length; i++) {
+            appendToBlockBuilder(parameterTypes.get(i), values[i], blockBuilder);
+        }
+        return blockBuilder.build();
+    }
+
+    public static void assertOperatorEquals(OperatorFactory operatorFactory, DriverContext driverContext, List<Page> input, List<Page> expected)
+            throws Exception
+    {
+        List<Page> actual = toPages(operatorFactory, driverContext, input);
         assertEquals(actual.size(), expected.size());
         for (int i = 0; i < actual.size(); i++) {
-            assertPageEquals(operator.getTypes(), actual.get(i), expected.get(i));
+            assertPageEquals(operatorFactory.getTypes(), actual.get(i), expected.get(i));
         }
     }
 
-    public static void assertOperatorEquals(Operator operator, List<Page> input, List<Page> expected)
+    public static void assertOperatorEquals(OperatorFactory operatorFactory, DriverContext driverContext, List<Page> input, MaterializedResult expected)
+            throws Exception
     {
-        List<Page> actual = toPages(operator, input);
-        assertEquals(actual.size(), expected.size());
-        for (int i = 0; i < actual.size(); i++) {
-            assertPageEquals(operator.getTypes(), actual.get(i), expected.get(i));
-        }
+        assertOperatorEquals(operatorFactory, driverContext, input, expected, false, ImmutableList.of());
     }
 
-    public static void assertOperatorEquals(Operator operator, MaterializedResult expected)
+    public static void assertOperatorEquals(OperatorFactory operatorFactory, DriverContext driverContext, List<Page> input, MaterializedResult expected, boolean hashEnabled, List<Integer> hashChannels)
+            throws Exception
     {
-        List<Page> pages = toPages(operator);
-        MaterializedResult actual = toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
-        assertEquals(actual, expected);
-    }
-
-    public static void assertOperatorEquals(Operator operator, List<Page> input, MaterializedResult expected)
-    {
-        assertOperatorEquals(operator, input, expected, false, ImmutableList.<Integer>of());
-    }
-
-    public static void assertOperatorEquals(Operator operator, List<Page> input, MaterializedResult expected, boolean hashEnabled, List<Integer> hashChannels)
-    {
-        List<Page> pages = toPages(operator, input);
+        List<Page> pages = toPages(operatorFactory, driverContext, input);
         MaterializedResult actual;
         if (hashEnabled && !hashChannels.isEmpty()) {
             // Drop the hashChannel for all pages
             List<Page> actualPages = dropChannel(pages, hashChannels);
-            List<Type> expectedTypes = without(operator.getTypes(), hashChannels);
-            actual = toMaterializedResult(operator.getOperatorContext().getSession(), expectedTypes, actualPages);
+            List<Type> expectedTypes = without(operatorFactory.getTypes(), hashChannels);
+            actual = toMaterializedResult(driverContext.getSession(), expectedTypes, actualPages);
         }
         else {
-            actual = toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
+            actual = toMaterializedResult(driverContext.getSession(), operatorFactory.getTypes(), pages);
         }
         assertEquals(actual, expected);
     }
 
-    public static void assertOperatorEqualsIgnoreOrder(Operator operator, List<Page> input, MaterializedResult expected)
+    public static void assertOperatorEqualsIgnoreOrder(
+            OperatorFactory operatorFactory,
+            DriverContext driverContext,
+            List<Page> input,
+            MaterializedResult expected)
     {
-        assertOperatorEqualsIgnoreOrder(operator, input, expected, false, Optional.empty());
+        assertOperatorEqualsIgnoreOrder(operatorFactory, driverContext, input, expected, false, Optional.empty());
     }
 
-    public static void assertOperatorEqualsIgnoreOrder(Operator operator, List<Page> input, MaterializedResult expected, boolean hashEnabled, Optional<Integer> hashChannel)
+    public static void assertOperatorEqualsIgnoreOrder(
+            OperatorFactory operatorFactory,
+            DriverContext driverContext,
+            List<Page> input,
+            MaterializedResult expected,
+            boolean hashEnabled,
+            Optional<Integer> hashChannel)
     {
-        List<Page> pages = toPages(operator, input);
+        List<Page> pages = toPages(operatorFactory, driverContext, input);
         MaterializedResult actual;
         if (hashEnabled && hashChannel.isPresent()) {
             // Drop the hashChannel for all pages
             List<Page> actualPages = dropChannel(pages, ImmutableList.of(hashChannel.get()));
-            List<Type> expectedTypes = without(operator.getTypes(), ImmutableList.of(hashChannel.get()));
-            actual = toMaterializedResult(operator.getOperatorContext().getSession(), expectedTypes, actualPages);
+            List<Type> expectedTypes = without(operatorFactory.getTypes(), ImmutableList.of(hashChannel.get()));
+            actual = toMaterializedResult(driverContext.getSession(), expectedTypes, actualPages);
         }
         else {
-            actual = toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
+            actual = toMaterializedResult(driverContext.getSession(), operatorFactory.getTypes(), pages);
         }
 
         assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());

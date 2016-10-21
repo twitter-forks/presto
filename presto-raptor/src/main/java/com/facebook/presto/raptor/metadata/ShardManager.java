@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 
@@ -44,12 +45,12 @@ public interface ShardManager
     /**
      * Commit data for a table.
      */
-    void commitShards(long transactionId, long tableId, List<ColumnInfo> columns, Collection<ShardInfo> shards, Optional<String> externalBatchId);
+    void commitShards(long transactionId, long tableId, List<ColumnInfo> columns, Collection<ShardInfo> shards, Optional<String> externalBatchId, long updateTime);
 
     /**
      * Replace oldShardsUuids with newShards.
      */
-    void replaceShardUuids(long transactionId, long tableId, List<ColumnInfo> columns, Set<UUID> oldShardUuids, Collection<ShardInfo> newShards);
+    void replaceShardUuids(long transactionId, long tableId, List<ColumnInfo> columns, Set<UUID> oldShardUuids, Collection<ShardInfo> newShards, OptionalLong updateTime);
 
     /**
      * Get shard metadata for shards on a given node.
@@ -57,9 +58,19 @@ public interface ShardManager
     Set<ShardMetadata> getNodeShards(String nodeIdentifier);
 
     /**
-     * Return the shard nodes a given table.
+     * Get shard metadata for shards on a given node.
      */
-    ResultIterator<BucketShards> getShardNodes(long tableId, boolean bucketed, boolean merged, TupleDomain<RaptorColumnHandle> effectivePredicate);
+    Set<ShardMetadata> getNodeShards(String nodeIdentifier, long tableId);
+
+    /**
+     * Return the shard nodes for a non-bucketed table.
+     */
+    ResultIterator<BucketShards> getShardNodes(long tableId, TupleDomain<RaptorColumnHandle> effectivePredicate);
+
+    /**
+     * Return the shard nodes for a bucketed table.
+     */
+    ResultIterator<BucketShards> getShardNodesBucketed(long tableId, boolean merged, Map<Integer, String> bucketToNode, TupleDomain<RaptorColumnHandle> effectivePredicate);
 
     /**
      * Assign a shard to a node.
@@ -96,5 +107,10 @@ public interface ShardManager
     /**
      * Get map of buckets to node identifiers for a table.
      */
-    Map<Integer, String> getBucketAssignments(long distributionId, boolean gracePeriod);
+    Map<Integer, String> getBucketAssignments(long distributionId);
+
+    /**
+     * Return the subset of shard uuids that exist
+     */
+    Set<UUID> getExistingShardUuids(long tableId, Set<UUID> shardUuids);
 }

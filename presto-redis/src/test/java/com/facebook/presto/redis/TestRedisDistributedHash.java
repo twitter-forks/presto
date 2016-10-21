@@ -86,8 +86,22 @@ public class TestRedisDistributedHash
     }
 
     @Override
+    public void testCompatibleTypeChangeForView2()
+            throws Exception
+    {
+        // Redis connector currently does not support views
+    }
+
+    @Override
     public void testViewMetadata()
     {
+    }
+
+    @Test
+    public void testViewCaseSensitivity()
+            throws Exception
+    {
+        // Redis connector currently does not support views
     }
 
     //

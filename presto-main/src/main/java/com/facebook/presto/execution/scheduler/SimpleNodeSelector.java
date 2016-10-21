@@ -15,9 +15,9 @@ package com.facebook.presto.execution.scheduler;
 
 import com.facebook.presto.execution.NodeTaskMap;
 import com.facebook.presto.execution.RemoteTask;
+import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.Node;
-import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
@@ -43,24 +43,24 @@ public class SimpleNodeSelector
 {
     private static final Logger log = Logger.get(SimpleNodeSelector.class);
 
-    private final NodeManager nodeManager;
+    private final InternalNodeManager nodeManager;
     private final NodeTaskMap nodeTaskMap;
     private final boolean includeCoordinator;
     private final boolean doubleScheduling;
     private final AtomicReference<Supplier<NodeMap>> nodeMap;
     private final int minCandidates;
     private final int maxSplitsPerNode;
-    private final int maxSplitsPerNodePerTaskWhenFull;
+    private final int maxPendingSplitsPerNodePerStageWhenFull;
 
     public SimpleNodeSelector(
-            NodeManager nodeManager,
+            InternalNodeManager nodeManager,
             NodeTaskMap nodeTaskMap,
             boolean includeCoordinator,
             boolean doubleScheduling,
             Supplier<NodeMap> nodeMap,
             int minCandidates,
             int maxSplitsPerNode,
-            int maxSplitsPerNodePerTaskWhenFull)
+            int maxPendingSplitsPerNodePerStageWhenFull)
     {
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
@@ -69,7 +69,7 @@ public class SimpleNodeSelector
         this.nodeMap = new AtomicReference<>(nodeMap);
         this.minCandidates = minCandidates;
         this.maxSplitsPerNode = maxSplitsPerNode;
-        this.maxSplitsPerNodePerTaskWhenFull = maxSplitsPerNodePerTaskWhenFull;
+        this.maxPendingSplitsPerNodePerStageWhenFull = maxPendingSplitsPerNodePerStageWhenFull;
     }
 
     @Override
@@ -131,9 +131,10 @@ public class SimpleNodeSelector
                 }
             }
             if (chosenNode == null) {
+                // min is guaranteed to be MAX_VALUE at this line
                 for (Node node : candidateNodes) {
-                    int totalSplitCount = assignmentStats.getTotalQueuedSplitCount(node);
-                    if (totalSplitCount < min && totalSplitCount < maxSplitsPerNodePerTaskWhenFull) {
+                    int totalSplitCount = assignmentStats.getQueuedSplitCountForStage(node);
+                    if (totalSplitCount < min && totalSplitCount < maxPendingSplitsPerNodePerStageWhenFull) {
                         chosenNode = node;
                         min = totalSplitCount;
                     }
@@ -150,6 +151,6 @@ public class SimpleNodeSelector
     @Override
     public Multimap<Node, Split> computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, NodePartitionMap partitioning)
     {
-        return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsPerNode, splits, existingTasks, partitioning);
+        return selectDistributionNodes(nodeMap.get().get(), nodeTaskMap, maxSplitsPerNode, maxPendingSplitsPerNodePerStageWhenFull, splits, existingTasks, partitioning);
     }
 }

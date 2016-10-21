@@ -18,7 +18,6 @@ import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.FixedPageSource;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -27,6 +26,7 @@ import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.FixedWidthType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -35,23 +35,29 @@ import io.airlift.slice.Slices;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
 
 import static com.facebook.presto.plugin.blackhole.Types.checkType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateType.DATE;
+import static com.facebook.presto.spi.type.Decimals.encodeScaledValue;
+import static com.facebook.presto.spi.type.Decimals.isLongDecimal;
+import static com.facebook.presto.spi.type.Decimals.isShortDecimal;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
+import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
+import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static com.google.common.base.Preconditions.checkArgument;
+import static java.math.BigDecimal.ZERO;
+import static java.util.Objects.requireNonNull;
 
 public final class BlackHolePageSourceProvider
         implements ConnectorPageSourceProvider
 {
-    private static final Set<Type> SUPPORTED_TYPES = ImmutableSet.of(BIGINT, DOUBLE, BOOLEAN, DATE, TIMESTAMP, VARCHAR, VARBINARY);
-
     @Override
     public ConnectorPageSource createPageSource(
             ConnectorTransactionHandle transactionHandle,
@@ -68,14 +74,16 @@ public final class BlackHolePageSourceProvider
         }
         List<Type> types = builder.build();
 
-        return new FixedPageSource(Iterables.limit(
+        Iterable<Page> pages = Iterables.limit(
                 Iterables.cycle(generateZeroPage(types, blackHoleSplit.getRowsPerPage(), blackHoleSplit.getFieldsLength())),
-                blackHoleSplit.getPagesCount()));
+                blackHoleSplit.getPagesCount()
+        );
+        return new DelayPageSource(pages, blackHoleSplit.getPageProcessingDelay());
     }
 
-    private Page generateZeroPage(List<Type> types, int rowsCount, int fieldsLength)
+    private Page generateZeroPage(List<Type> types, int rowsCount, int fieldLength)
     {
-        byte[] constantBytes = new byte[fieldsLength];
+        byte[] constantBytes = new byte[fieldLength];
         Arrays.fill(constantBytes, (byte) 42);
         Slice constantSlice = Slices.wrappedBuffer(constantBytes);
 
@@ -89,14 +97,26 @@ public final class BlackHolePageSourceProvider
 
     private Block createZeroBlock(Type type, int rowsCount, Slice constantSlice)
     {
-        checkArgument(SUPPORTED_TYPES.contains(type), "Unsupported type [%s]", type);
-        BlockBuilder builder;
+        checkArgument(isSupportedType(type), "Unsupported type [%s]", type);
 
+        Slice slice;
+        // do not exceed varchar limit
+        if (isVarcharType(type)) {
+            slice = constantSlice.slice(0, Math.min(((VarcharType) type).getLength(), constantSlice.length()));
+        }
+        else if (isLongDecimal(type)) {
+            slice = encodeScaledValue(ZERO);
+        }
+        else {
+            slice = constantSlice;
+        }
+
+        BlockBuilder builder;
         if (type instanceof FixedWidthType) {
             builder = type.createBlockBuilder(new BlockBuilderStatus(), rowsCount);
         }
         else {
-            builder = type.createBlockBuilder(new BlockBuilderStatus(), rowsCount, constantSlice.length());
+            builder = type.createBlockBuilder(new BlockBuilderStatus(), rowsCount, slice.length());
         }
 
         for (int i = 0; i < rowsCount; i++) {
@@ -111,12 +131,19 @@ public final class BlackHolePageSourceProvider
                 type.writeDouble(builder, 0.0);
             }
             else if (javaType == Slice.class) {
-                type.writeSlice(builder, constantSlice, 0, constantSlice.length());
+                requireNonNull(slice, "slice is null");
+                type.writeSlice(builder, slice, 0, slice.length());
             }
             else {
                 throw new UnsupportedOperationException("Unknown javaType: " + javaType.getName());
             }
         }
         return builder.build();
+    }
+
+    private boolean isSupportedType(Type type)
+    {
+        return ImmutableSet.of(TINYINT, SMALLINT, INTEGER, BIGINT, REAL, DOUBLE, BOOLEAN, DATE, TIMESTAMP, VARBINARY).contains(type)
+                || isVarcharType(type) || isLongDecimal(type) || isShortDecimal(type);
     }
 }

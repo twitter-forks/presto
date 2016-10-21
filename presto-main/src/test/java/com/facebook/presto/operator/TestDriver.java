@@ -16,6 +16,7 @@ package com.facebook.presto.operator;
 import com.facebook.presto.ScheduledSplit;
 import com.facebook.presto.Session;
 import com.facebook.presto.TaskSource;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorPageSource;
@@ -26,7 +27,8 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.PageSourceProvider;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
-import com.facebook.presto.testing.MaterializingOperator;
+import com.facebook.presto.testing.MaterializedResult;
+import com.facebook.presto.testing.PageConsumerOperator;
 import com.facebook.presto.testing.TestingTransactionHandle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -46,6 +48,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 
 import static com.facebook.presto.RowPagesBuilder.rowPagesBuilder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
@@ -92,7 +95,7 @@ public class TestDriver
                 .addSequencePage(10, 20, 30, 40)
                 .build());
 
-        MaterializingOperator sink = createSinkOperator(source);
+        Operator sink = createSinkOperator(source);
         Driver driver = new Driver(driverContext, source, sink);
 
         assertSame(driver.getDriverContext(), driverContext);
@@ -114,7 +117,7 @@ public class TestDriver
                 .addSequencePage(10, 20, 30, 40)
                 .build());
 
-        MaterializingOperator sink = createSinkOperator(source);
+        PageConsumerOperator sink = createSinkOperator(source);
         Driver driver = new Driver(driverContext, source, sink);
 
         assertSame(driver.getDriverContext(), driverContext);
@@ -151,7 +154,7 @@ public class TestDriver
                 types,
                 ImmutableList.<ColumnHandle>of());
 
-        MaterializingOperator sink = createSinkOperator(source);
+        PageConsumerOperator sink = createSinkOperator(source);
         Driver driver = new Driver(driverContext, source, sink);
 
         assertSame(driver.getDriverContext(), driverContext);
@@ -160,7 +163,7 @@ public class TestDriver
         assertFalse(driver.processFor(new Duration(1, TimeUnit.MILLISECONDS)).isDone());
         assertFalse(driver.isFinished());
 
-        driver.updateSource(new TaskSource(sourceId, ImmutableSet.of(new ScheduledSplit(0, newMockSplit())), true));
+        driver.updateSource(new TaskSource(sourceId, ImmutableSet.of(new ScheduledSplit(0, sourceId, newMockSplit())), true));
 
         assertFalse(driver.isFinished());
         assertTrue(driver.processFor(new Duration(1, TimeUnit.SECONDS)).isDone());
@@ -277,7 +280,7 @@ public class TestDriver
         assertTrue(driver.processFor(new Duration(1, TimeUnit.MILLISECONDS)).isDone());
         assertFalse(driver.isFinished());
 
-        driver.updateSource(new TaskSource(sourceId, ImmutableSet.of(new ScheduledSplit(0, newMockSplit())), true));
+        driver.updateSource(new TaskSource(sourceId, ImmutableSet.of(new ScheduledSplit(0, sourceId, newMockSplit())), true));
 
         assertFalse(driver.isFinished());
         // processFor always returns NOT_BLOCKED, because DriveLockResult was not acquired
@@ -298,12 +301,14 @@ public class TestDriver
 
     private static Split newMockSplit()
     {
-        return new Split("test", TestingTransactionHandle.create("test"), new MockSplit());
+        return new Split(new ConnectorId("test"), TestingTransactionHandle.create(), new MockSplit());
     }
 
-    private MaterializingOperator createSinkOperator(Operator source)
+    private PageConsumerOperator createSinkOperator(Operator source)
     {
-        return new MaterializingOperator(driverContext.addOperatorContext(1, new PlanNodeId("test"), "sink"), source.getTypes());
+        // materialize the output to catch some type errors
+        MaterializedResult.Builder resultBuilder = MaterializedResult.resultBuilder(driverContext.getSession(), source.getTypes());
+        return new PageConsumerOperator(driverContext.addOperatorContext(1, new PlanNodeId("test"), "sink"), resultBuilder::page, Function.identity());
     }
 
     private static class BrokenOperator

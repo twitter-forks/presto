@@ -13,19 +13,24 @@
  */
 package com.facebook.presto.operator.aggregation;
 
-import com.facebook.presto.operator.aggregation.state.AccumulatorState;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.type.StandardTypes;
+import com.facebook.presto.spi.function.AccumulatorState;
+import com.facebook.presto.spi.function.AggregationFunction;
+import com.facebook.presto.spi.function.CombineFunction;
+import com.facebook.presto.spi.function.InputFunction;
+import com.facebook.presto.spi.function.OutputFunction;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 
 import static com.facebook.presto.operator.aggregation.ApproximateUtils.countError;
 import static com.facebook.presto.operator.aggregation.ApproximateUtils.formatApproximateResult;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 
 @AggregationFunction(value = "count", approximate = true)
 public final class ApproximateCountAggregation
 {
+    private static final int OUTPUT_VARCHAR_SIZE = 57;
+
     private ApproximateCountAggregation() {}
 
     @InputFunction
@@ -44,11 +49,11 @@ public final class ApproximateCountAggregation
         state.setSamples(state.getSamples() + otherState.getSamples());
     }
 
-    @OutputFunction(StandardTypes.VARCHAR)
+    @OutputFunction("varchar(57)")
     public static void output(ApproximateCountState state, double confidence, BlockBuilder out)
     {
         Slice value = Slices.utf8Slice(formatApproximateResult(state.getCount(), countError(state.getSamples(), state.getCount()), confidence, true));
-        VARCHAR.writeSlice(out, value);
+        createVarcharType(OUTPUT_VARCHAR_SIZE).writeSlice(out, value);
     }
 
     public interface ApproximateCountState

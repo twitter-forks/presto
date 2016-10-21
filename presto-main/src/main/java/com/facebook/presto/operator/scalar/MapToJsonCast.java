@@ -13,12 +13,14 @@
  */
 package com.facebook.presto.operator.scalar;
 
+import com.facebook.presto.annotation.UsedByGeneratedCode;
+import com.facebook.presto.metadata.BoundVariables;
 import com.facebook.presto.metadata.FunctionRegistry;
-import com.facebook.presto.metadata.OperatorType;
 import com.facebook.presto.metadata.SqlOperator;
 import com.facebook.presto.server.SliceSerializer;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.function.OperatorType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -42,7 +44,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
-import static com.facebook.presto.metadata.Signature.typeParameter;
+import static com.facebook.presto.metadata.Signature.typeVariable;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static com.google.common.base.Preconditions.checkArgument;
 
@@ -55,15 +58,19 @@ public class MapToJsonCast
 
     private MapToJsonCast()
     {
-        super(OperatorType.CAST, ImmutableList.of(typeParameter("K"), typeParameter("V")), StandardTypes.JSON, ImmutableList.of("map(K,V)"));
+        super(OperatorType.CAST,
+                ImmutableList.of(typeVariable("K"), typeVariable("V")),
+                ImmutableList.of(),
+                parseTypeSignature(StandardTypes.JSON),
+                ImmutableList.of(parseTypeSignature("map(K,V)")));
     }
 
     @Override
-    public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
         checkArgument(arity == 1, "Expected arity to be 1");
-        Type keyType = types.get("K");
-        Type valueType = types.get("V");
+        Type keyType = boundVariables.getTypeVariable("K");
+        Type valueType = boundVariables.getTypeVariable("V");
 
         MethodHandle methodHandle = METHOD_HANDLE.bindTo(keyType);
         methodHandle = methodHandle.bindTo(valueType);
@@ -71,11 +78,12 @@ public class MapToJsonCast
         return new ScalarFunctionImplementation(false, ImmutableList.of(false), methodHandle, isDeterministic());
     }
 
+    @UsedByGeneratedCode
     public static Slice toJson(Type keyType, Type valueType, ConnectorSession session, Block block)
     {
         Map<Object, Object> map = new HashMap<>();
         for (int i = 0; i < block.getPositionCount(); i += 2) {
-            map.put(keyType.getObjectValue(session, block, i), valueType.getObjectValue(session, block, i + 1));
+            map.put(JsonFunctions.getJsonObjectValue(keyType, session, block, i), JsonFunctions.getJsonObjectValue(valueType, session, block, i + 1));
         }
         try {
             return Slices.utf8Slice(OBJECT_MAPPER.get().writeValueAsString(map));

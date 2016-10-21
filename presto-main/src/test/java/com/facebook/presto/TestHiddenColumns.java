@@ -31,7 +31,7 @@ public class TestHiddenColumns
     public TestHiddenColumns()
     {
         runner = new LocalQueryRunner(TEST_SESSION);
-        runner.createCatalog(TEST_SESSION.getCatalog().get(), new TpchConnectorFactory(runner.getNodeManager(), 1), ImmutableMap.<String, String>of());
+        runner.createCatalog(TEST_SESSION.getCatalog().get(), new TpchConnectorFactory(1), ImmutableMap.<String, String>of());
     }
 
     @AfterClass
@@ -48,8 +48,8 @@ public class TestHiddenColumns
     {
         MaterializedResult expected = MaterializedResult.resultBuilder(TEST_SESSION, VARCHAR, VARCHAR, VARCHAR)
                 .row("regionkey", "bigint", "")
-                .row("name", "varchar", "")
-                .row("comment", "varchar", "")
+                .row("name", "varchar(25)", "")
+                .row("comment", "varchar(152)", "")
                 .build();
         assertEquals(runner.execute("DESC REGION"), expected);
     }

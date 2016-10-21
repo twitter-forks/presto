@@ -15,11 +15,11 @@ package com.facebook.presto.hive.parquet.reader;
 
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.type.Type;
 import parquet.column.ColumnDescriptor;
 import parquet.io.api.Binary;
 
 import static com.facebook.presto.hive.parquet.ParquetTimestampUtils.getTimestampMillis;
-import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 
 public class ParquetTimestampColumnReader
         extends ParquetColumnReader
@@ -29,18 +29,18 @@ public class ParquetTimestampColumnReader
         super(descriptor);
     }
 
-    public BlockBuilder createBlockBuilder()
+    public BlockBuilder createBlockBuilder(Type type)
     {
-        return TIMESTAMP.createBlockBuilder(new BlockBuilderStatus(), nextBatchSize);
+        return type.createBlockBuilder(new BlockBuilderStatus(), nextBatchSize);
     }
 
     @Override
-    public void readValues(BlockBuilder blockBuilder, int valueNumber)
+    public void readValues(BlockBuilder blockBuilder, int valueNumber, Type type)
     {
         for (int i = 0; i < valueNumber; i++) {
             if (definitionReader.readLevel() == columnDescriptor.getMaxDefinitionLevel()) {
                 Binary binary = valuesReader.readBytes();
-                TIMESTAMP.writeLong(blockBuilder, getTimestampMillis(binary));
+                type.writeLong(blockBuilder, getTimestampMillis(binary));
             }
             else {
                 blockBuilder.appendNull();

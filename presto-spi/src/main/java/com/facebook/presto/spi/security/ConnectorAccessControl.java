@@ -19,6 +19,27 @@ import com.facebook.presto.spi.SchemaTableName;
 public interface ConnectorAccessControl
 {
     /**
+     * Check if identity is allowed to create the specified schema in this catalog.
+     *
+     * @throws AccessDeniedException if not allowed
+     */
+    void checkCanCreateSchema(Identity identity, String schemaName);
+
+    /**
+     * Check if identity is allowed to drop the specified schema in this catalog.
+     *
+     * @throws AccessDeniedException if not allowed
+     */
+    void checkCanDropSchema(Identity identity, String schemaName);
+
+    /**
+     * Check if identity is allowed to rename the specified schema in this catalog.
+     *
+     * @throws AccessDeniedException if not allowed
+     */
+    void checkCanRenameSchema(Identity identity, String schemaName, String newSchemaName);
+
+    /**
      * Check if identity is allowed to create the specified table in this catalog.
      *
      * @throws AccessDeniedException if not allowed
@@ -118,7 +139,15 @@ public interface ConnectorAccessControl
 
     /**
      * Check if identity is allowed to grant to any other user the specified privilege on the specified table.
+     *
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
     void checkCanGrantTablePrivilege(Identity identity, Privilege privilege, SchemaTableName tableName);
+
+    /**
+     * Check if identity is allowed to revoke the specified privilege on the specified table from any user.
+     *
+     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
+     */
+    void checkCanRevokeTablePrivilege(Identity identity, Privilege privilege, SchemaTableName tableName);
 }

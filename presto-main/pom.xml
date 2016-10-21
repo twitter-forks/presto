@@ -33,6 +33,11 @@
 
         <dependency>
             <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-array</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
             <artifactId>presto-client</artifactId>
         </dependency>
 
@@ -147,6 +152,11 @@
         </dependency>
 
         <dependency>
+            <groupId>com.teradata</groupId>
+            <artifactId>re2j-td</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>io.airlift.discovery</groupId>
             <artifactId>discovery-server</artifactId>
         </dependency>
@@ -245,6 +255,12 @@
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-core</artifactId>
+        </dependency>
+
+        <!-- used by tests but also needed transitively -->
+        <dependency>
+            <groupId>org.apache.bval</groupId>
+            <artifactId>bval-jsr</artifactId>
         </dependency>
 
         <!-- for testing -->

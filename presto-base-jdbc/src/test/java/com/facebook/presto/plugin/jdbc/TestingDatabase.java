@@ -51,14 +51,14 @@ final class TestingDatabase
         connection = DriverManager.getConnection(connectionUrl);
         connection.createStatement().execute("CREATE SCHEMA example");
 
-        connection.createStatement().execute("CREATE TABLE example.numbers(text varchar primary key, value bigint)");
-        connection.createStatement().execute("INSERT INTO example.numbers(text, value) VALUES " +
-                "('one', 1)," +
-                "('two', 2)," +
-                "('three', 3)," +
-                "('ten', 10)," +
-                "('eleven', 11)," +
-                "('twelve', 12)" +
+        connection.createStatement().execute("CREATE TABLE example.numbers(text varchar primary key, text_short varchar(32), value bigint)");
+        connection.createStatement().execute("INSERT INTO example.numbers(text, text_short, value) VALUES " +
+                "('one', 'one', 1)," +
+                "('two', 'two', 2)," +
+                "('three', 'three', 3)," +
+                "('ten', 'ten', 10)," +
+                "('eleven', 'eleven', 11)," +
+                "('twelve', 'twelve', 12)" +
                 "");
         connection.createStatement().execute("CREATE TABLE example.view_source(id varchar primary key)");
         connection.createStatement().execute("CREATE VIEW example.view AS SELECT id FROM example.view_source");
@@ -68,6 +68,7 @@ final class TestingDatabase
 
         connection.createStatement().execute("CREATE SCHEMA exa_ple");
         connection.createStatement().execute("CREATE TABLE exa_ple.num_ers(te_t varchar primary key, \"VA%UE\" bigint)");
+        connection.createStatement().execute("CREATE TABLE exa_ple.table_with_float_col(col1 bigint, col2 double, col3 float, col4 real)");
 
         connection.commit();
     }
