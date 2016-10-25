@@ -23,6 +23,7 @@ import org.apache.thrift.transport.TTransportException;
 
 import javax.inject.Inject;
 
+import java.util.Collections;
 import java.util.List;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_METASTORE_ERROR;
@@ -51,6 +52,7 @@ public class ZookeeperServersetHiveCluster
     public HiveMetastoreClient createMetastoreClient()
     {
         List<HostAndPort> metastores = zkMetastoreMonitor.getServers();
+        Collections.shuffle(metastores);
         TTransportException lastException = null;
         for (HostAndPort metastore : metastores) {
             try {
