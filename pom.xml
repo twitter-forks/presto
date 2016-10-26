@@ -91,6 +91,7 @@
         <module>presto-hive-cdh5</module>
         <module>presto-teradata-functions</module>
         <module>presto-example-http</module>
+        <module>twitter-eventlistener-plugin</module>
         <module>presto-local-file</module>
         <module>presto-tpch</module>
         <module>presto-raptor</module>
@@ -727,10 +728,6 @@
                     </exclusion>
                     <exclusion>
                         <groupId>org.slf4j</groupId>
-                        <artifactId>slf4j-jdk14</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.slf4j</groupId>
                         <artifactId>slf4j-log4j12</artifactId>
                     </exclusion>
                 </exclusions>
@@ -858,7 +855,6 @@
                         <groupId>org.scala-lang</groupId>
                         <artifactId>scala-reflect</artifactId>
                     </exclusion>
-
                 </exclusions>
             </dependency>
             <dependency>
