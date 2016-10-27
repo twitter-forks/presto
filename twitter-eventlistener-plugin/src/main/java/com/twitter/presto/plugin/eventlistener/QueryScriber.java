@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.twitter.eventlistener;
+package com.twitter.presto.plugin.eventlistener;
 
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryContext;
@@ -19,7 +19,6 @@ import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
 
-import com.google.common.base.Optional;
 import com.twitter.logging.BareFormatter$;
 import com.twitter.logging.Level;
 import com.twitter.logging.QueueingHandler;
@@ -31,6 +30,7 @@ import org.apache.thrift.TException;
 import org.apache.thrift.TSerializer;
 
 import java.util.Base64;
+import java.util.Optional;
 import java.util.logging.LogRecord;
 
 /**
@@ -95,7 +95,7 @@ public class QueryScriber
     }
     catch (TException e) {
       log.warn(e, "Could not serialize thrift object" + thriftMessage);
-      return Optional.absent();
+      return Optional.empty();
     }
   }
 
