@@ -19,93 +19,34 @@ import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
 
-import com.twitter.logging.BareFormatter$;
-import com.twitter.logging.Level;
-import com.twitter.logging.QueueingHandler;
-import com.twitter.logging.ScribeHandler;
+import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
-import io.airlift.log.Logger;
-import org.apache.thrift.TBase;
-import org.apache.thrift.TException;
-import org.apache.thrift.TSerializer;
-
-import java.util.Base64;
-import java.util.Optional;
-import java.util.logging.LogRecord;
 
 /**
  * Class that scribes query completion events
  */
-public class QueryScriber
+public class QueryCompletedEventScriber extends TwitterScriber
 {
-  private static final String QUERY_COMPLETED_SCRIBE_CATEGORY = "presto_query_completion";
-  private static final String DASH = "-";
-  private static final int MAX_QUEUE_SIZE = 1000;
-
-  private static final Logger log = Logger.get(QueryScriber.class);
-
-  private QueueingHandler queueingHandler;
-
-  // TSerializer is not thread safe
-  private final ThreadLocal<TSerializer> serializer = new ThreadLocal<TSerializer>()
+  public QueryCompletedEventScriber()
   {
-    @Override protected TSerializer initialValue()
-    {
-      return new TSerializer();
-    }
-  };
-
-  public QueryScriber()
-  {
-    ScribeHandler scribeHandler = new ScribeHandler(
-      ScribeHandler.DefaultHostname(),
-      ScribeHandler.DefaultPort(),
-      QUERY_COMPLETED_SCRIBE_CATEGORY,
-      ScribeHandler.DefaultBufferTime(),
-      ScribeHandler.DefaultConnectBackoff(),
-      ScribeHandler.DefaultMaxMessagesPerTransaction(),
-      ScribeHandler.DefaultMaxMessagesToBuffer(),
-      BareFormatter$.MODULE$,
-      scala.Option.apply((Level) null));
-    queueingHandler = new QueueingHandler(scribeHandler, MAX_QUEUE_SIZE);
+    super("presto_query_completion");
   }
 
   public void handle(QueryCompletedEvent event)
   {
-    com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent = toThriftQueryCompletionEvent(event);
-    Optional<String> message = serializeThriftToString(thriftEvent);
-
-    if (message.isPresent()) {
-      LogRecord logRecord = new LogRecord(Level.ALL, message.get());
-      queueingHandler.publish(logRecord);
-    }
-    else {
+    QueryCompletionEvent thriftEvent = toThriftQueryCompletionEvent(event);
+    if (!scribe(serializeThriftToString(thriftEvent))) {
       log.warn("Unable to serialize QueryCompletedEvent: " + event);
     }
   }
 
-  /**
-  * Serialize a thrift object to bytes, compress, then encode as a base64 string.
-  */
-  private Optional<String> serializeThriftToString(TBase thriftMessage)
-  {
-    try {
-      return Optional.of(
-        Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage)));
-    }
-    catch (TException e) {
-      log.warn(e, "Could not serialize thrift object" + thriftMessage);
-      return Optional.empty();
-    }
-  }
-
-  private static com.twitter.presto.thriftjava.QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
+  private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
   {
     QueryMetadata eventMetadata = event.getMetadata();
     QueryContext eventContext = event.getContext();
     QueryStatistics eventStat = event.getStatistics();
 
-    com.twitter.presto.thriftjava.QueryCompletionEvent thriftEvent =
+    QueryCompletionEvent thriftEvent =
       new com.twitter.presto.thriftjava.QueryCompletionEvent();
 
     thriftEvent.query_id = eventMetadata.getQueryId();

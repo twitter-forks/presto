@@ -23,7 +23,7 @@ import io.airlift.log.Logger;
 public class TwitterEventListener implements EventListener
 {
   private static final Logger log = Logger.get(TwitterEventListener.class);
-  private final QueryScriber queryScriber = new QueryScriber();
+  private final QueryCompletedEventScriber scriber = new QueryCompletedEventScriber();
 
   @Override
   public void queryCreated(QueryCreatedEvent queryCreatedEvent)
@@ -34,7 +34,7 @@ public class TwitterEventListener implements EventListener
   public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
   {
     log.info(Stringify.toString(queryCompletedEvent));
-    queryScriber.handle(queryCompletedEvent);
+    scriber.handle(queryCompletedEvent);
   }
 
   @Override
