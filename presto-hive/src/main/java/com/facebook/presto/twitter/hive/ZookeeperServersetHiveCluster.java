@@ -54,15 +54,15 @@ public class ZookeeperServersetHiveCluster
         TTransportException lastException = null;
         for (HostAndPort metastore : metastores) {
             try {
-                log.info("Connecting to metastore at: " + metastore.toString());
+                log.info("Connecting to metastore at: %s", metastore.toString());
                 return clientFactory.create(metastore.getHostText(), metastore.getPort());
             }
             catch (TTransportException e) {
-                log.debug("Failed connecting to Hive metastore at: " + metastore.toString());
+                log.debug("Failed connecting to Hive metastore at: %s", metastore.toString());
                 lastException = e;
             }
         }
 
-        throw new RuntimeException("Failed connecting to Hive metastore: " + metastores, lastException);
+        throw new RuntimeException("Failed connecting to Hive metastore.", lastException);
     }
 }
