@@ -119,8 +119,6 @@ public class PrestoServer
 
         );
 
-        modules.addAll(getAdditionalModules());
-
         Bootstrap app = new Bootstrap(modules.build());
 
         try {
@@ -147,11 +145,6 @@ public class PrestoServer
             log.error(e);
             System.exit(1);
         }
-    }
-
-    protected Iterable<? extends Module> getAdditionalModules()
-    {
-        return com.facebook.presto.twitter.TwitterModuleLoader.getAdditionalModules();
     }
 
     private static void updateDatasources(Announcer announcer, Metadata metadata, ServerConfig serverConfig, NodeSchedulerConfig schedulerConfig)
