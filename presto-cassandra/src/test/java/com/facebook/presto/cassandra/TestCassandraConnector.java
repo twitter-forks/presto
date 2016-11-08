@@ -54,9 +54,10 @@ import static com.facebook.presto.cassandra.util.Types.checkType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -222,6 +223,9 @@ public class TestCassandraConnector
                 if (BOOLEAN.equals(type)) {
                     cursor.getBoolean(columnIndex);
                 }
+                else if (INTEGER.equals(type)) {
+                    cursor.getLong(columnIndex);
+                }
                 else if (BIGINT.equals(type)) {
                     cursor.getLong(columnIndex);
                 }
@@ -231,7 +235,7 @@ public class TestCassandraConnector
                 else if (DOUBLE.equals(type)) {
                     cursor.getDouble(columnIndex);
                 }
-                else if (VARCHAR.equals(type) || VARBINARY.equals(type)) {
+                else if (isVarcharType(type) || VARBINARY.equals(type)) {
                     try {
                         cursor.getSlice(columnIndex);
                     }

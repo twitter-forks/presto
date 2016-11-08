@@ -30,6 +30,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
+import com.facebook.presto.type.Constraint;
 import com.facebook.presto.type.LiteralParameters;
 import com.facebook.presto.type.SqlType;
 import com.google.common.base.Throwables;
@@ -54,10 +55,12 @@ import java.util.Set;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.metadata.FunctionKind.WINDOW;
-import static com.facebook.presto.metadata.Signature.typeParameter;
+import static com.facebook.presto.metadata.Signature.longVariableExpression;
+import static com.facebook.presto.metadata.Signature.typeVariable;
 import static com.facebook.presto.spi.StandardErrorCode.FUNCTION_IMPLEMENTATION_ERROR;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.CaseFormat.LOWER_CAMEL;
 import static com.google.common.base.CaseFormat.LOWER_UNDERSCORE;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -98,11 +101,11 @@ public class FunctionListBuilder
         Signature signature = new Signature(
                 name,
                 WINDOW,
-                ImmutableList.of(typeParameter(typeVariable)),
-                typeVariable,
-                ImmutableList.copyOf(argumentTypes),
-                false,
-                ImmutableSet.of());
+                ImmutableList.of(typeVariable(typeVariable)),
+                ImmutableList.of(),
+                parseTypeSignature(typeVariable),
+                Arrays.asList(argumentTypes).stream().map(TypeSignature::parseTypeSignature).collect(toImmutableList()),
+                false);
         functions.add(new SqlWindowFunction(new ReflectionWindowFunctionSupplier<>(signature, clazz)));
         return this;
     }
@@ -139,8 +142,7 @@ public class FunctionListBuilder
             String description,
             boolean hidden,
             boolean nullable,
-            List<Boolean> nullableArguments,
-            Set<String> literalParameters)
+            List<Boolean> nullableArguments)
     {
         functions.add(SqlScalarFunction.create(
                 signature,
@@ -150,31 +152,32 @@ public class FunctionListBuilder
                 instanceFactory,
                 deterministic,
                 nullable,
-                nullableArguments,
-                literalParameters));
+                nullableArguments));
         return this;
     }
 
     private FunctionListBuilder operator(
             OperatorType operatorType,
+            List<TypeVariableConstraint> typeVariableConstraints,
+            List<LongVariableConstraint> longVariableConstraints,
             TypeSignature returnType,
             List<TypeSignature> argumentTypes,
             MethodHandle function,
             Optional<MethodHandle> instanceFactory,
             boolean nullable,
-            List<Boolean> nullableArguments,
-            Set<String> literalParameters)
+            List<Boolean> nullableArguments)
     {
         operatorType.validateSignature(returnType, argumentTypes);
         functions.add(SqlOperator.create(
                 operatorType,
+                typeVariableConstraints,
+                longVariableConstraints,
                 argumentTypes,
                 returnType,
                 function,
                 instanceFactory,
                 nullable,
-                nullableArguments,
-                literalParameters));
+                nullableArguments));
         return this;
     }
 
@@ -237,26 +240,29 @@ public class FunctionListBuilder
             literalParameters = ImmutableSet.copyOf(literalParametersAnnotation.value());
         }
 
+        List<LongVariableConstraint> longVariableConstraints = getLongVariableConstraints(method);
+
         Signature signature = new Signature(
                 name.toLowerCase(ENGLISH),
                 SCALAR,
+                ImmutableList.of(),
+                longVariableConstraints,
                 parseTypeSignature(returnTypeAnnotation.value(), literalParameters),
-                parameterTypeSignatures(method, literalParameters));
+                parameterTypeSignatures(method, literalParameters),
+                false);
 
         verifyMethodSignature(method, signature.getReturnType(), signature.getArgumentTypes(), typeManager);
 
         List<Boolean> nullableArguments = getNullableArguments(method);
 
-        scalar(
-                signature,
+        scalar(signature,
                 methodHandle,
                 instanceFactory,
                 scalarFunction.deterministic(),
                 getDescription(method),
                 scalarFunction.hidden(),
                 method.isAnnotationPresent(Nullable.class),
-                nullableArguments,
-                literalParameters);
+                nullableArguments);
         for (String alias : scalarFunction.alias()) {
             scalar(signature.withAlias(alias.toLowerCase(ENGLISH)),
                     methodHandle,
@@ -265,8 +271,7 @@ public class FunctionListBuilder
                     getDescription(method),
                     scalarFunction.hidden(),
                     method.isAnnotationPresent(Nullable.class),
-                    nullableArguments,
-                    literalParameters);
+                    nullableArguments);
         }
         return true;
     }
@@ -296,8 +301,8 @@ public class FunctionListBuilder
     private static List<TypeSignature> parameterTypeSignatures(Method method, Set<String> literalParameters)
     {
         Annotation[][] parameterAnnotations = method.getParameterAnnotations();
+        ImmutableList.Builder<TypeSignature> parameters = ImmutableList.builder();
 
-        ImmutableList.Builder<TypeSignature> types = ImmutableList.builder();
         for (int i = 0; i < method.getParameterTypes().length; i++) {
             Class<?> clazz = method.getParameterTypes()[i];
             // skip session parameters
@@ -314,9 +319,9 @@ public class FunctionListBuilder
                 }
             }
             checkArgument(explicitType != null, "Method %s argument %s does not have a @SqlType annotation", method, i);
-            types.add(parseTypeSignature(explicitType.value(), literalParameters));
+            parameters.add(parseTypeSignature(explicitType.value(), literalParameters));
         }
-        return types.build();
+        return parameters.build();
     }
 
     private static void verifyMethodSignature(Method method, TypeSignature returnTypeName, List<TypeSignature> argumentTypeNames, TypeManager typeManager)
@@ -404,6 +409,8 @@ public class FunctionListBuilder
             literalParameters = ImmutableSet.copyOf(literalParametersAnnotation.value());
         }
 
+        List<LongVariableConstraint> longVariableConstraints = getLongVariableConstraints(method);
+
         List<TypeSignature> argumentTypes = parameterTypeSignatures(method, literalParameters);
         TypeSignature returnTypeSignature;
 
@@ -422,14 +429,25 @@ public class FunctionListBuilder
 
         operator(
                 operatorType,
+                ImmutableList.of(),
+                longVariableConstraints,
                 returnTypeSignature,
                 argumentTypes,
                 methodHandle,
                 instanceFactory,
                 method.isAnnotationPresent(Nullable.class),
-                nullableArguments,
-                literalParameters);
+                nullableArguments);
         return true;
+    }
+
+    private List<LongVariableConstraint> getLongVariableConstraints(Method method)
+    {
+        List<Constraint> annotations = Arrays.asList(method.getAnnotationsByType(Constraint.class));
+        ImmutableList.Builder<LongVariableConstraint> constraints = ImmutableList.builder();
+        for (Constraint longVariableConstraint : annotations) {
+            constraints.add(longVariableExpression(longVariableConstraint.variable(), longVariableConstraint.expression()));
+        }
+        return constraints.build();
     }
 
     private static String getDescription(AnnotatedElement annotatedElement)

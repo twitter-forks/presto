@@ -31,6 +31,7 @@ public final class TestGroups
     public static final String QUERY_ENGINE = "qe";
     public static final String COMPARISON = "comparison";
     public static final String LOGICAL = "logical";
+    public static final String INTERSECT = "intersect";
     public static final String JSON_FUNCTIONS = "json_functions";
     public static final String URL_FUNCTIONS = "url_functions";
     public static final String ARRAY_FUNCTIONS = "array_functions";
@@ -41,6 +42,10 @@ public final class TestGroups
     public static final String REGEX_FUNCTIONS = "regex_functions";
     public static final String STRING_FUNCTIONS = "string_functions";
     public static final String MATH_FUNCTIONS = "math_functions";
+    public static final String STORAGE_FORMATS = "storage_formats";
+    public static final String PROFILE_SPECIFIC_TESTS = "profile_specific_tests";
+    public static final String HDFS_IMPERSONATION = "hdfs_impersonation";
+    public static final String HDFS_NO_IMPERSONATION = "hdfs_no_impersonation";
 
     private TestGroups() {}
 }

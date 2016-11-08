@@ -15,6 +15,7 @@ package com.facebook.presto.raptor;
 
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.google.common.collect.ImmutableList;
 
 import javax.inject.Inject;
@@ -25,7 +26,7 @@ import java.util.OptionalInt;
 
 import static com.facebook.presto.spi.session.PropertyMetadata.integerSessionProperty;
 import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.toList;
 
@@ -101,11 +102,12 @@ public class RaptorTableProperties
         return new PropertyMetadata<>(
                 name,
                 description,
-                VARCHAR,
+                createUnboundedVarcharType(),
                 String.class,
                 null,
                 false,
-                value -> ((String) value).toLowerCase(ENGLISH));
+                value -> ((String) value).toLowerCase(ENGLISH),
+                value -> value);
     }
 
     private static PropertyMetadata<?> stringListSessionProperty(TypeManager typeManager, String name, String description)
@@ -113,13 +115,14 @@ public class RaptorTableProperties
         return new PropertyMetadata<>(
                 name,
                 description,
-                typeManager.getParameterizedType(ARRAY, ImmutableList.of(VARCHAR.getTypeSignature()), ImmutableList.of()),
+                typeManager.getParameterizedType(ARRAY, ImmutableList.of(TypeSignatureParameter.of(createUnboundedVarcharType().getTypeSignature()))),
                 List.class,
                 ImmutableList.of(),
                 false,
                 value -> ImmutableList.copyOf(stringList(value).stream()
                         .map(s -> s.toLowerCase(ENGLISH))
-                        .collect(toList())));
+                        .collect(toList())),
+                value -> value);
     }
 
     @SuppressWarnings("unchecked")

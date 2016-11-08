@@ -77,7 +77,7 @@ import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.testing.MaterializedResult.materializeSourceDataStream;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
@@ -164,12 +164,12 @@ public class TestOrcStorageManager
         OrcStorageManager manager = createOrcStorageManager();
 
         List<Long> columnIds = ImmutableList.of(3L, 7L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(10));
 
         StoragePageSink sink = createStoragePageSink(manager, columnIds, columnTypes);
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello")
-                .row(456, "bye")
+                .row(123L, "hello")
+                .row(456L, "bye")
                 .build();
         sink.appendPages(pages);
 
@@ -221,9 +221,9 @@ public class TestOrcStorageManager
             assertEquals(BIGINT.getLong(column0, 0), 123L);
             assertEquals(BIGINT.getLong(column0, 1), 456L);
 
-            Block column1 = reader.readBlock(VARCHAR, 1);
-            assertEquals(VARCHAR.getSlice(column1, 0), utf8Slice("hello"));
-            assertEquals(VARCHAR.getSlice(column1, 1), utf8Slice("bye"));
+            Block column1 = reader.readBlock(createVarcharType(10), 1);
+            assertEquals(createVarcharType(10).getSlice(column1, 0), utf8Slice("hello"));
+            assertEquals(createVarcharType(10).getSlice(column1, 1), utf8Slice("bye"));
 
             assertEquals(reader.nextBatch(), -1);
         }
@@ -236,7 +236,7 @@ public class TestOrcStorageManager
         OrcStorageManager manager = createOrcStorageManager();
 
         List<Long> columnIds = ImmutableList.of(2L, 4L, 6L, 7L, 8L, 9L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR, VARBINARY, DATE, BOOLEAN, DOUBLE);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(10), VARBINARY, DATE, BOOLEAN, DOUBLE);
 
         byte[] bytes1 = octets(0x00, 0xFE, 0xFF);
         byte[] bytes3 = octets(0x01, 0x02, 0x19, 0x80);
@@ -244,19 +244,19 @@ public class TestOrcStorageManager
         StoragePageSink sink = createStoragePageSink(manager, columnIds, columnTypes);
 
         Object[][] doubles = {
-                {881, "-inf", null, null, null, Double.NEGATIVE_INFINITY},
-                {882, "+inf", null, null, null, Double.POSITIVE_INFINITY},
-                {883, "nan", null, null, null, Double.NaN},
-                {884, "min", null, null, null, Double.MIN_VALUE},
-                {885, "max", null, null, null, Double.MAX_VALUE},
-                {886, "pzero", null, null, null, 0.0},
-                {887, "nzero", null, null, null, -0.0},
-        };
+                {881L, "-inf", null, null, null, Double.NEGATIVE_INFINITY},
+                {882L, "+inf", null, null, null, Double.POSITIVE_INFINITY},
+                {883L, "nan", null, null, null, Double.NaN},
+                {884L, "min", null, null, null, Double.MIN_VALUE},
+                {885L, "max", null, null, null, Double.MAX_VALUE},
+                {886L, "pzero", null, null, null, 0.0},
+                {887L, "nzero", null, null, null, -0.0},
+                };
 
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello", wrappedBuffer(bytes1), sqlDate(2001, 8, 22).getDays(), true, 123.45)
+                .row(123L, "hello", wrappedBuffer(bytes1), sqlDate(2001, 8, 22).getDays(), true, 123.45)
                 .row(null, null, null, null, null, null)
-                .row(456, "bye", wrappedBuffer(bytes3), sqlDate(2005, 4, 22).getDays(), false, 987.65)
+                .row(456L, "bye", wrappedBuffer(bytes3), sqlDate(2005, 4, 22).getDays(), false, 987.65)
                 .rows(doubles)
                 .build();
 
@@ -267,9 +267,9 @@ public class TestOrcStorageManager
         UUID uuid = Iterables.getOnlyElement(shards).getShardUuid();
 
         MaterializedResult expected = resultBuilder(SESSION, columnTypes)
-                .row(123, "hello", sqlBinary(bytes1), sqlDate(2001, 8, 22), true, 123.45)
+                .row(123L, "hello", sqlBinary(bytes1), sqlDate(2001, 8, 22), true, 123.45)
                 .row(null, null, null, null, null, null)
-                .row(456, "bye", sqlBinary(bytes3), sqlDate(2005, 4, 22), false, 987.65)
+                .row(456L, "bye", sqlBinary(bytes3), sqlDate(2005, 4, 22), false, 987.65)
                 .rows(doubles)
                 .build();
 
@@ -311,13 +311,13 @@ public class TestOrcStorageManager
 
         long transactionId = TRANSACTION_ID;
         List<Long> columnIds = ImmutableList.of(3L, 7L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(10));
 
         // create file with 2 rows
         StoragePageSink sink = createStoragePageSink(manager, columnIds, columnTypes);
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello")
-                .row(456, "bye")
+                .row(123L, "hello")
+                .row(456L, "bye")
                 .build();
         sink.appendPages(pages);
         List<ShardInfo> shards = sink.commit();
@@ -360,12 +360,12 @@ public class TestOrcStorageManager
         OrcStorageManager manager = createOrcStorageManager();
 
         List<Long> columnIds = ImmutableList.of(3L, 7L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(10));
 
         StoragePageSink sink = createStoragePageSink(manager, columnIds, columnTypes);
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello")
-                .row(456, "bye")
+                .row(123L, "hello")
+                .row(456L, "bye")
                 .build();
         sink.appendPages(pages);
 
@@ -454,7 +454,7 @@ public class TestOrcStorageManager
     public void testShardStatsVarchar()
     {
         List<ColumnStats> stats = columnStats(
-                types(VARCHAR),
+                types(createVarcharType(10)),
                 row(utf8Slice("hello")),
                 row(utf8Slice("bye")),
                 row(utf8Slice("foo")));
@@ -493,12 +493,12 @@ public class TestOrcStorageManager
         OrcStorageManager manager = createOrcStorageManager(2, new DataSize(2, MEGABYTE));
 
         List<Long> columnIds = ImmutableList.of(3L, 7L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(10));
 
         StoragePageSink sink = createStoragePageSink(manager, columnIds, columnTypes);
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello")
-                .row(456, "bye")
+                .row(123L, "hello")
+                .row(456L, "bye")
                 .build();
         sink.appendPages(pages);
         assertTrue(sink.isFull());
@@ -509,11 +509,11 @@ public class TestOrcStorageManager
             throws Exception
     {
         List<Long> columnIds = ImmutableList.of(3L, 7L);
-        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, VARCHAR);
+        List<Type> columnTypes = ImmutableList.<Type>of(BIGINT, createVarcharType(5));
 
         List<Page> pages = rowPagesBuilder(columnTypes)
-                .row(123, "hello")
-                .row(456, "bye")
+                .row(123L, "hello")
+                .row(456L, "bye")
                 .build();
 
         // Set maxFileSize to 1 byte, so adding any page makes the StoragePageSink full

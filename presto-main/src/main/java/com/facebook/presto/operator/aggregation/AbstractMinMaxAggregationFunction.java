@@ -14,6 +14,7 @@
 package com.facebook.presto.operator.aggregation;
 
 import com.facebook.presto.bytecode.DynamicClassLoader;
+import com.facebook.presto.metadata.BoundVariables;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.OperatorType;
 import com.facebook.presto.metadata.SqlAggregationFunction;
@@ -38,7 +39,6 @@ import io.airlift.slice.Slice;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
-import java.util.Map;
 
 import static com.facebook.presto.metadata.Signature.internalOperator;
 import static com.facebook.presto.metadata.Signature.orderableTypeParameter;
@@ -48,6 +48,7 @@ import static com.facebook.presto.operator.aggregation.AggregationMetadata.Param
 import static com.facebook.presto.operator.aggregation.AggregationUtils.generateAggregationName;
 import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static java.util.Objects.requireNonNull;
 
@@ -72,15 +73,19 @@ public abstract class AbstractMinMaxAggregationFunction
 
     protected AbstractMinMaxAggregationFunction(String name, OperatorType operatorType)
     {
-        super(name, ImmutableList.of(orderableTypeParameter("E")), "E", ImmutableList.of("E"));
+        super(name,
+                ImmutableList.of(orderableTypeParameter("E")),
+                ImmutableList.of(),
+                parseTypeSignature("E"),
+                ImmutableList.of(parseTypeSignature("E")));
         requireNonNull(operatorType);
         this.operatorType = operatorType;
     }
 
     @Override
-    public InternalAggregationFunction specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public InternalAggregationFunction specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
-        Type type = types.get("E");
+        Type type = boundVariables.getTypeVariable("E");
         MethodHandle compareMethodHandle = functionRegistry.getScalarFunctionImplementation(internalOperator(operatorType, BOOLEAN, ImmutableList.of(type, type))).getMethodHandle();
         return generateAggregation(type, compareMethodHandle);
     }
@@ -133,12 +138,11 @@ public abstract class AbstractMinMaxAggregationFunction
         AccumulatorStateFactory<?> stateFactory = compiler.generateStateFactory(stateInterface, classLoader);
 
         Type intermediateType = stateSerializer.getSerializedType();
-        List<ParameterMetadata> inputParameterMetadata = createInputParameterMetadata(type);
         AggregationMetadata metadata = new AggregationMetadata(
                 generateAggregationName(getSignature().getName(), type, inputTypes),
-                inputParameterMetadata,
+                createParameterMetadata(type),
                 inputFunction,
-                inputParameterMetadata,
+                createParameterMetadata(intermediateType),
                 inputFunction,
                 null,
                 outputFunction,
@@ -152,7 +156,7 @@ public abstract class AbstractMinMaxAggregationFunction
         return new InternalAggregationFunction(getSignature().getName(), inputTypes, intermediateType, type, true, false, factory);
     }
 
-    private static List<ParameterMetadata> createInputParameterMetadata(Type type)
+    private static List<ParameterMetadata> createParameterMetadata(Type type)
     {
         return ImmutableList.of(
                 new ParameterMetadata(STATE),

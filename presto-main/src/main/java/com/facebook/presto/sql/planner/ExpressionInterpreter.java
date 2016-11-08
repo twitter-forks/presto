@@ -27,6 +27,7 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.analyzer.AnalysisContext;
@@ -49,10 +50,10 @@ import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionRewriter;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
+import com.facebook.presto.sql.tree.FieldReference;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.InListExpression;
 import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.InputReference;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
 import com.facebook.presto.sql.tree.LikePredicate;
@@ -68,11 +69,15 @@ import com.facebook.presto.sql.tree.Row;
 import com.facebook.presto.sql.tree.SearchedCaseExpression;
 import com.facebook.presto.sql.tree.SimpleCaseExpression;
 import com.facebook.presto.sql.tree.StringLiteral;
+import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.SubscriptExpression;
+import com.facebook.presto.sql.tree.SymbolReference;
 import com.facebook.presto.sql.tree.TryExpression;
 import com.facebook.presto.sql.tree.WhenClause;
 import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.LikeFunctions;
+import com.facebook.presto.type.RowType;
+import com.facebook.presto.type.RowType.RowField;
 import com.facebook.presto.util.Failures;
 import com.facebook.presto.util.FastutilSetHelper;
 import com.google.common.annotations.VisibleForTesting;
@@ -103,8 +108,9 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.EXPRESSION_NOT_
 import static com.facebook.presto.sql.gen.TryCodeGenerator.tryExpressionExceptionHandler;
 import static com.facebook.presto.sql.planner.LiteralInterpreter.toExpression;
 import static com.facebook.presto.sql.planner.LiteralInterpreter.toExpressions;
-import static com.facebook.presto.type.TypeRegistry.canCoerce;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
+import static com.facebook.presto.util.Types.checkType;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.instanceOf;
 import static com.google.common.base.Verify.verify;
@@ -149,7 +155,7 @@ public class ExpressionInterpreter
         analyzer.analyze(expression, new RelationType(), new AnalysisContext());
 
         Type actualType = analyzer.getExpressionTypes().get(expression);
-        if (!canCoerce(actualType, expectedType)) {
+        if (!metadata.getTypeManager().canCoerce(actualType, expectedType)) {
             throw new SemanticException(SemanticErrorCode.TYPE_MISMATCH, expression, String.format("Cannot cast type %s to %s",
                     expectedType.getTypeSignature(),
                     actualType.getTypeSignature()));
@@ -222,7 +228,13 @@ public class ExpressionInterpreter
     public Object evaluate(int position, Block... inputs)
     {
         checkState(!optimize, "evaluate(int, Block...) not allowed for optimizer");
-        return visitor.process(expression, new PagePositionContext(position, inputs));
+        return visitor.process(expression, new SinglePagePositionContext(position, inputs));
+    }
+
+    public Object evaluate(int leftPosition, Block[] leftBlocks, int rightPosition, Block[] rightBlocks)
+    {
+        checkState(!optimize, "evaluate(int, Block[], int, Block[]) not allowed for optimizer");
+        return visitor.process(expression, new TwoPagesPositionContext(leftPosition, leftBlocks, rightPosition, rightBlocks));
     }
 
     public Object optimize(SymbolResolver inputs)
@@ -261,7 +273,7 @@ public class ExpressionInterpreter
         }
 
         @Override
-        protected Void visitInputReference(InputReference node, Void context)
+        protected Void visitFieldReference(FieldReference node, Void context)
         {
             throw new SemanticException(EXPRESSION_NOT_CONSTANT, expression, "Constant expression cannot contain column references");
         }
@@ -272,14 +284,14 @@ public class ExpressionInterpreter
             extends AstVisitor<Object, Object>
     {
         @Override
-        public Object visitInputReference(InputReference node, Object context)
+        public Object visitFieldReference(FieldReference node, Object context)
         {
             Type type = expressionTypes.get(node);
 
-            int channel = node.getChannel();
+            int channel = node.getFieldIndex();
             if (context instanceof PagePositionContext) {
                 PagePositionContext pagePositionContext = (PagePositionContext) context;
-                int position = pagePositionContext.getPosition();
+                int position = pagePositionContext.getPosition(channel);
                 Block block = pagePositionContext.getBlock(channel);
 
                 if (block.isNull(position)) {
@@ -332,20 +344,62 @@ public class ExpressionInterpreter
         @Override
         protected Object visitDereferenceExpression(DereferenceExpression node, Object context)
         {
-            // Dereference is never a Symbol
-            return node;
+            Type type = expressionTypes.get(node.getBase());
+            // if there is no type for the base of Dereference, it must be QualifiedName
+            if (type == null) {
+                return node;
+            }
+
+            Object base = process(node.getBase(), context);
+            if (hasUnresolvedValue(base)) {
+                return new DereferenceExpression(toExpression(base, type), node.getFieldName());
+            }
+
+            RowType rowType = checkType(type, RowType.class, "type");
+            Block row = (Block) base;
+            Type returnType = expressionTypes.get(node);
+            List<RowField> fields = rowType.getFields();
+            int index = -1;
+            for (int i = 0; i < fields.size(); i++) {
+                RowField field = fields.get(i);
+                if (field.getName().isPresent() && field.getName().get().equalsIgnoreCase(node.getFieldName())) {
+                    checkArgument(index < 0, "Ambiguous field %s in type %s", field, rowType.getDisplayName());
+                    index = i;
+                }
+            }
+            checkState(index >= 0, "could not find field name: %s", node.getFieldName());
+            if (row.isNull(index)) {
+                return null;
+            }
+            Class<?> javaType = returnType.getJavaType();
+            if (javaType == long.class) {
+                return returnType.getLong(row, index);
+            }
+            else if (javaType == double.class) {
+                return returnType.getDouble(row, index);
+            }
+            else if (javaType == boolean.class) {
+                return returnType.getBoolean(row, index);
+            }
+            else if (javaType == Slice.class) {
+                return returnType.getSlice(row, index);
+            }
+            else if (!javaType.isPrimitive()) {
+                return returnType.getObject(row, index);
+            }
+            throw new UnsupportedOperationException("Dereference a unsupported primitive type: " + javaType.getName());
         }
 
         @Override
         protected Object visitQualifiedNameReference(QualifiedNameReference node, Object context)
         {
-            if (node.getName().getPrefix().isPresent()) {
-                // not a symbol
-                return node;
-            }
+            return node;
+        }
 
-            Symbol symbol = Symbol.fromQualifiedName(node.getName());
-            return ((SymbolResolver) context).getValue(symbol);
+        @Override
+        protected Object visitSymbolReference(SymbolReference node, Object context)
+        {
+            return ((SymbolResolver) context).getValue(Symbol.from(node));
         }
 
         @Override
@@ -581,6 +635,15 @@ public class ExpressionInterpreter
                 return null;
             }
             return false;
+        }
+
+        @Override
+        protected Object visitSubqueryExpression(SubqueryExpression node, Object context)
+        {
+            if (!optimize) {
+                throw new UnsupportedOperationException("Subquery not yet implemented");
+            }
+            return node;
         }
 
         @Override
@@ -991,7 +1054,25 @@ public class ExpressionInterpreter
         @Override
         protected Object visitRow(Row node, Object context)
         {
-            throw new PrestoException(NOT_SUPPORTED, "Row expressions not yet supported");
+            RowType rowType = checkType(expressionTypes.get(node), RowType.class, "type");
+            List<Type> parameterTypes = rowType.getTypeParameters();
+            List<Expression> arguments = node.getItems();
+
+            int cardinality = arguments.size();
+            List<Object> values = new ArrayList<>(cardinality);
+            for (Expression argument : arguments) {
+                values.add(process(argument, context));
+            }
+            if (hasUnresolvedValue(values)) {
+                return new Row(toExpressions(values, parameterTypes));
+            }
+            else {
+                BlockBuilder blockBuilder =  new InterleavedBlockBuilder(parameterTypes, new BlockBuilderStatus(), cardinality);
+                for (int i = 0; i < cardinality; ++i) {
+                    writeNativeValue(parameterTypes.get(i), blockBuilder, values.get(i));
+                }
+                return blockBuilder.build();
+            }
         }
 
         @Override
@@ -1050,12 +1131,20 @@ public class ExpressionInterpreter
         }
     }
 
-    private static class PagePositionContext
+    private interface PagePositionContext
+    {
+        public Block getBlock(int channel);
+
+        public int getPosition(int channel);
+    }
+
+    private static class SinglePagePositionContext
+            implements PagePositionContext
     {
         private final int position;
         private final Block[] blocks;
 
-        private PagePositionContext(int position, Block[] blocks)
+        private SinglePagePositionContext(int position, Block[] blocks)
         {
             this.position = position;
             this.blocks = blocks;
@@ -1066,9 +1155,48 @@ public class ExpressionInterpreter
             return blocks[channel];
         }
 
-        public int getPosition()
+        public int getPosition(int channel)
         {
             return position;
+        }
+    }
+
+    private static class TwoPagesPositionContext
+            implements PagePositionContext
+    {
+        private final int leftPosition;
+        private final int rightPosition;
+        private final Block[] leftBlocks;
+        private final Block[] rightBlocks;
+
+        private TwoPagesPositionContext(int leftPosition, Block[] leftBlocks, int rightPosition, Block[] rightBlocks)
+        {
+            this.leftPosition = leftPosition;
+            this.rightPosition = rightPosition;
+            this.leftBlocks = leftBlocks;
+            this.rightBlocks = rightBlocks;
+        }
+
+        @Override
+        public Block getBlock(int channel)
+        {
+            if (channel < leftBlocks.length) {
+                return leftBlocks[channel];
+            }
+            else {
+                return rightBlocks[channel - leftBlocks.length];
+            }
+        }
+
+        @Override
+        public int getPosition(int channel)
+        {
+            if (channel < leftBlocks.length) {
+                return leftPosition;
+            }
+            else {
+                return rightPosition;
+            }
         }
     }
 

@@ -31,6 +31,7 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
@@ -197,6 +198,29 @@ public final class BlockAssertions
         return builder.build();
     }
 
+    public static Block createIntsBlock(Integer... values)
+    {
+        requireNonNull(values, "varargs 'values' is null");
+
+        return createIntsBlock(Arrays.asList(values));
+    }
+
+    public static Block createIntsBlock(Iterable<Integer> values)
+    {
+        BlockBuilder builder = INTEGER.createBlockBuilder(new BlockBuilderStatus(), 100);
+
+        for (Integer value : values) {
+            if (value == null) {
+                builder.appendNull();
+            }
+            else {
+                INTEGER.writeLong(builder, value);
+            }
+        }
+
+        return builder.build();
+    }
+
     public static Block createEmptyLongsBlock()
     {
         return BIGINT.createFixedSizeBlockBuilder(0).build();
@@ -223,14 +247,19 @@ public final class BlockAssertions
 
     public static Block createLongsBlock(Iterable<Long> values)
     {
-        BlockBuilder builder = BIGINT.createBlockBuilder(new BlockBuilderStatus(), 100);
+        return createTypedLongsBlock(BIGINT, values);
+    }
+
+    public static Block createTypedLongsBlock(Type type, Iterable<Long> values)
+    {
+        BlockBuilder builder = type.createBlockBuilder(new BlockBuilderStatus(), 100);
 
         for (Long value : values) {
             if (value == null) {
                 builder.appendNull();
             }
             else {
-                BIGINT.writeLong(builder, value);
+                type.writeLong(builder, value);
             }
         }
 

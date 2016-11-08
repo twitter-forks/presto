@@ -14,7 +14,8 @@
 package com.facebook.presto.execution;
 
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.planner.PartitionFunctionBinding;
+import com.facebook.presto.sql.planner.Partitioning;
+import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
@@ -326,8 +327,8 @@ public class TestStageStateMachine
                         ImmutableList.of(ImmutableList.of(new StringLiteral("foo")))),
                 ImmutableMap.<Symbol, Type>of(symbol, VARCHAR),
                 SOURCE_DISTRIBUTION,
-                valuesNodeId,
-                new PartitionFunctionBinding(SINGLE_DISTRIBUTION, ImmutableList.of(symbol), ImmutableList.of()));
+                ImmutableList.of(valuesNodeId),
+                new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), ImmutableList.of(symbol)));
 
         return planFragment;
     }

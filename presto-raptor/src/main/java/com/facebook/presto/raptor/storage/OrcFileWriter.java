@@ -17,12 +17,17 @@ import com.facebook.presto.raptor.util.SyncingFileSystem;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
+import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.VarbinaryType;
 import com.facebook.presto.spi.type.VarcharType;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import io.airlift.json.JsonCodec;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -45,6 +50,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +67,7 @@ import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Functions.toStringFunction;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.transform;
+import static io.airlift.json.JsonCodec.jsonCodec;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_COLUMNS;
@@ -81,6 +88,7 @@ public class OrcFileWriter
 {
     private static final Configuration CONFIGURATION = new Configuration();
     private static final Constructor<? extends RecordWriter> WRITER_CONSTRUCTOR = getOrcWriterConstructor();
+    private static final JsonCodec<OrcFileMetadata> METADATA_CODEC = jsonCodec(OrcFileMetadata.class);
 
     private final List<Type> columnTypes;
 
@@ -96,6 +104,12 @@ public class OrcFileWriter
 
     public OrcFileWriter(List<Long> columnIds, List<Type> columnTypes, File target)
     {
+        this(columnIds, columnTypes, target, true);
+    }
+
+    @VisibleForTesting
+    OrcFileWriter(List<Long> columnIds, List<Type> columnTypes, File target, boolean writeMetadata)
+    {
         this.columnTypes = ImmutableList.copyOf(requireNonNull(columnTypes, "columnTypes is null"));
         checkArgument(columnIds.size() == columnTypes.size(), "ids and types mismatch");
         checkArgument(isUnique(columnIds), "ids must be unique");
@@ -109,7 +123,7 @@ public class OrcFileWriter
         properties.setProperty(META_TABLE_COLUMN_TYPES, Joiner.on(':').join(hiveTypeNames));
 
         serializer = createSerializer(CONFIGURATION, properties);
-        recordWriter = createRecordWriter(new Path(target.toURI()), CONFIGURATION);
+        recordWriter = createRecordWriter(new Path(target.toURI()), CONFIGURATION, columnIds, columnTypes, writeMetadata);
 
         tableInspector = getStandardStructObjectInspector(columnNames, getJavaObjectInspectors(storageTypes));
         structFields = ImmutableList.copyOf(tableInspector.getAllStructFieldRefs());
@@ -184,7 +198,7 @@ public class OrcFileWriter
         return serde;
     }
 
-    private static RecordWriter createRecordWriter(Path target, Configuration conf)
+    private static RecordWriter createRecordWriter(Path target, Configuration conf, List<Long> columnIds, List<Type> columnTypes, boolean writeMetadata)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(FileSystem.class.getClassLoader());
                 FileSystem fileSystem = new SyncingFileSystem(CONFIGURATION)) {
@@ -193,11 +207,38 @@ public class OrcFileWriter
                     .fileSystem(fileSystem)
                     .compress(SNAPPY);
 
+            if (writeMetadata) {
+                options.callback(createFileMetadataCallback(columnIds, columnTypes));
+            }
+
             return WRITER_CONSTRUCTOR.newInstance(target, options);
         }
         catch (ReflectiveOperationException | IOException e) {
             throw new PrestoException(RAPTOR_ERROR, "Failed to create writer", e);
         }
+    }
+
+    private static OrcFile.WriterCallback createFileMetadataCallback(List<Long> columnIds, List<Type> columnTypes)
+    {
+        return new OrcFile.WriterCallback()
+        {
+            @Override
+            public void preStripeWrite(OrcFile.WriterContext context)
+                    throws IOException
+            {}
+
+            @Override
+            public void preFooterWrite(OrcFile.WriterContext context)
+                    throws IOException
+            {
+                ImmutableMap.Builder<Long, TypeSignature> columnTypesMap = ImmutableMap.builder();
+                for (int i = 0; i < columnIds.size(); i++) {
+                    columnTypesMap.put(columnIds.get(i), columnTypes.get(i).getTypeSignature());
+                }
+                byte[] bytes = METADATA_CODEC.toJsonBytes(new OrcFileMetadata(columnTypesMap.build()));
+                context.getWriter().addUserMetadata(OrcFileMetadata.KEY, ByteBuffer.wrap(bytes));
+            }
+        };
     }
 
     private static Constructor<? extends RecordWriter> getOrcWriterConstructor()
@@ -255,6 +296,10 @@ public class OrcFileWriter
 
     private static StorageType toStorageType(Type type)
     {
+        if (type instanceof DecimalType) {
+            DecimalType decimalType = (DecimalType) type;
+            return StorageType.decimal(decimalType.getPrecision(), decimalType.getScale());
+        }
         Class<?> javaType = type.getJavaType();
         if (javaType == boolean.class) {
             return StorageType.BOOLEAN;
