@@ -45,7 +45,7 @@ final class PrestoSystemRequirements
             failRequirement("Presto requires an Oracle or OpenJDK JVM (found %s)", vendor);
         }
 
-        verifyJavaVersion();
+        //verifyJavaVersion();
 
         String dataModel = System.getProperty("sun.arch.data.model");
         if (!"64".equals(dataModel)) {
