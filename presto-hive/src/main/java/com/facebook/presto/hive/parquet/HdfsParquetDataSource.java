@@ -14,7 +14,6 @@
 package com.facebook.presto.hive.parquet;
 
 import com.facebook.presto.spi.PrestoException;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -33,12 +32,19 @@ public class HdfsParquetDataSource
     private final String name;
     private final long size;
     private final FSDataInputStream inputStream;
+    private long readBytes;
 
     public HdfsParquetDataSource(Path path, long size, FSDataInputStream inputStream)
     {
         this.name = path.toString();
         this.size = size;
         this.inputStream = inputStream;
+    }
+
+    @Override
+    public final long getReadBytes()
+    {
+        return readBytes;
     }
 
     @Override
@@ -66,6 +72,7 @@ public class HdfsParquetDataSource
             throws IOException
     {
         readInternal(position, buffer, bufferOffset, bufferLength);
+        readBytes += bufferLength;
     }
 
     private void readInternal(long position, byte[] buffer, int bufferOffset, int bufferLength)
@@ -83,10 +90,9 @@ public class HdfsParquetDataSource
         }
     }
 
-    public static HdfsParquetDataSource buildHdfsParquetDataSource(Path path, Configuration configuration, long start, long length)
+    public static HdfsParquetDataSource buildHdfsParquetDataSource(FileSystem fileSystem, Path path, long start, long length)
     {
         try {
-            FileSystem fileSystem = path.getFileSystem(configuration);
             long size = fileSystem.getFileStatus(path).getLen();
             FSDataInputStream inputStream = fileSystem.open(path);
             return new HdfsParquetDataSource(path, size, inputStream);

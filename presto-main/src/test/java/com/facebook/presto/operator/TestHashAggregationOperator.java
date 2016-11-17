@@ -59,6 +59,7 @@ import static com.facebook.presto.spi.block.BlockBuilderStatus.DEFAULT_MAX_BLOCK
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
@@ -104,9 +105,12 @@ public class TestHashAggregationOperator
             throws Exception
     {
         MetadataManager metadata = MetadataManager.createTestMetadataManager();
-        InternalAggregationFunction countVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("count", AGGREGATE, StandardTypes.BIGINT, StandardTypes.VARCHAR));
-        InternalAggregationFunction countBooleanColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("count", AGGREGATE, StandardTypes.BIGINT, StandardTypes.BOOLEAN));
-        InternalAggregationFunction maxVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("max", AGGREGATE, StandardTypes.VARCHAR, StandardTypes.VARCHAR));
+        InternalAggregationFunction countVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(
+                new Signature("count", AGGREGATE, parseTypeSignature(StandardTypes.BIGINT), parseTypeSignature(StandardTypes.VARCHAR)));
+        InternalAggregationFunction countBooleanColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(
+                new Signature("count", AGGREGATE, parseTypeSignature(StandardTypes.BIGINT), parseTypeSignature(StandardTypes.BOOLEAN)));
+        InternalAggregationFunction maxVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(
+                new Signature("max", AGGREGATE, parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.VARCHAR)));
         List<Integer> hashChannels = Ints.asList(1);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, hashChannels, VARCHAR, VARCHAR, VARCHAR, BIGINT, BOOLEAN);
         List<Page> input = rowPagesBuilder
@@ -127,7 +131,6 @@ public class TestHashAggregationOperator
                         maxVarcharColumn.bind(ImmutableList.of(2), Optional.empty(), Optional.empty(), 1.0),
                         countVarcharColumn.bind(ImmutableList.of(0), Optional.empty(), Optional.empty(), 1.0),
                         countBooleanColumn.bind(ImmutableList.of(4), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));
@@ -135,16 +138,16 @@ public class TestHashAggregationOperator
         Operator operator = operatorFactory.createOperator(driverContext);
 
         MaterializedResult expected = resultBuilder(driverContext.getSession(), VARCHAR, BIGINT, BIGINT, DOUBLE, VARCHAR, BIGINT, BIGINT)
-                .row("0", 3, 0, 0.0, "300", 3, 3)
-                .row("1", 3, 3, 1.0, "301", 3, 3)
-                .row("2", 3, 6, 2.0, "302", 3, 3)
-                .row("3", 3, 9, 3.0, "303", 3, 3)
-                .row("4", 3, 12, 4.0, "304", 3, 3)
-                .row("5", 3, 15, 5.0, "305", 3, 3)
-                .row("6", 3, 18, 6.0, "306", 3, 3)
-                .row("7", 3, 21, 7.0, "307", 3, 3)
-                .row("8", 3, 24, 8.0, "308", 3, 3)
-                .row("9", 3, 27, 9.0, "309", 3, 3)
+                .row("0", 3L, 0L, 0.0, "300", 3L, 3L)
+                .row("1", 3L, 3L, 1.0, "301", 3L, 3L)
+                .row("2", 3L, 6L, 2.0, "302", 3L, 3L)
+                .row("3", 3L, 9L, 3.0, "303", 3L, 3L)
+                .row("4", 3L, 12L, 4.0, "304", 3L, 3L)
+                .row("5", 3L, 15L, 5.0, "305", 3L, 3L)
+                .row("6", 3L, 18L, 6.0, "306", 3L, 3L)
+                .row("7", 3L, 21L, 7.0, "307", 3L, 3L)
+                .row("8", 3L, 24L, 8.0, "308", 3L, 3L)
+                .row("9", 3L, 27L, 9.0, "309", 3L, 3L)
                 .build();
 
         assertOperatorEqualsIgnoreOrder(operator, input, expected, hashEnabled, Optional.of(hashChannels.size()));
@@ -154,7 +157,8 @@ public class TestHashAggregationOperator
     public void testMemoryLimit(boolean hashEnabled)
     {
         MetadataManager metadata = MetadataManager.createTestMetadataManager();
-        InternalAggregationFunction maxVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("max", AGGREGATE, StandardTypes.VARCHAR, StandardTypes.VARCHAR));
+        InternalAggregationFunction maxVarcharColumn = metadata.getFunctionRegistry().getAggregateFunctionImplementation(
+                new Signature("max", AGGREGATE, parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.VARCHAR)));
 
         List<Integer> hashChannels = Ints.asList(1);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, hashChannels, VARCHAR, VARCHAR, VARCHAR, BIGINT);
@@ -178,7 +182,6 @@ public class TestHashAggregationOperator
                         LONG_SUM.bind(ImmutableList.of(3), Optional.empty(), Optional.empty(), 1.0),
                         LONG_AVERAGE.bind(ImmutableList.of(3), Optional.empty(), Optional.empty(), 1.0),
                         maxVarcharColumn.bind(ImmutableList.of(2), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));
@@ -214,7 +217,6 @@ public class TestHashAggregationOperator
                 hashChannels,
                 Step.SINGLE,
                 ImmutableList.of(COUNT.bind(ImmutableList.of(0), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));
@@ -250,7 +252,6 @@ public class TestHashAggregationOperator
                 hashChannels,
                 Step.SINGLE,
                 ImmutableList.of(COUNT.bind(ImmutableList.of(0), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));
@@ -282,7 +283,6 @@ public class TestHashAggregationOperator
                 Step.SINGLE,
                 ImmutableList.of(COUNT.bind(ImmutableList.of(0), Optional.empty(), Optional.empty(), 1.0),
                         LONG_AVERAGE.bind(ImmutableList.of(1), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));
@@ -312,7 +312,6 @@ public class TestHashAggregationOperator
                 hashChannels,
                 Step.PARTIAL,
                 ImmutableList.of(LONG_SUM.bind(ImmutableList.of(0), Optional.empty(), Optional.empty(), 1.0)),
-                Optional.<Integer>empty(),
                 rowPagesBuilder.getHashChannel(),
                 100_000,
                 new DataSize(16, MEGABYTE));

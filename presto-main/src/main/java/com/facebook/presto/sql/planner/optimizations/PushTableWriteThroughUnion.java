@@ -31,7 +31,7 @@ import java.util.Map;
 import static java.util.Objects.requireNonNull;
 
 public class PushTableWriteThroughUnion
-        extends PlanOptimizer
+        implements PlanOptimizer
 {
     @Override
     public PlanNode optimize(PlanNode plan, Session session, Map<Symbol, Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
@@ -91,7 +91,7 @@ public class PushTableWriteThroughUnion
                         node.getColumnNames(),
                         newSymbols.build(),
                         node.getSampleWeightSymbol(),
-                        node.getPartitionFunction()));
+                        node.getPartitioningScheme()));
             }
 
             return new UnionNode(idAllocator.getNextId(), rewrittenSources.build(), mappings.build(), ImmutableList.copyOf(mappings.build().keySet()));

@@ -36,7 +36,8 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.CompilerConfig;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
-import com.facebook.presto.sql.planner.PartitionFunctionBinding;
+import com.facebook.presto.sql.planner.Partitioning;
+import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.TestingColumnHandle;
@@ -66,9 +67,9 @@ public final class TaskTestUtils
 
     public static final ConnectorTransactionHandle TRANSACTION_HANDLE = TestingTransactionHandle.create("test");
 
-    public static final ScheduledSplit SPLIT = new ScheduledSplit(0, new Split("test", TRANSACTION_HANDLE, TestingSplit.createLocalSplit()));
-
     public static final PlanNodeId TABLE_SCAN_NODE_ID = new PlanNodeId("tableScan");
+
+    public static final ScheduledSplit SPLIT = new ScheduledSplit(0, TABLE_SCAN_NODE_ID, new Split("test", TRANSACTION_HANDLE, TestingSplit.createLocalSplit()));
 
     public static final ImmutableList<TaskSource> EMPTY_SOURCES = ImmutableList.of();
 
@@ -86,8 +87,8 @@ public final class TaskTestUtils
                     null),
             ImmutableMap.<Symbol, Type>of(SYMBOL, VARCHAR),
             SOURCE_DISTRIBUTION,
-            TABLE_SCAN_NODE_ID,
-            new PartitionFunctionBinding(SINGLE_DISTRIBUTION, ImmutableList.of(SYMBOL), ImmutableList.of())
+            ImmutableList.of(TABLE_SCAN_NODE_ID),
+            new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), ImmutableList.of(SYMBOL))
                     .withBucketToPartition(Optional.of(new int[1])));
 
     public static LocalExecutionPlanner createTestingPlanner()
@@ -110,6 +111,7 @@ public final class TaskTestUtils
         return new LocalExecutionPlanner(
                 metadata,
                 new SqlParser(),
+                Optional.empty(),
                 pageSourceManager,
                 new IndexManager(),
                 nodePartitioningManager,

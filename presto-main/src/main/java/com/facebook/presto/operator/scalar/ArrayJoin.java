@@ -14,6 +14,8 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.annotation.UsedByGeneratedCode;
+import com.facebook.presto.metadata.BoundVariables;
+import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
@@ -36,9 +38,10 @@ import java.util.Map;
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.metadata.OperatorType.CAST;
 import static com.facebook.presto.metadata.Signature.internalOperator;
-import static com.facebook.presto.metadata.Signature.typeParameter;
+import static com.facebook.presto.metadata.Signature.typeVariable;
 import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.type.TypeUtils.parameterizedTypeName;
 import static com.facebook.presto.util.Reflection.methodHandle;
@@ -62,7 +65,13 @@ public final class ArrayJoin
 
         public ArrayJoinWithNullReplacement()
         {
-            super(FUNCTION_NAME, ImmutableList.of(typeParameter("T")), StandardTypes.VARCHAR, ImmutableList.of("array(T)", StandardTypes.VARCHAR, StandardTypes.VARCHAR));
+            super(new Signature(FUNCTION_NAME,
+                    FunctionKind.SCALAR,
+                    ImmutableList.of(typeVariable("T")),
+                    ImmutableList.of(),
+                    parseTypeSignature(StandardTypes.VARCHAR),
+                    ImmutableList.of(parseTypeSignature("array(T)"), parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.VARCHAR)),
+                    false));
         }
 
         @Override
@@ -84,18 +93,24 @@ public final class ArrayJoin
         }
 
         @Override
-        public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+        public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
         {
-            Type type = types.get("T");
+            Type type = boundVariables.getTypeVariable("T");
             TypeSignature arrayType = parameterizedTypeName(StandardTypes.ARRAY, type.getTypeSignature());
             Signature signature = new Signature(FUNCTION_NAME, SCALAR, VARCHAR_TYPE_SIGNATURE, arrayType, VARCHAR_TYPE_SIGNATURE, VARCHAR_TYPE_SIGNATURE);
-            return specializeArrayJoin(types, functionRegistry, ImmutableList.of(false, false, false), signature, METHOD_HANDLE);
+            return specializeArrayJoin(boundVariables.getTypeVariables(), functionRegistry, ImmutableList.of(false, false, false), signature, METHOD_HANDLE);
         }
     }
 
     public ArrayJoin()
     {
-        super(FUNCTION_NAME, ImmutableList.of(typeParameter("T")), StandardTypes.VARCHAR, ImmutableList.of("array(T)", StandardTypes.VARCHAR));
+        super(new Signature(FUNCTION_NAME,
+                FunctionKind.SCALAR,
+                ImmutableList.of(typeVariable("T")),
+                ImmutableList.of(),
+                parseTypeSignature(StandardTypes.VARCHAR),
+                ImmutableList.of(parseTypeSignature("array(T)"), parseTypeSignature(StandardTypes.VARCHAR)),
+                false));
     }
 
     @Override
@@ -117,12 +132,12 @@ public final class ArrayJoin
     }
 
     @Override
-    public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
-        Type type = types.get("T");
+        Type type = boundVariables.getTypeVariable("T");
         TypeSignature arrayType = parameterizedTypeName(StandardTypes.ARRAY, type.getTypeSignature());
         Signature signature = new Signature(FUNCTION_NAME, SCALAR, VARCHAR_TYPE_SIGNATURE, arrayType, VARCHAR_TYPE_SIGNATURE);
-        return specializeArrayJoin(types, functionRegistry, ImmutableList.of(false, false), signature, METHOD_HANDLE);
+        return specializeArrayJoin(boundVariables.getTypeVariables(), functionRegistry, ImmutableList.of(false, false), signature, METHOD_HANDLE);
     }
 
     private static ScalarFunctionImplementation specializeArrayJoin(Map<String, Type> types, FunctionRegistry functionRegistry, List<Boolean> nullableArguments, Signature signature, MethodHandle methodHandle)

@@ -14,16 +14,13 @@
 package com.facebook.presto.metadata;
 
 import com.facebook.presto.operator.scalar.ScalarFunctionImplementation;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static com.facebook.presto.metadata.FunctionRegistry.mangleOperatorName;
 import static java.util.Objects.requireNonNull;
@@ -33,25 +30,38 @@ public abstract class SqlOperator
 {
     public static SqlOperator create(
             OperatorType operatorType,
+            List<TypeVariableConstraint> typeVariableConstraints,
+            List<LongVariableConstraint> longVariableConstraints,
             List<TypeSignature> argumentTypes,
             TypeSignature returnType,
             MethodHandle methodHandle,
             Optional<MethodHandle> instanceFactory,
             boolean nullable,
-            List<Boolean> nullableArguments,
-            Set<String> literalParameters)
+            List<Boolean> nullableArguments)
     {
-        return new SimpleSqlOperator(operatorType, argumentTypes, returnType, methodHandle, instanceFactory, nullable, nullableArguments, literalParameters);
+        // TODO This should take Signature!
+        return new SimpleSqlOperator(operatorType,
+                typeVariableConstraints,
+                longVariableConstraints,
+                argumentTypes,
+                returnType,
+                methodHandle,
+                instanceFactory,
+                nullable,
+                nullableArguments);
     }
 
-    protected SqlOperator(OperatorType operatorType, TypeSignature returnType, List<TypeSignature> argumentTypes, Set<String> literalParameters)
+    protected SqlOperator(OperatorType operatorType, List<TypeVariableConstraint> typeVariableConstraints, List<LongVariableConstraint> longVariableConstraints, TypeSignature returnType, List<TypeSignature> argumentTypes)
     {
-        super(mangleOperatorName(operatorType), returnType, argumentTypes, literalParameters);
-    }
-
-    protected SqlOperator(OperatorType operatorType, List<TypeParameterRequirement> typeParameterRequirements, String returnType, List<String> argumentTypes)
-    {
-        super(mangleOperatorName(operatorType), typeParameterRequirements, returnType, argumentTypes);
+        // TODO This should take Signature!
+        super(new Signature(
+                mangleOperatorName(operatorType),
+                FunctionKind.SCALAR,
+                typeVariableConstraints,
+                longVariableConstraints,
+                returnType,
+                argumentTypes,
+                false));
     }
 
     @Override
@@ -83,15 +93,17 @@ public abstract class SqlOperator
 
         public SimpleSqlOperator(
                 OperatorType operatorType,
+                List<TypeVariableConstraint> typeVariableConstraints,
+                List<LongVariableConstraint> longVariableConstraints,
                 List<TypeSignature> argumentTypes,
                 TypeSignature returnType,
                 MethodHandle methodHandle,
                 Optional<MethodHandle> instanceFactory,
                 boolean nullable,
-                List<Boolean> nullableArguments,
-                Set<String> literalParameters)
+                List<Boolean> nullableArguments)
         {
-            super(operatorType, returnType, argumentTypes, literalParameters);
+            // TODO This should take Signature!
+            super(operatorType, typeVariableConstraints, longVariableConstraints, returnType, argumentTypes);
             this.methodHandle = requireNonNull(methodHandle, "methodHandle is null");
             this.instanceFactory = requireNonNull(instanceFactory, "instanceFactory is null");
             this.nullable = nullable;
@@ -99,7 +111,7 @@ public abstract class SqlOperator
         }
 
         @Override
-        public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+        public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
         {
             return new ScalarFunctionImplementation(nullable, nullableArguments, methodHandle, instanceFactory, isDeterministic());
         }

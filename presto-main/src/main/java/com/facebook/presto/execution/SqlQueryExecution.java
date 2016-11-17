@@ -40,6 +40,7 @@ import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.tree.Explain;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.base.Throwables;
@@ -62,6 +63,7 @@ import static com.facebook.presto.OutputBuffers.INITIAL_EMPTY_OUTPUT_BUFFERS;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 @ThreadSafe
 public final class SqlQueryExecution
@@ -151,10 +153,6 @@ public final class SqlQueryExecution
                 if (scheduler != null) {
                     scheduler.abort();
                 }
-
-                // capture the final query state and drop reference to the scheduler
-                finalQueryInfo.compareAndSet(null, buildQueryInfo(scheduler));
-                queryScheduler.set(null);
             });
 
             this.remoteTaskFactory = new MemoryTrackingRemoteTaskFactory(requireNonNull(remoteTaskFactory, "remoteTaskFactory is null"), stateMachine);
@@ -184,6 +182,9 @@ public final class SqlQueryExecution
         if (queryInfo != null) {
             return queryInfo.getQueryStats().getTotalMemoryReservation().toBytes();
         }
+        if (scheduler == null) {
+            return 0;
+        }
         return scheduler.getTotalMemoryReservation();
     }
 
@@ -194,6 +195,9 @@ public final class SqlQueryExecution
         QueryInfo queryInfo = finalQueryInfo.get();
         if (queryInfo != null) {
             return queryInfo.getQueryStats().getTotalCpuTime();
+        }
+        if (scheduler == null) {
+            return new Duration(0, SECONDS);
         }
         return scheduler.getTotalCpuTime();
     }
@@ -216,10 +220,10 @@ public final class SqlQueryExecution
                 }
 
                 // analyze query
-                SubPlan subplan = analyzeQuery();
+                PlanRoot plan = analyzeQuery();
 
                 // plan distribution of query
-                planDistribution(subplan);
+                planDistribution(plan);
 
                 // transition to starting
                 if (!stateMachine.transitionToStarting()) {
@@ -249,7 +253,7 @@ public final class SqlQueryExecution
         }
     }
 
-    private SubPlan analyzeQuery()
+    private PlanRoot analyzeQuery()
     {
         try {
             return doAnalyzeQuery();
@@ -259,7 +263,7 @@ public final class SqlQueryExecution
         }
     }
 
-    private SubPlan doAnalyzeQuery()
+    private PlanRoot doAnalyzeQuery()
     {
         // time analysis phase
         long analysisStart = System.nanoTime();
@@ -272,7 +276,7 @@ public final class SqlQueryExecution
 
         // plan query
         PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
-        LogicalPlanner logicalPlanner = new LogicalPlanner(stateMachine.getSession(), planOptimizers, idAllocator, metadata);
+        LogicalPlanner logicalPlanner = new LogicalPlanner(stateMachine.getSession(), planOptimizers, idAllocator, metadata, sqlParser);
         Plan plan = logicalPlanner.plan(analysis);
 
         // extract inputs
@@ -280,22 +284,23 @@ public final class SqlQueryExecution
         stateMachine.setInputs(inputs);
 
         // fragment the plan
-        SubPlan subplan = new PlanFragmenter().createSubPlans(plan);
+        SubPlan subplan = new PlanFragmenter().createSubPlans(stateMachine.getSession(), metadata, plan);
 
         // record analysis time
         stateMachine.recordAnalysisTime(analysisStart);
 
-        return subplan;
+        boolean explainAnalyze = analysis.getStatement() instanceof Explain && ((Explain) analysis.getStatement()).isAnalyze();
+        return new PlanRoot(subplan, !explainAnalyze);
     }
 
-    private void planDistribution(SubPlan subplan)
+    private void planDistribution(PlanRoot plan)
     {
         // time distribution planning
         long distributedPlanningStart = System.nanoTime();
 
         // plan the execution on the active nodes
         DistributedExecutionPlanner distributedPlanner = new DistributedExecutionPlanner(splitManager);
-        StageExecutionPlan outputStageExecutionPlan = distributedPlanner.plan(subplan, stateMachine.getSession());
+        StageExecutionPlan outputStageExecutionPlan = distributedPlanner.plan(plan.getRoot(), stateMachine.getSession());
         stateMachine.recordDistributedPlanningTime(distributedPlanningStart);
 
         if (stateMachine.isDone()) {
@@ -314,6 +319,7 @@ public final class SqlQueryExecution
                 nodeScheduler,
                 remoteTaskFactory,
                 stateMachine.getSession(),
+                plan.isSummarizeTaskInfos(),
                 scheduleSplitBatchSize,
                 queryExecutor,
                 ROOT_OUTPUT_BUFFERS,
@@ -328,6 +334,12 @@ public final class SqlQueryExecution
             scheduler.abort();
             queryScheduler.set(null);
         }
+    }
+
+    @Override
+    public void cancelQuery()
+    {
+        stateMachine.transitionToCanceled();
     }
 
     @Override
@@ -370,20 +382,21 @@ public final class SqlQueryExecution
     public void pruneInfo()
     {
         QueryInfo queryInfo = finalQueryInfo.get();
-        if (queryInfo == null || queryInfo.getOutputStage() == null) {
+        if (queryInfo == null || !queryInfo.getOutputStage().isPresent()) {
             return;
         }
 
+        StageInfo outputStage = queryInfo.getOutputStage().get();
         StageInfo prunedOutputStage = new StageInfo(
-                queryInfo.getOutputStage().getStageId(),
-                queryInfo.getOutputStage().getState(),
-                queryInfo.getOutputStage().getSelf(),
+                outputStage.getStageId(),
+                outputStage.getState(),
+                outputStage.getSelf(),
                 null, // Remove the plan
-                queryInfo.getOutputStage().getTypes(),
-                queryInfo.getOutputStage().getStageStats(),
+                outputStage.getTypes(),
+                outputStage.getStageStats(),
                 ImmutableList.of(), // Remove the tasks
                 ImmutableList.of(), // Remove the substages
-                queryInfo.getOutputStage().getFailureCause()
+                outputStage.getFailureCause()
         );
 
         QueryInfo prunedQueryInfo = new QueryInfo(
@@ -398,10 +411,12 @@ public final class SqlQueryExecution
                 queryInfo.getQueryStats(),
                 queryInfo.getSetSessionProperties(),
                 queryInfo.getResetSessionProperties(),
+                queryInfo.getAddedPreparedStatements(),
+                queryInfo.getDeallocatedPreparedStatements(),
                 queryInfo.getStartedTransactionId(),
                 queryInfo.isClearTransactionId(),
                 queryInfo.getUpdateType(),
-                prunedOutputStage,
+                Optional.of(prunedOutputStage),
                 queryInfo.getFailureInfo(),
                 queryInfo.getErrorCode(),
                 queryInfo.getInputs()
@@ -441,11 +456,42 @@ public final class SqlQueryExecution
 
     private QueryInfo buildQueryInfo(SqlQueryScheduler scheduler)
     {
-        StageInfo stageInfo = null;
+        Optional<StageInfo> stageInfo = Optional.empty();
         if (scheduler != null) {
-            stageInfo = scheduler.getStageInfo();
+            stageInfo = Optional.ofNullable(scheduler.getStageInfo());
         }
-        return stateMachine.getQueryInfo(stageInfo);
+
+        QueryInfo queryInfo = stateMachine.getQueryInfo(stageInfo);
+
+        if (queryInfo.isFinalQueryInfo()) {
+            // capture the final query state and drop reference to the scheduler
+            finalQueryInfo.compareAndSet(null, queryInfo);
+            queryScheduler.set(null);
+        }
+
+        return queryInfo;
+    }
+
+    private static class PlanRoot
+    {
+        private final SubPlan root;
+        private final boolean summarizeTaskInfos;
+
+        public PlanRoot(SubPlan root, boolean summarizeTaskInfos)
+        {
+            this.root = requireNonNull(root, "root is null");
+            this.summarizeTaskInfos = summarizeTaskInfos;
+        }
+
+        public SubPlan getRoot()
+        {
+            return root;
+        }
+
+        public boolean isSummarizeTaskInfos()
+        {
+            return summarizeTaskInfos;
+        }
     }
 
     public static class SqlQueryExecutionFactory

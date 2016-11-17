@@ -37,7 +37,8 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.ConnectorAwareSplitSource;
 import com.facebook.presto.split.SplitSource;
-import com.facebook.presto.sql.planner.PartitionFunctionBinding;
+import com.facebook.presto.sql.planner.Partitioning;
+import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.Symbol;
@@ -54,6 +55,7 @@ import com.facebook.presto.util.FinalizerService;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -294,7 +296,8 @@ public class TestSourcePartitionedScheduler
 
             SourcePartitionedScheduler scheduler = new SourcePartitionedScheduler(
                     stage,
-                    plan.getDataSource().get(),
+                    Iterables.getOnlyElement(plan.getSplitSources().keySet()),
+                    Iterables.getOnlyElement(plan.getSplitSources().values()),
                     new DynamicSplitPlacementPolicy(nodeScheduler.createNodeSelector("test"), stage::getAllTasks),
                     2);
             scheduler.schedule();
@@ -404,12 +407,13 @@ public class TestSourcePartitionedScheduler
         NodeSchedulerConfig nodeSchedulerConfig = new NodeSchedulerConfig()
                 .setIncludeCoordinator(false)
                 .setMaxSplitsPerNode(20)
-                .setMaxPendingSplitsPerNodePerTask(0);
+                .setMaxPendingSplitsPerNodePerStage(0);
         NodeScheduler nodeScheduler = new NodeScheduler(new LegacyNetworkTopology(), nodeManager, nodeSchedulerConfig, nodeTaskMap);
 
-        SplitSource splitSource = plan.getDataSource().get();
+        PlanNodeId sourceNode = Iterables.getOnlyElement(plan.getSplitSources().keySet());
+        SplitSource splitSource = Iterables.getOnlyElement(plan.getSplitSources().values());
         SplitPlacementPolicy placementPolicy = new DynamicSplitPlacementPolicy(nodeScheduler.createNodeSelector(splitSource.getDataSourceName()), stage::getAllTasks);
-        return new SourcePartitionedScheduler(stage, splitSource, placementPolicy, splitBatchSize);
+        return new SourcePartitionedScheduler(stage, sourceNode, splitSource, placementPolicy, splitBatchSize);
     }
 
     private static StageExecutionPlan createPlan(ConnectorSplitSource splitSource)
@@ -432,14 +436,18 @@ public class TestSourcePartitionedScheduler
                                 null),
                         new RemoteSourceNode(new PlanNodeId("remote_id"), new PlanFragmentId("plan_fragment_id"), ImmutableList.of()),
                         ImmutableList.of(),
+                        Optional.empty(),
                         Optional.<Symbol>empty(),
                         Optional.<Symbol>empty()),
                 ImmutableMap.<Symbol, Type>of(symbol, VARCHAR),
                 SOURCE_DISTRIBUTION,
-                tableScanNodeId,
-                new PartitionFunctionBinding(SINGLE_DISTRIBUTION, ImmutableList.of(symbol), ImmutableList.of()));
+                ImmutableList.of(tableScanNodeId),
+                new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), ImmutableList.of(symbol)));
 
-        return new StageExecutionPlan(testFragment, Optional.of(new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(CONNECTOR_ID), splitSource)), ImmutableList.of());
+        return new StageExecutionPlan(
+                testFragment,
+                ImmutableMap.of(tableScanNodeId, new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(CONNECTOR_ID), splitSource)),
+                ImmutableList.of());
     }
 
     private static ConnectorSplitSource createFixedSplitSource(int splitCount, Supplier<ConnectorSplit> splitFactory)
@@ -460,6 +468,7 @@ public class TestSourcePartitionedScheduler
                 tableScanPlan.getFragment(),
                 new MockRemoteTaskFactory(executor),
                 TEST_SESSION,
+                true,
                 nodeTaskMap,
                 executor);
 

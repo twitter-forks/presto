@@ -63,7 +63,7 @@ public class SqlTask
     private final SqlTaskExecutionFactory sqlTaskExecutionFactory;
 
     private final AtomicReference<DateTime> lastHeartbeat = new AtomicReference<>(DateTime.now());
-    private final AtomicLong nextTaskInfoVersion = new AtomicLong(TaskInfo.STARTING_VERSION);
+    private final AtomicLong nextTaskInfoVersion = new AtomicLong(TaskStatus.STARTING_VERSION);
 
     private final AtomicReference<TaskHolder> taskHolderReference = new AtomicReference<>(new TaskHolder());
     private final AtomicBoolean needsPlan = new AtomicBoolean(true);
@@ -162,6 +162,11 @@ public class SqlTask
         return taskStateMachine.getTaskId();
     }
 
+    public String getTaskInstanceId()
+    {
+        return taskInstanceId;
+    }
+
     public void recordHeartbeat()
     {
         lastHeartbeat.set(DateTime.now());
@@ -174,7 +179,14 @@ public class SqlTask
         }
     }
 
-    private TaskInfo createTaskInfo(TaskHolder taskHolder)
+    public TaskStatus getTaskStatus()
+    {
+        try (SetThreadName ignored = new SetThreadName("Task-%s", taskId)) {
+            return createTaskStatus(taskHolderReference.get());
+        }
+    }
+
+    private TaskStatus createTaskStatus(TaskHolder taskHolder)
     {
         // Always return a new TaskInfo with a larger version number;
         // otherwise a client will not accept the update
@@ -186,40 +198,70 @@ public class SqlTask
             failures = toFailures(taskStateMachine.getFailureCauses());
         }
 
-        TaskStats taskStats;
-        Set<PlanNodeId> noMoreSplits;
-
-        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
-        if (finalTaskInfo != null) {
-            taskStats = finalTaskInfo.getStats();
-            noMoreSplits = finalTaskInfo.getNoMoreSplits();
-        }
-        else {
-            SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
-            if (taskExecution != null) {
-                taskStats = taskExecution.getTaskContext().getTaskStats();
-                noMoreSplits = taskExecution.getNoMoreSplits();
-            }
-            else {
-                // if the task completed without creation, set end time
-                DateTime endTime = state.isDone() ? DateTime.now() : null;
-                taskStats = new TaskStats(taskStateMachine.getCreatedTime(), endTime);
-                noMoreSplits = ImmutableSet.of();
-            }
-        }
-
-        return new TaskInfo(
-                taskStateMachine.getTaskId(),
+        TaskStats taskStats = getTaskStats(taskHolder);
+        return new TaskStatus(taskStateMachine.getTaskId(),
                 taskInstanceId,
                 versionNumber,
                 state,
                 location,
+                failures,
+                taskStats.getQueuedPartitionedDrivers(),
+                taskStats.getRunningPartitionedDrivers(),
+                taskStats.getMemoryReservation());
+    }
+
+    private TaskStats getTaskStats(TaskHolder taskHolder)
+    {
+        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
+        if (finalTaskInfo != null) {
+            return finalTaskInfo.getStats();
+        }
+        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
+        if (taskExecution != null) {
+            return taskExecution.getTaskContext().getTaskStats();
+        }
+        // if the task completed without creation, set end time
+        DateTime endTime = taskStateMachine.getState().isDone() ? DateTime.now() : null;
+        return new TaskStats(taskStateMachine.getCreatedTime(), endTime);
+    }
+
+    private static Set<PlanNodeId> getNoMoreSplits(TaskHolder taskHolder)
+    {
+        TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
+        if (finalTaskInfo != null) {
+            return finalTaskInfo.getNoMoreSplits();
+        }
+        SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
+        if (taskExecution != null) {
+            return taskExecution.getNoMoreSplits();
+        }
+        return ImmutableSet.of();
+    }
+
+    private TaskInfo createTaskInfo(TaskHolder taskHolder)
+    {
+        TaskStats taskStats = getTaskStats(taskHolder);
+        Set<PlanNodeId> noMoreSplits = getNoMoreSplits(taskHolder);
+
+        return new TaskInfo(
+                createTaskStatus(taskHolder),
                 lastHeartbeat.get(),
                 sharedBuffer.getInfo(),
                 noMoreSplits,
                 taskStats,
-                failures,
                 needsPlan.get());
+    }
+
+    public CompletableFuture<TaskStatus> getTaskStatus(TaskState callersCurrentState)
+    {
+        requireNonNull(callersCurrentState, "callersCurrentState is null");
+
+        if (callersCurrentState.isDone()) {
+            return completedFuture(getTaskInfo().getTaskStatus());
+        }
+
+        CompletableFuture<TaskState> futureTaskState = taskStateMachine.getStateChange(callersCurrentState);
+        return futureTaskState.thenApply(input -> getTaskInfo().getTaskStatus());
     }
 
     public CompletableFuture<TaskInfo> getTaskInfo(TaskState callersCurrentState)
