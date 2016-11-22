@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.149-tw-0.26</version>
+        <version>0.149-tw-0.27</version>
     </parent>
 
     <artifactId>presto-main</artifactId>
@@ -250,6 +250,24 @@
         <dependency>
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-core</artifactId>
+        </dependency>
+
+       <!-- twitter deps -->
+        <dependency>
+            <groupId>com.twitter</groupId>
+            <artifactId>presto-thrift-java</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.twitter</groupId>
+            <artifactId>util-logging_2.10</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libthrift</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
         </dependency>
 
         <!-- for testing -->
