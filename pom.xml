@@ -761,6 +761,74 @@
                 <version>2.1.7</version>
             </dependency>
 
+           <!-- twitter deps -->
+            <dependency>
+                <groupId>com.twitter</groupId>
+                <artifactId>presto-thrift-java</artifactId>
+                <version>0.0.1</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>util-core_2.11</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>util-core-java</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>util-function_2.10</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>util-function-java</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.scala-lang.modules</groupId>
+                        <artifactId>scala-parser-combinators_2.11</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.twitter</groupId>
+                        <artifactId>scrooge-core</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.scala-lang</groupId>
+                        <artifactId>scala-library</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.scala-lang</groupId>
+                        <artifactId>scala-reflect</artifactId>
+                    </exclusion>
+
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.twitter</groupId>
+                <artifactId>util-logging_2.10</artifactId>
+                <version>6.34.0</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala-library</artifactId>
+                <version>2.10.6</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 
