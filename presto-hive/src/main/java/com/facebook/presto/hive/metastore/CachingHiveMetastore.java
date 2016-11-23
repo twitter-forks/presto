@@ -300,8 +300,9 @@ public class CachingHiveMetastore
         userTablePrivileges.invalidateAll();
     }
 
-    private void metastoreClientRetryConfig(int maxAttempts, 
-        Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor) {
+    private void metastoreClientRetryConfig(
+        int maxAttempts, Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor)
+    {
         this.maxAttempts = maxAttempts
         this.minSleepTime = minSleepTime
         this.maxSleepTime = maxSleepTime
