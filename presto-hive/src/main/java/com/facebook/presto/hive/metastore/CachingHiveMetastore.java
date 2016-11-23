@@ -130,7 +130,7 @@ public class CachingHiveMetastore
             hiveClientConfig.getMinMetastoreRetrySleepTime(),
             hiveClientConfig.getMaxMetastoreRetrySleepTime(),
             hiveClientConfig.getMaxMetastoreRetryTime(),
-            hiveClientConfig.getMetastoreRetryScaleFactor())
+            hiveClientConfig.getMetastoreRetryScaleFactor());
     }
 
     public CachingHiveMetastore(HiveCluster hiveCluster, ExecutorService executor, Duration cacheTtl, Duration refreshInterval)
@@ -303,11 +303,11 @@ public class CachingHiveMetastore
     private void metastoreClientRetryConfig(
         int maxAttempts, Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor)
     {
-        this.maxAttempts = maxAttempts
-        this.minSleepTime = minSleepTime
-        this.maxSleepTime = maxSleepTime
-        this.maxRetryTime = maxRetryTime
-        this.scaleFactor = scaleFactor
+        this.maxAttempts = maxAttempts;
+        this.minSleepTime = minSleepTime;
+        this.maxSleepTime = maxSleepTime;
+        this.maxRetryTime = maxRetryTime;
+        this.scaleFactor = scaleFactor;
     }
 
     private static <K, V> V get(LoadingCache<K, V> cache, K key)
