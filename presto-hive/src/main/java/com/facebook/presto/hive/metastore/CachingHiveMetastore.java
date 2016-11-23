@@ -304,9 +304,9 @@ public class CachingHiveMetastore
         int maxAttempts, Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor)
     {
         this.maxAttempts = maxAttempts;
-        this.minSleepTime = minSleepTime;
-        this.maxSleepTime = maxSleepTime;
-        this.maxRetryTime = maxRetryTime;
+        this.minSleepTime = equireNonNull(minSleepTime, "minSleepTime is null");
+        this.maxSleepTime = equireNonNull(maxSleepTime, "maxSleepTime is null");
+        this.maxRetryTime = equireNonNull(maxRetryTime, "maxRetryTime is null");
         this.scaleFactor = scaleFactor;
     }
 
