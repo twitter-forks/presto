@@ -72,9 +72,9 @@ public class HiveClientConfig
 
     private int maxMetastoreRetryAttempts = 10;
     private double metastoreRetryScaleFactor = 2.0;
-    private Duration maxMetastoreRetryTime = new Duration(1, TimeUnit.SECONDS);
+    private Duration maxMetastoreRetryTime = new Duration(30, TimeUnit.SECONDS);
     private Duration minMetastoreRetrySleepTime = new Duration(1, TimeUnit.SECONDS);
-    private Duration maxMetastoreRetrySleepTime = new Duration(30, TimeUnit.SECONDS);
+    private Duration maxMetastoreRetrySleepTime = new Duration(1, TimeUnit.SECONDS);
 
     private Duration metastoreCacheTtl = new Duration(1, TimeUnit.HOURS);
     private Duration metastoreRefreshInterval = new Duration(1, TimeUnit.SECONDS);
