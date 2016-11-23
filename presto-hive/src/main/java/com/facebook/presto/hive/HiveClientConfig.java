@@ -70,6 +70,12 @@ public class HiveClientConfig
 
     private boolean readAsQueryUser = false;
 
+    private int maxMetastoreRetryAttempts = 20;
+    private double metastoreRetryScaleFactor = 2;
+    private Duration maxMetastoreRetryTime = new Duration(60, TimeUnit.SECONDS);
+    private Duration minMetastoreRetrySleepTime = new Duration(1, TimeUnit.SECONDS);
+    private Duration maxMetastoreRetrySleepTime = new Duration(10, TimeUnit.SECONDS);
+
     private Duration metastoreCacheTtl = new Duration(1, TimeUnit.HOURS);
     private Duration metastoreRefreshInterval = new Duration(1, TimeUnit.SECONDS);
     private int maxMetastoreRefreshThreads = 100;
@@ -344,6 +350,76 @@ public class HiveClientConfig
         this.allowDropTable = allowDropTable;
         return this;
     }
+
+    /** twitter specified config */
+    @Min(0)
+    public int getMaxMetastoreRetryAttempts()
+    {
+        return maxMetastoreRetryAttempts;
+    }
+
+    @Config("hive.metastore.client.create.max-retry-attempts")
+    public HiveClientConfig setMaxMetastoreRetryAttempts(int maxMetastoreRetryAttempts)
+    {
+        this.maxMetastoreRetryAttempts = maxMetastoreRetryAttempts;
+        return this;
+    }
+
+    @Min(1.0)
+    public double getMetastoreRetryScaleFactor()
+    {
+        return metastoreRetryScaleFactor;
+    }
+
+    @Config("hive.metastore.client.create.retry-scale-fator")
+    public HiveClientConfig setMetastoreRetryScaleFactor(double metastoreRetryScaleFactor)
+    {
+        this.metastoreRetryScaleFactor = metastoreRetryScaleFactor;
+        return this;
+    }
+
+    @NotNull
+    @MinDuration("1ms")
+    public Duration getMaxMetastoreRetryTime()
+    {
+        return maxMetastoreRetryTime;
+    }
+
+    @Config("hive.metastore.client.create.max-retry-time")
+    public HiveClientConfig setMaxMetastoreRetryTime(Duration maxMetastoreRetryTime)
+    {
+        this.maxMetastoreRetryTime = maxMetastoreRetryTime;
+        return this;
+    }
+
+    @NotNull
+    @MinDuration("1ms")
+    public Duration getMinMetastoreRetrySleepTime()
+    {
+        return minMetastoreRetrySleepTime;
+    }
+
+    @Config("hive.metastore.client.create.min-retry-sleep-time")
+    public HiveClientConfig setMinMetastoreRetrySleepTime(Duration minMetastoreRetrySleepTime)
+    {
+        this.minMetastoreRetrySleepTime = minMetastoreRetrySleepTime;
+        return this;
+    }
+
+    @NotNull
+    @MinDuration("1ms")
+    public Duration getMaxMetastoreRetrySleepTime()
+    {
+        return maxMetastoreRetrySleepTime;
+    }
+
+    @Config("hive.metastore.client.create.max-retry-sleep-time")
+    public HiveClientConfig setMaxMetastoreRetrySleepTime(Duration maxMetastoreRetrySleepTime)
+    {
+        this.maxMetastoreRetrySleepTime = maxMetastoreRetrySleepTime;
+        return this;
+    }
+    /** end twitter */
 
     @NotNull
     public Duration getMetastoreCacheTtl()

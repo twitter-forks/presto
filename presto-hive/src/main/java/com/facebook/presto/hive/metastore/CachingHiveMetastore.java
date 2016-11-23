@@ -1047,6 +1047,12 @@ public class CachingHiveMetastore
     private RetryDriver retry()
     {
         return RetryDriver.retry()
+                .maxAttempts(hiveClientConfig.getMaxMetastoreRetryAttempts())
+                .exponentialBackoff(
+                    hiveClientConfig.getMinMetastoreRetrySleepTime(),
+                    hiveClientConfig.getMaxMetastoreRetrySleepTime(),
+                    hiveClientConfig.getMaxMetastoreRetryTime(),
+                    hiveClientConfig.getMetastoreRetryScaleFactor())
                 .exceptionMapper(getExceptionMapper())
                 .stopOn(PrestoException.class);
     }
