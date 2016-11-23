@@ -71,7 +71,7 @@ public class HiveClientConfig
     private boolean readAsQueryUser = false;
 
     private int maxMetastoreRetryAttempts = 20;
-    private double metastoreRetryScaleFactor = 2;
+    private double metastoreRetryScaleFactor = 2.0;
     private Duration maxMetastoreRetryTime = new Duration(60, TimeUnit.SECONDS);
     private Duration minMetastoreRetrySleepTime = new Duration(1, TimeUnit.SECONDS);
     private Duration maxMetastoreRetrySleepTime = new Duration(10, TimeUnit.SECONDS);
@@ -365,7 +365,7 @@ public class HiveClientConfig
         return this;
     }
 
-    @Min(1.0)
+    @Min(1)
     public double getMetastoreRetryScaleFactor()
     {
         return metastoreRetryScaleFactor;
