@@ -13,28 +13,44 @@
  */
 package com.facebook.presto.twitter.hive;
 
-import com.facebook.presto.hive.HiveClientModule
+import com.facebook.presto.hive.HiveClientModule;
 import com.facebook.presto.hive.metastore.HiveMetastore;
 import com.facebook.presto.spi.NodeManager;
 import com.facebook.presto.spi.PageIndexerFactory;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.inject.Binder;
+import com.google.inject.Scopes;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
+import static org.weakref.jmx.ObjectNames.generatedNameOf;
+import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
 public class HiveClientModuleRetryConfigurable
         extends HiveClientModule
 {
+    private final String connectorId;
+    private final HiveMetastore metastore;
+
     public HiveClientModuleRetryConfigurable(
         String connectorId, HiveMetastore metastore, TypeManager typeManager, PageIndexerFactory pageIndexerFactory, NodeManager nodeManager)
     {
-        super(connectorId, metastore, typeManager, pageIndexerFactory, nodeManager)
+        super(connectorId, metastore, typeManager, pageIndexerFactory, nodeManager);
+        this.connectorId = connectorId;
+        this.metastore = metastore;
     }
 
     @Override
     public void configure(Binder binder)
     {
+        super.configure(binder);
         configBinder(binder).bindConfig(HiveClientRetryConfig.class);
-        super.configure(binder)
+        if (metastore != null) {
+            binder.bind(HiveMetastore.class).toInstance(metastore);
+        }
+        else {
+            binder.bind(HiveMetastore.class).to(CachingHiveMetastoreRetryConfigurable.class).in(Scopes.SINGLETON);
+            newExporter(binder).export(HiveMetastore.class)
+                    .as(generatedNameOf(CachingHiveMetastoreRetryConfigurable.class, connectorId));
+        }
     }
 }

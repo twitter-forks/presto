@@ -37,7 +37,7 @@ public class HiveClientRetryConfig
     }
 
     @Config("hive.metastore.client.create.max-retry-attempts")
-    public HiveClientConfig setMaxMetastoreRetryAttempts(int maxMetastoreRetryAttempts)
+    public HiveClientRetryConfig setMaxMetastoreRetryAttempts(int maxMetastoreRetryAttempts)
     {
         this.maxMetastoreRetryAttempts = maxMetastoreRetryAttempts;
         return this;
@@ -50,7 +50,7 @@ public class HiveClientRetryConfig
     }
 
     @Config("hive.metastore.client.create.retry-scale-fator")
-    public HiveClientConfig setMetastoreRetryScaleFactor(double metastoreRetryScaleFactor)
+    public HiveClientRetryConfig setMetastoreRetryScaleFactor(double metastoreRetryScaleFactor)
     {
         this.metastoreRetryScaleFactor = metastoreRetryScaleFactor;
         return this;
@@ -64,7 +64,7 @@ public class HiveClientRetryConfig
     }
 
     @Config("hive.metastore.client.create.max-retry-time")
-    public HiveClientConfig setMaxMetastoreRetryTime(Duration maxMetastoreRetryTime)
+    public HiveClientRetryConfig setMaxMetastoreRetryTime(Duration maxMetastoreRetryTime)
     {
         this.maxMetastoreRetryTime = maxMetastoreRetryTime;
         return this;
@@ -78,7 +78,7 @@ public class HiveClientRetryConfig
     }
 
     @Config("hive.metastore.client.create.min-retry-sleep-time")
-    public HiveClientConfig setMinMetastoreRetrySleepTime(Duration minMetastoreRetrySleepTime)
+    public HiveClientRetryConfig setMinMetastoreRetrySleepTime(Duration minMetastoreRetrySleepTime)
     {
         this.minMetastoreRetrySleepTime = minMetastoreRetrySleepTime;
         return this;
@@ -92,7 +92,7 @@ public class HiveClientRetryConfig
     }
 
     @Config("hive.metastore.client.create.max-retry-sleep-time")
-    public HiveClientConfig setMaxMetastoreRetrySleepTime(Duration maxMetastoreRetrySleepTime)
+    public HiveClientRetryConfig setMaxMetastoreRetrySleepTime(Duration maxMetastoreRetrySleepTime)
     {
         this.maxMetastoreRetrySleepTime = maxMetastoreRetrySleepTime;
         return this;
