@@ -1047,8 +1047,6 @@ public class CachingHiveMetastore
     private RetryDriver retry()
     {
         return RetryDriver.retry()
-                .maxAttempts(maxAttempts)
-                .exponentialBackoff(minSleepTime, maxSleepTime, maxRetryTime, scaleFactor)
                 .exceptionMapper(getExceptionMapper())
                 .stopOn(PrestoException.class);
     }
