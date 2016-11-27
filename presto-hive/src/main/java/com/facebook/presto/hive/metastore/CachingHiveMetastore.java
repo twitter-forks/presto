@@ -112,11 +112,6 @@ public class CachingHiveMetastore
     private final LoadingCache<PartitionFilter, Optional<List<String>>> partitionFilterCache;
     private final LoadingCache<String, Set<String>> userRolesCache;
     private final LoadingCache<UserTableKey, Set<HivePrivilegeInfo>> userTablePrivileges;
-    private int maxAttempts = 10;
-    private Duration minSleepTime = Duration.valueOf("1s");
-    private Duration maxSleepTime = Duration.valueOf("1s");
-    private Duration maxRetryTime = Duration.valueOf("30s");
-    private double scaleFactor = 2.0;
 
     @Inject
     public CachingHiveMetastore(HiveCluster hiveCluster, @ForHiveMetastore ExecutorService executor, HiveClientConfig hiveClientConfig)
@@ -125,12 +120,6 @@ public class CachingHiveMetastore
                 requireNonNull(executor, "executor is null"),
                 requireNonNull(hiveClientConfig, "hiveClientConfig is null").getMetastoreCacheTtl(),
                 hiveClientConfig.getMetastoreRefreshInterval());
-        this.metastoreClientRetryConfig(
-            hiveClientConfig.getMaxMetastoreRetryAttempts(),
-            hiveClientConfig.getMinMetastoreRetrySleepTime(),
-            hiveClientConfig.getMaxMetastoreRetrySleepTime(),
-            hiveClientConfig.getMaxMetastoreRetryTime(),
-            hiveClientConfig.getMetastoreRetryScaleFactor());
     }
 
     public CachingHiveMetastore(HiveCluster hiveCluster, ExecutorService executor, Duration cacheTtl, Duration refreshInterval)
@@ -298,16 +287,6 @@ public class CachingHiveMetastore
         partitionCache.invalidateAll();
         partitionFilterCache.invalidateAll();
         userTablePrivileges.invalidateAll();
-    }
-
-    private void metastoreClientRetryConfig(
-        int maxAttempts, Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor)
-    {
-        this.maxAttempts = maxAttempts;
-        this.minSleepTime = requireNonNull(minSleepTime, "minSleepTime is null");
-        this.maxSleepTime = requireNonNull(maxSleepTime, "maxSleepTime is null");
-        this.maxRetryTime = requireNonNull(maxRetryTime, "maxRetryTime is null");
-        this.scaleFactor = scaleFactor;
     }
 
     private static <K, V> V get(LoadingCache<K, V> cache, K key)
