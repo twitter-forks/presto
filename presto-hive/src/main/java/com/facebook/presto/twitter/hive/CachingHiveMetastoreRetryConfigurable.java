@@ -61,7 +61,7 @@ public class CachingHiveMetastoreRetryConfigurable
     }
 
     @Override
-    private RetryDriver retry()
+    protected RetryDriver retry()
     {
         log.debug(
             "Init a retry driver with attempts: %d, sleep time setting: (%s, %s, %s), scale factor: %f",
