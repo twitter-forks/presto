@@ -77,14 +77,7 @@ public class HiveClientModule
         binder.bind(HiveSessionProperties.class).in(Scopes.SINGLETON);
         binder.bind(HiveTableProperties.class).in(Scopes.SINGLETON);
 
-        if (metastore != null) {
-            binder.bind(HiveMetastore.class).toInstance(metastore);
-        }
-        else {
-            binder.bind(HiveMetastore.class).to(CachingHiveMetastore.class).in(Scopes.SINGLETON);
-            newExporter(binder).export(HiveMetastore.class)
-                    .as(generatedNameOf(CachingHiveMetastore.class, connectorId));
-        }
+        bindMetastore(binder);
 
         binder.bind(NamenodeStats.class).in(Scopes.SINGLETON);
         newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class));
@@ -138,5 +131,17 @@ public class HiveClientModule
         return newFixedThreadPool(
                 hiveClientConfig.getMaxMetastoreRefreshThreads(),
                 daemonThreadsNamed("hive-metastore-" + hiveClientId + "-%s"));
+    }
+
+    protected void bindMetastore(Binder binder)
+    {
+        if (metastore != null) {
+            binder.bind(HiveMetastore.class).toInstance(metastore);
+        }
+        else {
+            binder.bind(HiveMetastore.class).to(CachingHiveMetastore.class).in(Scopes.SINGLETON);
+            newExporter(binder).export(HiveMetastore.class)
+                    .as(generatedNameOf(CachingHiveMetastore.class, connectorId));
+        }
     }
 }

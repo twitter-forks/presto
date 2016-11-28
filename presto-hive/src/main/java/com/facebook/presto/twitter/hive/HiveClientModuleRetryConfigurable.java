@@ -40,14 +40,13 @@ public class HiveClientModuleRetryConfigurable
     }
 
     @Override
-    public void configure(Binder binder)
+    protected void bindMetastore(Binder binder)
     {
-        super.configure(binder);
-        configBinder(binder).bindConfig(HiveClientRetryConfig.class);
         if (metastore != null) {
             binder.bind(HiveMetastore.class).toInstance(metastore);
         }
         else {
+            configBinder(binder).bindConfig(HiveClientRetryConfig.class);
             binder.bind(HiveMetastore.class).to(CachingHiveMetastoreRetryConfigurable.class).in(Scopes.SINGLETON);
             newExporter(binder).export(HiveMetastore.class)
                     .as(generatedNameOf(CachingHiveMetastoreRetryConfigurable.class, connectorId));
