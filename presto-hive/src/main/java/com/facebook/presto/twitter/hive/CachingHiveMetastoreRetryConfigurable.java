@@ -1,4 +1,13 @@
-/*
+/**
+ * CachingHiveMetastoreRetryConfigurable is a subclass of CachingHiveMetastore.
+ * It added retry configuration and overrided the RetryDriver setup method
+ * retry().
+ * The class added the flexibility to set up retry configuration from a
+ * runtime injector. All retry configurations are propergated from a 
+ * HiveClientRetryConfig instance.
+ *
+ * @author Yaliang Wang
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -34,7 +43,7 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 public class CachingHiveMetastoreRetryConfigurable
         extends CachingHiveMetastore
 {
-    private static final Logger log = Logger.get(ZookeeperServersetHiveCluster.class);
+    private static final Logger log = Logger.get(CachingHiveMetastoreRetryConfigurable.class);
     private int maxAttempts = 10;
     private double scaleFactor = 2.0;
     private Duration maxRetryTime = new Duration(30, SECONDS);
@@ -53,13 +62,19 @@ public class CachingHiveMetastoreRetryConfigurable
                 requireNonNull(hiveClientConfig, "hiveClientConfig is null").getMetastoreCacheTtl(),
                 hiveClientConfig.getMetastoreRefreshInterval());
         metastoreClientRetryConfig(
-            hiveClientRetryConfig.getMaxMetastoreRetryAttempts(),
+            requireNonNull(hiveClientRetryConfig, "hiveClientRetryConfig is null").getMaxMetastoreRetryAttempts(),
             hiveClientRetryConfig.getMinMetastoreRetrySleepTime(),
             hiveClientRetryConfig.getMaxMetastoreRetrySleepTime(),
             hiveClientRetryConfig.getMaxMetastoreRetryTime(),
             hiveClientRetryConfig.getMetastoreRetryScaleFactor());
     }
 
+    /**
+     * Override RetryDriver setup method
+     * @return A retry driver with retry configurations propergated from HiveClientRetryConfig.
+     *           If the hiveClientRetryConfig is not set up, the default retry configurations 
+     *           are used. And they are same as the default settings in RetryDriver class.
+     */
     @Override
     protected RetryDriver retry()
     {
@@ -74,6 +89,14 @@ public class CachingHiveMetastoreRetryConfigurable
                 .stopOn(PrestoException.class);
     }
 
+    /**
+     * metastoreClientRetryConfig sets up all configurations for RetryDriver at one time.
+     * @param maxAttempts  The max attempts for retry
+     * @param minSleepTime The min interval between two attempts
+     * @param maxSleepTime The max interval between two attempts
+     * @param maxRetryTime The max time for retry
+     * @param scaleFactor  The scale factor for sleep interval between two attempts
+     */
     private void metastoreClientRetryConfig(
         int maxAttempts, Duration minSleepTime, Duration maxSleepTime, Duration maxRetryTime, double scaleFactor)
     {

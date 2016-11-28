@@ -1,4 +1,11 @@
-/*
+/**
+ * HiveClientModuleRetryConfigurable is a subclass of HiveClientModule.
+ * It overrided the method to bind a retry configurable class 
+ * CachingHiveMetastoreRetryConfigurable, instead of the original 
+ * CachingHiveMetastore.
+ *
+ * @author Yaliang Wang
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -39,6 +46,11 @@ public class HiveClientModuleRetryConfigurable
         this.metastore = metastore;
     }
 
+    /**
+     * Overriden method to bind HiveMetastore.
+     * Bind the HiveMetastore to an instance metastore if it's not null or bind it to CachingHiveMetastoreRetryConfigurable 
+     * @param binder A Binder instance.
+     */
     @Override
     protected void bindMetastore(Binder binder)
     {
