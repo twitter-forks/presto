@@ -1,13 +1,4 @@
-/**
- * CachingHiveMetastoreRetryConfigurable is a subclass of CachingHiveMetastore.
- * It added retry configuration and overrided the RetryDriver setup method
- * retry().
- * The class added the flexibility to set up retry configuration from a
- * runtime injector. All retry configurations are propergated from a 
- * HiveClientRetryConfig instance.
- *
- * @author Yaliang Wang
- * 
+/*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -39,6 +30,17 @@ import java.util.concurrent.ExecutorService;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
+/**
+ * CachingHiveMetastoreRetryConfigurable is a subclass of CachingHiveMetastore.
+ * It added retry configuration and overrided the RetryDriver setup method
+ * retry().
+ * The class added the flexibility to set up retry configuration from a
+ * runtime injector in order to solve "Failed to connect hive metastore" issue.
+ * All retry configurations are propergated from a
+ * HiveClientRetryConfig instance.
+ *
+ * @see IQ-221
+ */
 @ThreadSafe
 public class CachingHiveMetastoreRetryConfigurable
         extends CachingHiveMetastore
@@ -72,7 +74,7 @@ public class CachingHiveMetastoreRetryConfigurable
     /**
      * Override RetryDriver setup method
      * @return A retry driver with retry configurations propergated from HiveClientRetryConfig.
-     *           If the hiveClientRetryConfig is not set up, the default retry configurations 
+     *           If the hiveClientRetryConfig is not set up, the default retry configurations
      *           are used. And they are same as the default settings in RetryDriver class.
      */
     @Override
@@ -91,7 +93,7 @@ public class CachingHiveMetastoreRetryConfigurable
 
     /**
      * metastoreClientRetryConfig sets up all configurations for RetryDriver at one time.
-     * @param maxAttempts  The max attempts for retry
+     * @param maxAttempts  The max retry attempts
      * @param minSleepTime The min interval between two attempts
      * @param maxSleepTime The max interval between two attempts
      * @param maxRetryTime The max time for retry
