@@ -32,6 +32,14 @@ import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.testng.Assert.assertEquals;
 
+/**
+ * Test the CachingHiveMetastoreRetryConfigurable.
+ *
+ * This is a temporary fix for "Failed connecting to hive metastore" issue IQ-221.
+ * Clean up if no need. Follow IQ-241
+ *
+ * @see IQ-221, IQ-241
+ */
 @Test(singleThreaded = true)
 public class TestCachingHiveMetastoreRetryConfigurable
 {

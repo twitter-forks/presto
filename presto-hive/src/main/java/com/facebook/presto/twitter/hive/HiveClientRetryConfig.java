@@ -22,6 +22,12 @@ import javax.validation.constraints.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
+/**
+ * This is a temporary fix for "Failed connecting to hive metastore" issue IQ-221.
+ * Clean up if no need. Follow IQ-241
+ *
+ * @see IQ-221, IQ-241
+ */
 public class HiveClientRetryConfig
 {
     private int maxMetastoreRetryAttempts = 10;

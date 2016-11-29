@@ -24,6 +24,12 @@ import static io.airlift.configuration.testing.ConfigAssertions.assertFullMappin
 import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static io.airlift.configuration.testing.ConfigAssertions.recordDefaults;
 
+/**
+ * This is a temporary fix for "Failed connecting to hive metastore" issue IQ-221.
+ * Clean up if no need. Follow IQ-241
+ *
+ * @see IQ-221, IQ-241
+ */
 public class TestHiveClientRetryConfig
 {
     @Test

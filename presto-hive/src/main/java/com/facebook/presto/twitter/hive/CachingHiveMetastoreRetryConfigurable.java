@@ -35,11 +35,15 @@ import static java.util.concurrent.TimeUnit.SECONDS;
  * It added retry configuration and overrided the RetryDriver setup method
  * retry().
  * The class added the flexibility to set up retry configuration from a
- * runtime injector in order to solve "Failed to connect hive metastore" issue.
- * All retry configurations are propergated from a
+ * runtime injector in order to solve "Failed connecting to hive metastore" issue,
+ * where the local cache of metastore failed to create a connection to remote metastore
+ * via HiveCluster. All retry configurations are propergated from a
  * HiveClientRetryConfig instance.
  *
- * @see IQ-221
+ * This is a temporary fix for "Failed connecting to hive metastore" issue IQ-221.
+ * Clean up if no need. Follow IQ-241
+ *
+ * @see IQ-221, IQ-241
  */
 @ThreadSafe
 public class CachingHiveMetastoreRetryConfigurable

@@ -30,6 +30,11 @@ import static org.weakref.jmx.guice.ExportBinder.newExporter;
  * It overrided the method to bind a retry configurable HiveMetastore class
  * CachingHiveMetastoreRetryConfigurable, instead of the original
  * CachingHiveMetastore.
+ *
+ * This is a temporary fix for "Failed connecting to hive metastore" issue IQ-221.
+ * Clean up if no need. Follow IQ-241
+ *
+ * @see IQ-221, IQ-241
  */
 public class HiveClientModuleRetryConfigurable
         extends HiveClientModule
