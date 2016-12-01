@@ -62,7 +62,7 @@ import static com.facebook.presto.raptor.storage.StorageType.arrayOf;
 import static com.facebook.presto.raptor.storage.StorageType.mapOf;
 import static com.facebook.presto.raptor.util.Types.isArrayType;
 import static com.facebook.presto.raptor.util.Types.isMapType;
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Functions.toStringFunction;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -122,8 +122,8 @@ public class OrcFileWriter
         properties.setProperty(META_TABLE_COLUMNS, Joiner.on(',').join(columnNames));
         properties.setProperty(META_TABLE_COLUMN_TYPES, Joiner.on(':').join(hiveTypeNames));
 
-        serializer = createSerializer(CONFIGURATION, properties);
-        recordWriter = createRecordWriter(new Path(target.toURI()), CONFIGURATION, columnIds, columnTypes, writeMetadata);
+        serializer = createSerializer(properties);
+        recordWriter = createRecordWriter(new Path(target.toURI()), columnIds, columnTypes, writeMetadata);
 
         tableInspector = getStandardStructObjectInspector(columnNames, getJavaObjectInspectors(storageTypes));
         structFields = ImmutableList.copyOf(tableInspector.getAllStructFieldRefs());
@@ -191,19 +191,19 @@ public class OrcFileWriter
         return uncompressedSize;
     }
 
-    private static OrcSerde createSerializer(Configuration conf, Properties properties)
+    private static OrcSerde createSerializer(Properties properties)
     {
         OrcSerde serde = new OrcSerde();
-        serde.initialize(conf, properties);
+        serde.initialize(CONFIGURATION, properties);
         return serde;
     }
 
-    private static RecordWriter createRecordWriter(Path target, Configuration conf, List<Long> columnIds, List<Type> columnTypes, boolean writeMetadata)
+    private static RecordWriter createRecordWriter(Path target, List<Long> columnIds, List<Type> columnTypes, boolean writeMetadata)
     {
         try (ThreadContextClassLoader ignored = new ThreadContextClassLoader(FileSystem.class.getClassLoader());
                 FileSystem fileSystem = new SyncingFileSystem(CONFIGURATION)) {
-            OrcFile.WriterOptions options = new OrcWriterOptions(conf)
-                    .memory(new NullMemoryManager(conf))
+            OrcFile.WriterOptions options = new OrcWriterOptions(CONFIGURATION)
+                    .memory(new NullMemoryManager(CONFIGURATION))
                     .fileSystem(fileSystem)
                     .compress(SNAPPY);
 
@@ -281,7 +281,7 @@ public class OrcFileWriter
                     getJavaObjectInspector(mapTypeInfo.getMapKeyTypeInfo()),
                     getJavaObjectInspector(mapTypeInfo.getMapValueTypeInfo()));
         }
-        throw new PrestoException(INTERNAL_ERROR, "Unhandled storage type: " + category);
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unhandled storage type: " + category);
     }
 
     private static <T> boolean isUnique(Collection<T> items)

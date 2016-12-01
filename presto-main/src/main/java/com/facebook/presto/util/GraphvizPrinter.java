@@ -19,6 +19,7 @@ import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
+import com.facebook.presto.sql.planner.plan.AssignUniqueId;
 import com.facebook.presto.sql.planner.plan.DistinctLimitNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
@@ -49,6 +50,7 @@ import com.facebook.presto.sql.planner.plan.UnnestNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.ComparisonExpression;
+import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.SymbolReference;
@@ -231,7 +233,7 @@ public final class GraphvizPrinter
         @Override
         public Void visitSample(SampleNode node, Void context)
         {
-            printNode(node, format("Sample[type=%s, ratio=%f, rescaled=%s]", node.getSampleType(), node.getSampleRatio(), node.isRescaled()), NODE_COLORS.get(NodeType.SAMPLE));
+            printNode(node, format("Sample[type=%s, ratio=%f]", node.getSampleType(), node.getSampleRatio()), NODE_COLORS.get(NodeType.SAMPLE));
             return node.getSource().accept(this, context);
         }
 
@@ -331,11 +333,14 @@ public final class GraphvizPrinter
         @Override
         public Void visitGroupId(GroupIdNode node, Void context)
         {
-            List<String> groupingSets = node.getGroupingSets().stream()
-                    .map(groupingSet -> "(" + Joiner.on(", ").join(groupingSet) + ")")
+            // grouping sets are easier to understand in terms of inputs
+            List<String> inputGroupingSetSymbols = node.getGroupingSets().stream()
+                    .map(set -> "(" + Joiner.on(", ").join(set.stream()
+                            .map(symbol -> node.getGroupingSetMappings().get(symbol))
+                            .collect(Collectors.toList())) + ")")
                     .collect(Collectors.toList());
 
-            printNode(node, "GroupId", Joiner.on(", ").join(groupingSets), NODE_COLORS.get(NodeType.AGGREGATE));
+            printNode(node, "GroupId", Joiner.on(", ").join(inputGroupingSetSymbols), NODE_COLORS.get(NodeType.AGGREGATE));
             return node.getSource().accept(this, context);
         }
 
@@ -424,7 +429,7 @@ public final class GraphvizPrinter
         public Void visitEnforceSingleRow(EnforceSingleRowNode node, Void context)
         {
             printNode(node, "Scalar", NODE_COLORS.get(NodeType.PROJECT));
-            return null;
+            return node.getSource().accept(this, context);
         }
 
         @Override
@@ -432,7 +437,7 @@ public final class GraphvizPrinter
         {
             List<Expression> joinExpressions = new ArrayList<>();
             for (JoinNode.EquiJoinClause clause : node.getCriteria()) {
-                joinExpressions.add(new ComparisonExpression(ComparisonExpression.Type.EQUAL,
+                joinExpressions.add(new ComparisonExpression(ComparisonExpressionType.EQUAL,
                         clause.getLeft().toSymbolReference(),
                         clause.getRight().toSymbolReference()));
             }
@@ -470,6 +475,15 @@ public final class GraphvizPrinter
         }
 
         @Override
+        public Void visitAssignUniqueId(AssignUniqueId node, Void context)
+        {
+            printNode(node, "AssignUniqueId", NODE_COLORS.get(NodeType.PROJECT));
+            node.getSource().accept(this, context);
+
+            return null;
+        }
+
+        @Override
         public Void visitIndexSource(IndexSourceNode node, Void context)
         {
             printNode(node, format("IndexSource[%s]", node.getIndexHandle()), NODE_COLORS.get(NodeType.INDEX_SOURCE));
@@ -481,7 +495,7 @@ public final class GraphvizPrinter
         {
             List<Expression> joinExpressions = new ArrayList<>();
             for (IndexJoinNode.EquiJoinClause clause : node.getCriteria()) {
-                joinExpressions.add(new ComparisonExpression(ComparisonExpression.Type.EQUAL,
+                joinExpressions.add(new ComparisonExpression(ComparisonExpressionType.EQUAL,
                         clause.getProbe().toSymbolReference(),
                         clause.getIndex().toSymbolReference()));
             }

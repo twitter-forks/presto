@@ -21,8 +21,8 @@ import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.FloatType.FLOAT;
 import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
@@ -243,9 +243,9 @@ public class TestSmallintOperators
     public void testCastToFloat()
             throws Exception
     {
-        assertFunction("cast(SMALLINT'37' as float)", FLOAT, 37.0f);
-        assertFunction("cast(SMALLINT'-32768' as float)", FLOAT, -32768.0f);
-        assertFunction("cast(SMALLINT'0' as float)", FLOAT, 0.0f);
+        assertFunction("cast(SMALLINT'37' as real)", REAL, 37.0f);
+        assertFunction("cast(SMALLINT'-32768' as real)", REAL, -32768.0f);
+        assertFunction("cast(SMALLINT'0' as real)", REAL, 0.0f);
     }
 
     @Test
@@ -263,5 +263,16 @@ public class TestSmallintOperators
     {
         assertFunction("cast('37' as smallint)", SMALLINT, (short) 37);
         assertFunction("cast('17' as smallint)", SMALLINT, (short) 17);
+    }
+
+    @Test
+    public void testIsDistinctFrom()
+            throws Exception
+    {
+        assertFunction("CAST(NULL AS SMALLINT) IS DISTINCT FROM CAST(NULL AS SMALLINT)", BOOLEAN, false);
+        assertFunction("SMALLINT'37' IS DISTINCT FROM SMALLINT'37'", BOOLEAN, false);
+        assertFunction("SMALLINT'37' IS DISTINCT FROM SMALLINT'38'", BOOLEAN, true);
+        assertFunction("NULL IS DISTINCT FROM SMALLINT'37'", BOOLEAN, true);
+        assertFunction("SMALLINT'37' IS DISTINCT FROM NULL", BOOLEAN, true);
     }
 }

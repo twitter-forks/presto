@@ -25,7 +25,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.AtomicDouble;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.stats.CounterStat;
-import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.joda.time.DateTime;
 
@@ -40,7 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.transform;
-import static io.airlift.units.DataSize.Unit.BYTE;
+import static io.airlift.units.DataSize.succinctBytes;
 import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -53,7 +52,6 @@ public class TaskContext
     private final Executor executor;
     private final Session session;
 
-    private final DataSize operatorPreAllocatedMemory;
     private final AtomicLong memoryReservation = new AtomicLong();
     private final AtomicLong systemMemoryReservation = new AtomicLong();
 
@@ -84,7 +82,6 @@ public class TaskContext
             TaskStateMachine taskStateMachine,
             Executor executor,
             Session session,
-            DataSize operatorPreAllocatedMemory,
             boolean verboseStats,
             boolean cpuTimerEnabled)
     {
@@ -92,7 +89,6 @@ public class TaskContext
         this.queryContext = requireNonNull(queryContext, "queryContext is null");
         this.executor = requireNonNull(executor, "executor is null");
         this.session = session;
-        this.operatorPreAllocatedMemory = requireNonNull(operatorPreAllocatedMemory, "operatorPreAllocatedMemory is null");
         taskStateMachine.addStateChangeListener(new StateChangeListener<TaskState>()
         {
             @Override
@@ -149,11 +145,6 @@ public class TaskContext
     public TaskState getState()
     {
         return taskStateMachine.getState();
-    }
-
-    public DataSize getOperatorPreAllocatedMemory()
-    {
-        return operatorPreAllocatedMemory;
     }
 
     public synchronized ListenableFuture<?> reserveMemory(long bytes)
@@ -373,19 +364,19 @@ public class TaskContext
                 runningPartitionedDrivers,
                 completedDrivers,
                 cumulativeMemory.get(),
-                new DataSize(memoryReservation.get(), BYTE).convertToMostSuccinctDataSize(),
-                new DataSize(systemMemoryReservation.get(), BYTE).convertToMostSuccinctDataSize(),
+                succinctBytes(memoryReservation.get()),
+                succinctBytes(systemMemoryReservation.get()),
                 new Duration(totalScheduledTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalCpuTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalUserTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalBlockedTime, NANOSECONDS).convertToMostSuccinctTimeUnit(),
                 fullyBlocked && (runningDrivers > 0 || runningPartitionedDrivers > 0),
                 blockedReasons,
-                new DataSize(rawInputDataSize, BYTE).convertToMostSuccinctDataSize(),
+                succinctBytes(rawInputDataSize),
                 rawInputPositions,
-                new DataSize(processedInputDataSize, BYTE).convertToMostSuccinctDataSize(),
+                succinctBytes(processedInputDataSize),
                 processedInputPositions,
-                new DataSize(outputDataSize, BYTE).convertToMostSuccinctDataSize(),
+                succinctBytes(outputDataSize),
                 outputPositions,
                 pipelineStats);
     }

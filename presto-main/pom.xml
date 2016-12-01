@@ -33,6 +33,11 @@
 
         <dependency>
             <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-array</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
             <artifactId>presto-client</artifactId>
         </dependency>
 
@@ -252,22 +257,10 @@
             <artifactId>jgrapht-core</artifactId>
         </dependency>
 
-       <!-- twitter deps -->
+        <!-- used by tests but also needed transitively -->
         <dependency>
-            <groupId>com.twitter</groupId>
-            <artifactId>presto-thrift-java</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.twitter</groupId>
-            <artifactId>util-logging_2.10</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.thrift</groupId>
-            <artifactId>libthrift</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
+            <groupId>org.apache.bval</groupId>
+            <artifactId>bval-jsr</artifactId>
         </dependency>
 
         <!-- for testing -->
@@ -320,18 +313,6 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.gaul</groupId>
-                <artifactId>modernizer-maven-plugin</artifactId>
-                <configuration>
-                    <failOnViolations>false</failOnViolations>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
 
     <profiles>
         <profile>

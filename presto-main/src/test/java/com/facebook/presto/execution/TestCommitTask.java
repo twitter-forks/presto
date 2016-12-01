@@ -17,8 +17,11 @@ package com.facebook.presto.execution;
 import com.facebook.presto.Session;
 import com.facebook.presto.Session.SessionBuilder;
 import com.facebook.presto.metadata.MetadataManager;
+import com.facebook.presto.security.AccessControl;
+import com.facebook.presto.security.AccessControlManager;
 import com.facebook.presto.security.AllowAllAccessControl;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.sql.tree.Commit;
 import com.facebook.presto.transaction.TransactionId;
 import com.facebook.presto.transaction.TransactionManager;
@@ -36,6 +39,7 @@ import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static com.facebook.presto.transaction.TransactionManager.createTestTransactionManager;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
+import static java.util.Collections.emptyList;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -59,15 +63,16 @@ public class TestCommitTask
             throws Exception
     {
         TransactionManager transactionManager = createTestTransactionManager();
+        AccessControl accessControl = new AccessControlManager(transactionManager);
 
         Session session = sessionBuilder()
                 .setTransactionId(transactionManager.beginTransaction(false))
                 .build();
-        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, executor);
+        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, accessControl, executor);
         assertTrue(stateMachine.getSession().getTransactionId().isPresent());
         assertEquals(transactionManager.getAllTransactionInfos().size(), 1);
 
-        new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine).join();
+        new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine, emptyList()).join();
         assertTrue(stateMachine.getQueryInfoWithoutDetails().isClearTransactionId());
         assertFalse(stateMachine.getQueryInfoWithoutDetails().getStartedTransactionId().isPresent());
 
@@ -79,14 +84,15 @@ public class TestCommitTask
             throws Exception
     {
         TransactionManager transactionManager = createTestTransactionManager();
+        AccessControl accessControl = new AccessControlManager(transactionManager);
 
         Session session = sessionBuilder()
                 .build();
-        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, executor);
+        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, accessControl, executor);
 
         try {
             try {
-                new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine).join();
+                new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine, emptyList()).join();
                 fail();
             }
             catch (CompletionException e) {
@@ -107,15 +113,16 @@ public class TestCommitTask
             throws Exception
     {
         TransactionManager transactionManager = createTestTransactionManager();
+        AccessControl accessControl = new AccessControlManager(transactionManager);
 
         Session session = sessionBuilder()
                 .setTransactionId(TransactionId.create()) // Use a random transaction ID that is unknown to the system
                 .build();
-        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, executor);
+        QueryStateMachine stateMachine = QueryStateMachine.begin(new QueryId("query"), "COMMIT", session, URI.create("fake://uri"), true, transactionManager, accessControl, executor);
 
         try {
             try {
-                new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine).join();
+                new CommitTask().execute(new Commit(), transactionManager, metadata, new AllowAllAccessControl(), stateMachine, emptyList()).join();
                 fail();
             }
             catch (CompletionException e) {

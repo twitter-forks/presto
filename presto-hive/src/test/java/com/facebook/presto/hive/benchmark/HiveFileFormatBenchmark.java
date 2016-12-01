@@ -35,6 +35,7 @@ import io.airlift.tpch.LineItem;
 import io.airlift.tpch.LineItemColumn;
 import io.airlift.tpch.LineItemGenerator;
 import io.airlift.tpch.TpchColumn;
+import org.openjdk.jmh.annotations.AuxCounters;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
@@ -80,6 +81,7 @@ public class HiveFileFormatBenchmark
 
     @SuppressWarnings("deprecation")
     public static final HiveClientConfig CONFIG = new HiveClientConfig()
+            .setRcfileOptimizedReaderEnabled(true)
             .setParquetOptimizedReaderEnabled(true);
 
     public static final ConnectorSession SESSION = new TestingConnectorSession(new HiveSessionProperties(CONFIG)
@@ -146,8 +148,8 @@ public class HiveFileFormatBenchmark
                         BigintType.BIGINT.writeLong(noDateBlockBuilder, column.getIdentifier(lineItem));
                         break;
                     case INTEGER:
-                        IntegerType.INTEGER.writeLong(blockBuilder, column.getIdentifier(lineItem));
-                        IntegerType.INTEGER.writeLong(noDateBlockBuilder, column.getIdentifier(lineItem));
+                        IntegerType.INTEGER.writeLong(blockBuilder, column.getInteger(lineItem));
+                        IntegerType.INTEGER.writeLong(noDateBlockBuilder, column.getInteger(lineItem));
                         break;
                     case DATE:
                         DateType.DATE.writeLong(blockBuilder, column.getDate(lineItem));
@@ -182,6 +184,15 @@ public class HiveFileFormatBenchmark
         deleteRecursively(targetDir);
     }
 
+    @SuppressWarnings("PublicField")
+    @AuxCounters
+    @State(Scope.Thread)
+    public static class CompressionCounter
+    {
+        public long inputSize;
+        public long outputSize;
+    }
+
     @Benchmark
     public List<Page> read(CompressionCounter counter)
             throws IOException
@@ -201,7 +212,8 @@ public class HiveFileFormatBenchmark
                 }
             }
         }
-        counter.addCompressed(size, dataFile.length());
+        counter.inputSize += size;
+        counter.outputSize += dataFile.length();
         return pages;
     }
 
@@ -211,7 +223,8 @@ public class HiveFileFormatBenchmark
     {
         File targetFile = new File(targetDir, UUID.randomUUID().toString());
         writeData(targetFile);
-        counter.addCompressed(size, targetFile.length());
+        counter.inputSize += size;
+        counter.outputSize += targetFile.length();
         return targetFile;
     }
 
@@ -224,8 +237,7 @@ public class HiveFileFormatBenchmark
                 targetFile,
                 columnNames,
                 fileFormat.supportsDate() ? columnTypes : noDateColumnTypes,
-                compression
-        )) {
+                compression)) {
             for (Page page : inputPages) {
                 formatWriter.writePage(page);
             }

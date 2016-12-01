@@ -49,7 +49,7 @@ public class TestJdbcMetadata
             throws Exception
     {
         database = new TestingDatabase();
-        metadata = new JdbcMetadata(new JdbcConnectorId(CONNECTOR_ID), database.getJdbcClient(), new JdbcMetadataConfig());
+        metadata = new JdbcMetadata(database.getJdbcClient(), false);
         tableHandle = metadata.getTableHandle(SESSION, new SchemaTableName("example", "numbers"));
     }
 
@@ -145,6 +145,7 @@ public class TestJdbcMetadata
                 new SchemaTableName("example", "view"),
                 new SchemaTableName("tpch", "orders"),
                 new SchemaTableName("tpch", "lineitem"),
+                new SchemaTableName("exa_ple", "table_with_float_col"),
                 new SchemaTableName("exa_ple", "num_ers")));
 
         // specific schema
@@ -156,7 +157,8 @@ public class TestJdbcMetadata
                 new SchemaTableName("tpch", "orders"),
                 new SchemaTableName("tpch", "lineitem")));
         assertEquals(ImmutableSet.copyOf(metadata.listTables(SESSION, "exa_ple")), ImmutableSet.of(
-                new SchemaTableName("exa_ple", "num_ers")));
+                new SchemaTableName("exa_ple", "num_ers"),
+                new SchemaTableName("exa_ple", "table_with_float_col")));
 
         // unknown schema
         assertEquals(ImmutableSet.copyOf(metadata.listTables(SESSION, "unknown")), ImmutableSet.of());
@@ -189,8 +191,7 @@ public class TestJdbcMetadata
             assertEquals(e.getErrorCode(), PERMISSION_DENIED.toErrorCode());
         }
 
-        JdbcMetadataConfig config = new JdbcMetadataConfig().setAllowDropTable(true);
-        metadata = new JdbcMetadata(new JdbcConnectorId(CONNECTOR_ID), database.getJdbcClient(), config);
+        metadata = new JdbcMetadata(database.getJdbcClient(), true);
         metadata.dropTable(SESSION, tableHandle);
 
         try {

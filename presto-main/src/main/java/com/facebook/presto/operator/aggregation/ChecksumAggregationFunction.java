@@ -39,6 +39,7 @@ import static com.facebook.presto.operator.aggregation.AggregationUtils.generate
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static io.airlift.slice.Slices.wrappedLongArray;
 
@@ -82,21 +83,18 @@ public class ChecksumAggregationFunction
         List<Type> inputTypes = ImmutableList.of(type);
 
         AggregationMetadata metadata = new AggregationMetadata(
-                generateAggregationName(NAME, type, inputTypes),
+                generateAggregationName(NAME, type.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
                 createInputParameterMetadata(type),
                 INPUT_FUNCTION.bindTo(type),
-                null,
-                null,
                 COMBINE_FUNCTION,
                 OUTPUT_FUNCTION,
                 NullableLongState.class,
                 new StateCompiler().generateStateSerializer(NullableLongState.class, classLoader),
                 new StateCompiler().generateStateFactory(NullableLongState.class, classLoader),
-                VARBINARY,
-                false);
+                VARBINARY);
 
         GenericAccumulatorFactoryBinder factory = new AccumulatorCompiler().generateAccumulatorFactoryBinder(metadata, classLoader);
-        return new InternalAggregationFunction(NAME, inputTypes, BIGINT, VARBINARY, true, false, factory);
+        return new InternalAggregationFunction(NAME, inputTypes, BIGINT, VARBINARY, true, factory);
     }
 
     private static List<ParameterMetadata> createInputParameterMetadata(Type type)

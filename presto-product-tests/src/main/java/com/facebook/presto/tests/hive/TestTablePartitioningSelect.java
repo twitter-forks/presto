@@ -28,9 +28,9 @@ import org.testng.annotations.Test;
 
 import java.sql.SQLException;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 import static com.facebook.presto.tests.TestGroups.HIVE_CONNECTOR;
-import static com.facebook.presto.tests.TestGroups.QUARANTINE;
 import static com.teradata.tempto.Requirements.allOf;
 import static com.teradata.tempto.assertions.QueryAssert.Row.row;
 import static com.teradata.tempto.assertions.QueryAssert.assertThat;
@@ -39,7 +39,6 @@ import static com.teradata.tempto.fulfillment.table.TableRequirements.mutableTab
 import static com.teradata.tempto.fulfillment.table.hive.InlineDataSource.createResourceDataSource;
 import static com.teradata.tempto.fulfillment.table.hive.InlineDataSource.createStringDataSource;
 import static com.teradata.tempto.query.QueryExecutor.query;
-import static java.lang.System.currentTimeMillis;
 
 public class TestTablePartitioningSelect
         extends ProductTest
@@ -57,8 +56,8 @@ public class TestTablePartitioningSelect
     private static HiveTableDefinition singleIntColumnPartitionedTableDefinition(String fileFormat, Optional<String> serde)
     {
         String tableName = fileFormat.toLowerCase() + "_single_int_column_partitioned";
-        HiveDataSource dataSource = createResourceDataSource(tableName, "" + currentTimeMillis(), "com/facebook/presto/tests/hive/data/single_int_column/data." + fileFormat.toLowerCase());
-        HiveDataSource invalidData = createStringDataSource(tableName, "" + currentTimeMillis(), "INVALID DATA");
+        HiveDataSource dataSource = createResourceDataSource(tableName, String.valueOf(ThreadLocalRandom.current().nextLong(Long.MAX_VALUE)), "com/facebook/presto/tests/hive/data/single_int_column/data." + fileFormat.toLowerCase());
+        HiveDataSource invalidData = createStringDataSource(tableName, String.valueOf(ThreadLocalRandom.current().nextLong(Long.MAX_VALUE)), "INVALID DATA");
         return HiveTableDefinition.builder(tableName)
                 .setCreateTableDDLTemplate(buildSingleIntColumnPartitionedTableDDL(fileFormat, serde))
                 .addPartition("part_col = 1", invalidData)
@@ -69,7 +68,7 @@ public class TestTablePartitioningSelect
     private static String buildSingleIntColumnPartitionedTableDDL(String fileFormat, Optional<String> rowFormat)
     {
         StringBuilder sb = new StringBuilder();
-        sb.append("CREATE EXTERNAL TABLE %NAME%(");
+        sb.append("CREATE %EXTERNAL% TABLE %NAME%(");
         sb.append("   col INT");
         sb.append(") ");
         sb.append("PARTITIONED BY (part_col INT) ");
@@ -91,7 +90,7 @@ public class TestTablePartitioningSelect
         );
     }
 
-    @Test(groups = {HIVE_CONNECTOR, QUARANTINE})
+    @Test(groups = {HIVE_CONNECTOR})
     public void testSelectPartitionedHiveTableDifferentFormats()
             throws SQLException
     {

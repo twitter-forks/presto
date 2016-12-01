@@ -27,14 +27,12 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import com.google.inject.name.Named;
 
 import java.util.List;
 import java.util.Optional;
 
 import static com.facebook.presto.connector.jmx.JmxMetadata.NODE_COLUMN_NAME;
 import static com.facebook.presto.connector.jmx.Types.checkType;
-import static com.facebook.presto.spi.NodeState.ACTIVE;
 import static com.facebook.presto.spi.predicate.TupleDomain.fromFixedValues;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.google.common.base.Preconditions.checkState;
@@ -45,15 +43,11 @@ import static java.util.stream.Collectors.toList;
 public class JmxSplitManager
         implements ConnectorSplitManager
 {
-    private final String connectorId;
     private final NodeManager nodeManager;
 
     @Inject
-    public JmxSplitManager(
-            @Named(JmxConnector.CONNECTOR_ID_PARAMETER) String connectorId,
-            NodeManager nodeManager)
+    public JmxSplitManager(NodeManager nodeManager)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
     }
 
@@ -70,8 +64,7 @@ public class JmxSplitManager
                 .findFirst();
         checkState(nodeColumnHandle.isPresent(), "Failed to find %s column", NODE_COLUMN_NAME);
 
-        List<ConnectorSplit> splits = nodeManager.getNodes(ACTIVE)
-                .stream()
+        List<ConnectorSplit> splits = nodeManager.getAllNodes().stream()
                 .filter(node -> {
                     NullableValue value = NullableValue.of(createUnboundedVarcharType(), utf8Slice(node.getNodeIdentifier()));
                     return predicate.overlaps(fromFixedValues(ImmutableMap.of(nodeColumnHandle.get(), value)));
@@ -79,6 +72,6 @@ public class JmxSplitManager
                 .map(node -> new JmxSplit(tableHandle, ImmutableList.of(node.getHostAndPort())))
                 .collect(toList());
 
-        return new FixedSplitSource(connectorId, splits);
+        return new FixedSplitSource(splits);
     }
 }

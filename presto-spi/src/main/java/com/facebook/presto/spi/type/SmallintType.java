@@ -20,8 +20,9 @@ import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.ShortArrayBlockBuilder;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static java.lang.Long.rotateLeft;
 
 public final class SmallintType
         extends AbstractType
@@ -93,7 +94,7 @@ public final class SmallintType
     @Override
     public long hash(Block block, int position)
     {
-        return block.getShort(position, 0);
+        return hash(block.getShort(position, 0));
     }
 
     @Override
@@ -127,10 +128,10 @@ public final class SmallintType
     public void writeLong(BlockBuilder blockBuilder, long value)
     {
         if (value > Short.MAX_VALUE) {
-            throw new PrestoException(INTERNAL_ERROR, String.format("Value %d exceeds MAX_SHORT", value));
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, String.format("Value %d exceeds MAX_SHORT", value));
         }
         else if (value < Short.MIN_VALUE) {
-            throw new PrestoException(INTERNAL_ERROR, String.format("Value %d is less than MIN_SHORT", value));
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, String.format("Value %d is less than MIN_SHORT", value));
         }
 
         blockBuilder.writeShort((int) value).closeEntry();
@@ -147,5 +148,11 @@ public final class SmallintType
     public int hashCode()
     {
         return getClass().hashCode();
+    }
+
+    public static long hash(short value)
+    {
+        // xxhash64 mix
+        return rotateLeft(value * 0xC2B2AE3D27D4EB4FL, 31) * 0x9E3779B185EBCA87L;
     }
 }

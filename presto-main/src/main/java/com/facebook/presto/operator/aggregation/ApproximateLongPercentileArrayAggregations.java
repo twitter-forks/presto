@@ -16,10 +16,12 @@ package com.facebook.presto.operator.aggregation;
 import com.facebook.presto.operator.aggregation.state.DigestAndPercentileArrayState;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AggregationFunction;
+import com.facebook.presto.spi.function.CombineFunction;
+import com.facebook.presto.spi.function.InputFunction;
+import com.facebook.presto.spi.function.OutputFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.SqlType;
 import com.google.common.collect.ImmutableList;
 import io.airlift.stats.QuantileDigest;
 
@@ -33,9 +35,6 @@ import static com.facebook.presto.util.Failures.checkCondition;
 @AggregationFunction("approx_percentile")
 public final class ApproximateLongPercentileArrayAggregations
 {
-    public static final InternalAggregationFunction LONG_APPROXIMATE_PERCENTILE_ARRAY_AGGREGATION = new AggregationCompiler().generateAggregationFunction(ApproximateLongPercentileArrayAggregations.class, new ArrayType(BIGINT), ImmutableList.<Type>of(BIGINT, new ArrayType(DOUBLE)));
-    public static final InternalAggregationFunction LONG_APPROXIMATE_PERCENTILE_ARRAY_WEIGHTED_AGGREGATION = new AggregationCompiler().generateAggregationFunction(ApproximateLongPercentileArrayAggregations.class, new ArrayType(BIGINT), ImmutableList.<Type>of(BIGINT, BIGINT, new ArrayType(DOUBLE)));
-
     private ApproximateLongPercentileArrayAggregations() {}
 
     @InputFunction

@@ -13,12 +13,17 @@
  */
 package com.facebook.presto.operator.aggregation;
 
-import com.facebook.presto.operator.aggregation.state.AccumulatorStateSerializer;
 import com.facebook.presto.operator.aggregation.state.HyperLogLogState;
 import com.facebook.presto.operator.aggregation.state.StateCompiler;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AccumulatorStateSerializer;
+import com.facebook.presto.spi.function.AggregationFunction;
+import com.facebook.presto.spi.function.CombineFunction;
+import com.facebook.presto.spi.function.InputFunction;
+import com.facebook.presto.spi.function.LiteralParameters;
+import com.facebook.presto.spi.function.OutputFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.type.SqlType;
 import io.airlift.slice.Slice;
 import io.airlift.stats.cardinality.HyperLogLog;
 
@@ -30,6 +35,11 @@ public final class ApproximateSetAggregation
 
     private ApproximateSetAggregation() {}
 
+    public static HyperLogLog newHyperLogLog()
+    {
+        return HyperLogLog.newInstance(NUMBER_OF_BUCKETS);
+    }
+
     @InputFunction
     public static void input(HyperLogLogState state, @SqlType(StandardTypes.DOUBLE) double value)
     {
@@ -40,7 +50,8 @@ public final class ApproximateSetAggregation
     }
 
     @InputFunction
-    public static void input(HyperLogLogState state, @SqlType(StandardTypes.VARCHAR) Slice value)
+    @LiteralParameters("x")
+    public static void input(HyperLogLogState state, @SqlType("varchar(x)") Slice value)
     {
         HyperLogLog hll = getOrCreateHyperLogLog(state);
         state.addMemoryUsage(-hll.estimatedInMemorySize());
@@ -61,7 +72,7 @@ public final class ApproximateSetAggregation
     {
         HyperLogLog hll = state.getHyperLogLog();
         if (hll == null) {
-            hll = HyperLogLog.newInstance(NUMBER_OF_BUCKETS);
+            hll = newHyperLogLog();
             state.setHyperLogLog(hll);
             state.addMemoryUsage(hll.estimatedInMemorySize());
         }

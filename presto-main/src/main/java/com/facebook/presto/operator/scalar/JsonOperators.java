@@ -14,10 +14,13 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.LiteralParameters;
+import com.facebook.presto.spi.function.ScalarOperator;
+import com.facebook.presto.spi.function.SqlNullable;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.type.BigintOperators;
 import com.facebook.presto.type.BooleanOperators;
 import com.facebook.presto.type.DoubleOperators;
-import com.facebook.presto.type.SqlType;
 import com.facebook.presto.type.VarcharOperators;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -28,15 +31,13 @@ import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
 
-import static com.facebook.presto.metadata.OperatorType.CAST;
-import static com.facebook.presto.metadata.OperatorType.EQUAL;
-import static com.facebook.presto.metadata.OperatorType.HASH_CODE;
-import static com.facebook.presto.metadata.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
+import static com.facebook.presto.spi.function.OperatorType.CAST;
+import static com.facebook.presto.spi.function.OperatorType.EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
+import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.type.StandardTypes.BIGINT;
 import static com.facebook.presto.spi.type.StandardTypes.BOOLEAN;
 import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
@@ -44,6 +45,8 @@ import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
 import static com.facebook.presto.spi.type.StandardTypes.JSON;
 import static com.facebook.presto.spi.type.StandardTypes.VARCHAR;
 import static com.facebook.presto.util.Failures.checkCondition;
+import static com.facebook.presto.util.JsonUtil.createJsonGenerator;
+import static com.facebook.presto.util.JsonUtil.createJsonParser;
 import static com.fasterxml.jackson.core.JsonFactory.Feature.CANONICALIZE_FIELD_NAMES;
 import static java.lang.String.format;
 
@@ -56,11 +59,12 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
-    @Nullable
-    @SqlType(VARCHAR)
+    @SqlNullable
+    @LiteralParameters("x")
+    @SqlType("varchar(x)")
     public static Slice castToVarchar(@SqlType(JSON) Slice json)
     {
-        try (JsonParser parser = JSON_FACTORY.createParser(json.getInput())) {
+        try (JsonParser parser = createJsonParser(JSON_FACTORY, json)) {
             JsonToken nextToken = parser.nextToken();
             Slice result;
             switch (nextToken) {
@@ -97,11 +101,11 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
-    @Nullable
+    @SqlNullable
     @SqlType(BIGINT)
     public static Long castToBigint(@SqlType(JSON) Slice json)
     {
-        try (JsonParser parser = JSON_FACTORY.createParser(json.getInput())) {
+        try (JsonParser parser = createJsonParser(JSON_FACTORY, json)) {
             parser.nextToken();
             Long result;
             switch (parser.getCurrentToken()) {
@@ -135,11 +139,11 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
-    @Nullable
+    @SqlNullable
     @SqlType(INTEGER)
     public static Long castToInteger(@SqlType(JSON) Slice json)
     {
-        try (JsonParser parser = JSON_FACTORY.createParser(json.getInput())) {
+        try (JsonParser parser = createJsonParser(JSON_FACTORY, json)) {
             parser.nextToken();
             Long result;
             switch (parser.getCurrentToken()) {
@@ -173,11 +177,11 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
-    @Nullable
+    @SqlNullable
     @SqlType(DOUBLE)
     public static Double castToDouble(@SqlType(JSON) Slice json)
     {
-        try (JsonParser parser = JSON_FACTORY.createParser(json.getInput())) {
+        try (JsonParser parser = createJsonParser(JSON_FACTORY, json)) {
             parser.nextToken();
             Double result;
             switch (parser.getCurrentToken()) {
@@ -213,11 +217,11 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
-    @Nullable
+    @SqlNullable
     @SqlType(BOOLEAN)
     public static Boolean castToBoolean(@SqlType(JSON) Slice json)
     {
-        try (JsonParser parser = JSON_FACTORY.createParser(json.getInput())) {
+        try (JsonParser parser = createJsonParser(JSON_FACTORY, json)) {
             parser.nextToken();
             Boolean result;
             switch (parser.getCurrentToken()) {
@@ -251,12 +255,14 @@ public final class JsonOperators
     }
 
     @ScalarOperator(CAST)
+    @LiteralParameters("x")
     @SqlType(JSON)
-    public static Slice castFromVarchar(@SqlType(VARCHAR) Slice slice) throws IOException
+    public static Slice castFromVarchar(@SqlType(VARCHAR) Slice slice)
+            throws IOException
     {
         try {
             SliceOutput output = new DynamicSliceOutput(slice.length() + 2);
-            try (JsonGenerator jsonGenerator = JSON_FACTORY.createGenerator(output)) {
+            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, output)) {
                 jsonGenerator.writeString(slice.toStringUtf8());
             }
             return output.slice();
@@ -268,11 +274,12 @@ public final class JsonOperators
 
     @ScalarOperator(CAST)
     @SqlType(JSON)
-    public static Slice castFromInteger(@SqlType(INTEGER) long value) throws IOException
+    public static Slice castFromInteger(@SqlType(INTEGER) long value)
+            throws IOException
     {
         try {
             SliceOutput output = new DynamicSliceOutput(20);
-            try (JsonGenerator jsonGenerator = JSON_FACTORY.createGenerator(output)) {
+            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, output)) {
                 jsonGenerator.writeNumber(value);
             }
             return output.slice();
@@ -284,11 +291,12 @@ public final class JsonOperators
 
     @ScalarOperator(CAST)
     @SqlType(JSON)
-    public static Slice castFromBigint(@SqlType(BIGINT) long value) throws IOException
+    public static Slice castFromBigint(@SqlType(BIGINT) long value)
+            throws IOException
     {
         try {
             SliceOutput output = new DynamicSliceOutput(20);
-            try (JsonGenerator jsonGenerator = JSON_FACTORY.createGenerator(output)) {
+            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, output)) {
                 jsonGenerator.writeNumber(value);
             }
             return output.slice();
@@ -300,11 +308,12 @@ public final class JsonOperators
 
     @ScalarOperator(CAST)
     @SqlType(JSON)
-    public static Slice castFromDouble(@SqlType(DOUBLE) double value) throws IOException
+    public static Slice castFromDouble(@SqlType(DOUBLE) double value)
+            throws IOException
     {
         try {
             SliceOutput output = new DynamicSliceOutput(32);
-            try (JsonGenerator jsonGenerator = JSON_FACTORY.createGenerator(output)) {
+            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, output)) {
                 jsonGenerator.writeNumber(value);
             }
             return output.slice();
@@ -316,11 +325,12 @@ public final class JsonOperators
 
     @ScalarOperator(CAST)
     @SqlType(JSON)
-    public static Slice castFromBoolean(@SqlType(BOOLEAN) boolean value) throws IOException
+    public static Slice castFromBoolean(@SqlType(BOOLEAN) boolean value)
+            throws IOException
     {
         try {
             SliceOutput output = new DynamicSliceOutput(5);
-            try (JsonGenerator jsonGenerator = JSON_FACTORY.createGenerator(output)) {
+            try (JsonGenerator jsonGenerator = createJsonGenerator(JSON_FACTORY, output)) {
                 jsonGenerator.writeBoolean(value);
             }
             return output.slice();

@@ -19,9 +19,9 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.AbstractType;
+import com.facebook.presto.spi.type.TypeSignature;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
-import static com.facebook.presto.type.TypeUtils.parameterizedTypeName;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 
 public class Re2JRegexpType
         extends AbstractType
@@ -31,7 +31,7 @@ public class Re2JRegexpType
 
     public Re2JRegexpType()
     {
-        super(parameterizedTypeName(NAME), Re2JRegexp.class);
+        super(new TypeSignature(NAME), Re2JRegexp.class);
     }
 
     @Override
@@ -49,12 +49,12 @@ public class Re2JRegexpType
     @Override
     public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
     {
-        throw new PrestoException(INTERNAL_ERROR, "RegExp type cannot be serialized");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "RegExp type cannot be serialized");
     }
 
     @Override
     public BlockBuilder createBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
     {
-        throw new PrestoException(INTERNAL_ERROR, "RegExp type cannot be serialized");
+        throw new PrestoException(GENERIC_INTERNAL_ERROR, "RegExp type cannot be serialized");
     }
 }

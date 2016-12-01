@@ -13,15 +13,16 @@
  */
 package com.facebook.presto.operator.scalar;
 
-import com.facebook.presto.operator.Description;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.function.Description;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlNullable;
+import com.facebook.presto.spi.function.SqlType;
+import com.facebook.presto.spi.function.TypeParameter;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.type.SqlType;
 import com.google.common.primitives.Ints;
 import io.airlift.slice.Slice;
-
-import javax.annotation.Nullable;
 
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 
@@ -32,7 +33,7 @@ public final class ArrayElementAtFunction
     private ArrayElementAtFunction() {}
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Void voidElementAt(@SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {
@@ -41,7 +42,7 @@ public final class ArrayElementAtFunction
     }
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Long longElementAt(@TypeParameter("E") Type elementType, @SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {
@@ -54,7 +55,7 @@ public final class ArrayElementAtFunction
     }
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Boolean booleanElementAt(@TypeParameter("E") Type elementType, @SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {
@@ -67,7 +68,7 @@ public final class ArrayElementAtFunction
     }
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Double doubleElementAt(@TypeParameter("E") Type elementType, @SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {
@@ -80,7 +81,7 @@ public final class ArrayElementAtFunction
     }
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Slice sliceElementAt(@TypeParameter("E") Type elementType, @SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {
@@ -93,7 +94,7 @@ public final class ArrayElementAtFunction
     }
 
     @TypeParameter("E")
-    @Nullable
+    @SqlNullable
     @SqlType("E")
     public static Block blockElementAt(@TypeParameter("E") Type elementType, @SqlType("array(E)") Block array, @SqlType("bigint") long index)
     {

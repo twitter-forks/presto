@@ -34,6 +34,7 @@ import java.util.UUID;
 public interface ShardDao
 {
     int CLEANABLE_SHARDS_BATCH_SIZE = 1000;
+    int CLEANUP_TRANSACTIONS_BATCH_SIZE = 10_000;
 
     @SqlUpdate("INSERT INTO nodes (node_identifier) VALUES (:nodeIdentifier)")
     @GetGeneratedKeys
@@ -66,6 +67,7 @@ public interface ShardDao
             "    JOIN nodes n ON (sn.node_id = n.node_id)\n" +
             "    WHERE n.node_identifier = :nodeIdentifier\n" +
             "      AND s.bucket_number IS NULL\n" +
+            "      AND (s.table_id = :tableId OR :tableId IS NULL)\n" +
             "  UNION ALL\n" +
             "    SELECT s.*\n" +
             "    FROM shards s\n" +
@@ -76,9 +78,10 @@ public interface ShardDao
             "      s.bucket_number = b.bucket_number)\n" +
             "    JOIN nodes n ON (b.node_id = n.node_id)\n" +
             "    WHERE n.node_identifier = :nodeIdentifier\n" +
+            "      AND (s.table_id = :tableId OR :tableId IS NULL)\n" +
             ") x")
     @Mapper(ShardMetadata.Mapper.class)
-    Set<ShardMetadata> getNodeShards(@Bind("nodeIdentifier") String nodeIdentifier);
+    Set<ShardMetadata> getNodeShards(@Bind("nodeIdentifier") String nodeIdentifier, @Bind("tableId") Long tableId);
 
     @SqlQuery("SELECT n.node_identifier, x.bytes\n" +
             "FROM (\n" +
@@ -202,4 +205,6 @@ public interface ShardDao
             @Bind("distributionId") long distributionId,
             @Bind("bucketNumber") int bucketNumber,
             @Bind("nodeId") int nodeId);
+
+    int deleteOldCompletedTransactions(@Bind("maxEndTime") Timestamp maxEndTime);
 }

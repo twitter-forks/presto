@@ -13,11 +13,11 @@
  */
 package com.facebook.presto.hive;
 
-import com.facebook.presto.hive.metastore.HiveMetastore;
+import com.facebook.presto.hive.metastore.Partition;
+import com.facebook.presto.hive.metastore.SemiTransactionalHiveMetastore;
+import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.spi.PrestoException;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.metastore.api.Partition;
-import org.apache.hadoop.hive.metastore.api.Table;
 
 import javax.inject.Inject;
 
@@ -34,18 +34,16 @@ import static java.util.Objects.requireNonNull;
 public class HiveLocationService
         implements LocationService
 {
-    private final HiveMetastore metastore;
     private final HdfsEnvironment hdfsEnvironment;
 
     @Inject
-    public HiveLocationService(HiveMetastore metastore, HdfsEnvironment hdfsEnvironment)
+    public HiveLocationService(HdfsEnvironment hdfsEnvironment)
     {
-        this.metastore = requireNonNull(metastore);
-        this.hdfsEnvironment = requireNonNull(hdfsEnvironment);
+        this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
     }
 
     @Override
-    public LocationHandle forNewTable(String user, String queryId, String schemaName, String tableName)
+    public LocationHandle forNewTable(SemiTransactionalHiveMetastore metastore, String user, String queryId, String schemaName, String tableName)
     {
         Path targetPath = getTableDefaultLocation(user, metastore, hdfsEnvironment, schemaName, tableName);
 
@@ -66,9 +64,9 @@ public class HiveLocationService
     }
 
     @Override
-    public LocationHandle forExistingTable(String user, String queryId, Table table)
+    public LocationHandle forExistingTable(SemiTransactionalHiveMetastore metastore, String user, String queryId, Table table)
     {
-        Path targetPath = new Path(table.getSd().getLocation());
+        Path targetPath = new Path(table.getStorage().getLocation());
 
         Optional<Path> writePath;
         if (shouldUseTemporaryDirectory(user, targetPath)) {
@@ -90,7 +88,7 @@ public class HiveLocationService
     @Override
     public Path targetPath(LocationHandle locationHandle, Partition partition, String partitionName)
     {
-        return new Path(partition.getSd().getLocation());
+        return new Path(partition.getStorage().getLocation());
     }
 
     @Override
