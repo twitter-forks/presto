@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.execution;
 
+import com.facebook.presto.execution.buffer.BufferInfo;
+import com.facebook.presto.execution.buffer.OutputBufferInfo;
 import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -26,8 +28,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Set;
 
-import static com.facebook.presto.execution.SharedBuffer.BufferState.OPEN;
 import static com.facebook.presto.execution.TaskStatus.initialTaskStatus;
+import static com.facebook.presto.execution.buffer.BufferState.OPEN;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
@@ -36,20 +38,21 @@ public class TaskInfo
 {
     private final TaskStatus taskStatus;
     private final DateTime lastHeartbeat;
-    private final SharedBufferInfo outputBuffers;
+    private final OutputBufferInfo outputBuffers;
     private final Set<PlanNodeId> noMoreSplits;
     private final TaskStats stats;
 
     private final boolean needsPlan;
+    private final boolean complete;
 
     @JsonCreator
     public TaskInfo(@JsonProperty("taskStatus") TaskStatus taskStatus,
             @JsonProperty("lastHeartbeat") DateTime lastHeartbeat,
-            @JsonProperty("outputBuffers") SharedBufferInfo outputBuffers,
+            @JsonProperty("outputBuffers") OutputBufferInfo outputBuffers,
             @JsonProperty("noMoreSplits") Set<PlanNodeId> noMoreSplits,
             @JsonProperty("stats") TaskStats stats,
-
-            @JsonProperty("needsPlan") boolean needsPlan)
+            @JsonProperty("needsPlan") boolean needsPlan,
+            @JsonProperty("complete") boolean complete)
     {
         this.taskStatus = requireNonNull(taskStatus, "taskStatus is null");
         this.lastHeartbeat = requireNonNull(lastHeartbeat, "lastHeartbeat is null");
@@ -58,6 +61,7 @@ public class TaskInfo
         this.stats = requireNonNull(stats, "stats is null");
 
         this.needsPlan = needsPlan;
+        this.complete = complete;
     }
 
     @JsonProperty
@@ -73,7 +77,7 @@ public class TaskInfo
     }
 
     @JsonProperty
-    public SharedBufferInfo getOutputBuffers()
+    public OutputBufferInfo getOutputBuffers()
     {
         return outputBuffers;
     }
@@ -96,9 +100,15 @@ public class TaskInfo
         return needsPlan;
     }
 
+    @JsonProperty
+    public boolean isComplete()
+    {
+        return complete;
+    }
+
     public TaskInfo summarize()
     {
-        return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers, noMoreSplits, stats.summarize(), needsPlan);
+        return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers, noMoreSplits, stats.summarize(), needsPlan, complete);
     }
 
     @Override
@@ -115,14 +125,15 @@ public class TaskInfo
         return new TaskInfo(
                 initialTaskStatus(taskId, location),
                 DateTime.now(),
-                new SharedBufferInfo(OPEN, true, true, 0, 0, 0, 0, bufferStates),
+                new OutputBufferInfo("UNINITIALIZED", OPEN, true, true, 0, 0, 0, 0, bufferStates),
                 ImmutableSet.of(),
                 taskStats,
-                true);
+                true,
+                false);
     }
 
-    public TaskInfo withTaskStatus(TaskStatus taskStatus)
+    public TaskInfo withTaskStatus(TaskStatus newTaskStatus)
     {
-        return new TaskInfo(taskStatus, lastHeartbeat, outputBuffers, noMoreSplits, stats, needsPlan);
+        return new TaskInfo(newTaskStatus, lastHeartbeat, outputBuffers, noMoreSplits, stats, needsPlan, complete);
     }
 }

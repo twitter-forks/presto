@@ -19,9 +19,6 @@ var Table = Reactable.Table,
     Td = Reactable.Td;
 
 var TaskList = React.createClass({
-    getTasks: function (stage) {
-        return [].concat.apply(stage.tasks, stage.subStages.map(this.getTasks));
-    },
     compareTaskId: function(taskA, taskB) {
         var taskIdArrA = removeQueryId(taskA).split(".");
         var taskIdArrB = removeQueryId(taskB).split(".");
@@ -29,20 +26,50 @@ var TaskList = React.createClass({
         if (taskIdArrA.length > taskIdArrB.length) {
             return 1;
         }
-
-        for (i = 0; i < taskIdArrA.length; i++) {
-            return Number.parseInt(taskIdArrA[i]) > Number.parseInt(taskIdArrB[i]) ? 1 : -1;
+        for (var i = 0; i < taskIdArrA.length; i++) {
+            var anum = Number.parseInt(taskIdArrA[i]);
+            var bnum = Number.parseInt(taskIdArrB[i]);
+            if(anum != bnum) return anum > bnum ? 1 : -1;
         }
 
         return 0;
     },
+    showPortNumbers: function(tasks) {
+        // check if any host has multiple port numbers
+        var hostToPortNumber = {};
+        for (var i = 0; i < tasks.length; i++) {
+            var taskUri = tasks[i].taskStatus.self;
+            var hostname = getHostname(taskUri);
+            var port = getPort(taskUri);
+            if ((hostname in hostToPortNumber) && (hostToPortNumber[hostname] != port)) {
+                return true;
+            }
+            hostToPortNumber[hostname] = port;
+        }
+
+        return false;
+    },
     render: function() {
-        var tasks = this.getTasks(this.props.outputStage);
+        var tasks = this.props.tasks;
+
+        if (tasks === undefined || tasks.length == 0) {
+            return (
+                <div className="row">
+                    <div className="col-xs-12">
+                        No tasks.
+                    </div>
+                </div>
+            );
+        }
+
+        var showPortNumbers = this.showPortNumbers(tasks);
+
         var renderedTasks = tasks.map(function (task) {
             var elapsedTime = parseDuration(task.stats.elapsedTime);
             if (elapsedTime == 0) {
                 elapsedTime = Date.now() - Date.parse(task.stats.createTime);
             }
+
             return (
                     <Tr key={ task.taskStatus.taskId }>
                         <Td column="id" value={ task.taskStatus.taskId }>
@@ -51,7 +78,8 @@ var TaskList = React.createClass({
                             </a>
                         </Td>
                         <Td column="host" value={ getHostname(task.taskStatus.self) }>
-                            { getHostname(task.taskStatus.self) }</Td>
+                            { showPortNumbers ? getHostAndPort(task.taskStatus.self) : getHostname(task.taskStatus.self) }
+                        </Td>
                         <Td column="state" value={ formatState(task.taskStatus.state, task.stats.fullyBlocked) }>
                             { formatState(task.taskStatus.state, task.stats.fullyBlocked) }
                         </Td>
@@ -90,21 +118,40 @@ var TaskList = React.createClass({
         }.bind(this));
 
         return (
-            <Table id="tasks" className="table table-striped sortable" sortable={ true } defaultSort={ {column: 'id', direction: 'asc'} }>
+            <Table id="tasks" className="table table-striped sortable" sortable=
+                {[
+                    {
+                        column: 'id',
+                        sortFunction: this.compareTaskId
+                    },
+                    'host',
+                    'state',
+                    'splitsPending',
+                    'splitsRunning',
+                    'splitsDone',
+                    'rows',
+                    'rowsSec',
+                    'bytes',
+                    'bytesSec',
+                    'elapsedTime',
+                    'cpuTime',
+                    'bufferedBytes',
+                ]}
+                defaultSort={ {column: 'id', direction: 'asc'} }>
                 <Thead>
-                        <Th column="id" sortFunction={this.compareTaskId}>ID</Th>
+                        <Th column="id">ID</Th>
                         <Th column="host">Host</Th>
                         <Th column="state">State</Th>
+                        <Th column="splitsPending"><span className="glyphicon glyphicon-pause" style={ GLYPHICON_HIGHLIGHT } data-toggle="tooltip" data-placement="top" title="Pending splits"></span></Th>
+                        <Th column="splitsRunning"><span className="glyphicon glyphicon-play" style={ GLYPHICON_HIGHLIGHT } data-toggle="tooltip" data-placement="top" title="Running splits"></span></Th>
+                        <Th column="splitsDone"><span className="glyphicon glyphicon-ok" style={ GLYPHICON_HIGHLIGHT } data-toggle="tooltip" data-placement="top" title="Completed splits"></span></Th>
                         <Th column="rows">Rows</Th>
                         <Th column="rowsSec">Rows/s</Th>
                         <Th column="bytes">Bytes</Th>
                         <Th column="bytesSec">Bytes/s</Th>
-                        <Th column="splitsPending">Pending</Th>
-                        <Th column="splitsRunning">Running</Th>
-                        <Th column="splitsDone">Done</Th>
-                        <Th column="elapsedTime">Elapsed Time</Th>
+                        <Th column="elapsedTime">Elapsed</Th>
                         <Th column="cpuTime">CPU Time</Th>
-                        <Th column="bufferedBytes">Buffered Bytes</Th>
+                        <Th column="bufferedBytes">Buffered</Th>
                 </Thead>
                 { renderedTasks }
             </Table>
@@ -117,7 +164,7 @@ var BAR_CHART_WIDTH = 800;
 var BAR_CHART_PROPERTIES = {
     type: 'bar',
     barSpacing: '0',
-    height: '60px',
+    height: '80px',
     barColor: '#747F96',
     zeroColor: '#8997B3',
     tooltipClassname: 'sparkline-tooltip',
@@ -130,7 +177,7 @@ var HISTOGRAM_WIDTH = 175;
 var HISTOGRAM_PROPERTIES = {
     type: 'bar',
     barSpacing: '0',
-    height: '60px',
+    height: '80px',
     barColor: '#747F96',
     zeroColor: '#747F96',
     zeroAxis: true,
@@ -197,8 +244,8 @@ var StageDetail = React.createClass({
             return getTaskIdInStage(taskA.taskStatus.taskId) - getTaskIdInStage(taskB.taskStatus.taskId);
         })
 
-        var outgoingBuffers = stage.tasks.map(function(task) {
-            return task.outputBuffers.totalBufferedBytes;
+        var scheduledTimes = stage.tasks.map(function(task) {
+            return parseDuration(task.stats.totalScheduledTime);
         });
 
         var cpuTimes = stage.tasks.map(function(task) {
@@ -209,42 +256,52 @@ var StageDetail = React.createClass({
         if (this.state.lastRender == null || (Date.now() - this.state.lastRender) >= 1000) {
             var renderTimestamp = Date.now();
             var stageHistogramProperties = $.extend({}, HISTOGRAM_PROPERTIES,  {barWidth: (HISTOGRAM_WIDTH / (Math.min(numTasks, HISTOGRAM_WIDTH) + 1))});
+            var stageId = getStageId(stage.stageId);
 
-            this.renderHistogram('#outgoing-buffer-histogram-' + stage.plan.id, outgoingBuffers, formatDataSize);
-            this.renderHistogram('#cpu-time-histogram-' + stage.plan.id, cpuTimes, formatDuration);
+            this.renderHistogram('#scheduled-time-histogram-' + stageId, scheduledTimes, formatDuration);
+            this.renderHistogram('#cpu-time-histogram-' + stageId, cpuTimes, formatDuration);
 
             if (this.state.expanded) {
                 // this needs to be a string otherwise it will also be passed to numberFormatter
                 var tooltipValueLookups = {'offset' : {}};
                 for (var i = 0; i < numTasks; i++) {
-                    tooltipValueLookups['offset'][i] = stage.plan.id + "." + i;
+                    tooltipValueLookups['offset'][i] = getStageId(stage.stageId) + "." + i;
                 }
 
                 var stageBarChartProperties = $.extend({}, BAR_CHART_PROPERTIES, {barWidth: BAR_CHART_WIDTH / numTasks, tooltipValueLookups: tooltipValueLookups});
 
-                $('#outgoing-buffer-bar-chart-' + stage.plan.id).sparkline(outgoingBuffers, $.extend({}, stageBarChartProperties, {numberFormatter: formatDataSize}));
-                $('#cpu-time-bar-chart-' + stage.plan.id).sparkline(cpuTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+                $('#scheduled-time-bar-chart-' + stageId).sparkline(scheduledTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+                $('#cpu-time-bar-chart-' + stageId).sparkline(cpuTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
             }
 
             this.setState({
                 lastRender: renderTimestamp
             });
         }
-
-        $('[data-toggle="tooltip"]').tooltip();
     },
     render: function() {
         var stage = this.props.stage;
+
+        if (stage === undefined || !stage.hasOwnProperty('plan')) {
+            return (
+                <tr>
+                    <td>Information about this stage is unavailable.</td>
+                </tr>);
+        }
 
         var totalBufferedBytes = stage.tasks.map(function(task) {
             return task.outputBuffers.totalBufferedBytes;
         }).reduce(function(previousValue, currentValue) {
             return previousValue + currentValue;
-        });
+        }, 0);
+
+        var stageId = getStageId(stage.stageId);
 
         return (
             <tr>
-                <td className="stage-id">{ stage.plan.id }</td>
+                <td className="stage-id">
+                    <div className="stage-state-color"  style={ { borderLeftColor: getStageStateColor(stage.state) } }>{ stageId }</div>
+                </td>
                 <td>
                     <table className="table single-stage-table">
                         <tbody>
@@ -274,6 +331,14 @@ var StageDetail = React.createClass({
                                                 </td>
                                                 <td className="stage-table-stat-text">
                                                     { stage.stageStats.totalBlockedTime }
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td className="stage-table-stat-title">
+                                                    Wall
+                                                </td>
+                                                <td className="stage-table-stat-text">
+                                                    { stage.stageStats.totalUserTime }
                                                 </td>
                                             </tr>
                                             <tr>
@@ -316,6 +381,14 @@ var StageDetail = React.createClass({
                                             </tr>
                                             <tr>
                                                 <td className="stage-table-stat-title">
+                                                    Buffers
+                                                </td>
+                                                <td className="stage-table-stat-text">
+                                                    { formatDataSize(totalBufferedBytes) }
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td className="stage-table-stat-title">
                                                     Peak
                                                 </td>
                                                 <td className="stage-table-stat-text">
@@ -336,6 +409,14 @@ var StageDetail = React.createClass({
                                             </tr>
                                         </thead>
                                         <tbody>
+                                            <tr>
+                                                <td className="stage-table-stat-title">
+                                                    Pending
+                                                </td>
+                                                <td className="stage-table-stat-text">
+                                                    { stage.tasks.filter(function(task) { return task.taskStatus.state == "PLANNED" }).length }
+                                                </td>
+                                            </tr>
                                             <tr>
                                                 <td className="stage-table-stat-title">
                                                     Running
@@ -372,14 +453,14 @@ var StageDetail = React.createClass({
                                         <thead>
                                             <tr>
                                                 <th className="stage-table-stat-title stage-table-chart-header">
-                                                    Output Buffer Skew
+                                                    Scheduled Time Skew
                                                 </th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <tr>
                                                 <td className="histogram-container">
-                                                    <span className="histogram" id={ "outgoing-buffer-histogram-" + stage.plan.id }><div className="loader"></div></span>
+                                                    <span className="histogram" id={ "scheduled-time-histogram-" + stageId }><div className="loader"></div></span>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -397,7 +478,7 @@ var StageDetail = React.createClass({
                                         <tbody>
                                             <tr>
                                                 <td className="histogram-container">
-                                                    <span className="histogram" id={ "cpu-time-histogram-" + stage.plan.id }><div className="loader"></div></span>
+                                                    <span className="histogram" id={ "cpu-time-histogram-" + stageId }><div className="loader"></div></span>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -415,10 +496,10 @@ var StageDetail = React.createClass({
                                         <tbody>
                                             <tr>
                                                 <td className="stage-table-stat-title expanded-chart-title">
-                                                    Task Output Buffer
+                                                    Task Scheduled Time
                                                 </td>
                                                 <td className="bar-chart-container">
-                                                    <span className="bar-chart" id={ "outgoing-buffer-bar-chart-" + stage.plan.id }><div className="loader"></div></span>
+                                                    <span className="bar-chart" id={ "scheduled-time-bar-chart-" + stageId }><div className="loader"></div></span>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -434,7 +515,7 @@ var StageDetail = React.createClass({
                                                     Task CPU Time
                                                 </td>
                                                 <td className="bar-chart-container">
-                                                    <span className="bar-chart" id={ "cpu-time-bar-chart-" + stage.plan.id }><div className="loader"></div></span>
+                                                    <span className="bar-chart" id={ "cpu-time-bar-chart-" + stageId }><div className="loader"></div></span>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -450,10 +531,25 @@ var StageDetail = React.createClass({
 
 var StageList = React.createClass({
     getStages: function (stage) {
+        if (stage === undefined || !stage.hasOwnProperty('subStages')) {
+            return []
+        }
+
         return [].concat.apply(stage, stage.subStages.map(this.getStages));
     },
     render: function() {
         var stages = this.getStages(this.props.outputStage);
+
+        if (stages === undefined || stages.length == 0) {
+            return (
+                <div className="row">
+                    <div className="col-xs-12">
+                        No stage information available.
+                    </div>
+                </div>
+            );
+        }
+
         var renderedStages = stages.map(function (stage) {
             return (
                     <StageDetail key={ stage.stageId } stage={ stage } />
@@ -484,6 +580,14 @@ var SMALL_SPARKLINE_PROPERTIES = {
     disableHiddenCheck: true,
 }
 
+var TASK_FILTER = {
+    ALL: function(state) { return true },
+    PLANNED: function(state) { return state === 'PLANNED' },
+    RUNNING: function(state) { return state === 'RUNNING' },
+    FINISHED: function(state) { return state === 'FINISHED' },
+    FAILED: function(state) { return state === 'FAILED' || state === 'ABORTED' || state === 'CANCELED' },
+};
+
 var QueryDetail = React.createClass({
     getInitialState: function() {
         return {
@@ -509,6 +613,8 @@ var QueryDetail = React.createClass({
 
             stageRefresh: true,
             taskRefresh: true,
+
+            taskFilter: TASK_FILTER.ALL,
         };
     },
     resetTimer: function() {
@@ -548,7 +654,7 @@ var QueryDetail = React.createClass({
                 lastByteInput: parseDataSize(query.queryStats.processedInputDataSize),
 
                 initialized: true,
-                ended: query.state != "RUNNING",
+                ended: query.finalQueryInfo,
 
                 lastRefresh: nowMillis,
             });
@@ -563,18 +669,18 @@ var QueryDetail = React.createClass({
                 lastRefresh = nowMillis - parseDuration(query.queryStats.elapsedTime);
             }
 
-            var elapsedMillisLastRefresh = nowMillis - lastRefresh;
-
-            var currentCpuTimeRate = (parseDuration(query.queryStats.totalCpuTime) - lastCpuTime) / elapsedMillisLastRefresh;
-            var currentRowInputRate = (query.queryStats.processedInputPositions - lastRowInput) / elapsedMillisLastRefresh;
-            var currentByteInputRate = (parseDataSize(query.queryStats.processedInputDataSize) - lastByteInput) / elapsedMillisLastRefresh;
-
-            this.setState({
-                cpuTimeRate: addToHistory(currentCpuTimeRate, this.state.cpuTimeRate),
-                rowInputRate: addToHistory(currentRowInputRate, this.state.rowInputRate),
-                byteInputRate: addToHistory(currentByteInputRate, this.state.byteInputRate),
-                reservedMemory: addToHistory(parseDataSize(query.queryStats.totalMemoryReservation), this.state.reservedMemory),
-            });
+            var elapsedSecsSinceLastRefresh = (nowMillis - lastRefresh) / 1000;
+            if (elapsedSecsSinceLastRefresh != 0) {
+                var currentCpuTimeRate = (parseDuration(query.queryStats.totalCpuTime) - lastCpuTime) / elapsedSecsSinceLastRefresh;
+                var currentRowInputRate = (query.queryStats.processedInputPositions - lastRowInput) / elapsedSecsSinceLastRefresh;
+                var currentByteInputRate = (parseDataSize(query.queryStats.processedInputDataSize) - lastByteInput) / elapsedSecsSinceLastRefresh;
+                this.setState({
+                    cpuTimeRate: addToHistory(currentCpuTimeRate, this.state.cpuTimeRate),
+                    rowInputRate: addToHistory(currentRowInputRate, this.state.rowInputRate),
+                    byteInputRate: addToHistory(currentByteInputRate, this.state.byteInputRate),
+                    reservedMemory: addToHistory(parseDataSize(query.queryStats.totalMemoryReservation), this.state.reservedMemory),
+                });
+            }
             this.resetTimer();
         }.bind(this))
         .error(function() {
@@ -626,8 +732,26 @@ var QueryDetail = React.createClass({
             return <button className="btn btn-info live-button" onClick={ this.handleStageRefreshClick }>Auto-Refresh: Off</button>
         }
     },
+    renderTaskFilterListItem: function(taskFilter, taskFilterText) {
+        return (
+            <li><a href="#" className={ this.state.taskFilter == taskFilter ? "selected" : ""} onClick={ this.handleTaskFilterClick.bind(this, taskFilter) }>{ taskFilterText }</a></li>
+        );
+    },
+    handleTaskFilterClick: function(filter, event) {
+        this.setState({
+            taskFilter: filter
+        });
+        event.preventDefault();
+    },
     killQuery: function() {
         $.ajax({url: 'v1/query/' + this.state.query.queryId, type: 'DELETE'});
+    },
+    getTasksFromStage: function (stage) {
+        if (stage === undefined || !stage.hasOwnProperty('subStages') || !stage.hasOwnProperty('tasks')) {
+            return []
+        }
+
+        return [].concat.apply(stage.tasks, stage.subStages.map(this.getTasksFromStage));
     },
     componentDidMount: function() {
         this.refreshLoop();
@@ -651,25 +775,48 @@ var QueryDetail = React.createClass({
                 lastRender: renderTimestamp,
             });
         }
+
+        $('[data-toggle="tooltip"]').tooltip();
+        new Clipboard('.copy-button');
     },
     renderTasks: function() {
         if (this.state.lastSnapshotTasks == null) {
             return;
         }
 
+        var tasks = this.getTasksFromStage(this.state.lastSnapshotTasks).filter(function(task) { return this.state.taskFilter(task.taskStatus.state) }, this);
+
         return (
             <div>
                 <div className="row">
-                    <div className="col-xs-10">
+                    <div className="col-xs-9">
                         <h3>Tasks</h3>
                     </div>
-                    <div className="col-xs-2 query-links">
-                        { this.renderTaskRefreshButton() }
+                    <div className="col-xs-3">
+                        <table className="query-links">
+                            <tr>
+                                <td>
+                                    <div className="input-group-btn text-right">
+                                        <button type="button" className="btn btn-default dropdown-toggle pull-right text-right" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            Show <span className="caret"></span>
+                                        </button>
+                                        <ul className="dropdown-menu">
+                                            { this.renderTaskFilterListItem(TASK_FILTER.ALL, "All") }
+                                            { this.renderTaskFilterListItem(TASK_FILTER.PLANNED, "Planned") }
+                                            { this.renderTaskFilterListItem(TASK_FILTER.RUNNING, "Running") }
+                                            { this.renderTaskFilterListItem(TASK_FILTER.FINISHED, "Finished") }
+                                            { this.renderTaskFilterListItem(TASK_FILTER.FINISHED, "Aborted/Canceled/Failed") }
+                                        </ul>
+                                    </div>
+                                </td>
+                                <td>&nbsp;&nbsp;{ this.renderTaskRefreshButton() }</td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
                 <div className="row">
                     <div className="col-xs-12">
-                        <TaskList key={ this.state.query.queryId } outputStage={ this.state.lastSnapshotTasks } />
+                        <TaskList key={ this.state.query.queryId } tasks={ tasks } />
                     </div>
                 </div>
             </div>
@@ -683,11 +830,18 @@ var QueryDetail = React.createClass({
         return (
             <div>
                 <div className="row">
-                    <div className="col-xs-10">
+                    <div className="col-xs-9">
                         <h3>Stages</h3>
                     </div>
-                    <div className="col-xs-2 query-links">
-                        { this.renderStageRefreshButton() }
+                    <div className="col-xs-3">
+                        <table className="query-links">
+                            <tr>
+                                <td>
+                                    { this.renderStageRefreshButton() }
+                                </td>
+                            </tr>
+                        </table>
+
                     </div>
                 </div>
                 <div className="row">
@@ -726,33 +880,12 @@ var QueryDetail = React.createClass({
     },
     renderProgressBar: function() {
         var query = this.state.query;
-        var summary = query.state;
-        var progress = 100;
-
-        // construct query summary and compute progress
-        switch (query.state) {
-            case "FAILED":
-                summary = getReadableErrorCode(query.errorType, query.errorCode);
-                break;
-            case "RUNNING":
-                progress = query.queryStats.totalDrivers == 0 ? 0 : Math.round((query.queryStats.completedDrivers * 100) / query.queryStats.totalDrivers);
-                if (query.queryStats.fullyBlocked) {
-                    summary = "BLOCKED";
-                    if (query.queryStats.blockedReasons.length > 0) {
-                        summary += " (" + query.blockedReasons.join() + ")";
-                    }
-                }
-                else {
-                    summary = (progress == 0 ? summary : summary + " (" + progress + "%" + ")");
-                }
-                break;
-        }
-        var progressBarStyle = {width: (progress == 0 ? 100 : progress) + "%", backgroundColor: getQueryStateColor(query.state, query.errorType, query.errorCode)};
+        var progressBarStyle = { width: getProgressBarPercentage(query) + "%", backgroundColor: getQueryStateColor(query) };
 
         return (
             <div className="progress-large">
-                <div className="progress-bar progress-bar-info" role="progressbar" aria-valuenow={ progress } aria-valuemin="0" aria-valuemax="100" style={ progressBarStyle }>
-                    { summary }
+                <div className="progress-bar progress-bar-info" role="progressbar" aria-valuenow={ getProgressBarPercentage(query) } aria-valuemin="0" aria-valuemax="100" style={ progressBarStyle }>
+                    { getProgressBarTitle(query) }
                 </div>
             </div>
         )
@@ -821,16 +954,27 @@ var QueryDetail = React.createClass({
             <div>
                 <div className="row">
                     <div className="col-xs-7">
-                        <h2>{ query.queryId }</h2>
+                        <h2>
+                            <span id="query-id">{ query.queryId }</span>
+                            <a className="btn copy-button" data-clipboard-target="#query-id" data-toggle="tooltip" data-placement="right" title="Copy to clipboard">
+                                <span className="glyphicon glyphicon-copy" aria-hidden="true" alt="Copy to clipboard" />
+                            </a>
+                        </h2>
                     </div>
-                    <div className="col-xs-5 query-links">
-                        <a onClick={ this.killQuery } className={ "btn btn-warning " + (["FINISHED", "FAILED", "CANCELED"].indexOf(query.state) > -1 ? "disabled" : "") } target="_blank">Kill Query</a>
-                        &nbsp;&nbsp;&nbsp;
-                        <a href={ "/ui/plan?" + query.queryId } className="btn btn-info" target="_blank">Live Plan</a>
-                        &nbsp;
-                        <a href={ "/v1/query/" + query.queryId + "?pretty" } className="btn btn-info" target="_blank">Raw JSON</a>
-                        &nbsp;
-                        <a href={ "/timeline.html?" + query.queryId } className="btn btn-info" target="_blank">Split Timeline</a>
+                    <div className="col-xs-5">
+                        <table className="query-links">
+                            <tr>
+                                <td>
+                                    <a onClick={ this.killQuery } className={ "btn btn-warning " + (["FINISHED", "FAILED", "CANCELED"].indexOf(query.state) > -1 ? "disabled" : "") } target="_blank">Kill Query</a>
+                                    &nbsp;&nbsp;&nbsp;
+                                    <a href={ "/ui/plan?" + query.queryId } className="btn btn-info" target="_blank">Live Plan</a>
+                                    &nbsp;
+                                    <a href={ "/v1/query/" + query.queryId + "?pretty" } className="btn btn-info" target="_blank">Raw JSON</a>
+                                    &nbsp;
+                                    <a href={ "/timeline.html?" + query.queryId } className="btn btn-info" target="_blank">Split Timeline</a>
+                                </td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
                 <div className="row">
@@ -848,7 +992,11 @@ var QueryDetail = React.createClass({
                                         User
                                     </td>
                                     <td className="info-text">
-                                        { query.session.user }
+                                        <span id="query-user">{ query.session.user }</span>
+                                        &nbsp;&nbsp;
+                                        <a href="#" className="copy-button" data-clipboard-target="#query-user" data-toggle="tooltip" data-placement="right" title="Copy to clipboard">
+                                            <span className="glyphicon glyphicon-copy" aria-hidden="true" alt="Copy to clipboard" />
+                                        </a>
                                     </td>
                                 </tr>
                                 <tr>
@@ -1088,9 +1236,14 @@ var QueryDetail = React.createClass({
                 { this.renderFailureInfo() }
                 <div className="row">
                     <div className="col-xs-12">
-                        <h3>Query</h3>
+                        <h3>
+                            Query
+                            <a className="btn copy-button" data-clipboard-target="#query-text" data-toggle="tooltip" data-placement="right" title="Copy to clipboard">
+                                <span className="glyphicon glyphicon-copy" aria-hidden="true" alt="Copy to clipboard" />
+                            </a>
+                        </h3>
                         <pre id="query">
-                            <code className="lang-sql">
+                            <code className="lang-sql" id="query-text">
                                 { query.query }
                             </code>
                         </pre>

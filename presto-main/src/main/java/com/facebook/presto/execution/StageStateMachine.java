@@ -19,7 +19,6 @@ import com.facebook.presto.operator.BlockedReason;
 import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.sql.planner.PlanFragment;
 import com.facebook.presto.util.Failures;
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.airlift.stats.Distribution;
@@ -46,8 +45,8 @@ import static com.facebook.presto.execution.StageState.SCHEDULED;
 import static com.facebook.presto.execution.StageState.SCHEDULING;
 import static com.facebook.presto.execution.StageState.SCHEDULING_SPLITS;
 import static com.facebook.presto.execution.StageState.TERMINAL_STAGE_STATES;
-import static io.airlift.units.DataSize.Unit.BYTE;
-import static io.airlift.units.DataSize.succinctDataSize;
+import static com.google.common.base.MoreObjects.toStringHelper;
+import static io.airlift.units.DataSize.succinctBytes;
 import static io.airlift.units.Duration.succinctDuration;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
@@ -170,6 +169,11 @@ public class StageStateMachine
         return peakMemory.get();
     }
 
+    public long getMemoryReservation()
+    {
+        return currentMemory.get();
+    }
+
     public void updateMemoryUsage(long deltaMemoryInBytes)
     {
         long currentMemoryValue = currentMemory.addAndGet(deltaMemoryInBytes);
@@ -273,8 +277,8 @@ public class StageStateMachine
                 completedDrivers,
 
                 cumulativeMemory,
-                succinctDataSize(totalMemoryReservation, BYTE),
-                succinctDataSize(peakMemoryReservation, BYTE),
+                succinctBytes(totalMemoryReservation),
+                succinctBytes(peakMemoryReservation),
                 succinctDuration(totalScheduledTime, NANOSECONDS),
                 succinctDuration(totalCpuTime, NANOSECONDS),
                 succinctDuration(totalUserTime, NANOSECONDS),
@@ -282,11 +286,11 @@ public class StageStateMachine
                 fullyBlocked && runningTasks > 0,
                 blockedReasons,
 
-                succinctDataSize(rawInputDataSize, BYTE),
+                succinctBytes(rawInputDataSize),
                 rawInputPositions,
-                succinctDataSize(processedInputDataSize, BYTE),
+                succinctBytes(processedInputDataSize),
                 processedInputPositions,
-                succinctDataSize(outputDataSize, BYTE),
+                succinctBytes(outputDataSize),
                 outputPositions);
 
         ExecutionFailureInfo failureInfo = null;
@@ -322,7 +326,7 @@ public class StageStateMachine
     @Override
     public String toString()
     {
-        return MoreObjects.toStringHelper(this)
+        return toStringHelper(this)
                 .add("stageId", stageId)
                 .add("stageState", stageState)
                 .toString();

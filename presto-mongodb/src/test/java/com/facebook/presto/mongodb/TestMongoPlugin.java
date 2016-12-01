@@ -13,13 +13,10 @@
  */
 package com.facebook.presto.mongodb;
 
-import com.facebook.presto.spi.Connector;
-import com.facebook.presto.spi.ConnectorFactory;
+import com.facebook.presto.spi.connector.Connector;
+import com.facebook.presto.spi.connector.ConnectorFactory;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.spi.type.TypeSignatureParameter;
-import com.google.common.collect.ImmutableList;
+import com.facebook.presto.testing.TestingConnectorContext;
 import com.google.common.collect.ImmutableMap;
 import de.bwaldvogel.mongo.MongoServer;
 import de.bwaldvogel.mongo.backend.memory.MemoryBackend;
@@ -28,8 +25,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.net.InetSocketAddress;
-import java.util.List;
-import java.util.Optional;
 
 import static com.facebook.presto.mongodb.ObjectIdType.OBJECT_ID;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -54,11 +49,11 @@ public class TestMongoPlugin
             throws Exception
     {
         MongoPlugin plugin = new MongoPlugin();
-        plugin.setTypeManager(new TestingTypeManager());
-        ConnectorFactory factory = getOnlyElement(plugin.getServices(ConnectorFactory.class));
-        Connector connector = factory.create("test", ImmutableMap.of("mongodb.seeds", seed));
 
-        Type type = getOnlyElement(plugin.getServices(Type.class));
+        ConnectorFactory factory = getOnlyElement(plugin.getConnectorFactories());
+        Connector connector = factory.create("test", ImmutableMap.of("mongodb.seeds", seed), new TestingConnectorContext());
+
+        Type type = getOnlyElement(plugin.getTypes());
         assertEquals(type, OBJECT_ID);
 
         connector.shutdown();
@@ -68,51 +63,5 @@ public class TestMongoPlugin
     public void destory()
     {
         server.shutdown();
-    }
-
-    private static class TestingTypeManager
-            implements TypeManager
-    {
-        @Override
-        public Type getType(TypeSignature signature)
-        {
-            return null;
-        }
-
-        @Override
-        public Type getParameterizedType(String baseTypeName, List<TypeSignatureParameter> typeParameters)
-        {
-            return null;
-        }
-
-        @Override
-        public List<Type> getTypes()
-        {
-            return ImmutableList.of();
-        }
-
-        @Override
-        public Optional<Type> getCommonSuperType(List<? extends Type> types)
-        {
-            return Optional.empty();
-        }
-
-        @Override
-        public boolean isTypeOnlyCoercion(Type actualType, Type expectedType)
-        {
-            return false;
-        }
-
-        @Override
-        public Optional<Type> coerceTypeBase(Type sourceType, String resultTypeBase)
-        {
-            return Optional.empty();
-        }
-
-        @Override
-        public Optional<Type> getCommonSuperType(Type firstType, Type secondType)
-        {
-            return Optional.empty();
-        }
     }
 }

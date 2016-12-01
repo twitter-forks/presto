@@ -20,22 +20,22 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class AddColumn
-        extends Statement
+        extends DataDefinitionStatement
 {
     private final QualifiedName name;
-    private final TableElement column;
+    private final ColumnDefinition column;
 
-    public AddColumn(QualifiedName name, TableElement column)
+    public AddColumn(QualifiedName name, ColumnDefinition column)
     {
         this(Optional.empty(), name, column);
     }
 
-    public AddColumn(NodeLocation location, QualifiedName name, TableElement column)
+    public AddColumn(NodeLocation location, QualifiedName name, ColumnDefinition column)
     {
         this(Optional.of(location), name, column);
     }
 
-    private AddColumn(Optional<NodeLocation> location, QualifiedName name, TableElement column)
+    private AddColumn(Optional<NodeLocation> location, QualifiedName name, ColumnDefinition column)
     {
         super(location);
         this.name = requireNonNull(name, "table is null");
@@ -47,7 +47,7 @@ public class AddColumn
         return name;
     }
 
-    public TableElement getColumn()
+    public ColumnDefinition getColumn()
     {
         return column;
     }

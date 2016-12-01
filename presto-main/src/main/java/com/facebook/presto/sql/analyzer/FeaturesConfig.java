@@ -16,15 +16,22 @@ package com.facebook.presto.sql.analyzer;
 import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
-import io.airlift.configuration.LegacyConfig;
+import io.airlift.configuration.DefunctConfig;
+import io.airlift.units.DataSize;
 
 import javax.validation.constraints.Min;
-import javax.validation.constraints.NotNull;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 
+@DefunctConfig({
+        "resource-group-manager",
+        "experimental-syntax-enabled",
+        "analyzer.experimental-syntax-enabled"
+})
 public class FeaturesConfig
 {
     public static class ProcessingOptimization
@@ -36,8 +43,6 @@ public class FeaturesConfig
         public static final List<String> AVAILABLE_OPTIONS = ImmutableList.of(DISABLED, COLUMNAR, COLUMNAR_DICTIONARY);
     }
 
-    public static final String FILE_BASED_RESOURCE_GROUP_MANAGER = "file";
-    private boolean experimentalSyntaxEnabled;
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
@@ -46,29 +51,20 @@ public class FeaturesConfig
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
     private boolean pushTableWriteThroughUnion = true;
+    private boolean legacyArrayAgg;
+    private boolean optimizeMixedDistinctAggregations;
 
     private String processingOptimization = ProcessingOptimization.DISABLED;
     private boolean dictionaryAggregation;
     private boolean resourceGroups;
 
-    private String resourceGroupManager = FILE_BASED_RESOURCE_GROUP_MANAGER;
-
     private int re2JDfaStatesLimit = Integer.MAX_VALUE;
     private int re2JDfaRetries = 5;
     private RegexLibrary regexLibrary = JONI;
-
-    @NotNull
-    public String getResourceGroupManager()
-    {
-        return resourceGroupManager;
-    }
-
-    @Config("resource-group-manager")
-    public FeaturesConfig setResourceGroupManager(String resourceGroupManager)
-    {
-        this.resourceGroupManager = resourceGroupManager;
-        return this;
-    }
+    private boolean spillEnabled;
+    private DataSize operatorMemoryLimitBeforeSpill = new DataSize(4, DataSize.Unit.MEGABYTE);
+    private Path spillerSpillPath = Paths.get(System.getProperty("java.io.tmpdir"), "presto", "spills");
+    private int spillerThreads = 4;
 
     public boolean isResourceGroupsEnabled()
     {
@@ -79,19 +75,6 @@ public class FeaturesConfig
     public FeaturesConfig setResourceGroupsEnabled(boolean enabled)
     {
         resourceGroups = enabled;
-        return this;
-    }
-
-    public boolean isExperimentalSyntaxEnabled()
-    {
-        return experimentalSyntaxEnabled;
-    }
-
-    @LegacyConfig("analyzer.experimental-syntax-enabled")
-    @Config("experimental-syntax-enabled")
-    public FeaturesConfig setExperimentalSyntaxEnabled(boolean enabled)
-    {
-        experimentalSyntaxEnabled = enabled;
         return this;
     }
 
@@ -110,6 +93,18 @@ public class FeaturesConfig
     public boolean isDistributedJoinsEnabled()
     {
         return distributedJoinsEnabled;
+    }
+
+    @Config("deprecated.legacy-array-agg")
+    public FeaturesConfig setLegacyArrayAgg(boolean legacyArrayAgg)
+    {
+        this.legacyArrayAgg = legacyArrayAgg;
+        return this;
+    }
+
+    public boolean isLegacyArrayAgg()
+    {
+        return legacyArrayAgg;
     }
 
     @Config("distributed-joins-enabled")
@@ -254,6 +249,66 @@ public class FeaturesConfig
     public FeaturesConfig setRegexLibrary(RegexLibrary regexLibrary)
     {
         this.regexLibrary = regexLibrary;
+        return this;
+    }
+
+    public boolean isSpillEnabled()
+    {
+        return spillEnabled;
+    }
+
+    @Config("experimental.spill-enabled")
+    public FeaturesConfig setSpillEnabled(boolean spillEnabled)
+    {
+        this.spillEnabled = spillEnabled;
+        return this;
+    }
+
+    public DataSize getOperatorMemoryLimitBeforeSpill()
+    {
+        return operatorMemoryLimitBeforeSpill;
+    }
+
+    @Config("experimental.operator-memory-limit-before-spill")
+    public FeaturesConfig setOperatorMemoryLimitBeforeSpill(DataSize operatorMemoryLimitBeforeSpill)
+    {
+        this.operatorMemoryLimitBeforeSpill = operatorMemoryLimitBeforeSpill;
+        return this;
+    }
+
+    public Path getSpillerSpillPath()
+    {
+        return spillerSpillPath;
+    }
+
+    @Config("experimental.spiller-spill-path")
+    public FeaturesConfig setSpillerSpillPath(String spillPath)
+    {
+        this.spillerSpillPath = Paths.get(spillPath);
+        return this;
+    }
+
+    public int getSpillerThreads()
+    {
+        return spillerThreads;
+    }
+
+    @Config("experimental.spiller-threads")
+    public FeaturesConfig setSpillerThreads(int spillerThreads)
+    {
+        this.spillerThreads = spillerThreads;
+        return this;
+    }
+
+    public boolean isOptimizeMixedDistinctAggregations()
+    {
+        return optimizeMixedDistinctAggregations;
+    }
+
+    @Config("optimizer.optimize-mixed-distinct-aggregations")
+    public FeaturesConfig setOptimizeMixedDistinctAggregations(boolean value)
+    {
+        this.optimizeMixedDistinctAggregations = value;
         return this;
     }
 }

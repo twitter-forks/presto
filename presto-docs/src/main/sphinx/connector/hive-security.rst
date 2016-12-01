@@ -2,9 +2,49 @@
 Hive Security Configuration
 ===========================
 
+.. contents::
+    :local:
+    :backlinks: none
+    :depth: 1
+
+Authorization
+=============
+
+You can enable authorization checks for the :doc:`/connector/hive` by setting
+the ``hive.security`` property in the Hive catalog properties file. This
+property must be one of the following values:
+
+================================================== ============================================================
+Property Value                                     Description
+================================================== ============================================================
+``legacy`` (default value)                         Few authorization checks are enforced, thus allowing most
+                                                   operations. The config properties ``hive.allow-drop-table``,
+                                                   ``hive.allow-rename-table``, ``hive.allow-add-column`` and
+                                                   ``hive.allow-rename-column`` are used.
+
+``read-only``                                      Operations that read data or metadata, such as ``SELECT``,
+                                                   are permitted, but none of the operations that write data or
+                                                   metadata, such as ``CREATE``, ``INSERT`` or ``DELETE``, are
+                                                   allowed.
+
+``file``                                           Authorization checks are enforced using a config file specified
+                                                   by the Hive configuration property ``security.config-file``.
+                                                   See :ref:`hive-file-based-authorization` for details.
+
+``sql-standard``                                   Users are permitted to perform the operations as long as
+                                                   they have the required privileges as per the SQL standard.
+                                                   In this mode, Presto enforces the authorization checks for
+                                                   queries based on the privileges defined in Hive metastore.
+                                                   To alter these privileges, use the :doc:`/sql/grant` and
+                                                   :doc:`/sql/revoke` commands.
+================================================== ============================================================
+
+Authentication
+==============
+
 The default security configuration of the :doc:`/connector/hive` does not use
 authentication when connecting to a Hadoop cluster. All queries are executed as
-the user who runs the Presto process, regardless of which user who submits the
+the user who runs the Presto process, regardless of which user submits the
 query.
 
 The Hive connector provides additional security options to support Hadoop
@@ -17,6 +57,16 @@ query. This can be used with HDFS permissions and :abbr:`ACLs (Access Control
 Lists)` to provide additional security for data.
 
 .. _hive-security-kerberos-support:
+
+.. warning::
+
+  Access to the Presto coordinator should be secured using Kerberos when using
+  Kerberos authentication to Hadoop services. Failure to secure access to the
+  Presto coordinator could result in unauthorized access to sensitive data on
+  the Hadoop cluster.
+
+  See :doc:`/security/server` and :doc:`/security/cli`
+  for information on setting up Kerberos authentication.
 
 Kerberos Support
 ================
@@ -281,7 +331,7 @@ HDFS Permissions and ACLs are explained in the `HDFS Permissions Guide
 .. code-block:: none
 
     hive.hdfs.authentication.type=NONE
-    hive.hdfs.impersonation=true
+    hive.hdfs.impersonation.enabled=true
 
 When using ``NONE`` authentication with impersonation, Presto impersonates
 the user who is running the query when accessing HDFS. The user Presto is
@@ -353,3 +403,98 @@ node.
 
 You should ensure that the keytab files have the correct permissions on every
 node after distributing them.
+
+.. _hive-file-based-authorization:
+
+File Based Authorization
+========================
+
+The config file is specified using JSON and is composed of three sections,
+each of which is a list of rules that are matched in the order specified
+in the config file. The user is granted the privileges from the first
+matching rule. All regexes default to ``.*`` if not specified.
+
+Schema Rules
+------------
+
+These rules govern who is considered an owner of a schema.
+
+* ``user`` (optional): regex to match against user name.
+
+* ``schema`` (optional): regex to match against schema name.
+
+* ``owner`` (required): boolean indicating ownership.
+
+Table Rules
+-----------
+
+These rules govern the privileges granted on specific tables.
+
+* ``user`` (optional): regex to match against user name.
+
+* ``schema`` (optional): regex to match against schema name.
+
+* ``table`` (optional): regex to match against table name.
+
+* ``privileges`` (required): zero or more of ``SELECT``, ``INSERT``,
+  ``DELETE``, ``OWNERSHIP``, ``GRANT_SELECT``.
+
+Session Property Rules
+----------------------
+
+These rules govern who may set session properties.
+
+* ``user`` (optional): regex to match against user name.
+
+* ``property`` (optional): regex to match against session property name.
+
+* ``allowed`` (required): boolean indicating whether this session property may be set.
+
+See below for an example.
+
+.. code-block:: json
+
+    {
+      "schemas": [
+        {
+          "user": "admin",
+          "schema": ".*",
+          "owner": true
+        },
+        {
+          "user": "guest",
+          "owner": false
+        },
+        {
+          "schema": "default",
+          "owner": true
+        }
+      ],
+      "tables": [
+        {
+          "user": "admin",
+          "privileges": ["SELECT", "INSERT", "DELETE", "OWNERSHIP"]
+        },
+        {
+          "user": "banned_user",
+          "privileges": []
+        },
+        {
+          "schema": "default",
+          "table": ".*",
+          "privileges": ["SELECT"]
+        }
+      ],
+      "sessionProperties": [
+        {
+          "property": "force_local_scheduling",
+          "allow": true
+        },
+        {
+          "user": "admin",
+          "property": "max_split_size",
+          "allow": true
+        }
+      ]
+    }
+

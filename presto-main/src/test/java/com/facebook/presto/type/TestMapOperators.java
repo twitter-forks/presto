@@ -14,10 +14,12 @@
 package com.facebook.presto.type;
 
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
-import com.facebook.presto.operator.scalar.ScalarFunction;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.SqlVarbinary;
 import com.facebook.presto.spi.type.StandardTypes;
@@ -30,10 +32,12 @@ import io.airlift.slice.Slice;
 import org.testng.annotations.Test;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.block.BlockSerdeUtil.writeBlock;
+import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
@@ -43,9 +47,12 @@ import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.type.JsonType.JSON;
+import static com.facebook.presto.type.TypeJsonUtils.appendToBlockBuilder;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
 import static com.facebook.presto.util.StructuralTestUtil.arrayBlockOf;
 import static com.facebook.presto.util.StructuralTestUtil.mapBlockOf;
+import static com.google.common.base.Preconditions.checkArgument;
+import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.Double.doubleToLongBits;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertEquals;
@@ -374,6 +381,27 @@ public class TestMapOperators
     }
 
     @Test
+    public void testDistinctFrom()
+            throws Exception
+    {
+        assertFunction("CAST(NULL AS MAP<INTEGER, VARCHAR>) IS DISTINCT FROM CAST(NULL AS MAP<INTEGER, VARCHAR>)", BOOLEAN, false);
+        assertFunction("MAP(ARRAY[1], ARRAY[2]) IS DISTINCT FROM NULL", BOOLEAN, true);
+        assertFunction("NULL IS DISTINCT FROM MAP(ARRAY[1], ARRAY[2])", BOOLEAN, true);
+
+        assertFunction("MAP(ARRAY[1], ARRAY[2]) IS DISTINCT FROM MAP(ARRAY[1], ARRAY[2])", BOOLEAN, false);
+        assertFunction("MAP(ARRAY[1], ARRAY[NULL]) IS DISTINCT FROM MAP(ARRAY[1], ARRAY[2])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1], ARRAY[2]) IS DISTINCT FROM MAP(ARRAY[1], ARRAY[NULL])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1], ARRAY[NULL]) IS DISTINCT FROM MAP(ARRAY[1], ARRAY[NULL])", BOOLEAN, false);
+
+        assertFunction("MAP(ARRAY[1, 2], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY['puppies', 'kittens'])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1, 2], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY['kittens', 'puppies'])", BOOLEAN, false);
+        assertFunction("MAP(ARRAY[1, 3], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY['kittens', 'puppies'])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1, 3], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY['kittens', 'pupp111'])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1, 3], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY['kittens', NULL])", BOOLEAN, true);
+        assertFunction("MAP(ARRAY[1, 3], ARRAY['kittens','puppies']) IS DISTINCT FROM MAP(ARRAY[1, 2], ARRAY[NULL, NULL])", BOOLEAN, true);
+    }
+
+    @Test
     public void testMapConcat()
             throws Exception
     {
@@ -416,6 +444,41 @@ public class TestMapOperators
         assertFunction("CAST(MAP(ARRAY[1], ARRAY[MAP(ARRAY[1.0], ARRAY[false])]) AS MAP<varchar, MAP(bigint,bigint)>)", new MapType(VARCHAR, new MapType(BIGINT, BIGINT)), ImmutableMap.of("1", ImmutableMap.of(1L, 0L)));
         assertFunction("CAST(MAP(ARRAY[1,2], ARRAY[DATE '2016-01-02', DATE '2016-02-03']) AS MAP(bigint, varchar))", new MapType(BIGINT, VARCHAR), ImmutableMap.of(1L, "2016-01-02", 2L, "2016-02-03"));
         assertFunction("CAST(MAP(ARRAY[1,2], ARRAY[TIMESTAMP '2016-01-02 01:02:03', TIMESTAMP '2016-02-03 03:04:05']) AS MAP(bigint, varchar))", new MapType(BIGINT, VARCHAR), ImmutableMap.of(1L, "2016-01-02 01:02:03.000", 2L, "2016-02-03 03:04:05.000"));
+
+        // null values
+        Map<Long, Double> expected = new HashMap<>();
+        expected.put(0L, 1.0);
+        expected.put(1L, null);
+        expected.put(2L, null);
+        expected.put(3L, 2.0);
+        assertFunction("CAST(MAP(ARRAY[0, 1, 2, 3], ARRAY[1,NULL, NULL, 2]) AS MAP<BIGINT, DOUBLE>)", new MapType(BIGINT, DOUBLE), expected);
+
         assertInvalidCast("CAST(MAP(ARRAY[1, 2], ARRAY[6, 9]) AS MAP<boolean, bigint>)", "duplicate keys");
+    }
+
+    @Test
+    public void testMapHashOperator()
+    {
+        assertMapHashOperator("MAP(ARRAY[1], ARRAY[2])", INTEGER, INTEGER, ImmutableList.of(1, 2));
+        assertMapHashOperator("MAP(ARRAY[1, 2147483647], ARRAY[2147483647, 2])", INTEGER, INTEGER, ImmutableList.of(1, 2147483647, 2147483647, 2));
+        assertMapHashOperator("MAP(ARRAY[8589934592], ARRAY[2])", BIGINT, INTEGER, ImmutableList.of(8589934592L, 2));
+        assertMapHashOperator("MAP(ARRAY[true], ARRAY[false])", BOOLEAN, BOOLEAN, ImmutableList.of(true, false));
+        assertMapHashOperator("MAP(ARRAY['123'], ARRAY['456'])", VARCHAR, VARCHAR, ImmutableList.of(utf8Slice("123"), utf8Slice("456")));
+    }
+
+    private void assertMapHashOperator(String inputString, Type keyType, Type valueType, List<Object> elements)
+    {
+        checkArgument(elements.size() % 2 == 0, "the size of elements should be even number");
+        MapType mapType = new MapType(keyType, valueType);
+        BlockBuilder mapArrayBuilder = mapType.createBlockBuilder(new BlockBuilderStatus(), 1);
+        BlockBuilder mapBuilder = new InterleavedBlockBuilder(ImmutableList.of(keyType, valueType), new BlockBuilderStatus(), elements.size());
+        for (int i = 0; i < elements.size(); i += 2) {
+            appendToBlockBuilder(keyType, elements.get(i), mapBuilder);
+            appendToBlockBuilder(valueType, elements.get(i + 1), mapBuilder);
+        }
+        mapType.writeObject(mapArrayBuilder, mapBuilder.build());
+        long hashResult = mapType.hash(mapArrayBuilder.build(), 0);
+
+        assertOperator(HASH_CODE, inputString, BIGINT, hashResult);
     }
 }

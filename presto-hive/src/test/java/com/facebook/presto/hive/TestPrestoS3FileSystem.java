@@ -13,9 +13,12 @@
  */
 package com.facebook.presto.hive;
 
+import com.amazonaws.AmazonWebServiceClient;
+import com.amazonaws.ClientConfiguration;
+import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.InstanceProfileCredentialsProvider;
-import com.amazonaws.internal.StaticCredentialsProvider;
 import com.amazonaws.services.s3.AmazonS3EncryptionClient;
 import com.amazonaws.services.s3.model.AmazonS3Exception;
 import com.amazonaws.services.s3.model.EncryptionMaterials;
@@ -39,10 +42,15 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Map;
 
+import static com.facebook.presto.hive.PrestoS3FileSystem.S3_CREDENTIALS_PROVIDER;
 import static com.facebook.presto.hive.PrestoS3FileSystem.S3_ENCRYPTION_MATERIALS_PROVIDER;
+import static com.facebook.presto.hive.PrestoS3FileSystem.S3_KMS_KEY_ID;
 import static com.facebook.presto.hive.PrestoS3FileSystem.S3_MAX_BACKOFF_TIME;
 import static com.facebook.presto.hive.PrestoS3FileSystem.S3_MAX_CLIENT_RETRIES;
 import static com.facebook.presto.hive.PrestoS3FileSystem.S3_MAX_RETRY_TIME;
+import static com.facebook.presto.hive.PrestoS3FileSystem.S3_USER_AGENT_PREFIX;
+import static com.facebook.presto.hive.PrestoS3FileSystem.S3_USER_AGENT_SUFFIX;
+import static com.facebook.presto.hive.PrestoS3FileSystem.S3_USE_INSTANCE_CREDENTIALS;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.testing.Assertions.assertInstanceOf;
 import static io.airlift.testing.FileUtils.deleteRecursively;
@@ -66,7 +74,24 @@ public class TestPrestoS3FileSystem
 
         try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
             fs.initialize(new URI("s3n://test-bucket/"), config);
-            assertInstanceOf(getAwsCredentialsProvider(fs), StaticCredentialsProvider.class);
+            assertInstanceOf(getAwsCredentialsProvider(fs), AWSStaticCredentialsProvider.class);
+        }
+    }
+
+    @Test
+    public void testCompatibleStaticCredentials()
+            throws Exception
+    {
+        Configuration config = new Configuration();
+        config.set(PrestoS3FileSystem.S3_ACCESS_KEY, "test_secret_access_key");
+        config.set(PrestoS3FileSystem.S3_SECRET_KEY, "test_access_key_id");
+        config.set(PrestoS3FileSystem.S3_ENDPOINT,   "test.example.endpoint.com");
+        config.set(PrestoS3FileSystem.S3_SIGNER_TYPE, "S3SignerType");
+        // the static credentials should be preferred
+
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3a://test-bucket/"), config);
+            assertInstanceOf(getAwsCredentialsProvider(fs), AWSStaticCredentialsProvider.class);
         }
     }
 
@@ -88,7 +113,7 @@ public class TestPrestoS3FileSystem
             throws Exception
     {
         Configuration config = new Configuration();
-        config.setBoolean(PrestoS3FileSystem.S3_USE_INSTANCE_CREDENTIALS, false);
+        config.setBoolean(S3_USE_INSTANCE_CREDENTIALS, false);
 
         try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
             fs.initialize(new URI("s3n://test-bucket/"), config);
@@ -179,7 +204,7 @@ public class TestPrestoS3FileSystem
 
     @Test
     public void testCreateWithNonexistentStagingDirectory()
-        throws Exception
+            throws Exception
     {
         java.nio.file.Path tmpdir = Paths.get(StandardSystemProperty.JAVA_IO_TMPDIR.value());
         java.nio.file.Path stagingParent = Files.createTempDirectory(tmpdir, "test");
@@ -204,7 +229,7 @@ public class TestPrestoS3FileSystem
 
     @Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Configured staging path is not a directory: .*")
     public void testCreateWithStagingDirectoryFile()
-        throws Exception
+            throws Exception
     {
         java.nio.file.Path tmpdir = Paths.get(StandardSystemProperty.JAVA_IO_TMPDIR.value());
         java.nio.file.Path staging = Files.createTempFile(tmpdir, "staging", null);
@@ -225,7 +250,7 @@ public class TestPrestoS3FileSystem
 
     @Test
     public void testCreateWithStagingDirectorySymlink()
-        throws Exception
+            throws Exception
     {
         java.nio.file.Path tmpdir = Paths.get(StandardSystemProperty.JAVA_IO_TMPDIR.value());
         java.nio.file.Path staging = Files.createTempDirectory(tmpdir, "staging");
@@ -312,6 +337,19 @@ public class TestPrestoS3FileSystem
         }
     }
 
+    @Test
+    public void testKMSEncryptionMaterialsProvider()
+            throws Exception
+    {
+        Configuration config = new Configuration();
+        config.set(S3_KMS_KEY_ID, "test-key-id");
+
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3n://test-bucket/"), config);
+            assertInstanceOf(fs.getS3Client(), AmazonS3EncryptionClient.class);
+        }
+    }
+
     @Test(expectedExceptions = UnrecoverableS3OperationException.class, expectedExceptionsMessageRegExp = ".*\\Q (Path: /tmp/test/path)\\E")
     public void testUnrecoverableS3ExceptionMessage()
             throws Exception
@@ -319,16 +357,78 @@ public class TestPrestoS3FileSystem
         throw new UnrecoverableS3OperationException(new Path("/tmp/test/path"), new IOException("test io exception"));
     }
 
+    @Test
+    public void testCustomCredentialsProvider()
+            throws Exception
+    {
+        Configuration config = new Configuration();
+        config.set(S3_USE_INSTANCE_CREDENTIALS, "false");
+        config.set(S3_CREDENTIALS_PROVIDER, TestCredentialsProvider.class.getName());
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3n://test-bucket/"), config);
+            assertInstanceOf(getAwsCredentialsProvider(fs), TestCredentialsProvider.class);
+        }
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Error creating an instance of .*")
+    public void testCustomCredentialsClassCannotBeFound()
+            throws Exception
+    {
+        Configuration config = new Configuration();
+        config.set(S3_USE_INSTANCE_CREDENTIALS, "false");
+        config.set(S3_CREDENTIALS_PROVIDER, "com.example.DoesNotExist");
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3n://test-bucket/"), config);
+        }
+    }
+
+    @Test
+    public void testUserAgentPrefix()
+            throws Exception
+    {
+        String userAgentPrefix = "agent_prefix";
+        Configuration config = new Configuration();
+        config.set(S3_USER_AGENT_PREFIX, userAgentPrefix);
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3n://test-bucket/"), config);
+            ClientConfiguration clientConfig = getFieldValue(fs.getS3Client(), AmazonWebServiceClient.class, "clientConfiguration", ClientConfiguration.class);
+            assertEquals(clientConfig.getUserAgentSuffix(), S3_USER_AGENT_SUFFIX);
+            assertEquals(clientConfig.getUserAgentPrefix(), userAgentPrefix);
+        }
+    }
+
+    @Test
+    public void testDefaultS3ClientConfiguration()
+            throws Exception
+    {
+        HiveClientConfig defaults = new HiveClientConfig();
+        try (PrestoS3FileSystem fs = new PrestoS3FileSystem()) {
+            fs.initialize(new URI("s3n://test-bucket/"), new Configuration());
+            ClientConfiguration config = getFieldValue(fs.getS3Client(), AmazonWebServiceClient.class, "clientConfiguration", ClientConfiguration.class);
+            assertEquals(config.getMaxErrorRetry(), defaults.getS3MaxErrorRetries());
+            assertEquals(config.getConnectionTimeout(), defaults.getS3ConnectTimeout().toMillis());
+            assertEquals(config.getSocketTimeout(), defaults.getS3SocketTimeout().toMillis());
+            assertEquals(config.getMaxConnections(), defaults.getS3MaxConnections());
+            assertEquals(config.getUserAgentSuffix(), S3_USER_AGENT_SUFFIX);
+            assertEquals(config.getUserAgentPrefix(), "");
+        }
+    }
+
     private static AWSCredentialsProvider getAwsCredentialsProvider(PrestoS3FileSystem fs)
     {
         return getFieldValue(fs.getS3Client(), "awsCredentialsProvider", AWSCredentialsProvider.class);
     }
 
-    @SuppressWarnings("unchecked")
     private static <T> T getFieldValue(Object instance, String name, Class<T> type)
     {
+        return getFieldValue(instance, instance.getClass(), name, type);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> T getFieldValue(Object instance, Class<?> clazz, String name, Class<T> type)
+    {
         try {
-            Field field = instance.getClass().getDeclaredField(name);
+            Field field = clazz.getDeclaredField(name);
             checkArgument(field.getType() == type, "expected %s but found %s", type, field.getType());
             field.setAccessible(true);
             return (T) field.get(instance);
@@ -364,5 +464,21 @@ public class TestPrestoS3FileSystem
         {
             return encryptionMaterials;
         }
+    }
+
+    private static class TestCredentialsProvider
+            implements AWSCredentialsProvider
+    {
+        @SuppressWarnings("UnusedParameters")
+        public TestCredentialsProvider(URI uri, Configuration conf) {}
+
+        @Override
+        public AWSCredentials getCredentials()
+        {
+            return null;
+        }
+
+        @Override
+        public void refresh() {}
     }
 }

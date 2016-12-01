@@ -26,26 +26,13 @@ public class ConnectorTableMetadata
     private final SchemaTableName table;
     private final List<ColumnMetadata> columns;
     private final Map<String, Object> properties;
-    /* nullable */
-    private final String owner;
-    private final boolean sampled;
 
     public ConnectorTableMetadata(SchemaTableName table, List<ColumnMetadata> columns)
     {
-        this(table, columns, emptyMap(), null);
+        this(table, columns, emptyMap());
     }
 
     public ConnectorTableMetadata(SchemaTableName table, List<ColumnMetadata> columns, Map<String, Object> properties)
-    {
-        this(table, columns, properties, null);
-    }
-
-    public ConnectorTableMetadata(SchemaTableName table, List<ColumnMetadata> columns, Map<String, Object> properties, String owner)
-    {
-        this(table, columns, properties, owner, false);
-    }
-
-    public ConnectorTableMetadata(SchemaTableName table, List<ColumnMetadata> columns, Map<String, Object> properties, String owner, boolean sampled)
     {
         if (table == null) {
             throw new NullPointerException("table is null or empty");
@@ -57,13 +44,6 @@ public class ConnectorTableMetadata
         this.table = table;
         this.columns = Collections.unmodifiableList(new ArrayList<>(columns));
         this.properties = Collections.unmodifiableMap(new LinkedHashMap<>(properties));
-        this.owner = owner;
-        this.sampled = sampled;
-    }
-
-    public boolean isSampled()
-    {
-        return sampled;
     }
 
     public SchemaTableName getTable()
@@ -81,14 +61,6 @@ public class ConnectorTableMetadata
         return properties;
     }
 
-    /**
-     * @return table owner or null
-     */
-    public String getOwner()
-    {
-        return owner;
-    }
-
     @Override
     public String toString()
     {
@@ -96,7 +68,6 @@ public class ConnectorTableMetadata
         sb.append("table=").append(table);
         sb.append(", columns=").append(columns);
         sb.append(", properties=").append(properties);
-        sb.append(", owner=").append(owner);
         sb.append('}');
         return sb.toString();
     }

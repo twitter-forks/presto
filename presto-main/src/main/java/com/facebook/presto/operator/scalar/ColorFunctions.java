@@ -14,16 +14,17 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.type.ColorType;
-import com.facebook.presto.type.SqlType;
 import com.google.common.annotations.VisibleForTesting;
 import io.airlift.slice.Slice;
 
 import java.awt.Color;
 
 import static com.facebook.presto.operator.scalar.StringFunctions.upper;
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static com.facebook.presto.util.Failures.checkCondition;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -73,7 +74,7 @@ public final class ColorFunctions
                     return color;
                 }
             }
-            throw new PrestoException(INTERNAL_ERROR, "Invalid color index: " + index);
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Invalid color index: " + index);
         }
     }
 

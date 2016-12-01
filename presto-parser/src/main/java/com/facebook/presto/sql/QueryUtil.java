@@ -17,6 +17,7 @@ import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
+import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.GroupBy;
@@ -103,7 +104,7 @@ public final class QueryUtil
 
     public static Expression equal(Expression left, Expression right)
     {
-        return new ComparisonExpression(ComparisonExpression.Type.EQUAL, left, right);
+        return new ComparisonExpression(ComparisonExpressionType.EQUAL, left, right);
     }
 
     public static Expression caseWhen(Expression operand, Expression result)
@@ -139,6 +140,18 @@ public final class QueryUtil
     public static List<SortItem> ordering(SortItem... items)
     {
         return ImmutableList.copyOf(items);
+    }
+
+    public static Query simpleQuery(Select select)
+    {
+        return query(new QuerySpecification(
+                select,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                ImmutableList.of(),
+                Optional.empty()));
     }
 
     public static Query simpleQuery(Select select, Relation from)
@@ -192,7 +205,6 @@ public final class QueryUtil
                 Optional.empty(),
                 body,
                 ImmutableList.of(),
-                Optional.empty(),
                 Optional.empty());
     }
 }

@@ -13,6 +13,12 @@
  */
 package com.facebook.presto.operator.aggregation.state;
 
+import com.facebook.presto.array.BlockBigArray;
+import com.facebook.presto.array.BooleanBigArray;
+import com.facebook.presto.array.ByteBigArray;
+import com.facebook.presto.array.DoubleBigArray;
+import com.facebook.presto.array.LongBigArray;
+import com.facebook.presto.array.SliceBigArray;
 import com.facebook.presto.bytecode.BytecodeBlock;
 import com.facebook.presto.bytecode.ClassDefinition;
 import com.facebook.presto.bytecode.DynamicClassLoader;
@@ -25,14 +31,11 @@ import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.operator.aggregation.GroupedAccumulator;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AccumulatorStateFactory;
+import com.facebook.presto.spi.function.AccumulatorStateMetadata;
+import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.CallSiteBinder;
-import com.facebook.presto.util.array.BlockBigArray;
-import com.facebook.presto.util.array.BooleanBigArray;
-import com.facebook.presto.util.array.ByteBigArray;
-import com.facebook.presto.util.array.DoubleBigArray;
-import com.facebook.presto.util.array.LongBigArray;
-import com.facebook.presto.util.array.SliceBigArray;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -77,7 +80,7 @@ import static com.facebook.presto.operator.aggregation.state.StateCompilerUtils.
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.sql.gen.SqlTypeBytecodeExpression.constantType;
 import static com.google.common.base.CaseFormat.LOWER_CAMEL;
 import static com.google.common.base.CaseFormat.UPPER_CAMEL;
@@ -158,7 +161,7 @@ public class StateCompiler
 
         Type type;
         if (fields.size() > 1) {
-            type = VARCHAR;
+            type = VARBINARY;
         }
         else {
             Class<?> stackType = fields.get(0).getType();
@@ -175,7 +178,7 @@ public class StateCompiler
                 type = BIGINT;
             }
             else if (stackType == Slice.class) {
-                type = VARCHAR;
+                type = VARBINARY;
             }
             else {
                 throw new IllegalArgumentException("Unsupported type: " + stackType);

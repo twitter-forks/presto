@@ -27,9 +27,6 @@ public interface RemoteTask
 
     String getNodeId();
 
-    // this is necessary to differentiate two tasks on the same node
-    int getPartition();
-
     TaskInfo getTaskInfo();
 
     TaskStatus getTaskStatus();
@@ -44,7 +41,7 @@ public interface RemoteTask
 
     void addStateChangeListener(StateChangeListener<TaskStatus> stateChangeListener);
 
-    CompletableFuture<TaskStatus> getStateChange(TaskStatus taskStatus);
+    CompletableFuture<?> whenSplitQueueHasSpace(int threshold);
 
     void cancel();
 

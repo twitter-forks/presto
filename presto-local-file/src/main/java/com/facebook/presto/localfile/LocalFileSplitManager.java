@@ -28,19 +28,16 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.facebook.presto.localfile.Types.checkType;
-import static com.facebook.presto.spi.NodeState.ACTIVE;
 import static java.util.Objects.requireNonNull;
 
 public class LocalFileSplitManager
         implements ConnectorSplitManager
 {
-    private final LocalFileConnectorId connectorId;
     private final NodeManager nodeManager;
 
     @Inject
-    public LocalFileSplitManager(LocalFileConnectorId connectorId, NodeManager nodeManager)
+    public LocalFileSplitManager(NodeManager nodeManager)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
     }
 
@@ -53,11 +50,10 @@ public class LocalFileSplitManager
         TupleDomain<LocalFileColumnHandle> effectivePredicate = layoutHandle.getConstraint()
                 .transform(handle -> checkType(handle, LocalFileColumnHandle.class, "columnHandle"));
 
-        List<ConnectorSplit> splits = nodeManager.getNodes(ACTIVE).stream()
-                .filter(node -> !nodeManager.getCoordinators().contains(node))
+        List<ConnectorSplit> splits = nodeManager.getAllNodes().stream()
                 .map(node -> new LocalFileSplit(node.getHostAndPort(), tableHandle.getSchemaTableName(), effectivePredicate))
                 .collect(Collectors.toList());
 
-        return new FixedSplitSource(connectorId.toString(), splits);
+        return new FixedSplitSource(splits);
     }
 }
