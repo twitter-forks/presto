@@ -1044,7 +1044,7 @@ public class CachingHiveMetastore
         return privileges.build();
     }
 
-    private RetryDriver retry()
+    protected RetryDriver retry()
     {
         return RetryDriver.retry()
                 .exceptionMapper(getExceptionMapper())

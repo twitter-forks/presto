@@ -30,6 +30,7 @@ import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeConnectorPag
 import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeConnectorSplitManager;
 import com.facebook.presto.spi.connector.classloader.ClassLoaderSafeNodePartitioningProvider;
 import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.twitter.hive.HiveClientModuleRetryConfigurable;
 import com.facebook.presto.twitter.hive.MetastoreStaticClusterModule;
 import com.facebook.presto.twitter.hive.MetastoreZkDiscoveryBasedModule;
 import com.facebook.presto.twitter.hive.ZookeeperServersetMetastoreConfig;
@@ -111,7 +112,7 @@ public class HiveConnectorFactory
                     new NodeModule(),
                     new MBeanModule(),
                     new JsonModule(),
-                    new HiveClientModule(connectorId, metastore, typeManager, pageIndexerFactory, nodeManager),
+                    new HiveClientModuleRetryConfigurable(connectorId, metastore, typeManager, pageIndexerFactory, nodeManager),
                     installModuleIf(
                             ZookeeperServersetMetastoreConfig.class,
                             zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() == null,
