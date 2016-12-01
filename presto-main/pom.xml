@@ -252,24 +252,6 @@
             <artifactId>jgrapht-core</artifactId>
         </dependency>
 
-       <!-- twitter deps -->
-        <dependency>
-            <groupId>com.twitter</groupId>
-            <artifactId>presto-thrift-java</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.twitter</groupId>
-            <artifactId>util-logging_2.10</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.thrift</groupId>
-            <artifactId>libthrift</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
-        </dependency>
-
         <!-- for testing -->
         <dependency>
             <groupId>org.testng</groupId>
