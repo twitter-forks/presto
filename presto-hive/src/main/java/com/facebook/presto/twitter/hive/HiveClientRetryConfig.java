@@ -55,7 +55,7 @@ public class HiveClientRetryConfig
         return metastoreRetryScaleFactor;
     }
 
-    @Config("hive.metastore.client.create.retry-scale-fator")
+    @Config("hive.metastore.client.create.retry-scale-factor")
     public HiveClientRetryConfig setMetastoreRetryScaleFactor(double metastoreRetryScaleFactor)
     {
         this.metastoreRetryScaleFactor = metastoreRetryScaleFactor;
