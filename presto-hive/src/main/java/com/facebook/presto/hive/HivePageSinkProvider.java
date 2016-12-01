@@ -13,7 +13,8 @@
  */
 package com.facebook.presto.hive;
 
-import com.facebook.presto.hive.metastore.HiveMetastore;
+import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
+import com.facebook.presto.hive.metastore.HivePageSinkMetadataProvider;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
@@ -26,6 +27,8 @@ import io.airlift.json.JsonCodec;
 
 import javax.inject.Inject;
 
+import java.util.OptionalInt;
+
 import static com.facebook.presto.hive.util.Types.checkType;
 import static java.util.Objects.requireNonNull;
 
@@ -33,19 +36,18 @@ public class HivePageSinkProvider
         implements ConnectorPageSinkProvider
 {
     private final HdfsEnvironment hdfsEnvironment;
-    private final HiveMetastore metastore;
+    private final ExtendedHiveMetastore metastore;
     private final PageIndexerFactory pageIndexerFactory;
     private final TypeManager typeManager;
     private final int maxOpenPartitions;
     private final boolean immutablePartitions;
-    private final boolean compressed;
     private final LocationService locationService;
     private final JsonCodec<PartitionUpdate> partitionUpdateCodec;
 
     @Inject
     public HivePageSinkProvider(
             HdfsEnvironment hdfsEnvironment,
-            HiveMetastore metastore,
+            ExtendedHiveMetastore metastore,
             PageIndexerFactory pageIndexerFactory,
             TypeManager typeManager,
             HiveClientConfig config,
@@ -53,12 +55,13 @@ public class HivePageSinkProvider
             JsonCodec<PartitionUpdate> partitionUpdateCodec)
     {
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
+        // TODO: this metastore should not have global cache
+        // As a temporary workaround, always disable cache on the workers
         this.metastore = requireNonNull(metastore, "metastore is null");
         this.pageIndexerFactory = requireNonNull(pageIndexerFactory, "pageIndexerFactory is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.maxOpenPartitions = config.getMaxPartitionsPerWriter();
         this.immutablePartitions = config.isImmutablePartitions();
-        this.compressed = config.getHiveCompressionCodec() != HiveCompressionCodec.NONE;
         this.locationService = requireNonNull(locationService, "locationService is null");
         this.partitionUpdateCodec = requireNonNull(partitionUpdateCodec, "partitionUpdateCodec is null");
     }
@@ -79,24 +82,33 @@ public class HivePageSinkProvider
 
     private ConnectorPageSink createPageSink(HiveWritableTableHandle handle, boolean isCreateTable, ConnectorSession session)
     {
-        return new HivePageSink(
+        OptionalInt bucketCount = handle.getBucketProperty().isPresent() ? OptionalInt.of(handle.getBucketProperty().get().getBucketCount()) : OptionalInt.empty();
+
+        HiveWriterFactory writerFactory = new HiveWriterFactory(
                 handle.getSchemaName(),
                 handle.getTableName(),
                 isCreateTable,
                 handle.getInputColumns(),
                 handle.getTableStorageFormat(),
                 handle.getPartitionStorageFormat(),
+                bucketCount,
                 handle.getLocationHandle(),
                 locationService,
                 handle.getFilePrefix(),
+                new HivePageSinkMetadataProvider(handle.getPageSinkMetadata(), metastore),
+                typeManager,
+                hdfsEnvironment,
+                immutablePartitions,
+                session);
+
+        return new HivePageSink(
+                writerFactory,
+                handle.getInputColumns(),
                 handle.getBucketProperty(),
-                metastore,
                 pageIndexerFactory,
                 typeManager,
                 hdfsEnvironment,
                 maxOpenPartitions,
-                immutablePartitions,
-                compressed,
                 partitionUpdateCodec,
                 session);
     }

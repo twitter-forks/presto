@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.connector.system;
 
-import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.InMemoryRecordSet;
@@ -23,6 +23,8 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.transaction.TransactionId;
+import com.facebook.presto.transaction.TransactionManager;
 
 import javax.inject.Inject;
 
@@ -31,6 +33,7 @@ import java.util.Map;
 import static com.facebook.presto.metadata.MetadataUtil.TableMetadataBuilder.tableMetadataBuilder;
 import static com.facebook.presto.spi.SystemTable.Distribution.SINGLE_COORDINATOR;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.util.Types.checkType;
 import static java.util.Objects.requireNonNull;
 
 public class CatalogSystemTable
@@ -42,12 +45,12 @@ public class CatalogSystemTable
             .column("catalog_name", createUnboundedVarcharType())
             .column("connector_id", createUnboundedVarcharType())
             .build();
-    private final Metadata metadata;
+    private final TransactionManager transactionManager;
 
     @Inject
-    public CatalogSystemTable(Metadata metadata)
+    public CatalogSystemTable(TransactionManager transactionManager)
     {
-        this.metadata = requireNonNull(metadata);
+        this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
     }
 
     @Override
@@ -65,9 +68,10 @@ public class CatalogSystemTable
     @Override
     public RecordCursor cursor(ConnectorTransactionHandle transactionHandle, ConnectorSession session, TupleDomain<Integer> constraint)
     {
+        TransactionId transactionId = checkType(transactionHandle, GlobalSystemTransactionHandle.class, "transactionHandle").getTransactionId();
         Builder table = InMemoryRecordSet.builder(CATALOG_TABLE);
-        for (Map.Entry<String, String> entry : metadata.getCatalogNames().entrySet()) {
-            table.addRow(entry.getKey(), entry.getValue());
+        for (Map.Entry<String, ConnectorId> entry : transactionManager.getCatalogNames(transactionId).entrySet()) {
+            table.addRow(entry.getKey(), entry.getValue().toString());
         }
         return table.build().cursor();
     }

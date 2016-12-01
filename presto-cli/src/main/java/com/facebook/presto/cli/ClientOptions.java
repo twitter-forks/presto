@@ -77,6 +77,12 @@ public class ClientOptions
     // Do not let it be overridden by users.
     public String user = new UnixSystem().getUsername();
 
+    @Option(name = "--truststore-path", title = "truststore path", description = "Truststore path")
+    public String truststorePath;
+
+    @Option(name = "--truststore-password", title = "truststore password", description = "Truststore password")
+    public String truststorePassword;
+
     @Option(name = "--source", title = "source", description = "Name of source making query")
     public String source = "presto-cli";
 

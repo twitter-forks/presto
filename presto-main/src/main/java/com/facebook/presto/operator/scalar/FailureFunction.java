@@ -14,11 +14,12 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.client.FailureInfo;
-import com.facebook.presto.operator.Description;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
+import com.facebook.presto.spi.function.Description;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.type.SqlType;
 import io.airlift.json.JsonCodec;
 import io.airlift.slice.Slice;
 
@@ -36,6 +37,6 @@ public final class FailureFunction
     {
         FailureInfo failureInfo = JSON_CODEC.fromJson(failureInfoSlice.getBytes());
         // wrap the failure in a new exception to append the current stack trace
-        throw new PrestoException(StandardErrorCode.USER_ERROR, failureInfo.toException());
+        throw new PrestoException(StandardErrorCode.GENERIC_USER_ERROR, failureInfo.toException());
     }
 }

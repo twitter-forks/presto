@@ -20,7 +20,6 @@ import org.apache.hadoop.hive.metastore.api.Table;
 import org.weakref.jmx.Managed;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -31,9 +30,15 @@ public interface HiveMetastore
 {
     String DEFAULT_DATABASE_NAME = "default";
 
+    void createDatabase(Database database);
+
+    void dropDatabase(String databaseName);
+
+    void alterDatabase(String databaseName, Database database);
+
     void createTable(Table table);
 
-    void dropTable(String databaseName, String tableName);
+    void dropTable(String databaseName, String tableName, boolean deleteData);
 
     void alterTable(String databaseName, String tableName, Table table);
 
@@ -55,17 +60,17 @@ public interface HiveMetastore
      */
     void addPartitions(String databaseName, String tableName, List<Partition> partitions);
 
-    void dropPartition(String databaseName, String tableName, List<String> parts);
+    void dropPartition(String databaseName, String tableName, List<String> parts, boolean deleteData);
 
-    void dropPartitionByName(String databaseName, String tableName, String partitionName);
+    void alterPartition(String databaseName, String tableName, Partition partition);
 
     Optional<List<String>> getPartitionNames(String databaseName, String tableName);
 
     Optional<List<String>> getPartitionNamesByParts(String databaseName, String tableName, List<String> parts);
 
-    Optional<Partition> getPartition(String databaseName, String tableName, String partitionName);
+    Optional<Partition> getPartition(String databaseName, String tableName, List<String> partitionValues);
 
-    Optional<Map<String, Partition>> getPartitionsByNames(String databaseName, String tableName, List<String> partitionNames);
+    List<Partition> getPartitionsByNames(String databaseName, String tableName, List<String> partitionNames);
 
     Optional<Table> getTable(String databaseName, String tableName);
 

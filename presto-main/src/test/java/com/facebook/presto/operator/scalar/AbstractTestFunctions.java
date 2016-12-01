@@ -13,11 +13,13 @@
  */
 package com.facebook.presto.operator.scalar;
 
+import com.facebook.presto.Session;
 import com.facebook.presto.metadata.FunctionListBuilder;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.SqlFunction;
 import com.facebook.presto.spi.ErrorCodeSupplier;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.OperatorType;
 import com.facebook.presto.spi.type.DecimalParseResult;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.SqlDecimal;
@@ -31,6 +33,7 @@ import java.math.BigInteger;
 import java.util.List;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
+import static com.facebook.presto.metadata.FunctionRegistry.mangleOperatorName;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static com.facebook.presto.spi.StandardErrorCode.NUMERIC_VALUE_OUT_OF_RANGE;
@@ -49,6 +52,11 @@ public abstract class AbstractTestFunctions
         functionAssertions = new FunctionAssertions();
     }
 
+    protected AbstractTestFunctions(Session session)
+    {
+        functionAssertions = new FunctionAssertions(session);
+    }
+
     protected AbstractTestFunctions(FeaturesConfig featuresConfig)
     {
         functionAssertions = new FunctionAssertions(TEST_SESSION, featuresConfig);
@@ -57,6 +65,11 @@ public abstract class AbstractTestFunctions
     protected void assertFunction(String projection, Type expectedType, Object expected)
     {
         functionAssertions.assertFunction(projection, expectedType, expected);
+    }
+
+    protected void assertOperator(OperatorType operator, String value, Type expectedType, Object expected)
+    {
+        functionAssertions.assertFunction(format("\"%s\"(%s)", mangleOperatorName(operator), value), expectedType, expected);
     }
 
     protected void assertDecimalFunction(String statement, SqlDecimal expectedResult)
@@ -138,7 +151,16 @@ public abstract class AbstractTestFunctions
     protected void registerScalar(Class<?> clazz)
     {
         Metadata metadata = functionAssertions.getMetadata();
-        List<SqlFunction> functions = new FunctionListBuilder(metadata.getTypeManager())
+        List<SqlFunction> functions = new FunctionListBuilder()
+                .scalars(clazz)
+                .getFunctions();
+        metadata.getFunctionRegistry().addFunctions(functions);
+    }
+
+    protected void registerParametricScalar(Class<?> clazz)
+    {
+        Metadata metadata = functionAssertions.getMetadata();
+        List<SqlFunction> functions = new FunctionListBuilder()
                 .scalar(clazz)
                 .getFunctions();
         metadata.getFunctionRegistry().addFunctions(functions);

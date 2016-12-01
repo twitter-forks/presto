@@ -12,58 +12,61 @@
  * limitations under the License.
  */
 
- var Query = React.createClass({
+ var QueryListItem = React.createClass({
+    formatQueryText: function(queryText)
+    {
+        var lines = queryText.split("\n");
+        var minLeadingWhitespace = -1;
+        for (var i = 0; i < lines.length; i++) {
+            if (minLeadingWhitespace == 0) {
+                break;
+            }
+
+            if (lines[i].trim().length == 0) {
+                continue;
+            }
+
+            var leadingWhitespace = lines[i].search(/\S/);
+
+            if (leadingWhitespace > -1 && ((leadingWhitespace < minLeadingWhitespace) || minLeadingWhitespace == -1)) {
+            	minLeadingWhitespace = leadingWhitespace;
+            }
+        }
+
+        var formattedQueryText = "";
+
+        for (i = 0; i < lines.length; i++) {
+            var trimmedLine = lines[i].substring(minLeadingWhitespace).replace(/\s+$/g, '');
+
+            if (trimmedLine.length > 0) {
+            	formattedQueryText += trimmedLine;
+
+                if (i < (lines.length -1)) {
+                    formattedQueryText += "\n";
+                }
+            }
+        }
+
+        return truncateString(formattedQueryText, 300);
+    },
     render: function()
     {
         var query = this.props.query;
-        var summary = query.state;
-        var progress = 0;
-
-        var completedDrivers = query.completedDrivers;
-        var runningDrivers = query.runningDrivers;
-        var queuedDrivers = query.queuedDrivers;
-
-        // construct query summary and compute progress
-        switch (query.state) {
-            case "FAILED":
-                progress = 100;
-                summary = getReadableErrorCode(query.errorType, query.errorCode);
-                runningDrivers = 0;
-                queuedDrivers = 0;
-                break;
-            case "RUNNING":
-                progress = query.totalDrivers == 0 ? 0 : Math.round((completedDrivers * 100) / query.totalDrivers);
-                if (query.isFullyBlocked) {
-                    summary = "BLOCKED";
-                    if (query.blockedReasons.length > 0) {
-                        summary += " (" + query.blockedReasons.join() + ")";
-                    }
-                }
-                else {
-                    summary = (progress == 0 ? summary : summary + " (" + progress + "%" + ")");
-                }
-                break;
-            case "FINISHED":
-                progress = 100;
-                runningDrivers = 0;
-                queuedDrivers = 0;
-                break;
-        }
-        var progressBarStyle = { width: (progress == 0 ? 100 : progress) + "%", backgroundColor: getQueryStateColor(query.state, query.errorType, query.errorCode) };
+        var progressBarStyle = { width: getProgressBarPercentage(query) + "%", backgroundColor: getQueryStateColor(query) };
 
         var splitDetails = (
             <div className="col-xs-12 tinystat-row">
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Completed splits">
                     <span className="glyphicon glyphicon-ok" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { completedDrivers }
+                    { query.queryStats.completedDrivers }
                 </span>
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Running splits">
                     <span className="glyphicon glyphicon-play" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { runningDrivers }
+                    { (query.state == "FINISHED" || query.state == "FAILED") ? 0 : query.queryStats.runningDrivers }
                 </span>
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Queued splits">
                     <span className="glyphicon glyphicon-pause" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { queuedDrivers }
+                    { (query.state == "FINISHED" || query.state == "FAILED") ? 0 : query.queryStats.queuedDrivers }
                     </span>
             </div> );
 
@@ -71,15 +74,15 @@
             <div className="col-xs-12 tinystat-row">
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Wall time spent executing the query (not including queued time)">
                     <span className="glyphicon glyphicon-hourglass" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDuration(query.executionTimeMillis) }
+                    { query.queryStats.executionTime }
                 </span>
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Total query wall time">
                     <span className="glyphicon glyphicon-time" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDuration(query.elapsedTimeMillis) }
+                    { query.queryStats.elapsedTime }
                 </span>
                 <span className="tinystat"  data-toggle="tooltip" data-placement="top" title="CPU time spent by this query">
                     <span className="glyphicon glyphicon-dashboard" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDuration(query.cpuTimeMillis) }
+                    { query.queryStats.totalCpuTime }
                 </span>
             </div> );
 
@@ -87,15 +90,15 @@
             <div className="col-xs-12 tinystat-row">
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Current reserved memory">
                     <span className="glyphicon glyphicon-scale" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDataSize(query.currentMemoryBytes) }
+                    { query.queryStats.totalMemoryReservation }
                 </span>
                 <span className="tinystat" data-toggle="tooltip" data-placement="top" title="Peak memory">
                     <span className="glyphicon glyphicon-fire" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDataSize(query.peakMemoryBytes) }
+                    { query.queryStats.peakMemoryReservation }
                 </span>
                 <span className="tinystat"  data-toggle="tooltip" data-placement="top" title="Cumulative memory">
                     <span className="glyphicon glyphicon-equalizer" style={ GLYPHICON_HIGHLIGHT }></span>&nbsp;&nbsp;
-                    { formatDataSizeBytes(query.cumulativeMemory) }
+                    { formatDataSizeBytes(query.queryStats.cumulativeMemory) }
                 </span>
             </div> );
 
@@ -106,28 +109,23 @@
             );
         }
 
-        var queryText = query.query;
-        if (queryText.length > 300) {
-            queryText = queryText.substring(0, 300) + "...";
-        }
-
         return (
             <div className="query">
                 <div className="row">
                     <div className="col-xs-4">
-                        <div className="row stat-row stat-header">
+                        <div className="row stat-row query-header query-header-queryid">
                             <div className="col-xs-9" data-toggle="tooltip" data-placement="bottom" title="Query ID">
                                 <a href={ "query.html?" + query.queryId } target="_blank">{ query.queryId }</a>
                             </div>
-                            <div className="col-xs-3 stat-header-queryid" data-toggle="tooltip" data-placement="bottom" title="Submit time">
-                                <span>{ formatShortTime(new Date(Date.parse(query.createTime))) }</span>
+                            <div className="col-xs-3 query-header-timestamp" data-toggle="tooltip" data-placement="bottom" title="Submit time">
+                                <span>{ formatShortTime(new Date(Date.parse(query.queryStats.createTime))) }</span>
                             </div>
                         </div>
                         <div className="row stat-row">
                             <div className="col-xs-12">
                                 <span data-toggle="tooltip" data-placement="right" title="User">
                                     <span className="glyphicon glyphicon-user" style={ GLYPHICON_DEFAULT }></span>&nbsp;&nbsp;
-                                    <span>{ user }</span>
+                                    <span>{ truncateString(user, 35) }</span>
                                 </span>
                             </div>
                         </div>
@@ -135,7 +133,7 @@
                             <div className="col-xs-12">
                                 <span data-toggle="tooltip" data-placement="right" title="Source">
                                     <span className="glyphicon glyphicon-log-in" style={ GLYPHICON_DEFAULT }></span>&nbsp;&nbsp;
-                                    <span>{ query.session.source }</span>
+                                    <span>{ truncateString(query.session.source, 35) }</span>
                                 </span>
                             </div>
                         </div>
@@ -150,18 +148,18 @@
                         </div>
                     </div>
                     <div className="col-xs-8">
-                        <div className="row query-row-middle">
-                            <div className="col-xs-12">
+                        <div className="row query-header">
+                            <div className="col-xs-12 query-progress-container">
                                 <div className="progress">
-                                    <div className="progress-bar progress-bar-info" role="progressbar" aria-valuenow={ progress } aria-valuemin="0" aria-valuemax="100" style={ progressBarStyle }>
-                                        { summary }
+                                    <div className="progress-bar progress-bar-info" role="progressbar" aria-valuenow={ getProgressBarPercentage(query) } aria-valuemin="0" aria-valuemax="100" style={ progressBarStyle }>
+                                        { getProgressBarTitle(query) }
                                     </div>
                                 </div>
                             </div>
                         </div>
                         <div className="row query-row-bottom">
                             <div className="col-xs-12">
-                                <pre className="query-snippet"><code className="sql">{ queryText }</code></pre>
+                                <pre className="query-snippet"><code className="sql">{ this.formatQueryText(query.query) }</code></pre>
                             </div>
                         </div>
                     </div>
@@ -171,12 +169,12 @@
     }
 });
 
-var DisplayedQueries = React.createClass({
+var DisplayedQueriesList = React.createClass({
     render: function()
     {
         var queryNodes = this.props.queries.map(function (query) {
             return (
-                    <Query key={ query.queryId } query={query} />
+                    <QueryListItem key={ query.queryId } query={query} />
             );
         }.bind(this));
         return (
@@ -198,12 +196,12 @@ var FILTER_TYPE = {
 };
 
 var SORT_TYPE = {
-    CREATED: function(query) {return Date.parse(query.createTime)},
-    ELAPSED: function(query) {return query.elapsedTimeMillis},
-    EXECUTION: function(query) {return query.executionTimeMillis},
-    CPU: function(query) {return query.cpuTimeMillis},
-    CUMULATIVE_MEMORY: function(query) {return query.cumulativeMemory},
-    CURRENT_MEMORY: function(query) {return query.currentMemoryBytes},
+    CREATED: function(query) {return Date.parse(query.queryStats.createTime)},
+    ELAPSED: function(query) {return parseDuration(query.queryStats.elapsedTime)},
+    EXECUTION: function(query) {return parseDuration(query.queryStats.executionTime)},
+    CPU: function(query) {return parseDuration(query.queryStats.totalCpuTime)},
+    CUMULATIVE_MEMORY: function(query) {return query.queryStats.cumulativeMemory},
+    CURRENT_MEMORY: function(query) {return parseDataSize(query.queryStats.totalMemoryReservation)},
 };
 
 var SORT_ORDER = {
@@ -250,11 +248,21 @@ var QueryList = React.createClass({
         }
         else {
             return stateFilteredQueries.filter(function(query) {
-                var re = (".*" + searchString + ".*").toLowerCase();
-                return (query.queryId.toLowerCase().match(re) ||
-                    query.session.user.toLowerCase().match(re) ||
-                    query.session.source.toLowerCase().match(re) ||
-                    query.query.toLowerCase().match(re));
+                var term = searchString.toLowerCase();
+                if (query.queryId.toLowerCase().indexOf(term) != -1 ||
+                    getHumanReadableState(query).toLowerCase().indexOf(term) != -1 ||
+                    query.query.toLowerCase().indexOf(term) != -1) {
+                    return true;
+                }
+
+                if (query.session.user && query.session.user.toLowerCase().indexOf(term) != -1) {
+                    return true;
+                }
+
+                if (query.session.source && query.session.source.toLowerCase().indexOf(term) != -1) {
+                    return true;
+                }
+
             }, this);
         }
     },
@@ -267,6 +275,8 @@ var QueryList = React.createClass({
     },
     refreshLoop: function() {
         clearTimeout(this.timeoutId); // to stop multiple series of refreshLoop from going on simultaneously
+        clearTimeout(this.searchTimeoutId);
+
         $.get('/v1/query', function (queryList) {
             var queryMap = queryList.reduce(function(map, query) {
                 map[query.queryId] = query;
@@ -328,8 +338,22 @@ var QueryList = React.createClass({
     },
     handleSearchStringChange: function(event) {
         var newSearchString = event.target.value;
+        clearTimeout(this.searchTimeoutId);
+
         this.setState({
             searchString: newSearchString
+        });
+
+        this.searchTimeoutId = setTimeout(this.executeSearch, 200);
+    },
+    executeSearch: function() {
+        clearTimeout(this.searchTimeoutId);
+
+        var newDisplayedQueries = this.filterQueries(this.state.allQueries, this.state.filters, this.state.searchString);
+        this.sortAndLimitQueries(newDisplayedQueries, this.state.currentSortType, this.state.currentSortOrder, this.state.maxQueries);
+
+        this.setState({
+            displayedQueries: newDisplayedQueries
         });
     },
     renderMaxQueriesListItem: function(maxQueries, maxQueriesText) {
@@ -422,7 +446,7 @@ var QueryList = React.createClass({
         });
     },
     render: function() {
-        var queryList = <DisplayedQueries queries={ this.state.displayedQueries } />;
+        var queryList = <DisplayedQueriesList queries={ this.state.displayedQueries } />;
         if (this.state.displayedQueries == null || this.state.displayedQueries.length == 0) {
             var label = (<div className="loader">Loading...</div>);
             if (this.state.initialized) {

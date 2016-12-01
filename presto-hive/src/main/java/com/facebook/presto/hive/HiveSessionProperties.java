@@ -28,7 +28,7 @@ import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharTyp
 public final class HiveSessionProperties
 {
     private static final String FORCE_LOCAL_SCHEDULING = "force_local_scheduling";
-    private static final String OPTIMIZED_READER_ENABLED = "optimized_reader_enabled";
+    private static final String ORC_BLOOM_FILTERS_ENABLED = "orc_bloom_filters_enabled";
     private static final String ORC_MAX_MERGE_DISTANCE = "orc_max_merge_distance";
     private static final String ORC_MAX_BUFFER_SIZE = "orc_max_buffer_size";
     private static final String ORC_STREAM_BUFFER_SIZE = "orc_stream_buffer_size";
@@ -37,6 +37,7 @@ public final class HiveSessionProperties
     private static final String READ_AS_QUERY_USER = "read_as_query_user";
     private static final String MAX_SPLIT_SIZE = "max_split_size";
     private static final String MAX_INITIAL_SPLIT_SIZE = "max_initial_split_size";
+    private static final String RCFILE_OPTIMIZED_READER_ENABLED = "rcfile_optimized_reader_enabled";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -54,6 +55,11 @@ public final class HiveSessionProperties
                         "Query reads happen as the user submitting the query",
                         config.getReadAsQueryUser(),
                         true),
+                booleanSessionProperty(
+                        ORC_BLOOM_FILTERS_ENABLED,
+                        "ORC: Enable bloom filters for predicate pushdown",
+                        config.isOrcBloomFiltersEnabled(),
+                        false),
                 dataSizeSessionProperty(
                         ORC_MAX_MERGE_DISTANCE,
                         "ORC: Maximum size of gap between two reads to merge into a single read",
@@ -88,7 +94,12 @@ public final class HiveSessionProperties
                         MAX_INITIAL_SPLIT_SIZE,
                         "Max initial split size",
                         config.getMaxInitialSplitSize(),
-                        true));
+                        true),
+                booleanSessionProperty(
+                        RCFILE_OPTIMIZED_READER_ENABLED,
+                        "Experimental: RCFile: Enable optimized reader",
+                        config.isRcfileOptimizedReaderEnabled(),
+                        false));
     }
 
     public List<PropertyMetadata<?>> getSessionProperties()
@@ -104,6 +115,11 @@ public final class HiveSessionProperties
     public static boolean isParquetOptimizedReaderEnabled(ConnectorSession session)
     {
         return session.getProperty(PARQUET_OPTIMIZED_READER_ENABLED, Boolean.class);
+    }
+
+    public static boolean isOrcBloomFiltersEnabled(ConnectorSession session)
+    {
+        return session.getProperty(ORC_BLOOM_FILTERS_ENABLED, Boolean.class);
     }
 
     public static DataSize getOrcMaxMergeDistance(ConnectorSession session)
@@ -139,6 +155,11 @@ public final class HiveSessionProperties
     public static DataSize getMaxInitialSplitSize(ConnectorSession session)
     {
         return session.getProperty(MAX_INITIAL_SPLIT_SIZE, DataSize.class);
+    }
+
+    public static boolean isRcfileOptimizedReaderEnabled(ConnectorSession session)
+    {
+        return session.getProperty(RCFILE_OPTIMIZED_READER_ENABLED, Boolean.class);
     }
 
     public static PropertyMetadata<DataSize> dataSizeSessionProperty(String name, String description, DataSize defaultValue, boolean hidden)

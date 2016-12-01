@@ -16,7 +16,8 @@ package com.facebook.presto.server;
 import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.execution.QueryManager;
 import com.facebook.presto.execution.QueryState;
-import com.facebook.presto.spi.NodeManager;
+import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
+import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.spi.NodeState;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -33,12 +34,14 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 @Path("/v1/cluster")
 public class ClusterStatsResource
 {
-    private final NodeManager nodeManager;
+    private final InternalNodeManager nodeManager;
     private final QueryManager queryManager;
+    private final boolean isIncludeCoordinator;
 
     @Inject
-    public ClusterStatsResource(NodeManager nodeManager, QueryManager queryManager)
+    public ClusterStatsResource(NodeSchedulerConfig nodeSchedulerConfig, InternalNodeManager nodeManager, QueryManager queryManager)
     {
+        this.isIncludeCoordinator = requireNonNull(nodeSchedulerConfig, "nodeSchedulerConfig is null").isIncludeCoordinator();
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.queryManager = requireNonNull(queryManager, "queryManager is null");
     }
@@ -52,6 +55,10 @@ public class ClusterStatsResource
         long queuedQueries = 0;
 
         long activeNodes = nodeManager.getNodes(NodeState.ACTIVE).size();
+        if (!isIncludeCoordinator) {
+            activeNodes -= 1;
+        }
+
         long runningDrivers = 0;
         double memoryReservation = 0;
 

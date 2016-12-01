@@ -13,15 +13,19 @@
  */
 package com.facebook.presto.execution;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.sql.analyzer.SemanticException;
+import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ResetSession;
 import com.facebook.presto.transaction.TransactionManager;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_SESSION_PROPERTY;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_CATALOG;
 import static java.util.concurrent.CompletableFuture.completedFuture;
 
 public class ResetSessionTask
@@ -34,14 +38,24 @@ public class ResetSessionTask
     }
 
     @Override
-    public CompletableFuture<?> execute(ResetSession statement, TransactionManager transactionManager, Metadata metadata, AccessControl accessControl, QueryStateMachine stateMachine)
+    public CompletableFuture<?> execute(ResetSession statement, TransactionManager transactionManager, Metadata metadata, AccessControl accessControl, QueryStateMachine stateMachine, List<Expression> parameters)
     {
-        if (statement.getName().getParts().size() > 2) {
+        List<String> parts = statement.getName().getParts();
+        if (parts.size() > 2) {
             throw new SemanticException(INVALID_SESSION_PROPERTY, statement, "Invalid session property '%s'", statement.getName());
         }
 
         // validate the property name
-        metadata.getSessionPropertyManager().getSessionPropertyMetadata(statement.getName().toString());
+        if (parts.size() == 1) {
+            metadata.getSessionPropertyManager().getSystemSessionPropertyMetadata(parts.get(0))
+                    .orElseThrow(() -> new SemanticException(INVALID_SESSION_PROPERTY, statement, "Session property %s does not exist", statement.getName()));
+        }
+        else {
+            ConnectorId connectorId = metadata.getCatalogHandle(stateMachine.getSession(), parts.get(0))
+                    .orElseThrow(() -> new SemanticException(MISSING_CATALOG, statement, "Catalog %s does not exist", parts.get(0)));
+            metadata.getSessionPropertyManager().getConnectorSessionPropertyMetadata(connectorId, parts.get(1))
+                    .orElseThrow(() -> new SemanticException(INVALID_SESSION_PROPERTY, statement, "Session property %s does not exist", statement.getName()));
+        }
 
         stateMachine.addResetSessionProperties(statement.getName().toString());
 

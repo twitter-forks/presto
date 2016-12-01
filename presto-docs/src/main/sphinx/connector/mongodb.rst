@@ -146,7 +146,7 @@ The required replica set name. With this option set, the MongoClient instance wi
 
 This property is optional; no default value.
 
-``mongodb.required-replica-set``
+``mongodb.cursor-batch-size``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Limits the number of elements returned in one batch. A cursor typically fetches a batch of result objects and stores them locally.
@@ -173,7 +173,7 @@ MongoDB maintains table definitions on the special collection where ``mongodb.sc
 
 A schema collection consists of a MongoDB document for a table.
 
-.. code-block:: json
+.. code-block:: none
 
     {
         "table": ...,
@@ -195,7 +195,7 @@ Field           Required  Type           Description
 
 Each field definition:
 
-.. code-block:: json
+.. code-block:: none
 
     {
         "name": ...,

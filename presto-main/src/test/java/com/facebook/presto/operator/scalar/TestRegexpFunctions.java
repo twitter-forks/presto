@@ -13,10 +13,11 @@
  */
 package com.facebook.presto.operator.scalar;
 
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.SqlType;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -85,6 +86,13 @@ public class TestRegexpFunctions
         assertFunction("REGEXP_LIKE('Hello', '^[a-z]+$')", BOOLEAN, false);
         assertFunction("REGEXP_LIKE('Hello', '^(?i)[a-z]+$')", BOOLEAN, true);
         assertFunction("REGEXP_LIKE('Hello', '^[a-zA-Z]+$')", BOOLEAN, true);
+    }
+
+    @Test
+    public void testRegexCharLike()
+    {
+        assertFunction("REGEXP_LIKE('ala', CHAR 'ala  ')", BOOLEAN, false);
+        assertFunction("REGEXP_LIKE('ala  ', CHAR 'ala  ')", BOOLEAN, true);
     }
 
     @Test

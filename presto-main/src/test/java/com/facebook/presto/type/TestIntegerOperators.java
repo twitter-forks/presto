@@ -21,8 +21,8 @@ import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.FloatType.FLOAT;
 import static com.facebook.presto.spi.type.IntegerType.INTEGER;
+import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
@@ -243,9 +243,9 @@ public class TestIntegerOperators
     public void testCastToFloat()
             throws Exception
     {
-        assertFunction("cast(INTEGER'37' as float)", FLOAT, 37.0f);
-        assertFunction("cast(INTEGER'-2147483648' as float)", FLOAT, -2147483648.0f);
-        assertFunction("cast(INTEGER'0' as float)", FLOAT, 0.0f);
+        assertFunction("cast(INTEGER'37' as real)", REAL, 37.0f);
+        assertFunction("cast(INTEGER'-2147483648' as real)", REAL, -2147483648.0f);
+        assertFunction("cast(INTEGER'0' as real)", REAL, 0.0f);
     }
 
     @Test
@@ -263,5 +263,16 @@ public class TestIntegerOperators
     {
         assertFunction("cast('37' as integer)", INTEGER, 37);
         assertFunction("cast('17' as integer)", INTEGER, 17);
+    }
+
+    @Test
+    public void testIsDistinctFrom()
+            throws Exception
+    {
+        assertFunction("CAST(NULL AS INTEGER) IS DISTINCT FROM CAST(NULL AS INTEGER)", BOOLEAN, false);
+        assertFunction("37 IS DISTINCT FROM 37", BOOLEAN, false);
+        assertFunction("37 IS DISTINCT FROM 38", BOOLEAN, true);
+        assertFunction("NULL IS DISTINCT FROM 37", BOOLEAN, true);
+        assertFunction("37 IS DISTINCT FROM NULL", BOOLEAN, true);
     }
 }
