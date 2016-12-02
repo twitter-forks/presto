@@ -61,11 +61,6 @@ public class HiveClientConfig
 
     private int maxConcurrentFileRenames = 20;
 
-    private boolean allowAddColumn;
-    private boolean allowDropTable;
-    private boolean allowRenameTable;
-    private boolean allowRenameColumn;
-
     private boolean allowCorruptWritesForTesting;
 
     private boolean readAsQueryUser = false;
@@ -85,9 +80,13 @@ public class HiveClientConfig
 
     private String s3AwsAccessKey;
     private String s3AwsSecretKey;
+    private String s3Endpoint;
+    private PrestoS3SignerType s3SignerType;
     private boolean s3UseInstanceCredentials = true;
     private boolean s3SslEnabled = true;
     private boolean s3SseEnabled;
+    private String s3EncryptionMaterialsProvider;
+    private String s3KmsKeyId;
     private int s3MaxClientRetries = 3;
     private int s3MaxErrorRetries = 10;
     private Duration s3MaxBackoffTime = new Duration(10, TimeUnit.MINUTES);
@@ -100,6 +99,7 @@ public class HiveClientConfig
     private DataSize s3MultipartMinPartSize = new DataSize(5, MEGABYTE);
     private boolean useParquetColumnNames;
     private boolean pinS3ClientToCurrentRegion;
+    private String s3UserAgentPrefix = "";
 
     private HiveStorageFormat hiveStorageFormat = HiveStorageFormat.RCBINARY;
     private HiveCompressionCodec hiveCompressionCodec = HiveCompressionCodec.GZIP;
@@ -116,9 +116,12 @@ public class HiveClientConfig
     private boolean assumeCanonicalPartitionKeys;
 
     private boolean useOrcColumnNames;
+    private boolean orcBloomFiltersEnabled;
     private DataSize orcMaxMergeDistance = new DataSize(1, MEGABYTE);
     private DataSize orcMaxBufferSize = new DataSize(8, MEGABYTE);
     private DataSize orcStreamBufferSize = new DataSize(8, MEGABYTE);
+
+    private boolean rcfileOptimizedReaderEnabled;
 
     private HiveMetastoreAuthenticationType hiveMetastoreAuthenticationType = HiveMetastoreAuthenticationType.NONE;
     private String hiveMetastoreServicePrincipal;
@@ -129,6 +132,11 @@ public class HiveClientConfig
     private boolean hdfsImpersonationEnabled;
     private String hdfsPrestoPrincipal;
     private String hdfsPrestoKeytab;
+
+    private boolean skipDeletionForAlter;
+
+    private boolean bucketExecutionEnabled = true;
+    private boolean bucketWritingEnabled = true;
 
     public int getMaxInitialSplits()
     {
@@ -265,32 +273,6 @@ public class HiveClientConfig
         return this;
     }
 
-    public boolean getAllowRenameTable()
-    {
-        return this.allowRenameTable;
-    }
-
-    @Config("hive.allow-rename-table")
-    @ConfigDescription("Allow hive connector to rename table")
-    public HiveClientConfig setAllowRenameTable(boolean allowRenameTable)
-    {
-        this.allowRenameTable = allowRenameTable;
-        return this;
-    }
-
-    public boolean getAllowRenameColumn()
-    {
-        return this.allowRenameColumn;
-    }
-
-    @Config("hive.allow-rename-column")
-    @ConfigDescription("Allow hive connector to rename column")
-    public HiveClientConfig setAllowRenameColumn(boolean allowRenameColumn)
-    {
-        this.allowRenameColumn = allowRenameColumn;
-        return this;
-    }
-
     @Deprecated
     public boolean getAllowCorruptWritesForTesting()
     {
@@ -319,38 +301,13 @@ public class HiveClientConfig
         return this;
     }
 
-    public boolean getAllowAddColumn()
-    {
-        return this.allowAddColumn;
-    }
-
-    @Config("hive.allow-add-column")
-    @ConfigDescription("Allow Hive connector to add column")
-    public HiveClientConfig setAllowAddColumn(boolean allowAddColumn)
-    {
-        this.allowAddColumn = allowAddColumn;
-        return this;
-    }
-
-    public boolean getAllowDropTable()
-    {
-        return this.allowDropTable;
-    }
-
-    @Config("hive.allow-drop-table")
-    @ConfigDescription("Allow Hive connector to drop table")
-    public HiveClientConfig setAllowDropTable(boolean allowDropTable)
-    {
-        this.allowDropTable = allowDropTable;
-        return this;
-    }
-
     @NotNull
     public Duration getMetastoreCacheTtl()
     {
         return metastoreCacheTtl;
     }
 
+    @MinDuration("0ms")
     @Config("hive.metastore-cache-ttl")
     public HiveClientConfig setMetastoreCacheTtl(Duration metastoreCacheTtl)
     {
@@ -364,6 +321,7 @@ public class HiveClientConfig
         return metastoreRefreshInterval;
     }
 
+    @MinDuration("1ms")
     @Config("hive.metastore-refresh-interval")
     public HiveClientConfig setMetastoreRefreshInterval(Duration metastoreRefreshInterval)
     {
@@ -621,6 +579,30 @@ public class HiveClientConfig
         return this;
     }
 
+    public String getS3Endpoint()
+    {
+        return s3Endpoint;
+    }
+
+    @Config("hive.s3.endpoint")
+    public HiveClientConfig setS3Endpoint(String s3Endpoint)
+    {
+        this.s3Endpoint = s3Endpoint;
+        return this;
+    }
+
+    public PrestoS3SignerType getS3SignerType()
+    {
+        return s3SignerType;
+    }
+
+    @Config("hive.s3.signer-type")
+    public HiveClientConfig setS3SignerType(PrestoS3SignerType s3SignerType)
+    {
+        this.s3SignerType = s3SignerType;
+        return this;
+    }
+
     public boolean isS3UseInstanceCredentials()
     {
         return s3UseInstanceCredentials;
@@ -642,6 +624,32 @@ public class HiveClientConfig
     public HiveClientConfig setS3SslEnabled(boolean s3SslEnabled)
     {
         this.s3SslEnabled = s3SslEnabled;
+        return this;
+    }
+
+    public String getS3EncryptionMaterialsProvider()
+    {
+        return s3EncryptionMaterialsProvider;
+    }
+
+    @Config("hive.s3.encryption-materials-provider")
+    @ConfigDescription("Use a custom encryption materials provider for S3 data encryption")
+    public HiveClientConfig setS3EncryptionMaterialsProvider(String s3EncryptionMaterialsProvider)
+    {
+        this.s3EncryptionMaterialsProvider = s3EncryptionMaterialsProvider;
+        return this;
+    }
+
+    public String getS3KmsKeyId()
+    {
+        return s3KmsKeyId;
+    }
+
+    @Config("hive.s3.kms-key-id")
+    @ConfigDescription("Use an AWS KMS key for S3 data encryption")
+    public HiveClientConfig setS3KmsKeyId(String s3KmsKeyId)
+    {
+        this.s3KmsKeyId = s3KmsKeyId;
         return this;
     }
 
@@ -810,6 +818,20 @@ public class HiveClientConfig
         return this;
     }
 
+    @NotNull
+    public String getS3UserAgentPrefix()
+    {
+        return s3UserAgentPrefix;
+    }
+
+    @Config("hive.s3.user-agent-prefix")
+    @ConfigDescription("The user agent prefix to use for S3 calls")
+    public HiveClientConfig setS3UserAgentPrefix(String s3UserAgentPrefix)
+    {
+        this.s3UserAgentPrefix = s3UserAgentPrefix;
+        return this;
+    }
+
     @Deprecated
     public boolean isParquetPredicatePushdownEnabled()
     {
@@ -887,6 +909,32 @@ public class HiveClientConfig
     public HiveClientConfig setOrcStreamBufferSize(DataSize orcStreamBufferSize)
     {
         this.orcStreamBufferSize = orcStreamBufferSize;
+        return this;
+    }
+
+    public boolean isOrcBloomFiltersEnabled()
+    {
+        return orcBloomFiltersEnabled;
+    }
+
+    @Config("hive.orc.bloom-filters.enabled")
+    public HiveClientConfig setOrcBloomFiltersEnabled(boolean orcBloomFiltersEnabled)
+    {
+        this.orcBloomFiltersEnabled = orcBloomFiltersEnabled;
+        return this;
+    }
+
+    @Deprecated
+    public boolean isRcfileOptimizedReaderEnabled()
+    {
+        return rcfileOptimizedReaderEnabled;
+    }
+
+    @Deprecated
+    @Config("hive.rcfile-optimized-reader.enabled")
+    public HiveClientConfig setRcfileOptimizedReaderEnabled(boolean rcfileOptimizedReaderEnabled)
+    {
+        this.rcfileOptimizedReaderEnabled = rcfileOptimizedReaderEnabled;
         return this;
     }
 
@@ -1028,6 +1076,45 @@ public class HiveClientConfig
     public HiveClientConfig setHdfsPrestoKeytab(String hdfsPrestoKeytab)
     {
         this.hdfsPrestoKeytab = hdfsPrestoKeytab;
+        return this;
+    }
+
+    public boolean isSkipDeletionForAlter()
+    {
+        return skipDeletionForAlter;
+    }
+
+    @Config("hive.skip-deletion-for-alter")
+    @ConfigDescription("Skip deletion of old partition data when a partition is deleted and then inserted in the same transaction")
+    public HiveClientConfig setSkipDeletionForAlter(boolean skipDeletionForAlter)
+    {
+        this.skipDeletionForAlter = skipDeletionForAlter;
+        return this;
+    }
+
+    public boolean isBucketExecutionEnabled()
+    {
+        return bucketExecutionEnabled;
+    }
+
+    @Config("hive.bucket-execution")
+    @ConfigDescription("Use bucketing to speed up execution")
+    public HiveClientConfig setBucketExecutionEnabled(boolean bucketExecutionEnabled)
+    {
+        this.bucketExecutionEnabled = bucketExecutionEnabled;
+        return this;
+    }
+
+    public boolean isBucketWritingEnabled()
+    {
+        return bucketWritingEnabled;
+    }
+
+    @Config("hive.bucket-writing")
+    @ConfigDescription("Enable writing to bucketed tables")
+    public HiveClientConfig setBucketWritingEnabled(boolean bucketWritingEnabled)
+    {
+        this.bucketWritingEnabled = bucketWritingEnabled;
         return this;
     }
 }

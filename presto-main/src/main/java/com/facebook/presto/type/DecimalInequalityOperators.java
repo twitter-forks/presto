@@ -16,11 +16,12 @@ package com.facebook.presto.type;
 
 import com.facebook.presto.annotation.UsedByGeneratedCode;
 import com.facebook.presto.metadata.BoundVariables;
-import com.facebook.presto.metadata.OperatorType;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlScalarFunction;
+import com.facebook.presto.metadata.SqlScalarFunctionBuilder;
 import com.facebook.presto.metadata.SqlScalarFunctionBuilder.SpecializeContext;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.OperatorType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.google.common.base.Throwables;
@@ -34,16 +35,17 @@ import java.math.BigInteger;
 import java.util.List;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
-import static com.facebook.presto.metadata.OperatorType.BETWEEN;
-import static com.facebook.presto.metadata.OperatorType.EQUAL;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.metadata.SqlScalarFunctionBuilder.concat;
 import static com.facebook.presto.metadata.SqlScalarFunctionBuilder.constant;
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
+import static com.facebook.presto.spi.function.OperatorType.BETWEEN;
+import static com.facebook.presto.spi.function.OperatorType.EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.type.Decimals.bigIntegerTenToNth;
 import static com.facebook.presto.spi.type.Decimals.longTenToNth;
 import static com.facebook.presto.spi.type.StandardTypes.BOOLEAN;
@@ -67,6 +69,7 @@ public class DecimalInequalityOperators
     public static final SqlScalarFunction DECIMAL_GREATER_THAN_OPERATOR = binaryOperator(GREATER_THAN, IS_RESULT_GREATER_THAN);
     public static final SqlScalarFunction DECIMAL_GREATER_THAN_OR_EQUAL_OPERATOR = binaryOperator(GREATER_THAN_OR_EQUAL, IS_RESULT_GREATER_THAN_OR_EQUAL);
     public static final SqlScalarFunction DECIMAL_BETWEEN_OPERATOR = betweenOperator();
+    public static final SqlScalarFunction DECIMAL_DISTINCT_FROM_OPERATOR = binaryOperatorNullable(IS_DISTINCT_FROM, IS_RESULT_NOT_EQUAL);
 
     private static final int MAX_PRECISION_OF_JAVA_LONG = 18;
 
@@ -108,7 +111,7 @@ public class DecimalInequalityOperators
         return comparisonResult >= 0;
     }
 
-    private static SqlScalarFunction binaryOperator(OperatorType operatorType, MethodHandle getResultMethodHandle)
+    private static SqlScalarFunctionBuilder makeBinaryOperatorFunctionBuilder(OperatorType operatorType)
     {
         TypeSignature decimalASignature = parseTypeSignature("decimal(a_precision, a_scale)", ImmutableSet.of("a_precision", "a_scale"));
         TypeSignature decimalBSignature = parseTypeSignature("decimal(b_precision, b_scale)", ImmutableSet.of("b_precision", "b_scale"));
@@ -119,7 +122,12 @@ public class DecimalInequalityOperators
                 .returnType(parseTypeSignature(BOOLEAN))
                 .build();
         return SqlScalarFunction.builder(DecimalInequalityOperators.class)
-                .signature(signature)
+                .signature(signature);
+    }
+
+    private static SqlScalarFunction binaryOperator(OperatorType operatorType, MethodHandle getResultMethodHandle)
+    {
+        return makeBinaryOperatorFunctionBuilder(operatorType)
                 .implementation(b -> b
                         .methods("opShortShortShortRescale")
                         .withPredicate(DecimalInequalityOperators::rescaledValuesFitJavaLong)
@@ -127,6 +135,23 @@ public class DecimalInequalityOperators
                 )
                 .implementation(b -> b
                         .methods("opShortShortLongRescale", "opShortLong", "opLongShort", "opLongLong")
+                        .withExtraParameters(concat(DecimalInequalityOperators::longRescaleExtraParameters, constant(getResultMethodHandle)))
+                )
+                .build();
+    }
+
+    private static SqlScalarFunction binaryOperatorNullable(OperatorType operatorType, MethodHandle getResultMethodHandle)
+    {
+        return makeBinaryOperatorFunctionBuilder(operatorType)
+                .nullableArguments(true, true)
+                .nullFlags(true, true)
+                .implementation(b -> b
+                        .methods("opShortShortShortRescaleNullable")
+                        .withPredicate(DecimalInequalityOperators::rescaledValuesFitJavaLong)
+                        .withExtraParameters(concat(DecimalInequalityOperators::shortRescaleExtraParameters, constant(getResultMethodHandle)))
+                )
+                .implementation(b -> b
+                        .methods("opShortShortLongRescaleNullable", "opShortLongNullable", "opLongShortNullable", "opLongLongNullable")
                         .withExtraParameters(concat(DecimalInequalityOperators::longRescaleExtraParameters, constant(getResultMethodHandle)))
                 )
                 .build();
@@ -174,11 +199,47 @@ public class DecimalInequalityOperators
     }
 
     @UsedByGeneratedCode
+    public static boolean opShortShortShortRescaleNullable(
+            long a,
+            boolean aNull,
+            long b,
+            boolean bNull,
+            long aRescale, long bRescale, MethodHandle getResultMethodHandle)
+    {
+        if (aNull != bNull) {
+            return true;
+        }
+        if (aNull) {
+            return false;
+        }
+        return opShortShortShortRescale(a, b, aRescale, bRescale, getResultMethodHandle);
+    }
+
+    @UsedByGeneratedCode
     public static boolean opShortShortLongRescale(long a, long b, BigInteger aRescale, BigInteger bRescale, MethodHandle getResultMethodHandle)
     {
         BigInteger left = BigInteger.valueOf(a).multiply(aRescale);
         BigInteger right = BigInteger.valueOf(b).multiply(bRescale);
         return invokeGetResult(getResultMethodHandle, left.compareTo(right));
+    }
+
+    @UsedByGeneratedCode
+    public static boolean opShortShortLongRescaleNullable(
+            long a,
+            boolean aNull,
+            long b,
+            boolean bNull,
+            BigInteger aRescale,
+            BigInteger bRescale,
+            MethodHandle getResultMethodHandle)
+    {
+        if (aNull != bNull) {
+            return true;
+        }
+        if (aNull && bNull) {
+            return false;
+        }
+        return opShortShortLongRescale(a, b, aRescale, bRescale, getResultMethodHandle);
     }
 
     @UsedByGeneratedCode
@@ -190,11 +251,49 @@ public class DecimalInequalityOperators
     }
 
     @UsedByGeneratedCode
+    public static boolean opShortLongNullable(
+            long a,
+            boolean aNull,
+            Slice b,
+            boolean bNull,
+            BigInteger aRescale,
+            BigInteger bRescale,
+            MethodHandle getResultMethodHandle)
+    {
+        if (aNull != bNull) {
+            return true;
+        }
+        if (aNull && bNull) {
+            return false;
+        }
+        return opShortLong(a, b, aRescale, bRescale, getResultMethodHandle);
+    }
+
+    @UsedByGeneratedCode
     public static boolean opLongShort(Slice a, long b, BigInteger aRescale, BigInteger bRescale, MethodHandle getResultMethodHandle)
     {
         BigInteger left = Decimals.decodeUnscaledValue(a).multiply(aRescale);
         BigInteger right = BigInteger.valueOf(b).multiply(bRescale);
         return invokeGetResult(getResultMethodHandle, left.compareTo(right));
+    }
+
+    @UsedByGeneratedCode
+    public static boolean opLongShortNullable(
+            Slice a,
+            boolean aNull,
+            long b,
+            boolean bNull,
+            BigInteger aRescale,
+            BigInteger bRescale,
+            MethodHandle getResultMethodHandle)
+    {
+        if (aNull != bNull) {
+            return true;
+        }
+        if (aNull && bNull) {
+            return false;
+        }
+        return opLongShort(a, b, aRescale, bRescale, getResultMethodHandle);
     }
 
     @UsedByGeneratedCode
@@ -205,6 +304,25 @@ public class DecimalInequalityOperators
         return invokeGetResult(getResultMethodHandle, left.compareTo(right));
     }
 
+    @UsedByGeneratedCode
+    public static boolean opLongLongNullable(
+            Slice a,
+            boolean aNull,
+            Slice b,
+            boolean bNull,
+            BigInteger aRescale,
+            BigInteger bRescale,
+            MethodHandle getResultMethodHandle)
+    {
+        if (aNull != bNull) {
+            return true;
+        }
+        if (aNull && bNull) {
+            return false;
+        }
+        return opLongLong(a, b, aRescale, bRescale, getResultMethodHandle);
+    }
+
     private static boolean invokeGetResult(MethodHandle getResultMethodHandle, int comparisonResult)
     {
         try {
@@ -213,7 +331,7 @@ public class DecimalInequalityOperators
         catch (Throwable t) {
             Throwables.propagateIfInstanceOf(t, Error.class);
             Throwables.propagateIfInstanceOf(t, PrestoException.class);
-            throw new PrestoException(INTERNAL_ERROR, t);
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, t);
         }
     }
 

@@ -13,52 +13,34 @@
  */
 package com.facebook.presto.mongodb;
 
-import com.facebook.presto.metadata.FunctionFactory;
-import com.facebook.presto.spi.ConnectorFactory;
 import com.facebook.presto.spi.Plugin;
+import com.facebook.presto.spi.connector.ConnectorFactory;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 
-import javax.inject.Inject;
-
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 import static com.facebook.presto.mongodb.ObjectIdType.OBJECT_ID;
-import static java.util.Objects.requireNonNull;
 
 public class MongoPlugin
         implements Plugin
 {
-    private Map<String, String> optionalConfig = ImmutableMap.of();
-    private TypeManager typeManager;
-
     @Override
-    public void setOptionalConfig(Map<String, String> optionalConfig)
+    public Iterable<Type> getTypes()
     {
-        this.optionalConfig = ImmutableMap.copyOf(requireNonNull(optionalConfig, "optionalConfig is null"));
-    }
-
-    @Inject
-    public synchronized void setTypeManager(TypeManager typeManager)
-    {
-        this.typeManager = requireNonNull(typeManager, "typeManager is null");
+        return ImmutableList.of(OBJECT_ID);
     }
 
     @Override
-    public <T> List<T> getServices(Class<T> type)
+    public Set<Class<?>> getFunctions()
     {
-        if (type == ConnectorFactory.class) {
-            return ImmutableList.of(type.cast(new MongoConnectorFactory("mongodb", typeManager, optionalConfig)));
-        }
-        if (type == Type.class) {
-            return ImmutableList.of(type.cast(OBJECT_ID));
-        }
-        if (type == FunctionFactory.class) {
-            return ImmutableList.of(type.cast(new MongoFunctionFactory(typeManager)));
-        }
-        return ImmutableList.of();
+        return ImmutableSet.of(ObjectIdFunctions.class);
+    }
+
+    @Override
+    public Iterable<ConnectorFactory> getConnectorFactories()
+    {
+        return ImmutableList.of(new MongoConnectorFactory("mongodb"));
     }
 }

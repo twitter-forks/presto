@@ -14,6 +14,7 @@
 package com.facebook.presto.security;
 
 import com.facebook.presto.metadata.QualifiedObjectName;
+import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.Privilege;
 import com.facebook.presto.transaction.TransactionId;
@@ -27,6 +28,24 @@ public interface AccessControl
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
     void checkCanSetUser(Principal principal, String userName);
+
+    /**
+     * Check if identity is allowed to create the specified schema.
+     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
+     */
+    void checkCanCreateSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName);
+
+    /**
+     * Check if identity is allowed to drop the specified schema.
+     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
+     */
+    void checkCanDropSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName);
+
+    /**
+     * Check if identity is allowed to rename the specified schema.
+     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
+     */
+    void checkCanRenameSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName, String newSchemaName);
 
     /**
      * Check if identity is allowed to create the specified table.
@@ -110,13 +129,13 @@ public interface AccessControl
      * Check if identity is allowed to grant a privilege on the specified table.
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
-    void checkCanGrantTablePrivilege(Identity identity, Privilege privilege, QualifiedObjectName tableName);
+    void checkCanGrantTablePrivilege(TransactionId transactionId, Identity identity, Privilege privilege, QualifiedObjectName tableName);
 
     /**
      * Check if identity is allowed to revoke a privilege on the specified table.
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
-    void checkCanRevokeTablePrivilege(Identity identity, Privilege privilege, QualifiedObjectName tableName);
+    void checkCanRevokeTablePrivilege(TransactionId transactionId, Identity identity, Privilege privilege, QualifiedObjectName tableName);
 
     /**
      * Check if identity is allowed to set the specified system property.
@@ -128,5 +147,5 @@ public interface AccessControl
      * Check if identity is allowed to set the specified catalog property.
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
-    void checkCanSetCatalogSessionProperty(Identity identity, String catalogName, String propertyName);
+    void checkCanSetCatalogSessionProperty(TransactionId transactionId, Identity identity, String catalogName, String propertyName);
 }

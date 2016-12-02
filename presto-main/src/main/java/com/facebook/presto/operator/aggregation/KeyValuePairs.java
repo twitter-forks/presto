@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator.aggregation;
 
+import com.facebook.presto.array.ObjectBigArray;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
@@ -20,11 +21,10 @@ import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.util.array.ObjectBigArray;
 import com.google.common.collect.ImmutableList;
 import org.openjdk.jol.info.ClassLayout;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.type.TypeUtils.expectedValueSize;
 import static java.util.Objects.requireNonNull;
 
@@ -100,7 +100,7 @@ public class KeyValuePairs
     public Block toMapNativeEncoding()
     {
         if (isMultiValue) {
-            throw new PrestoException(INTERNAL_ERROR, "This KeyValuePairs is multimap.");
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "This KeyValuePairs is multimap.");
         }
 
         return serialize();
@@ -112,7 +112,7 @@ public class KeyValuePairs
     public Block toMultimapNativeEncoding()
     {
         if (!isMultiValue) {
-            throw new PrestoException(INTERNAL_ERROR, "This KeyValuePairs is not multimap.");
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "This KeyValuePairs is not multimap.");
         }
 
         Block keys = keyBlockBuilder.build();

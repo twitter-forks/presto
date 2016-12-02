@@ -15,11 +15,14 @@ package com.facebook.presto.type;
 
 import com.facebook.presto.annotation.UsedByGeneratedCode;
 import com.facebook.presto.metadata.Signature;
+import com.facebook.presto.metadata.SignatureBuilder;
 import com.facebook.presto.metadata.SqlScalarFunction;
 import com.facebook.presto.metadata.SqlScalarFunctionBuilder;
 import com.facebook.presto.metadata.SqlScalarFunctionBuilder.SpecializeContext;
-import com.facebook.presto.operator.scalar.ScalarOperator;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.LiteralParameters;
+import com.facebook.presto.spi.function.ScalarOperator;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.TypeSignature;
@@ -32,15 +35,15 @@ import java.math.BigInteger;
 import java.util.List;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
-import static com.facebook.presto.metadata.OperatorType.ADD;
-import static com.facebook.presto.metadata.OperatorType.DIVIDE;
-import static com.facebook.presto.metadata.OperatorType.HASH_CODE;
-import static com.facebook.presto.metadata.OperatorType.MODULUS;
-import static com.facebook.presto.metadata.OperatorType.MULTIPLY;
-import static com.facebook.presto.metadata.OperatorType.NEGATION;
-import static com.facebook.presto.metadata.OperatorType.SUBTRACT;
 import static com.facebook.presto.metadata.Signature.longVariableExpression;
 import static com.facebook.presto.spi.StandardErrorCode.DIVISION_BY_ZERO;
+import static com.facebook.presto.spi.function.OperatorType.ADD;
+import static com.facebook.presto.spi.function.OperatorType.DIVIDE;
+import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
+import static com.facebook.presto.spi.function.OperatorType.MODULUS;
+import static com.facebook.presto.spi.function.OperatorType.MULTIPLY;
+import static com.facebook.presto.spi.function.OperatorType.NEGATION;
+import static com.facebook.presto.spi.function.OperatorType.SUBTRACT;
 import static com.facebook.presto.spi.type.Decimals.bigIntegerTenToNth;
 import static com.facebook.presto.spi.type.Decimals.checkOverflow;
 import static com.facebook.presto.spi.type.Decimals.longTenToNth;
@@ -467,27 +470,36 @@ public final class DecimalOperators
 
     private static SqlScalarFunction decimalModulusOperator()
     {
+        Signature signature = modulusSignatureBuilder()
+                .operatorType(MODULUS)
+                .build();
+        return modulusScalarFunction(signature);
+    }
+
+    public static SqlScalarFunction modulusScalarFunction(Signature signature)
+    {
+        return SqlScalarFunction.builder(DecimalOperators.class)
+                .signature(signature)
+                .implementation(b -> b
+                    .methods("modulusShortShortShort", "modulusLongLongLong", "modulusShortLongLong", "modulusShortLongShort", "modulusLongShortShort", "modulusLongShortLong")
+                    .withExtraParameters(DecimalOperators::longRescaleExtraParameters)
+                )
+                .build();
+    }
+
+    public static SignatureBuilder modulusSignatureBuilder()
+    {
         TypeSignature decimalLeftSignature = parseTypeSignature("decimal(a_precision, a_scale)", ImmutableSet.of("a_precision", "a_scale"));
         TypeSignature decimalRightSignature = parseTypeSignature("decimal(b_precision, b_scale)", ImmutableSet.of("b_precision", "b_scale"));
         TypeSignature decimalResultSignature = parseTypeSignature("decimal(r_precision, r_scale)", ImmutableSet.of("r_precision", "r_scale"));
 
-        Signature signature = Signature.builder()
-                .kind(SCALAR)
-                .operatorType(MODULUS)
+        return Signature.builder()
                 .longVariableConstraints(
                         longVariableExpression("r_precision", "min(b_precision - b_scale, a_precision - a_scale) + max(a_scale, b_scale)"),
                         longVariableExpression("r_scale", "max(a_scale, b_scale)")
                 )
                 .argumentTypes(decimalLeftSignature, decimalRightSignature)
-                .returnType(decimalResultSignature)
-                .build();
-        return SqlScalarFunction.builder(DecimalOperators.class)
-                .signature(signature)
-                .implementation(b -> b
-                        .methods("modulusShortShortShort", "modulusLongLongLong", "modulusShortLongLong", "modulusShortLongShort", "modulusLongShortShort", "modulusLongShortLong")
-                        .withExtraParameters(DecimalOperators::longRescaleExtraParameters)
-                )
-                .build();
+                .returnType(decimalResultSignature);
     }
 
     private static List<Object> shortRescaleExtraParameters(SpecializeContext context)

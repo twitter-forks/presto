@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.DriverContext;
@@ -40,6 +41,8 @@ import com.facebook.presto.type.TypeRegistry;
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -82,6 +85,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.PARTITION_KEY;
+import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.operator.ProjectionFunctions.singleColumn;
@@ -367,7 +372,7 @@ public class TestOrcPageSourceMemoryTracking
                 HiveType hiveType = HiveType.valueOf(inspector.getTypeName());
                 Type type = hiveType.getType(TYPE_MANAGER);
 
-                columnsBuilder.add(new HiveColumnHandle("client_id", testColumn.getName(), hiveType, type.getTypeSignature(), columnIndex, testColumn.isPartitionKey()));
+                columnsBuilder.add(new HiveColumnHandle("client_id", testColumn.getName(), hiveType, type.getTypeSignature(), columnIndex, testColumn.isPartitionKey() ? PARTITION_KEY : REGULAR));
                 typesBuilder.add(type);
             }
             columns = columnsBuilder.build();
@@ -379,17 +384,23 @@ public class TestOrcPageSourceMemoryTracking
         public ConnectorPageSource newPageSource()
         {
             OrcPageSourceFactory orcPageSourceFactory = new OrcPageSourceFactory(TYPE_MANAGER, false, HDFS_ENVIRONMENT);
-            return orcPageSourceFactory.createPageSource(
+            return HivePageSourceProvider.createHivePageSource(
+                    ImmutableSet.of(),
+                    ImmutableSet.of(orcPageSourceFactory),
+                    "test",
                     new Configuration(),
                     SESSION,
                     fileSplit.getPath(),
                     fileSplit.getStart(),
                     fileSplit.getLength(),
                     schema,
+                    TupleDomain.all(),
                     columns,
                     partitionKeys,
-                    TupleDomain.<HiveColumnHandle>all(),
-                    DateTimeZone.UTC).get();
+                    DateTimeZone.UTC,
+                    TYPE_MANAGER,
+                    ImmutableMap.of())
+                    .get();
         }
 
         public SourceOperator newTableScanOperator(DriverContext driverContext)
@@ -403,7 +414,7 @@ public class TestOrcPageSourceMemoryTracking
                     columns.stream().map(columnHandle -> (ColumnHandle) columnHandle).collect(toList())
             );
             SourceOperator operator = sourceOperatorFactory.createOperator(driverContext);
-            operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
+            operator.addSplit(new Split(new ConnectorId("test"), TestingTransactionHandle.create(), TestingSplit.createLocalSplit()));
             return operator;
         }
 
@@ -426,7 +437,7 @@ public class TestOrcPageSourceMemoryTracking
                     types
             );
             SourceOperator operator = sourceOperatorFactory.createOperator(driverContext);
-            operator.addSplit(new Split("test", TestingTransactionHandle.create("test"), TestingSplit.createLocalSplit()));
+            operator.addSplit(new Split(new ConnectorId("test"), TestingTransactionHandle.create(), TestingSplit.createLocalSplit()));
             return operator;
         }
 

@@ -13,9 +13,11 @@ Except for the limit on queued queries, when a resource group runs out of a reso
 it does not cause running queries to fail; instead new queries become queued.
 A resource group may have sub groups or may accept queries, but may not do both.
 
-The resource groups and associated selection rules are defined in a JSON file
-The filename of the JSON config file is specified with the
-``resource-groups.config-file`` config property.
+The resource groups and associated selection rules are configured by a manager which is pluggable.
+An implementation that uses a static file can be installed via the ``presto-resource-group-managers``
+plugin and enabled by adding ``resource-groups.configuration-manager=file`` to
+``etc/resource-groups.properties`` and setting ``resource-groups.config-file`` to the
+location of a JSON config file with the properties described below.
 
 Resource Group Properties
 -------------------------
@@ -30,6 +32,13 @@ Resource Group Properties
 * ``softMemoryLimit`` (required): maximum amount of distributed memory this
   group may use before new queries become queued. May be specified as
   an absolute value (i.e. ``1GB``) or as a percentage (i.e. ``10%``) of the cluster's memory.
+
+* ``softCpuLimit`` (optional): maximum amount of CPU time this
+  group may use in a period (see ``cpuQuotaPeriod``) before a penalty will be applied to
+  the maximum number of running queries. ``hardCpuLimit`` must also be specified.
+
+* ``hardCpuLimit`` (optional): maximum amount of CPU time this
+  group may use in a period.
 
 * ``schedulingPolicy`` (optional): specifies how queued queries are selected to run,
   and how sub groups become eligible to start their queries. May be one of three values:
@@ -60,6 +69,11 @@ Selector Properties
 * ``source`` (optional): regex to match against source string. Defaults to ``.*``
 
 * ``group`` (required): the group these queries will run in.
+
+Global Properties
+-----------------
+
+* ``cpuQuotaPeriod`` (optional): the period in which cpu quotas are enforced.
 
 Selectors are processed sequentially and the first one that matches will be used.
 In the example configuration below, there are five resource group templates.
@@ -150,6 +164,7 @@ all other users are subject to the follow limits:
         {
           "group": "global.adhoc_${USER}"
         }
-      ]
+      ],
+      "cpuQuotaPeriod": "1h"
     }
 

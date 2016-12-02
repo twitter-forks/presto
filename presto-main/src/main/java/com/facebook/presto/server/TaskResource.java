@@ -13,13 +13,14 @@
  */
 package com.facebook.presto.server;
 
+import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.Session;
-import com.facebook.presto.execution.BufferResult;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskInfo;
 import com.facebook.presto.execution.TaskManager;
 import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStatus;
+import com.facebook.presto.execution.buffer.BufferResult;
 import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.spi.Page;
 import com.google.common.collect.ImmutableList;
@@ -203,34 +204,34 @@ public class TaskResource
 
     @DELETE
     @Path("{taskId}")
-    public void deleteTask(@PathParam("taskId") TaskId taskId,
+    @Produces(MediaType.APPLICATION_JSON)
+    public TaskInfo deleteTask(@PathParam("taskId") TaskId taskId,
             @QueryParam("abort") @DefaultValue("true") boolean abort,
             @Context UriInfo uriInfo)
     {
         requireNonNull(taskId, "taskId is null");
 
         if (abort) {
-            taskManager.abortTask(taskId);
-            return;
+            return taskManager.abortTask(taskId);
         }
-        taskManager.cancelTask(taskId);
+        return taskManager.cancelTask(taskId);
     }
 
     @GET
-    @Path("{taskId}/results/{outputId}/{token}")
+    @Path("{taskId}/results/{bufferId}/{token}")
     @Produces(PRESTO_PAGES)
     public void getResults(@PathParam("taskId") TaskId taskId,
-            @PathParam("outputId") TaskId outputId,
+            @PathParam("bufferId") OutputBufferId bufferId,
             @PathParam("token") final long token,
             @HeaderParam(PRESTO_MAX_SIZE) DataSize maxSize,
             @Suspended AsyncResponse asyncResponse)
             throws InterruptedException
     {
         requireNonNull(taskId, "taskId is null");
-        requireNonNull(outputId, "outputId is null");
+        requireNonNull(bufferId, "bufferId is null");
 
         long start = System.nanoTime();
-        CompletableFuture<BufferResult> bufferResultFuture = taskManager.getTaskResults(taskId, outputId, token, maxSize);
+        CompletableFuture<BufferResult> bufferResultFuture = taskManager.getTaskResults(taskId, bufferId, token, maxSize);
         Duration waitTime = randomizeWaitTime(DEFAULT_MAX_WAIT_TIME);
         bufferResultFuture = addTimeout(
                 bufferResultFuture,
@@ -276,14 +277,14 @@ public class TaskResource
     }
 
     @DELETE
-    @Path("{taskId}/results/{outputId}")
+    @Path("{taskId}/results/{bufferId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response abortResults(@PathParam("taskId") TaskId taskId, @PathParam("outputId") TaskId outputId, @Context UriInfo uriInfo)
+    public Response abortResults(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") OutputBufferId bufferId, @Context UriInfo uriInfo)
     {
         requireNonNull(taskId, "taskId is null");
-        requireNonNull(outputId, "outputId is null");
+        requireNonNull(bufferId, "bufferId is null");
 
-        TaskInfo taskInfo = taskManager.abortTaskResults(taskId, outputId);
+        TaskInfo taskInfo = taskManager.abortTaskResults(taskId, bufferId);
         if (shouldSummarize(uriInfo)) {
             taskInfo = taskInfo.summarize();
         }

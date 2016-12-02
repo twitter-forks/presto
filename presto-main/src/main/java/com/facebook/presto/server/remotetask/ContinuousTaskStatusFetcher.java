@@ -16,6 +16,7 @@ package com.facebook.presto.server.remotetask;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskStatus;
+import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -47,6 +48,7 @@ import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonRespo
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.airlift.http.client.Request.Builder.prepareGet;
 import static io.airlift.units.Duration.nanosSince;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 class ContinuousTaskStatusFetcher
@@ -208,7 +210,7 @@ class ContinuousTaskStatusFetcher
         }
     }
 
-    synchronized void updateTaskStatus(TaskStatus newValue)
+    void updateTaskStatus(TaskStatus newValue)
     {
         // change to new value if old value is not changed and new value has a newer version
         AtomicBoolean taskMismatch = new AtomicBoolean();
@@ -231,7 +233,7 @@ class ContinuousTaskStatusFetcher
         });
 
         if (taskMismatch.get()) {
-            onFail.accept(new PrestoException(REMOTE_TASK_MISMATCH, REMOTE_TASK_MISMATCH_ERROR));
+            onFail.accept(new PrestoException(REMOTE_TASK_MISMATCH, format("%s (%s)", REMOTE_TASK_MISMATCH_ERROR, HostAddress.fromUri(getTaskStatus().getSelf()))));
         }
     }
 

@@ -23,6 +23,8 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.AbstractFixedWidthType;
+import com.facebook.presto.spi.type.DecimalType;
+import com.facebook.presto.spi.type.SqlDecimal;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.type.RowType;
@@ -32,12 +34,15 @@ import io.airlift.slice.Slices;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
 import static com.facebook.presto.block.BlockAssertions.createArrayBigintBlock;
 import static com.facebook.presto.block.BlockAssertions.createDoublesBlock;
+import static com.facebook.presto.block.BlockAssertions.createLongDecimalsBlock;
 import static com.facebook.presto.block.BlockAssertions.createLongsBlock;
+import static com.facebook.presto.block.BlockAssertions.createShortDecimalsBlock;
 import static com.facebook.presto.block.BlockAssertions.createStringsBlock;
 import static com.facebook.presto.metadata.FunctionKind.AGGREGATE;
 import static com.facebook.presto.operator.aggregation.AggregationTestUtils.assertAggregation;
@@ -65,17 +70,26 @@ public class TestMinMaxByAggregation
     @Test
     public void testAllRegistered()
     {
-        Set<Type> orderableTypes = METADATA.getTypeManager()
-                .getTypes().stream()
+        Set<Type> orderableTypes = getTypes().stream()
                 .filter(Type::isOrderable)
                 .collect(toImmutableSet());
 
         for (Type keyType : orderableTypes) {
-            for (Type valueType : METADATA.getTypeManager().getTypes()) {
+            for (Type valueType : getTypes()) {
                 assertNotNull(METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("min_by", AGGREGATE, valueType.getTypeSignature(), valueType.getTypeSignature(), keyType.getTypeSignature())));
                 assertNotNull(METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("max_by", AGGREGATE, valueType.getTypeSignature(), valueType.getTypeSignature(), keyType.getTypeSignature())));
             }
         }
+    }
+
+    private List<Type> getTypes()
+    {
+        List<Type> simpleTypes = METADATA.getTypeManager().getTypes();
+        return new ImmutableList.Builder<Type>()
+                .addAll(simpleTypes)
+                .add(VARCHAR)
+                .add(DecimalType.createDecimalType(1))
+                .build();
     }
 
     @Test
@@ -85,7 +99,6 @@ public class TestMinMaxByAggregation
                 new Signature("min_by", AGGREGATE, parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 1.0,
                 createDoublesBlock(1.0, null),
                 createDoublesBlock(1.0, 2.0));
@@ -98,7 +111,6 @@ public class TestMinMaxByAggregation
                 new Signature("max_by", AGGREGATE, parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 null,
                 createDoublesBlock(1.0, null),
                 createDoublesBlock(1.0, 2.0));
@@ -112,14 +124,12 @@ public class TestMinMaxByAggregation
                 new Signature("min_by", AGGREGATE, parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 null,
                 createDoublesBlock(null, null),
                 createDoublesBlock(null, null));
 
         assertAggregation(
                 function,
-                1.0,
                 3.0,
                 createDoublesBlock(3.0, 2.0, 5.0, 3.0),
                 createDoublesBlock(1.0, 1.5, 2.0, 4.0));
@@ -132,14 +142,12 @@ public class TestMinMaxByAggregation
                 new Signature("max_by", AGGREGATE, parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 null,
                 createDoublesBlock(null, null),
                 createDoublesBlock(null, null));
 
         assertAggregation(
                 function,
-                1.0,
                 2.0,
                 createDoublesBlock(3.0, 2.0, null),
                 createDoublesBlock(1.0, 1.5, null));
@@ -152,14 +160,12 @@ public class TestMinMaxByAggregation
                 new Signature("min_by", AGGREGATE, parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 "z",
                 createStringsBlock("z", "a", "x", "b"),
                 createDoublesBlock(1.0, 2.0, 2.0, 3.0));
 
         assertAggregation(
                 function,
-                1.0,
                 "a",
                 createStringsBlock("zz", "hi", "bb", "a"),
                 createDoublesBlock(0.0, 1.0, 2.0, -1.0));
@@ -172,14 +178,12 @@ public class TestMinMaxByAggregation
                 new Signature("max_by", AGGREGATE, parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.VARCHAR), parseTypeSignature(StandardTypes.DOUBLE)));
         assertAggregation(
                 function,
-                1.0,
                 "a",
                 createStringsBlock("z", "a", null),
                 createDoublesBlock(1.0, 2.0, null));
 
         assertAggregation(
                 function,
-                1.0,
                 "hi",
                 createStringsBlock("zz", "hi", null, "a"),
                 createDoublesBlock(0.0, 1.0, null, -1.0));
@@ -192,14 +196,12 @@ public class TestMinMaxByAggregation
                 new Signature("min_by", AGGREGATE, parseTypeSignature("array(bigint)"), parseTypeSignature("array(bigint)"), parseTypeSignature(StandardTypes.BIGINT)));
         assertAggregation(
                 function,
-                1.0,
                 ImmutableList.of(8L, 9L),
                 createArrayBigintBlock(ImmutableList.of(ImmutableList.of(8L, 9L), ImmutableList.of(1L, 2L), ImmutableList.of(6L, 7L), ImmutableList.of(2L, 3L))),
                 createLongsBlock(1L, 2L, 2L, 3L));
 
         assertAggregation(
                 function,
-                1.0,
                 ImmutableList.of(2L),
                 createArrayBigintBlock(ImmutableList.of(ImmutableList.of(8L, 9L), ImmutableList.of(6L, 7L), ImmutableList.of(2L, 3L), ImmutableList.of(2L))),
                 createLongsBlock(0L, 1L, 2L, -1L));
@@ -212,17 +214,59 @@ public class TestMinMaxByAggregation
                 new Signature("max_by", AGGREGATE, parseTypeSignature("array(bigint)"), parseTypeSignature("array(bigint)"), parseTypeSignature(StandardTypes.BIGINT)));
         assertAggregation(
                 function,
-                1.0,
                 ImmutableList.of(1L, 2L),
                 createArrayBigintBlock(asList(asList(3L, 4L), asList(1L, 2L), null)),
                 createLongsBlock(1L, 2L, null));
 
         assertAggregation(
                 function,
-                1.0,
                 ImmutableList.of(2L, 3L),
                 createArrayBigintBlock(asList(asList(3L, 4L), asList(2L, 3L), null, asList(1L, 2L))),
                 createLongsBlock(0L, 1L, null, -1L));
+    }
+
+    @Test
+    public void testMinLongDecimalDecimal()
+    {
+        InternalAggregationFunction function = METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("min_by", AGGREGATE, parseTypeSignature("decimal(18,1)"), parseTypeSignature("decimal(18,1)"), parseTypeSignature("decimal(18,1)")));
+        assertAggregation(
+                function,
+                SqlDecimal.of("2.2"),
+                createLongDecimalsBlock("1.1", "2.2", "3.3"),
+                createLongDecimalsBlock("1.2", "1.0", "2.0"));
+    }
+
+    @Test
+    public void testMaxLongDecimalDecimal()
+    {
+        InternalAggregationFunction function = METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("max_by", AGGREGATE, parseTypeSignature("decimal(18,1)"), parseTypeSignature("decimal(18,1)"), parseTypeSignature("decimal(18,1)")));
+        assertAggregation(
+                function,
+                SqlDecimal.of("3.3"),
+                createLongDecimalsBlock("1.1", "2.2", "3.3", "4.4"),
+                createLongDecimalsBlock("1.2", "1.0", "2.0", "1.5"));
+    }
+
+    @Test
+    public void testMinShortDecimalDecimal()
+    {
+        InternalAggregationFunction function = METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("min_by", AGGREGATE, parseTypeSignature("decimal(10,1)"), parseTypeSignature("decimal(10,1)"), parseTypeSignature("decimal(10,1)")));
+        assertAggregation(
+                function,
+                SqlDecimal.of("2.2"),
+                createShortDecimalsBlock("1.1", "2.2", "3.3"),
+                createShortDecimalsBlock("1.2", "1.0", "2.0"));
+    }
+
+    @Test
+    public void testMaxShortDecimalDecimal()
+    {
+        InternalAggregationFunction function = METADATA.getFunctionRegistry().getAggregateFunctionImplementation(new Signature("max_by", AGGREGATE, parseTypeSignature("decimal(10,1)"), parseTypeSignature("decimal(10,1)"), parseTypeSignature("decimal(10,1)")));
+        assertAggregation(
+                function,
+                SqlDecimal.of("3.3"),
+                createShortDecimalsBlock("1.1", "2.2", "3.3", "4.4"),
+                createShortDecimalsBlock("1.2", "1.0", "2.0", "1.5"));
     }
 
     @Test

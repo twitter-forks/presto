@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.metastore.Column;
+import com.facebook.presto.hive.metastore.Partition;
+import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.hive.util.HiveFileIterator;
 import com.facebook.presto.hive.util.ResumableTask;
 import com.facebook.presto.hive.util.ResumableTasks;
@@ -31,10 +34,6 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.metastore.MetaStoreUtils;
-import org.apache.hadoop.hive.metastore.api.FieldSchema;
-import org.apache.hadoop.hive.metastore.api.Partition;
-import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.FileSplit;
@@ -52,6 +51,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Properties;
@@ -72,7 +72,7 @@ import static com.facebook.presto.hive.HiveSessionProperties.getMaxSplitSize;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.getInputFormat;
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
-import static com.facebook.presto.hive.UnpartitionedPartition.isUnpartitioned;
+import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Preconditions.checkState;
 import static java.lang.String.format;
@@ -269,7 +269,8 @@ public class BackgroundHiveSplitLoader
                             files.getInputFormat(),
                             files.getSchema(),
                             files.getPartitionKeys(),
-                            files.getEffectivePredicate());
+                            files.getEffectivePredicate(),
+                            files.getColumnCoercions());
                     fileIterators.add(fileIterator);
                 }
             }
@@ -287,7 +288,8 @@ public class BackgroundHiveSplitLoader
                         splittable,
                         session,
                         OptionalInt.empty(),
-                        files.getEffectivePredicate()));
+                        files.getEffectivePredicate(),
+                        files.getColumnCoercions()));
                 if (!future.isDone()) {
                     fileIterators.addFirst(files);
                     return future;
@@ -344,7 +346,8 @@ public class BackgroundHiveSplitLoader
                             false,
                             session,
                             OptionalInt.empty(),
-                            effectivePredicate));
+                            effectivePredicate,
+                            partition.getColumnCoercions()));
                     if (stopped) {
                         return;
                     }
@@ -354,7 +357,7 @@ public class BackgroundHiveSplitLoader
         }
 
         // If only one bucket could match: load that one file
-        HiveFileIterator iterator = new HiveFileIterator(path, fs, directoryLister, namenodeStats, partitionName, inputFormat, schema, partitionKeys, effectivePredicate);
+        HiveFileIterator iterator = new HiveFileIterator(path, fs, directoryLister, namenodeStats, partitionName, inputFormat, schema, partitionKeys, effectivePredicate, partition.getColumnCoercions());
         if (bucket.isPresent()) {
             List<LocatedFileStatus> locatedFileStatuses = listAndSortBucketFiles(iterator, bucket.get().getBucketCount());
             FileStatus file = locatedFileStatuses.get(bucket.get().getBucketNumber());
@@ -372,7 +375,8 @@ public class BackgroundHiveSplitLoader
                     splittable,
                     session,
                     OptionalInt.of(bucket.get().getBucketNumber()),
-                    effectivePredicate));
+                    effectivePredicate,
+                    partition.getColumnCoercions()));
             return;
         }
 
@@ -397,7 +401,8 @@ public class BackgroundHiveSplitLoader
                         splittable,
                         session,
                         OptionalInt.of(bucketIndex),
-                        iterator.getEffectivePredicate()));
+                        iterator.getEffectivePredicate(),
+                        partition.getColumnCoercions()));
             }
 
             return;
@@ -459,7 +464,8 @@ public class BackgroundHiveSplitLoader
             boolean splittable,
             ConnectorSession session,
             OptionalInt bucketNumber,
-            TupleDomain<HiveColumnHandle> effectivePredicate)
+            TupleDomain<HiveColumnHandle> effectivePredicate,
+            Map<Integer, HiveType> columnCoercions)
             throws IOException
     {
         ImmutableList.Builder<HiveSplit> builder = ImmutableList.builder();
@@ -498,7 +504,7 @@ public class BackgroundHiveSplitLoader
                     long chunkLength = Math.min(targetChunkSize, blockLocation.getLength() - chunkOffset);
 
                     builder.add(new HiveSplit(connectorId,
-                            table.getDbName(),
+                            table.getDatabaseName(),
                             table.getTableName(),
                             partitionName,
                             path,
@@ -509,7 +515,8 @@ public class BackgroundHiveSplitLoader
                             addresses,
                             bucketNumber,
                             forceLocalScheduling && hasRealAddress(addresses),
-                            effectivePredicate));
+                            effectivePredicate,
+                            columnCoercions));
 
                     chunkOffset += chunkLength;
                 }
@@ -524,7 +531,7 @@ public class BackgroundHiveSplitLoader
             }
 
             builder.add(new HiveSplit(connectorId,
-                    table.getDbName(),
+                    table.getDatabaseName(),
                     table.getTableName(),
                     partitionName,
                     path,
@@ -535,7 +542,8 @@ public class BackgroundHiveSplitLoader
                     addresses,
                     bucketNumber,
                     forceLocalScheduling && hasRealAddress(addresses),
-                    effectivePredicate));
+                    effectivePredicate,
+                    columnCoercions));
         }
         return builder.build();
     }
@@ -555,20 +563,20 @@ public class BackgroundHiveSplitLoader
         return builder.build();
     }
 
-    private static List<HivePartitionKey> getPartitionKeys(Table table, Partition partition)
+    private static List<HivePartitionKey> getPartitionKeys(Table table, Optional<Partition> partition)
     {
-        if (isUnpartitioned(partition)) {
+        if (!partition.isPresent()) {
             return ImmutableList.of();
         }
         ImmutableList.Builder<HivePartitionKey> partitionKeys = ImmutableList.builder();
-        List<FieldSchema> keys = table.getPartitionKeys();
-        List<String> values = partition.getValues();
+        List<Column> keys = table.getPartitionColumns();
+        List<String> values = partition.get().getValues();
         checkCondition(keys.size() == values.size(), HIVE_INVALID_METADATA, "Expected %s partition key values, but got %s", keys.size(), values.size());
         for (int i = 0; i < keys.size(); i++) {
             String name = keys.get(i).getName();
-            HiveType hiveType = HiveType.valueOf(keys.get(i).getType());
+            HiveType hiveType = keys.get(i).getType();
             if (!hiveType.isSupportedType()) {
-                throw new PrestoException(NOT_SUPPORTED, format("Unsupported Hive type %s found in partition keys of table %s.%s", hiveType, table.getDbName(), table.getTableName()));
+                throw new PrestoException(NOT_SUPPORTED, format("Unsupported Hive type %s found in partition keys of table %s.%s", hiveType, table.getDatabaseName(), table.getTableName()));
             }
             String value = values.get(i);
             checkCondition(value != null, HIVE_INVALID_PARTITION_VALUE, "partition key value cannot be null for field: %s", name);
@@ -577,19 +585,19 @@ public class BackgroundHiveSplitLoader
         return partitionKeys.build();
     }
 
-    private static Properties getPartitionSchema(Table table, Partition partition)
+    private static Properties getPartitionSchema(Table table, Optional<Partition> partition)
     {
-        if (isUnpartitioned(partition)) {
-            return MetaStoreUtils.getTableMetadata(table);
+        if (!partition.isPresent()) {
+            return getHiveSchema(table);
         }
-        return MetaStoreUtils.getSchema(partition, table);
+        return getHiveSchema(partition.get(), table);
     }
 
-    private static String getPartitionLocation(Table table, Partition partition)
+    private static String getPartitionLocation(Table table, Optional<Partition> partition)
     {
-        if (isUnpartitioned(partition)) {
-            return table.getSd().getLocation();
+        if (!partition.isPresent()) {
+            return table.getStorage().getLocation();
         }
-        return partition.getSd().getLocation();
+        return partition.get().getStorage().getLocation();
     }
 }

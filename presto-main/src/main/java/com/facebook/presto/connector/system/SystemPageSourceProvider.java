@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.facebook.presto.spi.StandardErrorCode.INTERNAL_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.predicate.TupleDomain.withColumnDomains;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.Types.checkType;
@@ -74,7 +74,7 @@ public class SystemPageSourceProvider
         for (int i = 0; i < tableColumns.size(); i++) {
             ColumnMetadata column = tableColumns.get(i);
             if (columnsByName.put(column.getName(), i) != null) {
-                throw new PrestoException(INTERNAL_ERROR, "Duplicate column name: " + column.getName());
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "Duplicate column name: " + column.getName());
             }
         }
 
@@ -84,7 +84,7 @@ public class SystemPageSourceProvider
 
             Integer index = columnsByName.get(columnName);
             if (index == null) {
-                throw new PrestoException(INTERNAL_ERROR, format("Column does not exist: %s.%s", tableName, columnName));
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Column does not exist: %s.%s", tableName, columnName));
             }
 
             userToSystemFieldIndex.add(index);
@@ -99,10 +99,10 @@ public class SystemPageSourceProvider
         TupleDomain<Integer> newContraint = withColumnDomains(newConstraints.build());
 
         try {
-            return new MappedPageSource(systemTable.pageSource(systemTransaction.getTransactionHandle(), session, newContraint), userToSystemFieldIndex.build());
+            return new MappedPageSource(systemTable.pageSource(systemTransaction.getConnectorTransactionHandle(), session, newContraint), userToSystemFieldIndex.build());
         }
         catch (UnsupportedOperationException e) {
-            return new RecordPageSource(new MappedRecordSet(toRecordSet(systemTransaction.getTransactionHandle(), systemTable, session, newContraint), userToSystemFieldIndex.build()));
+            return new RecordPageSource(new MappedRecordSet(toRecordSet(systemTransaction.getConnectorTransactionHandle(), systemTable, session, newContraint), userToSystemFieldIndex.build()));
         }
     }
 

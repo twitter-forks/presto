@@ -33,6 +33,7 @@ import com.facebook.presto.sql.planner.plan.TopNNode;
 import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.ComparisonExpression;
+import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.ImmutableBiMap;
@@ -81,7 +82,7 @@ public class EffectivePredicateExtractor
                 SymbolReference reference = entry.getKey().toSymbolReference();
                 Expression expression = entry.getValue();
                 // TODO: switch this to 'IS NOT DISTINCT FROM' syntax when EqualityInference properly supports it
-                return new ComparisonExpression(ComparisonExpression.Type.EQUAL, reference, expression);
+                return new ComparisonExpression(ComparisonExpressionType.EQUAL, reference, expression);
             };
 
     private final Map<Symbol, Type> symbolTypes;
@@ -100,9 +101,18 @@ public class EffectivePredicateExtractor
     @Override
     public Expression visitAggregation(AggregationNode node, Void context)
     {
+        // GROUP BY () always produces a group, regardless of whether there's any
+        // input (unlike the case where there are group by keys, which produce
+        // no output if there's no input).
+        // Therefore, we can't say anything about the effective predicate of the
+        // output of such an aggregation.
+        if (node.getGroupingKeys().isEmpty()) {
+            return TRUE_LITERAL;
+        }
+
         Expression underlyingPredicate = node.getSource().accept(this, context);
 
-        return pullExpressionThroughSymbols(underlyingPredicate, node.getGroupBy());
+        return pullExpressionThroughSymbols(underlyingPredicate, node.getGroupingKeys());
     }
 
     @Override
@@ -215,7 +225,7 @@ public class EffectivePredicateExtractor
 
         List<Expression> joinConjuncts = new ArrayList<>();
         for (JoinNode.EquiJoinClause clause : node.getCriteria()) {
-            joinConjuncts.add(new ComparisonExpression(ComparisonExpression.Type.EQUAL,
+            joinConjuncts.add(new ComparisonExpression(ComparisonExpressionType.EQUAL,
                     clause.getLeft().toSymbolReference(),
                     clause.getRight().toSymbolReference()));
         }

@@ -13,13 +13,16 @@
  */
 package com.facebook.presto.operator.scalar;
 
-import com.facebook.presto.operator.Description;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.Description;
+import com.facebook.presto.spi.function.OperatorDependency;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
+import com.facebook.presto.spi.function.TypeParameter;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.type.SqlType;
 import com.google.common.collect.ImmutableList;
 import it.unimi.dsi.fastutil.ints.AbstractIntComparator;
 import it.unimi.dsi.fastutil.ints.IntArrays;
@@ -27,7 +30,7 @@ import it.unimi.dsi.fastutil.ints.IntComparator;
 
 import java.lang.invoke.MethodHandle;
 
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
 
 @ScalarFunction("array_intersect")
 @Description("Intersects elements of the two given arrays")
@@ -45,7 +48,7 @@ public final class ArrayIntersectFunction
         pageBuilder = new PageBuilder(ImmutableList.of(elementType));
     }
 
-    private static IntComparator IntBlockCompare(Type type, Block block)
+    private static IntComparator intBlockCompare(Type type, Block block)
     {
         return new AbstractIntComparator()
         {
@@ -102,8 +105,8 @@ public final class ArrayIntersectFunction
         for (int i = 0; i < rightPositionCount; i++) {
             rightPositions[i] = i;
         }
-        IntArrays.quickSort(leftPositions, 0, leftPositionCount, IntBlockCompare(type, leftArray));
-        IntArrays.quickSort(rightPositions, 0, rightPositionCount, IntBlockCompare(type, rightArray));
+        IntArrays.quickSort(leftPositions, 0, leftPositionCount, intBlockCompare(type, leftArray));
+        IntArrays.quickSort(rightPositions, 0, rightPositionCount, intBlockCompare(type, rightArray));
 
         BlockBuilder resultBlockBuilder = pageBuilder.getBlockBuilder(0);
 

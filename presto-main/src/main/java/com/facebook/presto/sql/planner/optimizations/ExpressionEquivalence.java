@@ -44,19 +44,21 @@ import java.util.Set;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.metadata.FunctionRegistry.mangleOperatorName;
-import static com.facebook.presto.metadata.OperatorType.EQUAL;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.metadata.Signature.internalScalarFunction;
+import static com.facebook.presto.spi.function.OperatorType.EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
 import static com.facebook.presto.sql.relational.SqlToRowExpressionTranslator.translate;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.Integer.min;
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 
 public class ExpressionEquivalence
@@ -102,7 +104,8 @@ public class ExpressionEquivalence
                 metadata,
                 sqlParser,
                 inputTypes,
-                expressionWithInputReferences);
+                expressionWithInputReferences,
+                emptyList() /* parameters have already been replaced */);
 
         // convert to row expression
         return translate(expressionWithInputReferences, SCALAR, expressionTypes, metadata.getFunctionRegistry(), metadata.getTypeManager(), session, false);
@@ -148,7 +151,7 @@ public class ExpressionEquivalence
                         sortedArguments);
             }
 
-            if (callName.equals(mangleOperatorName(EQUAL)) || callName.equals(mangleOperatorName(NOT_EQUAL)) || callName.equals("IS_DISTINCT_FROM")) {
+            if (callName.equals(mangleOperatorName(EQUAL)) || callName.equals(mangleOperatorName(NOT_EQUAL)) || callName.equals(mangleOperatorName(IS_DISTINCT_FROM))) {
                 // sort arguments
                 return new CallExpression(
                         call.getSignature(),

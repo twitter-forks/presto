@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.array.LongBigArray;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
@@ -21,7 +22,6 @@ import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.DictionaryBlock;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.JoinCompiler;
-import com.facebook.presto.util.array.LongBigArray;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -33,7 +33,7 @@ import java.util.Optional;
 import static com.facebook.presto.operator.SyntheticAddress.decodePosition;
 import static com.facebook.presto.operator.SyntheticAddress.decodeSliceIndex;
 import static com.facebook.presto.operator.SyntheticAddress.encodeSyntheticAddress;
-import static com.facebook.presto.spi.StandardErrorCode.INSUFFICIENT_RESOURCES;
+import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INSUFFICIENT_RESOURCES;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.gen.JoinCompiler.PagesHashStrategyFactory;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -130,6 +130,15 @@ public class MultiChannelGroupByHash
 
         groupAddressByGroupId = new LongBigArray();
         groupAddressByGroupId.ensureCapacity(maxFill);
+    }
+
+    @Override
+    public long getRawHash(int groupId)
+    {
+        long address = groupAddressByGroupId.get(groupId);
+        int blockIndex = decodeSliceIndex(address);
+        int position = decodePosition(address);
+        return hashStrategy.hashPosition(blockIndex, position);
     }
 
     @Override
@@ -307,7 +316,7 @@ public class MultiChannelGroupByHash
     {
         long newCapacityLong = this.groupIdsByHash.length * 2L;
         if (newCapacityLong > Integer.MAX_VALUE) {
-            throw new PrestoException(INSUFFICIENT_RESOURCES, "Size of hash table cannot exceed 1 billion entries");
+            throw new PrestoException(GENERIC_INSUFFICIENT_RESOURCES, "Size of hash table cannot exceed 1 billion entries");
         }
         int newCapacity = (int) newCapacityLong;
 

@@ -24,13 +24,16 @@ import java.lang.reflect.InvocationTargetException;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.function.Consumer;
 
 import static com.facebook.presto.raptor.RaptorErrorCode.RAPTOR_METADATA_ERROR;
 import static com.google.common.base.Throwables.propagateIfInstanceOf;
 import static com.google.common.reflect.Reflection.newProxy;
 import static java.sql.Types.INTEGER;
+import static java.util.Objects.requireNonNull;
 
 public final class DatabaseUtil
 {
@@ -38,6 +41,7 @@ public final class DatabaseUtil
 
     public static <T> T onDemandDao(IDBI dbi, Class<T> daoType)
     {
+        requireNonNull(dbi, "dbi is null");
         return newProxy(daoType, (proxy, method, args) -> {
             try (Handle handle = dbi.open()) {
                 T dao = handle.attach(daoType);
@@ -61,6 +65,14 @@ public final class DatabaseUtil
             propagateIfInstanceOf(e.getCause(), PrestoException.class);
             throw metadataError(e);
         }
+    }
+
+    public static <T> void daoTransaction(IDBI dbi, Class<T> daoType, Consumer<T> callback)
+    {
+        runTransaction(dbi, (handle, status) -> {
+            callback.accept(handle.attach(daoType));
+            return null;
+        });
     }
 
     public static PrestoException metadataError(Throwable cause)
@@ -87,6 +99,14 @@ public final class DatabaseUtil
                 }
             }
             throw e;
+        }
+    }
+
+    public static void enableStreamingResults(Statement statement)
+            throws SQLException
+    {
+        if (statement.isWrapperFor(com.mysql.jdbc.Statement.class)) {
+            statement.unwrap(com.mysql.jdbc.Statement.class).enableStreamingResults();
         }
     }
 

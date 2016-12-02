@@ -19,6 +19,7 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -28,15 +29,13 @@ import java.util.concurrent.ExecutorService;
 
 import static com.facebook.presto.RowPagesBuilder.rowPagesBuilder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
-import static com.facebook.presto.operator.OperatorAssertion.toMaterializedResult;
-import static com.facebook.presto.operator.OperatorAssertion.toPages;
+import static com.facebook.presto.operator.OperatorAssertion.assertOperatorEqualsIgnoreOrder;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
-import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 
 @Test(singleThreaded = true)
@@ -74,11 +73,7 @@ public class TestGroupIdOperator
                 new GroupIdOperatorFactory(0,
                         new PlanNodeId("test"),
                         ImmutableList.of(VARCHAR, BOOLEAN, BIGINT, BIGINT, BIGINT),
-                        ImmutableList.of(ImmutableList.of(1, 2), ImmutableList.of(3)),
-                        ImmutableList.of(1, 2, 3),
-                        ImmutableList.of(0));
-
-        Operator operator = operatorFactory.createOperator(driverContext);
+                        ImmutableList.of(ImmutableMap.of(0, 1, 1, 2, 3, 0), ImmutableMap.of(2, 3, 3, 0)));
 
         MaterializedResult expected = resultBuilder(driverContext.getSession(), VARCHAR, BOOLEAN, BIGINT, BIGINT, BIGINT)
                 .row("400", true, null, 100L, 0L)
@@ -95,9 +90,6 @@ public class TestGroupIdOperator
                 .row(null, null, 1102L, 202L, 1L)
                 .build();
 
-        List<Page> pages = toPages(operator, input.iterator());
-        MaterializedResult actual = toMaterializedResult(operator.getOperatorContext().getSession(), operator.getTypes(), pages);
-
-        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+        assertOperatorEqualsIgnoreOrder(operatorFactory, driverContext, input, expected);
     }
 }

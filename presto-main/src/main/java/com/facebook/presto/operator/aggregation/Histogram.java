@@ -41,6 +41,7 @@ import static com.facebook.presto.operator.aggregation.AggregationMetadata.Param
 import static com.facebook.presto.operator.aggregation.AggregationUtils.generateAggregationName;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static java.lang.String.format;
 
@@ -89,21 +90,18 @@ public class Histogram
         MethodHandle outputFunction = OUTPUT_FUNCTION.bindTo(outputType);
 
         AggregationMetadata metadata = new AggregationMetadata(
-                generateAggregationName(NAME, outputType, inputTypes),
+                generateAggregationName(NAME, outputType.getTypeSignature(), inputTypes.stream().map(Type::getTypeSignature).collect(toImmutableList())),
                 createInputParameterMetadata(keyType),
                 inputFunction,
-                null,
-                null,
                 COMBINE_FUNCTION,
                 outputFunction,
                 HistogramState.class,
                 stateSerializer,
                 new HistogramStateFactory(),
-                outputType,
-                false);
+                outputType);
 
         GenericAccumulatorFactoryBinder factory = new AccumulatorCompiler().generateAccumulatorFactoryBinder(metadata, classLoader);
-        return new InternalAggregationFunction(NAME, inputTypes, intermediateType, outputType, true, false, factory);
+        return new InternalAggregationFunction(NAME, inputTypes, intermediateType, outputType, true, factory);
     }
 
     private static List<ParameterMetadata> createInputParameterMetadata(Type keyType)

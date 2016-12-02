@@ -32,6 +32,7 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.optimizations.ActualProperties.Global;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
+import com.facebook.presto.sql.planner.plan.AssignUniqueId;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.DistinctLimitNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
@@ -75,7 +76,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 
 import static com.facebook.presto.SystemSessionProperties.planWithTableNodePartitioning;
 import static com.facebook.presto.spi.predicate.TupleDomain.extractFixedValues;
@@ -92,6 +92,7 @@ import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
+import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toMap;
 
@@ -163,6 +164,12 @@ class PropertyDerivations
         }
 
         @Override
+        public ActualProperties visitAssignUniqueId(AssignUniqueId node, List<ActualProperties> inputProperties)
+        {
+            return Iterables.getOnlyElement(inputProperties);
+        }
+
+        @Override
         public ActualProperties visitApply(ApplyNode node, List<ActualProperties> inputProperties)
         {
             return inputProperties.get(0); // apply node input (outer query)
@@ -214,25 +221,22 @@ class PropertyDerivations
         @Override
         public ActualProperties visitGroupId(GroupIdNode node, List<ActualProperties> inputProperties)
         {
-            ActualProperties properties = Iterables.getOnlyElement(inputProperties);
-
-            return properties.translate(translateGroupIdSymbols(node));
-        }
-
-        private Function<Symbol, Optional<Symbol>> translateGroupIdSymbols(GroupIdNode node)
-        {
-            List<Symbol> commonGroupingColumns = node.getCommonGroupingColumns();
-            return symbol -> {
-                if (node.getIdentityMappings().containsKey(symbol)) {
-                    return Optional.of(node.getIdentityMappings().get(symbol));
+            Map<Symbol, Symbol> inputToOutputMappings = new HashMap<>();
+            for (Map.Entry<Symbol, Symbol> setMapping : node.getGroupingSetMappings().entrySet()) {
+                if (node.getCommonGroupingColumns().contains(setMapping.getKey())) {
+                    // TODO: Add support for translating a property on a single column to multiple columns
+                    // when GroupIdNode is copying a single input grouping column into multiple output grouping columns (i.e. aliases), this is basically picking one arbitrarily
+                    inputToOutputMappings.putIfAbsent(setMapping.getValue(), setMapping.getKey());
                 }
+            }
 
-                if (commonGroupingColumns.contains(symbol)) {
-                    return Optional.of(symbol);
-                }
+            // TODO: Add support for translating a property on a single column to multiple columns
+            // this is deliberately placed after the grouping columns, because preserving properties has a bigger perf impact
+            for (Map.Entry<Symbol, Symbol> argumentMapping : node.getArgumentMappings().entrySet()) {
+                inputToOutputMappings.putIfAbsent(argumentMapping.getValue(), argumentMapping.getKey());
+            }
 
-                return Optional.empty();
-            };
+            return Iterables.getOnlyElement(inputProperties).translate(column -> Optional.ofNullable(inputToOutputMappings.get(column)));
         }
 
         @Override
@@ -240,10 +244,10 @@ class PropertyDerivations
         {
             ActualProperties properties = Iterables.getOnlyElement(inputProperties);
 
-            ActualProperties translated = properties.translate(symbol -> node.getGroupBy().contains(symbol) ? Optional.of(symbol) : Optional.<Symbol>empty());
+            ActualProperties translated = properties.translate(symbol -> node.getGroupingKeys().contains(symbol) ? Optional.of(symbol) : Optional.<Symbol>empty());
 
             return ActualProperties.builderFrom(translated)
-                    .local(LocalProperties.grouped(node.getGroupBy()))
+                    .local(LocalProperties.grouped(node.getGroupingKeys()))
                     .build();
         }
 
@@ -498,7 +502,7 @@ class PropertyDerivations
             for (Map.Entry<Symbol, Expression> assignment : node.getAssignments().entrySet()) {
                 Expression expression = assignment.getValue();
 
-                IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypes(session, metadata, parser, types, expression);
+                IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypes(session, metadata, parser, types, expression, emptyList() /* parameters already replaced */);
                 Type type = requireNonNull(expressionTypes.get(expression));
                 ExpressionInterpreter optimizer = ExpressionInterpreter.expressionOptimizer(expression, metadata, session, expressionTypes);
                 // TODO:
