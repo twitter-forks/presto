@@ -24,7 +24,6 @@ import org.apache.thrift.TException;
 import org.apache.thrift.TSerializer;
 
 import java.util.Base64;
-import java.util.Optional;
 import java.util.logging.LogRecord;
 
 public class TwitterScriber
@@ -62,28 +61,27 @@ public class TwitterScriber
 
   /**
   * Serialize a thrift object to bytes, compress, then encode as a base64 string.
+  * Throws TException
   */
-  protected Optional<String> serializeThriftToString(TBase thriftMessage)
+  public String serializeThriftToString(TBase thriftMessage) throws TException
+  {
+    return Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage));
+  }
+
+  public void scribe(TBase thriftMessage, String origEventIdentifier)
   {
     try {
-      return Optional.of(
-        Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage)));
+      String encodedStr = serializeThriftToString(thriftMessage);
+      scribe(encodedStr);
     }
     catch (TException e) {
-      log.warn(e, "Could not serialize thrift object" + thriftMessage);
-      return Optional.empty();
+      log.warn(e, String.format("Could not serialize thrift object of %s", origEventIdentifier));
     }
   }
 
-  protected boolean scribe(Optional<String> message)
+  public void scribe(String message)
   {
-    if (message.isPresent()) {
-      LogRecord logRecord = new LogRecord(Level.ALL, message.get());
-      queueingHandler.publish(logRecord);
-      return true;
-    }
-    else {
-      return false;
-    }
+    LogRecord logRecord = new LogRecord(Level.ALL, message);
+    queueingHandler.publish(logRecord);
   }
 }

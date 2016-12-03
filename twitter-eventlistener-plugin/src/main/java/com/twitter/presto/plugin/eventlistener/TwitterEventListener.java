@@ -33,7 +33,6 @@ public class TwitterEventListener implements EventListener
   @Override
   public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
   {
-    log.info(Stringify.toString(queryCompletedEvent));
     scriber.handle(queryCompletedEvent);
   }
 
