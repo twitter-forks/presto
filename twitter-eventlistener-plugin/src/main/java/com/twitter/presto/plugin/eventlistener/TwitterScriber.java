@@ -18,7 +18,6 @@ import com.twitter.logging.Level;
 import com.twitter.logging.QueueingHandler;
 import com.twitter.logging.ScribeHandler;
 
-import io.airlift.log.Logger;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TSerializer;
@@ -28,10 +27,8 @@ import java.util.logging.LogRecord;
 
 public class TwitterScriber
 {
-  protected static final String DASH = "-";
-  protected static final int MAX_QUEUE_SIZE = 1000;
-
-  protected static final Logger log = Logger.get(TwitterScriber.class);
+  private static final String DASH = "-";
+  private static final int MAX_QUEUE_SIZE = 1000;
 
   private QueueingHandler queueingHandler;
 
@@ -43,6 +40,21 @@ public class TwitterScriber
       return new TSerializer();
     }
   };
+
+  /**
+  * Serialize a thrift object to bytes, compress, then encode as a base64 string.
+  * Throws TException
+  */
+  private String serializeThriftToString(TBase thriftMessage) throws TException
+  {
+    return Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage));
+  }
+
+  private void scribe(String message)
+  {
+    LogRecord logRecord = new LogRecord(Level.ALL, message);
+    queueingHandler.publish(logRecord);
+  }
 
   public TwitterScriber(String scribeCategory)
   {
@@ -59,29 +71,9 @@ public class TwitterScriber
     queueingHandler = new QueueingHandler(scribeHandler, MAX_QUEUE_SIZE);
   }
 
-  /**
-  * Serialize a thrift object to bytes, compress, then encode as a base64 string.
-  * Throws TException
-  */
-  public String serializeThriftToString(TBase thriftMessage) throws TException
+  public void scribe(TBase thriftMessage) throws TException
   {
-    return Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage));
-  }
-
-  public void scribe(TBase thriftMessage, String origEventIdentifier)
-  {
-    try {
-      String encodedStr = serializeThriftToString(thriftMessage);
-      scribe(encodedStr);
-    }
-    catch (TException e) {
-      log.warn(e, String.format("Could not serialize thrift object of %s", origEventIdentifier));
-    }
-  }
-
-  public void scribe(String message)
-  {
-    LogRecord logRecord = new LogRecord(Level.ALL, message);
-    queueingHandler.publish(logRecord);
+    String encodedStr = serializeThriftToString(thriftMessage);
+    scribe(encodedStr);
   }
 }

@@ -22,23 +22,33 @@ import com.facebook.presto.spi.eventlistener.QueryStatistics;
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 
+import io.airlift.log.Logger;
+import org.apache.thrift.TException;
+
 /**
  * Class that scribes query completion events
  */
 public class QueryCompletedEventScriber
 {
-  private static String dash = "-";
+  private static final String DASH = "-";
+  private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
+
   private TwitterScriber scriber = new TwitterScriber("presto_query_completion");
 
   public void handle(QueryCompletedEvent event)
   {
-    scriber.scribe(toThriftQueryCompletionEvent(event),
-                   String.format("Query(id=%s, user=%s, env=%s, schema=%s.%s)",
-                     event.getMetadata().getQueryId(),
-                     event.getContext().getUser(),
-                     event.getContext().getEnvironment(),
-                     event.getContext().getCatalog().orElse(dash),
-                     event.getContext().getSchema().orElse(dash)));
+    try {
+      scriber.scribe(toThriftQueryCompletionEvent(event));
+    }
+    catch (TException e) {
+      log.warn(e,
+        String.format("Could not serialize thrift object of Query(id=%s, user=%s, env=%s, schema=%s.%s)",
+          event.getMetadata().getQueryId(),
+          event.getContext().getUser(),
+          event.getContext().getEnvironment(),
+          event.getContext().getCatalog().orElse(DASH),
+          event.getContext().getSchema().orElse(DASH)));
+    }
   }
 
   private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
@@ -51,16 +61,16 @@ public class QueryCompletedEventScriber
       new com.twitter.presto.thriftjava.QueryCompletionEvent();
 
     thriftEvent.query_id = eventMetadata.getQueryId();
-    thriftEvent.transaction_id = eventMetadata.getTransactionId().orElse(dash);
+    thriftEvent.transaction_id = eventMetadata.getTransactionId().orElse(DASH);
     thriftEvent.user = eventContext.getUser();
-    thriftEvent.principal = eventContext.getPrincipal().orElse(dash);
-    thriftEvent.source = eventContext.getSource().orElse(dash);
+    thriftEvent.principal = eventContext.getPrincipal().orElse(DASH);
+    thriftEvent.source = eventContext.getSource().orElse(DASH);
     thriftEvent.server_version = eventContext.getServerVersion();
     thriftEvent.environment = eventContext.getEnvironment();
-    thriftEvent.catalog = eventContext.getCatalog().orElse(dash);
-    thriftEvent.schema = eventContext.getSchema().orElse(dash);
-    thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(dash);
-    thriftEvent.user_agent = eventContext.getUserAgent().orElse(dash);
+    thriftEvent.catalog = eventContext.getCatalog().orElse(DASH);
+    thriftEvent.schema = eventContext.getSchema().orElse(DASH);
+    thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(DASH);
+    thriftEvent.user_agent = eventContext.getUserAgent().orElse(DASH);
     thriftEvent.query_state = QueryState.valueOf(eventMetadata.getQueryState());
     thriftEvent.uri = eventMetadata.getUri().toString();
     thriftEvent.query = eventMetadata.getQuery();
@@ -82,10 +92,10 @@ public class QueryCompletedEventScriber
       QueryFailureInfo eventFailureInfo = event.getFailureInfo().get();
       thriftEvent.error_code_id = eventFailureInfo.getErrorCode().getCode();
       thriftEvent.error_code_name = eventFailureInfo.getErrorCode().getName();
-      thriftEvent.failure_type = eventFailureInfo.getFailureType().orElse(dash);
-      thriftEvent.failure_message = eventFailureInfo.getFailureMessage().orElse(dash);
-      thriftEvent.failure_task = eventFailureInfo.getFailureTask().orElse(dash);
-      thriftEvent.failure_host = eventFailureInfo.getFailureHost().orElse(dash);
+      thriftEvent.failure_type = eventFailureInfo.getFailureType().orElse(DASH);
+      thriftEvent.failure_message = eventFailureInfo.getFailureMessage().orElse(DASH);
+      thriftEvent.failure_task = eventFailureInfo.getFailureTask().orElse(DASH);
+      thriftEvent.failure_host = eventFailureInfo.getFailureHost().orElse(DASH);
       thriftEvent.failures_json = eventFailureInfo.getFailuresJson();
     }
 
