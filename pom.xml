@@ -91,6 +91,7 @@
         <module>presto-hive-cdh5</module>
         <module>presto-teradata-functions</module>
         <module>presto-example-http</module>
+        <module>twitter-eventlistener-plugin</module>
         <module>presto-local-file</module>
         <module>presto-tpch</module>
         <module>presto-raptor</module>

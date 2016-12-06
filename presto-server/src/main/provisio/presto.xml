@@ -152,4 +152,9 @@
         </artifact>
     </artifactSet>
 
+    <artifactSet to="plugin/twitter-eventlistener-plugin">
+        <artifact id="${project.groupId}:twitter-eventlistener-plugin:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
 </runtime>
