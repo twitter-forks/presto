@@ -21,6 +21,7 @@ import com.facebook.presto.twitter.hive.util.PooledTTransportFactory;
 import com.facebook.presto.twitter.hive.util.TTransportPool;
 import com.google.common.net.HostAndPort;
 import com.google.common.primitives.Ints;
+import io.airlift.log.Logger;
 import io.airlift.units.Duration;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
@@ -32,6 +33,7 @@ import static java.util.Objects.requireNonNull;
 
 public class PooledHiveMetastoreClientFactory
 {
+    private static final Logger log = Logger.get(PooledHiveMetastoreClientFactory.class);
     private final HostAndPort socksProxy;
     private final int timeoutMillis;
     private final HiveMetastoreAuthentication metastoreAuthentication;
@@ -59,6 +61,7 @@ public class PooledHiveMetastoreClientFactory
             if (transport == null) {
                 transport = transportPool.borrowObject(host, port, new PooledTTransportFactory(transportPool, host, port, socksProxy, timeoutMillis, metastoreAuthentication));
             }
+            log.debug("borrowed a transport for host: %s", host);
             return new ThriftHiveMetastoreClient(transport);
         }
         catch (Exception e) {

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.twitter.hive.util;
 
+import io.airlift.log.Logger;
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.GenericObjectPool;
@@ -29,12 +30,14 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class TTransportPool
 {
+    private static final Logger log = Logger.get(TTransportPool.class);
     private final ConcurrentMap<SocketAddress, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
 
     public TTransportPool(){}
 
     private void add(SocketAddress remote, PooledObjectFactory transportFactory)
     {
+        log.debug("Added new pool for destination: %s", remote);
         pools.put(remote, new GenericObjectPool<TTransport>(transportFactory));
     }
 
@@ -46,7 +49,7 @@ public class TTransportPool
             add(remote, transportFactory);
             pool = pools.get(remote);
         }
-
+        log.debug("Fetched transport pool for : %s", remote);
         return pool.borrowObject();
     }
 
@@ -55,9 +58,11 @@ public class TTransportPool
     {
         ObjectPool<TTransport> pool = pools.get(remote);
         if (pool == null) {
+            log.debug("Doesn't have transport for : %s", remote);
             return null;
         }
 
+        log.debug("Fetched transport pool for : %s", remote);
         return pool.borrowObject();
     }
 
@@ -76,25 +81,29 @@ public class TTransportPool
     public void returnObject(TSocket socket)
     {
         SocketAddress remote = socket.getSocket().getRemoteSocketAddress();
+        log.debug("Return a socket to: %s", remote);
         if (remote == null) {
             socket.close();
+            log.debug("Remote is null");
             return;
         }
         ObjectPool<TTransport> pool = pools.get(remote);
         if (pool == null) {
             socket.close();
+            log.debug("Cannot find pool");
             return;
         }
         try {
             pool.returnObject(socket);
         }
         catch (Exception e) {
-            // ignored
+            log.debug("Got an error when return to pool: %s", e.getMessage());
         }
     }
 
     public void returnObject(TTransport transport)
     {
+        log.debug("Return a transport, close directly");
         transport.close();
     }
 }

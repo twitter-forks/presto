@@ -15,6 +15,7 @@ package com.facebook.presto.twitter.hive.util;
 
 import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
 import com.google.common.net.HostAndPort;
+import io.airlift.log.Logger;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
@@ -39,6 +40,7 @@ import static java.util.Objects.requireNonNull;
 public class PooledTTransportFactory
     extends BasePooledObjectFactory<TTransport>
 {
+    private static final Logger log = Logger.get(PooledTTransportFactory.class);
     private final TTransportPool pool;
     private final String host;
     private final int port;
@@ -60,6 +62,7 @@ public class PooledTTransportFactory
     public TTransport create()
         throws Exception
     {
+        log.debug("creating a transport to: %s", host);
         TTransport transport;
         if (socksProxy == null) {
             transport = new TSocket(host, port, timeoutMillis);
@@ -89,16 +92,19 @@ public class PooledTTransportFactory
             authenticatedTransport.open();
         }
 
+        log.debug("created a transport to: %s", host);
         return new PooledTTransport(authenticatedTransport, pool);
     }
 
     @Override
     public void destroyObject(PooledObject<TTransport> pooledObject)
     {
+        log.debug("destroy a transport to: %s", host);
         try {
             ((PooledTTransport) pooledObject.getObject()).getTTransport().close();
         }
         catch (ClassCastException e) {
+            log.debug("cannot cast to PooledTTransport");
             // ignore
         }
         pooledObject.invalidate();
@@ -107,16 +113,19 @@ public class PooledTTransportFactory
     @Override
     public PooledObject<TTransport> wrap(TTransport transport)
     {
+        log.debug("wrapping a transport to %s", host);
         return new DefaultPooledObject<TTransport>(transport);
     }
 
     @Override
     public void passivateObject(PooledObject<TTransport> pooledObject)
     {
+        log.debug("passivate a transport to %s", host);
         try {
             pooledObject.getObject().flush();
         }
         catch (TTransportException e) {
+            log.debug("Failed to flush transport, destroy it");
             destroyObject(pooledObject);
         }
     }
@@ -141,6 +150,7 @@ public class PooledTTransportFactory
         @Override
         public void close()
         {
+            log.debug("attempt to close a PooledTTransport, returning it to pool.");
             pool.returnObject(transport);
         }
 
