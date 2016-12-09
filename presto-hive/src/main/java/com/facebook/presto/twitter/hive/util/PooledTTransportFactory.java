@@ -151,7 +151,12 @@ public class PooledTTransportFactory
         public void close()
         {
             log.debug("attempt to close a PooledTTransport, returning it to pool.");
-            pool.returnObject(transport);
+            try {
+                pool.returnObject((TSocket) transport);
+            }
+            catch (ClassCastException e) {
+                pool.returnObject(transport);
+            }
         }
 
         @Override
