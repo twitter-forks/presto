@@ -13,21 +13,16 @@
  */
 package com.facebook.presto.twitter.hive.util;
 
-import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
-
-import javax.annotation.Nullable;
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-
 import org.apache.commons.pool2.ObjectPool;
+import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
+
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * Utility class to handle creating and caching the UserGroupInformation object.
@@ -44,10 +39,10 @@ public class TTransportPool
     }
 
     protected TTransport get(SocketAddress remote, PooledObjectFactory transportFactory)
+        throws Exception
     {
-        ObjectPool<TTransport> pool = pools.get(remote)
-        if (pool == null)
-        {
+        ObjectPool<TTransport> pool = pools.get(remote);
+        if (pool == null) {
             add(remote, transportFactory);
             pool = pools.get(remote);
         }
@@ -56,10 +51,10 @@ public class TTransportPool
     }
 
     protected TTransport get(SocketAddress remote)
+        throws Exception
     {
-        ObjectPool<TTransport> pool = pools.get(remote)
-        if (pool == null)
-        {
+        ObjectPool<TTransport> pool = pools.get(remote);
+        if (pool == null) {
             return null;
         }
 
@@ -67,42 +62,39 @@ public class TTransportPool
     }
 
     public TTransport borrowObject(String host, int port, PooledObjectFactory transportFactory)
+        throws Exception
     {
         return get(InetSocketAddress.createUnresolved(host, port), transportFactory);
     }
 
     public TTransport borrowObject(String host, int port)
+        throws Exception
     {
         return get(InetSocketAddress.createUnresolved(host, port));
     }
 
-    private static void closeQuietly(Closeable closeable)
+    public void returnObject(TSocket socket)
     {
-        try {
-            closeable.close();
+        SocketAddress remote = socket.getSocket().getRemoteSocketAddress();
+        if (remote == null) {
+            socket.close();
+            return;
         }
-        catch (IOException e) {
+        ObjectPool<TTransport> pool = pools.get(remote);
+        if (pool == null) {
+            socket.close();
+            return;
+        }
+        try {
+            pool.returnObject(socket);
+        }
+        catch (Exception e) {
             // ignored
         }
     }
 
-    public void returnObject(TSocket socket)
-    {
-        SocketAddress remote = socket.getSocket().getRemoteSocketAddress()
-        if (remote == null)
-        {
-            return closeQuietly(socket);
-        }
-        ObjectPool<TTransport> pool = pools.get(remote);
-        if (pool == null)
-        {
-            return closeQuietly(socket);
-        }
-        pool.returnObject(socket);
-    }
-
     public void returnObject(TTransport transport)
     {
-        return closeQuietly(transport);
+        transport.close();
     }
 }

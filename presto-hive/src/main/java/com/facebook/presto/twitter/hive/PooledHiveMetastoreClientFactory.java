@@ -35,6 +35,7 @@ public class PooledHiveMetastoreClientFactory
     private final HostAndPort socksProxy;
     private final int timeoutMillis;
     private final HiveMetastoreAuthentication metastoreAuthentication;
+    private final TTransportPool transportPool;
 
     public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout, HiveMetastoreAuthentication metastoreAuthentication)
     {
@@ -54,14 +55,14 @@ public class PooledHiveMetastoreClientFactory
             throws TTransportException
     {
         try {
-            TTransport transport= transportPool.borrowObject(host, port);
+            TTransport transport = transportPool.borrowObject(host, port);
             if (transport == null) {
                 transport = transportPool.borrowObject(host, port, new PooledTTransportFactory(transportPool, host, port, socksProxy, timeoutMillis, metastoreAuthentication));
             }
+            return new ThriftHiveMetastoreClient(transport);
         }
         catch (Exception e) {
-            throw new TTransportException(e.getType(), String.format("%s: %s", host, e.getMessage()), e.getCause())
+            throw new TTransportException(String.format("%s: %s", host, e.getMessage()), e.getCause());
         }
-        return new ThriftHiveMetastoreClient(transport);
     }
 }

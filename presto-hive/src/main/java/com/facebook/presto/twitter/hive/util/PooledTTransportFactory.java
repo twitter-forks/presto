@@ -14,15 +14,18 @@
 package com.facebook.presto.twitter.hive.util;
 
 import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
+import com.facebook.presto.hive.thrift.Transport;
 import com.google.common.net.HostAndPort;
-import io.airlift.units.Duration;
-import javax.annotation.Nullable;
-import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.BasePooledObjectFactory;
+import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
+
+import javax.annotation.Nullable;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Utility class to handle creating and caching the UserGroupInformation object.
@@ -34,51 +37,52 @@ public class PooledTTransportFactory
     private final String host;
     private final int port;
     private final HostAndPort socksProxy;
-    private final Duration timeoutMillis;
+    private final int timeoutMillis;
     private final HiveMetastoreAuthentication metastoreAuthentication;
 
-    public PooledTTransportFactory(TTransportPool pool, String host, int port, @Nullable HostAndPort socksProxy, Duration timeoutMillis, HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledTTransportFactory(TTransportPool pool, String host, int port, @Nullable HostAndPort socksProxy, int timeoutMillis, HiveMetastoreAuthentication metastoreAuthentication)
     {
         this.pool = requireNonNull(pool, "pool is null");
         this.host = requireNonNull(host, "host is null");
         this.port = port;
         this.socksProxy = socksProxy;
+        this.timeoutMillis = timeoutMillis;
         this.metastoreAuthentication = requireNonNull(metastoreAuthentication, "metastoreAuthentication is null");
     }
 
     @Override
     public TTransport create()
+        throws Exception
     {
         return new PooledTTransport(Transport.create(host, port, socksProxy, timeoutMillis, metastoreAuthentication), pool);
     }
 
     @Override
-    public void destroyObject(PooledObject<TTransport> pooledTransport)
+    public void destroyObject(PooledObject<TTransport> pooledObject)
     {
         try {
-            ((PooledTTransport) pooledTransport.getObject()).getTTransport().close();
+            ((PooledTTransport) pooledObject.getObject()).getTTransport().close();
         }
-        catch (TTransportException e) {
-            // ignored
+        catch (ClassCastException e) {
+            // ignore
         }
-        pooledTransport.invalidate();
+        pooledObject.invalidate();
     }
 
     @Override
     public PooledObject<TTransport> wrap(TTransport transport)
-        throws TTransportException
     {
         return new DefaultPooledObject<TTransport>(transport);
     }
 
     @Override
-    public void passivateObject(PooledObject<TTransport> pooledTransport)
+    public void passivateObject(PooledObject<TTransport> pooledObject)
     {
         try {
-            pooledTransport.getObject().flush();
+            pooledObject.getObject().flush();
         }
         catch (TTransportException e) {
-            destroyObject(pooledTransport);
+            destroyObject(pooledObject);
         }
     }
 
@@ -88,22 +92,21 @@ public class PooledTTransportFactory
         private final TTransportPool pool;
         private final TTransport transport;
 
-        public PooledTTransport(TTransport transport, TTransportPool, pool)
+        public PooledTTransport(TTransport transport, TTransportPool pool)
         {
             this.transport = transport;
             this.pool = pool;
+        }
+
+        public TTransport getTTransport()
+        {
+            return transport;
         }
 
         @Override
         public void close()
         {
             pool.returnObject((TSocket) transport);
-        }
-
-        @Override
-        public TTransport.getTTransport()
-        {
-            return transport;
         }
 
         @Override
@@ -184,5 +187,4 @@ public class PooledTTransportFactory
             transport.flush();
         }
     }
-
 }
