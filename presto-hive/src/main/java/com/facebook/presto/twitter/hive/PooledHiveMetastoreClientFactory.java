@@ -56,7 +56,7 @@ public class PooledHiveMetastoreClientFactory
         try {
             TTransport transport= transportPool.borrowObject(host, port);
             if (transport == null) {
-                transport = transportPool.borrowObject(host, port, new PooledTTransportFactory(host, port, socksProxy, timeoutMillis, metastoreAuthentication));
+                transport = transportPool.borrowObject(host, port, new PooledTTransportFactory(transportPool, host, port, socksProxy, timeoutMillis, metastoreAuthentication));
             }
         }
         catch (Exception e) {

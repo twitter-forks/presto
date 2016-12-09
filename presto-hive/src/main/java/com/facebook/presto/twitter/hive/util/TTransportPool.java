@@ -18,7 +18,7 @@ import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
-import java.net.InetSocketAddress
+import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
