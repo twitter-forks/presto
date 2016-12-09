@@ -14,7 +14,6 @@
 package com.facebook.presto.twitter.hive.util;
 
 import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
-import com.facebook.presto.hive.thrift.Transport;
 import com.google.common.net.HostAndPort;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -24,6 +23,13 @@ import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
 import javax.annotation.Nullable;
+
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.net.SocketException;
 
 import static java.util.Objects.requireNonNull;
 
@@ -54,7 +60,36 @@ public class PooledTTransportFactory
     public TTransport create()
         throws Exception
     {
-        return new PooledTTransport(Transport.create(host, port, socksProxy, timeoutMillis, metastoreAuthentication), pool);
+        TTransport transport;
+        if (socksProxy == null) {
+            transport = new TSocket(host, port, timeoutMillis);
+        }
+        else {
+            SocketAddress address = InetSocketAddress.createUnresolved(socksProxy.getHostText(), socksProxy.getPort());
+            Socket socket = new Socket(new Proxy(Proxy.Type.SOCKS, address));
+            try {
+                socket.connect(InetSocketAddress.createUnresolved(host, port), timeoutMillis);
+                socket.setSoTimeout(timeoutMillis);
+                transport = new TSocket(socket);
+            }
+            catch (SocketException e) {
+                if (socket.isConnected()) {
+                    try {
+                        socket.close();
+                    }
+                    catch (IOException ioEexception) {
+                        // ignored
+                    }
+                }
+                throw e;
+            }
+        }
+        TTransport authenticatedTransport = metastoreAuthentication.authenticate(transport, host);
+        if (!authenticatedTransport.isOpen()) {
+            authenticatedTransport.open();
+        }
+
+        return new PooledTTransport(authenticatedTransport, pool);
     }
 
     @Override
@@ -106,7 +141,7 @@ public class PooledTTransportFactory
         @Override
         public void close()
         {
-            pool.returnObject((TSocket) transport);
+            pool.returnObject(transport);
         }
 
         @Override
