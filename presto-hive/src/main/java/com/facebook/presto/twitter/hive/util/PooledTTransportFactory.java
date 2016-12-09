@@ -93,7 +93,7 @@ public class PooledTTransportFactory
         }
 
         log.debug("created a transport to: %s", host);
-        return new PooledTTransport(authenticatedTransport, pool);
+        return new PooledTTransport(authenticatedTransport, pool, HostAndPort.fromParts(host, port).toString());
     }
 
     @Override
@@ -133,13 +133,15 @@ public class PooledTTransportFactory
     private static class PooledTTransport
         extends TTransport
     {
+        private final String remote;
         private final TTransportPool pool;
         private final TTransport transport;
 
-        public PooledTTransport(TTransport transport, TTransportPool pool)
+        public PooledTTransport(TTransport transport, TTransportPool pool, String remote)
         {
             this.transport = transport;
             this.pool = pool;
+            this.remote = remote;
         }
 
         public TTransport getTTransport()
@@ -152,7 +154,7 @@ public class PooledTTransportFactory
         {
             log.debug("attempt to close a PooledTTransport, returning it to pool.");
             try {
-                pool.returnObject((TSocket) transport);
+                pool.returnObject(remote, (TSocket) transport);
             }
             catch (ClassCastException e) {
                 pool.returnObject(transport);

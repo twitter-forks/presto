@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.twitter.hive.util;
 
+import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.commons.pool2.PooledObjectFactory;
@@ -20,8 +21,6 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -31,17 +30,17 @@ import java.util.concurrent.ConcurrentMap;
 public class TTransportPool
 {
     private static final Logger log = Logger.get(TTransportPool.class);
-    private final ConcurrentMap<SocketAddress, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
+    private final ConcurrentMap<String, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
 
     public TTransportPool(){}
 
-    private void add(SocketAddress remote, PooledObjectFactory transportFactory)
+    private void add(String remote, PooledObjectFactory transportFactory)
     {
         log.debug("Added new pool for destination: %s", remote);
         pools.put(remote, new GenericObjectPool<TTransport>(transportFactory));
     }
 
-    protected TTransport get(SocketAddress remote, PooledObjectFactory transportFactory)
+    protected TTransport get(String remote, PooledObjectFactory transportFactory)
         throws Exception
     {
         ObjectPool<TTransport> pool = pools.get(remote);
@@ -53,7 +52,7 @@ public class TTransportPool
         return pool.borrowObject();
     }
 
-    protected TTransport get(SocketAddress remote)
+    protected TTransport get(String remote)
         throws Exception
     {
         ObjectPool<TTransport> pool = pools.get(remote);
@@ -69,18 +68,17 @@ public class TTransportPool
     public TTransport borrowObject(String host, int port, PooledObjectFactory transportFactory)
         throws Exception
     {
-        return get(InetSocketAddress.createUnresolved(host, port), transportFactory);
+        return get(HostAndPort.fromParts(host, port).toString(), transportFactory);
     }
 
     public TTransport borrowObject(String host, int port)
         throws Exception
     {
-        return get(InetSocketAddress.createUnresolved(host, port));
+        return get(HostAndPort.fromParts(host, port).toString());
     }
 
-    public void returnObject(TSocket socket)
+    public void returnObject(String remote, TSocket socket)
     {
-        SocketAddress remote = socket.getSocket().getRemoteSocketAddress();
         log.debug("Return a socket to: %s", remote);
         if (remote == null) {
             socket.close();
@@ -101,9 +99,14 @@ public class TTransportPool
         }
     }
 
+    public void returnObject(String remote, TTransport transport)
+    {
+        returnObject(transport);
+    }
+
     public void returnObject(TTransport transport)
     {
-        log.debug("Return a transport, close directly");
+        log.debug("Return a ttransport, close directly");
         transport.close();
     }
 }
