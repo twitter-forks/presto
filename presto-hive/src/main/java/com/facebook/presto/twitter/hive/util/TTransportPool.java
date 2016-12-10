@@ -14,11 +14,9 @@
 package com.facebook.presto.twitter.hive.util;
 
 import com.google.common.net.HostAndPort;
-import io.airlift.log.Logger;
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.GenericObjectPool;
-import org.apache.thrift.transport.TSocket;
 import org.apache.thrift.transport.TTransport;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -29,14 +27,12 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class TTransportPool
 {
-    private static final Logger log = Logger.get(TTransportPool.class);
     private final ConcurrentMap<String, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
 
     public TTransportPool(){}
 
     private void add(String remote, PooledObjectFactory transportFactory)
     {
-        log.debug("Added new pool for destination: %s", remote);
         pools.put(remote, new GenericObjectPool<TTransport>(transportFactory));
     }
 
@@ -48,7 +44,6 @@ public class TTransportPool
             add(remote, transportFactory);
             pool = pools.get(remote);
         }
-        log.debug("Fetched transport pool for : %s", remote);
         return pool.borrowObject();
     }
 
@@ -57,11 +52,9 @@ public class TTransportPool
     {
         ObjectPool<TTransport> pool = pools.get(remote);
         if (pool == null) {
-            log.debug("Doesn't have transport for : %s", remote);
             return null;
         }
 
-        log.debug("Fetched transport pool for : %s", remote);
         return pool.borrowObject();
     }
 
@@ -77,36 +70,26 @@ public class TTransportPool
         return get(HostAndPort.fromParts(host, port).toString());
     }
 
-    public void returnObject(String remote, TSocket socket)
+    public void returnObject(String remote, TTransport pooledTransport, TTransport transport)
     {
-        log.debug("Return a socket to: %s", remote);
         if (remote == null) {
-            socket.close();
-            log.debug("Remote is null");
+            transport.close();
             return;
         }
         ObjectPool<TTransport> pool = pools.get(remote);
         if (pool == null) {
-            socket.close();
-            log.debug("Cannot find pool");
+            transport.close();
             return;
         }
         try {
-            pool.returnObject(socket);
+            pool.returnObject(pooledTransport);
         }
         catch (Exception e) {
-            log.debug("Got an error when return to pool: %s", e.getMessage());
         }
-    }
-
-    public void returnObject(String remote, TTransport transport)
-    {
-        returnObject(transport);
     }
 
     public void returnObject(TTransport transport)
     {
-        log.debug("Return a ttransport, close directly");
         transport.close();
     }
 }
