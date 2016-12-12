@@ -29,7 +29,7 @@ public class TTransportPool
     public static final Logger log = Logger.get(TTransportPool.class);
     private static final int MAX_IDLE = 8;
     private static final int MIN_IDLE = 0;
-    private static final int MAX_TOTAL = 100;
+    private static final int MAX_TOTAL = 128;
     private final ConcurrentMap<String, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
     private GenericObjectPoolConfig poolConfig;
 
@@ -69,7 +69,11 @@ public class TTransportPool
         if (pool == null) {
             return null;
         }
-        log.debug("The mean borrow wait time for %s is %d millis", remote, ((GenericObjectPool) pool).getMeanBorrowWaitTimeMillis());
+        log.debug("Pool %s: mean wait time: %d millis, borrowed %d, idle %d.",
+                    remote,
+                    ((GenericObjectPool) pool).getMeanBorrowWaitTimeMillis(),
+                    ((GenericObjectPool) pool).getNumActive(),
+                    ((GenericObjectPool) pool).getNumIdle());
         return pool.borrowObject();
     }
 
