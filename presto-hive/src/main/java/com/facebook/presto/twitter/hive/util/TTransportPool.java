@@ -14,26 +14,41 @@
 package com.facebook.presto.twitter.hive.util;
 
 import com.google.common.net.HostAndPort;
+import io.airlift.log.Logger;
 import org.apache.commons.pool2.ObjectPool;
 import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.GenericObjectPool;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.thrift.transport.TTransport;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-/**
- * Utility class to handle creating and caching the UserGroupInformation object.
- */
 public class TTransportPool
 {
+    public static final Logger log = Logger.get(TTransportPool.class);
+    private static final int MAX_IDLE = 8;
+    private static final int MIN_IDLE = 0;
+    private static final int MAX_TOTAL = 100;
     private final ConcurrentMap<String, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
+    private GenericObjectPoolConfig poolConfig;
 
-    public TTransportPool(){}
+    public TTransportPool()
+    {
+        poolConfig = new GenericObjectPoolConfig();
+        poolConfig.setMaxIdle(MAX_IDLE);
+        poolConfig.setMinIdle(MIN_IDLE);
+        poolConfig.setMaxTotal(MAX_TOTAL);
+    }
+
+    public TTransportPool(GenericObjectPoolConfig poolConfig)
+    {
+        this.poolConfig = poolConfig;
+    }
 
     private void add(String remote, PooledObjectFactory transportFactory)
     {
-        pools.put(remote, new GenericObjectPool<TTransport>(transportFactory));
+        pools.put(remote, new GenericObjectPool<TTransport>(transportFactory, poolConfig));
     }
 
     protected TTransport get(String remote, PooledObjectFactory transportFactory)
@@ -54,7 +69,7 @@ public class TTransportPool
         if (pool == null) {
             return null;
         }
-
+        log.debug("The mean borrow wait time for %s is %d millis", remote, ((GenericObjectPool) pool).getMeanBorrowWaitTimeMillis());
         return pool.borrowObject();
     }
 

@@ -33,9 +33,6 @@ import java.net.SocketException;
 
 import static java.util.Objects.requireNonNull;
 
-/**
- * Utility class to handle creating and caching the UserGroupInformation object.
- */
 public class PooledTTransportFactory
     extends BasePooledObjectFactory<TTransport>
 {
@@ -54,6 +51,12 @@ public class PooledTTransportFactory
         this.socksProxy = socksProxy;
         this.timeoutMillis = timeoutMillis;
         this.metastoreAuthentication = requireNonNull(metastoreAuthentication, "metastoreAuthentication is null");
+    }
+
+    @Override
+    public boolean validateObject(PooledObject<TTransport> pooledObject)
+    {
+        return pooledObject.getObject().isOpen();
     }
 
     @Override
