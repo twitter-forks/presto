@@ -31,7 +31,7 @@ public class TTransportPool
     private static final int MAX_TOTAL = 128;
     private static final int NUM_TESTS = 3;
     private static final Duration IDLE_TIMEOUT = new Duration(300, TimeUnit.SECONDS);
-    private static final Duration EVICTION_INTERVEL = new Duration(10, TimeUnit.SECONDS);
+    private static final Duration EVICTION_INTERVAL = new Duration(10, TimeUnit.SECONDS);
     private final ConcurrentMap<String, ObjectPool<TTransport>> pools = new ConcurrentHashMap();
     private GenericObjectPoolConfig poolConfig;
 
@@ -42,7 +42,7 @@ public class TTransportPool
         poolConfig.setMinIdle(MIN_IDLE);
         poolConfig.setMaxTotal(MAX_TOTAL);
         poolConfig.setMinEvictableIdleTimeMillis(IDLE_TIMEOUT.toMillis());
-        poolConfig.setTimeBetweenEvictionRunsMillis(EVICTION_INTERVEL.toMillis());
+        poolConfig.setTimeBetweenEvictionRunsMillis(EVICTION_INTERVAL.toMillis());
         poolConfig.setNumTestsPerEvictionRun(NUM_TESTS);
     }
 

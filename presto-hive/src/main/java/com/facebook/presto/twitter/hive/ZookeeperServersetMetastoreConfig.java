@@ -25,6 +25,10 @@ public class ZookeeperServersetMetastoreConfig
     private String zookeeperMetastorePath;
     private int zookeeperRetrySleepTime = 500; // ms
     private int zookeeperMaxRetries = 3;
+    private int maxTransport = 128;
+    private long transportIdleTimeout = 300_000L;
+    private long transportEvictInterval = 10_000L;
+    private int transportEvictNumTests = 3;
 
     public String getZookeeperServerHostAndPort()
     {
@@ -77,6 +81,56 @@ public class ZookeeperServersetMetastoreConfig
     public ZookeeperServersetMetastoreConfig setZookeeperMaxRetries(int zookeeperMaxRetries)
     {
         this.zookeeperMaxRetries = zookeeperMaxRetries;
+        return this;
+    }
+
+    @Min(1)
+    public int getMaxTransport()
+    {
+        return maxTransport;
+    }
+
+    @Config("hive.metastore.max-transport-num")
+    public ZookeeperServersetMetastoreConfig setMaxTransport(int maxTransport)
+    {
+        this.maxTransport = maxTransport;
+        return this;
+    }
+
+    public long getTransportIdleTimeout()
+    {
+        return transportIdleTimeout;
+    }
+
+    @Config("hive.metastore.transport-idle-timeout")
+    public ZookeeperServersetMetastoreConfig setTransportIdleTimeout(long transportIdleTimeout)
+    {
+        this.transportIdleTimeout = transportIdleTimeout;
+        return this;
+    }
+
+    public long getTransportEvictInterval()
+    {
+        return transportEvictInterval;
+    }
+
+    @Config("hive.metastore.transport-eviction-interval")
+    public ZookeeperServersetMetastoreConfig setTransportEvictInterval(long transportEvictInterval)
+    {
+        this.transportEvictInterval = transportEvictInterval;
+        return this;
+    }
+
+    @Min(0)
+    public int getTransportEvictNumTests()
+    {
+        return transportEvictNumTests;
+    }
+
+    @Config("hive.metastore.transport-eviction-num-tests")
+    public ZookeeperServersetMetastoreConfig setTransportEvictNumTests(int transportEvictNumTests)
+    {
+        this.transportEvictNumTests = transportEvictNumTests;
         return this;
     }
 }

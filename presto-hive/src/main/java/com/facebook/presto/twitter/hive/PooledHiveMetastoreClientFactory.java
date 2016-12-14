@@ -22,6 +22,7 @@ import com.facebook.presto.twitter.hive.util.TTransportPool;
 import com.google.common.net.HostAndPort;
 import com.google.common.primitives.Ints;
 import io.airlift.units.Duration;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
 
@@ -37,18 +38,26 @@ public class PooledHiveMetastoreClientFactory
     private final HiveMetastoreAuthentication metastoreAuthentication;
     private final TTransportPool transportPool;
 
-    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout, HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout, HiveMetastoreAuthentication metastoreAuthentication,
+        int maxTransport, long idleTimeout, long transportEvictInterval, int evictNumTests)
     {
         this.socksProxy = socksProxy;
         this.timeoutMillis = Ints.checkedCast(timeout.toMillis());
         this.metastoreAuthentication = requireNonNull(metastoreAuthentication, "metastoreAuthentication is null");
-        this.transportPool = new TTransportPool();
+        GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
+        poolConfig.setMaxIdle(maxTransport);
+        poolConfig.setMaxTotal(maxTransport);
+        poolConfig.setMinEvictableIdleTimeMillis(idleTimeout);
+        poolConfig.setTimeBetweenEvictionRunsMillis(transportEvictInterval);
+        poolConfig.setNumTestsPerEvictionRun(evictNumTests);
+        this.transportPool = new TTransportPool(poolConfig);
     }
 
     @Inject
-    public PooledHiveMetastoreClientFactory(HiveClientConfig config, HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledHiveMetastoreClientFactory(HiveClientConfig config, ZookeeperServersetMetastoreConfig zkConfig, HiveMetastoreAuthentication metastoreAuthentication)
     {
-        this(config.getMetastoreSocksProxy(), config.getMetastoreTimeout(), metastoreAuthentication);
+        this(config.getMetastoreSocksProxy(), config.getMetastoreTimeout(), metastoreAuthentication,
+            zkConfig.getMaxTransport(), zkConfig.getTransportIdleTimeout(), zkConfig.getTransportEvictInterval(), zkConfig.getTransportEvictNumTests());
     }
 
     public HiveMetastoreClient create(String host, int port)
