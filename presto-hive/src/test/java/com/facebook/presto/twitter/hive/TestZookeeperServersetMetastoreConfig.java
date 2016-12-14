@@ -31,7 +31,11 @@ public class TestZookeeperServersetMetastoreConfig
                 .setZookeeperMaxRetries(3)
                 .setZookeeperRetrySleepTime(500)
                 .setZookeeperMetastorePath(null)
-                .setZookeeperServerHostAndPort(null));
+                .setZookeeperServerHostAndPort(null)
+                .setMaxTransport(128)
+                .setTransportIdleTimeout(300_000L)
+                .setTransportEvictInterval(10_000L)
+                .setTransportEvictNumTests(3));
     }
 
     @Test
@@ -42,13 +46,21 @@ public class TestZookeeperServersetMetastoreConfig
                 .put("hive.metastore.zookeeper.path", "/zookeeper/path/")
                 .put("hive.metastore.zookeeper.retry.sleeptime", "200")
                 .put("hive.metastore.zookeeper.max.retries", "2")
+                .put("hive.metastore.max-transport-num", "64")
+                .put("hive.metastore.transport-idle-timeout", "100000")
+                .put("hive.metastore.transport-eviction-interval", "1000")
+                .put("hive.metastore.transport-eviction-num-tests", "10")
                 .build();
 
         ZookeeperServersetMetastoreConfig expected = new ZookeeperServersetMetastoreConfig()
                 .setZookeeperServerHostAndPort("localhost:2181")
                 .setZookeeperMetastorePath("/zookeeper/path/")
                 .setZookeeperRetrySleepTime(200)
-                .setZookeeperMaxRetries(2);
+                .setZookeeperMaxRetries(2)
+                .setMaxTransport(64)
+                .setTransportIdleTimeout(100_000L)
+                .setTransportEvictInterval(1_000L)
+                .setTransportEvictNumTests(10);
 
         assertFullMapping(properties, expected);
     }
