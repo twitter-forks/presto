@@ -51,20 +51,16 @@ public class TTransportPool
         this.poolConfig = poolConfig;
     }
 
-    private void add(String remote, PooledObjectFactory transportFactory)
+    protected synchronized void add(String remote, PooledObjectFactory transportFactory)
     {
-        pools.put(remote, new GenericObjectPool<TTransport>(transportFactory, poolConfig));
+        pools.putIfAbsent(remote, new GenericObjectPool<TTransport>(transportFactory, poolConfig));
     }
 
     protected TTransport get(String remote, PooledObjectFactory transportFactory)
         throws Exception
     {
-        ObjectPool<TTransport> pool = pools.get(remote);
-        if (pool == null) {
-            add(remote, transportFactory);
-            pool = pools.get(remote);
-        }
-        return pool.borrowObject();
+        add(remote, transportFactory);
+        return get(remote);
     }
 
     protected TTransport get(String remote)
