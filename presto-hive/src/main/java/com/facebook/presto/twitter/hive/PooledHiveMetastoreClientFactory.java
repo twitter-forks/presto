@@ -38,7 +38,8 @@ public class PooledHiveMetastoreClientFactory
     private final HiveMetastoreAuthentication metastoreAuthentication;
     private final TTransportPool transportPool;
 
-    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout, HiveMetastoreAuthentication metastoreAuthentication,
+    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout,
+        HiveMetastoreAuthentication metastoreAuthentication,
         int maxTransport, long idleTimeout, long transportEvictInterval, int evictNumTests)
     {
         this.socksProxy = socksProxy;
@@ -54,10 +55,17 @@ public class PooledHiveMetastoreClientFactory
     }
 
     @Inject
-    public PooledHiveMetastoreClientFactory(HiveClientConfig config, ZookeeperServersetMetastoreConfig zkConfig, HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledHiveMetastoreClientFactory(HiveClientConfig config,
+        ZookeeperServersetMetastoreConfig zkConfig,
+        HiveMetastoreAuthentication metastoreAuthentication)
     {
-        this(config.getMetastoreSocksProxy(), config.getMetastoreTimeout(), metastoreAuthentication,
-            zkConfig.getMaxTransport(), zkConfig.getTransportIdleTimeout(), zkConfig.getTransportEvictInterval(), zkConfig.getTransportEvictNumTests());
+        this(config.getMetastoreSocksProxy(),
+             config.getMetastoreTimeout(),
+             metastoreAuthentication,
+             zkConfig.getMaxTransport(),
+             zkConfig.getTransportIdleTimeout(),
+             zkConfig.getTransportEvictInterval(),
+             zkConfig.getTransportEvictNumTests());
     }
 
     public HiveMetastoreClient create(String host, int port)
@@ -66,7 +74,10 @@ public class PooledHiveMetastoreClientFactory
         try {
             TTransport transport = transportPool.borrowObject(host, port);
             if (transport == null) {
-                transport = transportPool.borrowObject(host, port, new PooledTTransportFactory(transportPool, host, port, socksProxy, timeoutMillis, metastoreAuthentication));
+                transport = transportPool.borrowObject(host, port,
+                    new PooledTTransportFactory(transportPool,
+                                                host, port, socksProxy,
+                                                timeoutMillis, metastoreAuthentication));
             }
             return new ThriftHiveMetastoreClient(transport);
         }

@@ -43,7 +43,9 @@ public class PooledTTransportFactory
     private final int timeoutMillis;
     private final HiveMetastoreAuthentication metastoreAuthentication;
 
-    public PooledTTransportFactory(TTransportPool pool, String host, int port, @Nullable HostAndPort socksProxy, int timeoutMillis, HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledTTransportFactory(TTransportPool pool, String host, int port,
+        @Nullable HostAndPort socksProxy, int timeoutMillis,
+        HiveMetastoreAuthentication metastoreAuthentication)
     {
         this.pool = requireNonNull(pool, "pool is null");
         this.host = requireNonNull(host, "host is null");
@@ -68,7 +70,8 @@ public class PooledTTransportFactory
             transport = new TSocket(host, port, timeoutMillis);
         }
         else {
-            SocketAddress address = InetSocketAddress.createUnresolved(socksProxy.getHostText(), socksProxy.getPort());
+            SocketAddress address = InetSocketAddress.createUnresolved(socksProxy.getHostText(),
+                                                            socksProxy.getPort());
             Socket socket = new Socket(new Proxy(Proxy.Type.SOCKS, address));
             try {
                 socket.connect(InetSocketAddress.createUnresolved(host, port), timeoutMillis);
@@ -92,7 +95,8 @@ public class PooledTTransportFactory
             authenticatedTransport.open();
         }
 
-        return new PooledTTransport(authenticatedTransport, pool, HostAndPort.fromParts(host, port).toString());
+        return new PooledTTransport(authenticatedTransport, pool,
+                                    HostAndPort.fromParts(host, port).toString());
     }
 
     @Override
