@@ -31,6 +31,7 @@ import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.twitter.hive.PooledHiveMetastoreClientFactory;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Provides;
@@ -99,6 +100,7 @@ public class HiveClientModule
         newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class));
 
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
+        binder.bind(PooledHiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
 
         binder.bind(NodeManager.class).toInstance(nodeManager);
         binder.bind(TypeManager.class).toInstance(typeManager);

@@ -14,7 +14,6 @@
 package com.facebook.presto.twitter.hive;
 
 import com.facebook.presto.hive.HiveCluster;
-import com.facebook.presto.hive.HiveMetastoreClientFactory;
 import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
@@ -31,11 +30,11 @@ public class ZookeeperServersetHiveCluster
         implements HiveCluster
 {
     private static final Logger log = Logger.get(ZookeeperServersetHiveCluster.class);
-    private final HiveMetastoreClientFactory clientFactory;
+    private final PooledHiveMetastoreClientFactory clientFactory;
     private ZookeeperMetastoreMonitor zkMetastoreMonitor;
 
     @Inject
-    public ZookeeperServersetHiveCluster(ZookeeperServersetMetastoreConfig config, HiveMetastoreClientFactory clientFactory)
+    public ZookeeperServersetHiveCluster(ZookeeperServersetMetastoreConfig config, PooledHiveMetastoreClientFactory clientFactory)
             throws Exception
     {
         String zkServerHostAndPort = requireNonNull(config.getZookeeperServerHostAndPort(), "zkServerHostAndPort is null");
