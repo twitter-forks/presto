@@ -14,36 +14,27 @@
 package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.planner.optimizations.Predicates;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
-import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.tree.BooleanLiteral;
-import com.facebook.presto.sql.tree.Cast;
-import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.DefaultExpressionTraversalVisitor;
 import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
-import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.InPredicate;
-import com.facebook.presto.sql.tree.LogicalBinaryExpression;
-import com.facebook.presto.sql.tree.LongLiteral;
+import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NotExpression;
-import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression.Quantifier;
@@ -55,27 +46,21 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.Collection;
-import java.util.EnumSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.sql.analyzer.SemanticExceptions.throwNotSupportedException;
 import static com.facebook.presto.sql.planner.ExpressionNodeInliner.replaceExpression;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.tree.ComparisonExpressionType.EQUAL;
-import static com.facebook.presto.sql.tree.ComparisonExpressionType.GREATER_THAN;
-import static com.facebook.presto.sql.tree.ComparisonExpressionType.GREATER_THAN_OR_EQUAL;
-import static com.facebook.presto.sql.tree.ComparisonExpressionType.LESS_THAN;
-import static com.facebook.presto.sql.tree.ComparisonExpressionType.LESS_THAN_OR_EQUAL;
 import static com.facebook.presto.sql.util.AstUtils.nodeContains;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableMap;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static java.lang.String.format;
@@ -86,15 +71,24 @@ class SubqueryPlanner
     private final Analysis analysis;
     private final SymbolAllocator symbolAllocator;
     private final PlanNodeIdAllocator idAllocator;
+    private final IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap;
     private final Metadata metadata;
     private final Session session;
     private final List<Expression> parameters;
 
-    SubqueryPlanner(Analysis analysis, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator, Metadata metadata, Session session, List<Expression> parameters)
+    SubqueryPlanner(
+            Analysis analysis,
+            SymbolAllocator symbolAllocator,
+            PlanNodeIdAllocator idAllocator,
+            IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap,
+            Metadata metadata,
+            Session session,
+            List<Expression> parameters)
     {
         requireNonNull(analysis, "analysis is null");
         requireNonNull(symbolAllocator, "symbolAllocator is null");
         requireNonNull(idAllocator, "idAllocator is null");
+        requireNonNull(lambdaDeclarationToSymbolMap, "lambdaDeclarationToSymbolMap is null");
         requireNonNull(metadata, "metadata is null");
         requireNonNull(session, "session is null");
         requireNonNull(parameters, "parameters is null");
@@ -102,6 +96,7 @@ class SubqueryPlanner
         this.analysis = analysis;
         this.symbolAllocator = symbolAllocator;
         this.idAllocator = idAllocator;
+        this.lambdaDeclarationToSymbolMap = lambdaDeclarationToSymbolMap;
         this.metadata = metadata;
         this.session = session;
         this.parameters = parameters;
@@ -183,25 +178,16 @@ class SubqueryPlanner
 
         checkState(inPredicate.getValueList() instanceof SubqueryExpression);
         PlanNode subquery = createRelationPlan(((SubqueryExpression) inPredicate.getValueList()).getQuery()).getRoot();
-        Map<Expression, Symbol> correlation = extractCorrelation(subPlan, subquery);
-        if (!correlationAllowed && correlation.isEmpty()) {
-            throwNotSupportedException(inPredicate, "Correlated subquery in given context");
-        }
-        subPlan = subPlan.appendProjections(correlation.keySet(), symbolAllocator, idAllocator);
-        subquery = replaceExpressionsWithSymbols(subquery, correlation);
 
-        TranslationMap translationMap = subPlan.copyTranslations();
         InPredicate parametersReplaced = ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(parameters, analysis), inPredicate);
-        translationMap.addIntermediateMapping(inPredicate, parametersReplaced);
         SymbolReference valueList = getOnlyElement(subquery.getOutputSymbols()).toSymbolReference();
-        translationMap.addIntermediateMapping(parametersReplaced, new InPredicate(parametersReplaced.getValue(), valueList));
 
-        return new PlanBuilder(translationMap,
-                new ApplyNode(idAllocator.getNextId(),
-                        subPlan.getRoot(),
-                        subquery,
-                        ImmutableList.copyOf(correlation.values())),
-                analysis.getParameters());
+        InPredicate inPredicateSubqueryExpression = new InPredicate(subPlan.translate(parametersReplaced.getValue()).toSymbolReference(), valueList);
+        Symbol inPredicateSubquerySymbol = symbolAllocator.newSymbol(inPredicateSubqueryExpression, BOOLEAN);
+        subPlan.getTranslations().put(parametersReplaced, inPredicateSubquerySymbol);
+        subPlan.getTranslations().put(inPredicate, inPredicateSubquerySymbol);
+
+        return appendApplyNode(subPlan, inPredicate, subquery, ImmutableMap.of(inPredicateSubquerySymbol, inPredicateSubqueryExpression), correlationAllowed);
     }
 
     private PlanBuilder appendScalarSubqueryApplyNodes(PlanBuilder builder, Set<SubqueryExpression> scalarSubqueries, boolean correlationAllowed)
@@ -219,11 +205,13 @@ class SubqueryPlanner
             return subPlan;
         }
 
-        return appendSubqueryApplyNode(
+        PlanNode subqueryNode = new EnforceSingleRowNode(idAllocator.getNextId(), createRelationPlan(scalarSubquery.getQuery()).getRoot());
+        subPlan.getTranslations().put(scalarSubquery, getOnlyElement(subqueryNode.getOutputSymbols()));
+        return appendApplyNode(
                 subPlan,
-                scalarSubquery,
                 scalarSubquery.getQuery(),
-                new EnforceSingleRowNode(idAllocator.getNextId(), createRelationPlan(scalarSubquery.getQuery()).getRoot()),
+                subqueryNode,
+                identityAssigments(subqueryNode),
                 correlationAllowed);
     }
 
@@ -238,11 +226,10 @@ class SubqueryPlanner
     /**
      * Exists is modeled as:
      * <pre>
-     *     - EnforceSingleRow
-     *       - Project($0 > 0)
-     *         - Aggregation(COUNT(*))
-     *           - Limit(1)
-     *             -- subquery
+     *     - Project($0 > 0)
+     *       - Aggregation(COUNT(*))
+     *         - Limit(1)
+     *           -- subquery
      * </pre>
      */
     private PlanBuilder appendExistSubqueryApplyNode(PlanBuilder subPlan, ExistsPredicate existsPredicate, boolean correlationAllowed)
@@ -254,37 +241,19 @@ class SubqueryPlanner
 
         PlanNode subqueryPlan = createRelationPlan(existsPredicate.getSubquery()).getRoot();
 
-        Symbol exists = symbolAllocator.newSymbol("exists", BOOLEAN);
         if (isAggregationWithEmptyGroupBy(subqueryPlan)) {
             subPlan.getTranslations().put(existsPredicate, BooleanLiteral.TRUE_LITERAL);
             return subPlan;
         }
 
-        subqueryPlan = new LimitNode(idAllocator.getNextId(), subqueryPlan, 1, false);
-
-        FunctionRegistry functionRegistry = metadata.getFunctionRegistry();
-        QualifiedName countFunction = QualifiedName.of("count");
-        Symbol count = symbolAllocator.newSymbol(countFunction.toString(), BIGINT);
-        subqueryPlan = new AggregationNode(
-                idAllocator.getNextId(),
+        Symbol exists = symbolAllocator.newSymbol("exists", BOOLEAN);
+        subPlan.getTranslations().put(existsPredicate, exists);
+        return appendApplyNode(
+                subPlan,
+                existsPredicate.getSubquery(),
                 subqueryPlan,
-                ImmutableMap.of(count, new FunctionCall(countFunction, ImmutableList.of())),
-                ImmutableMap.of(count, functionRegistry.resolveFunction(countFunction, ImmutableList.of())),
-                ImmutableMap.of(),
-                ImmutableList.of(ImmutableList.of()),
-                AggregationNode.Step.SINGLE,
-                Optional.empty(),
-                Optional.empty());
-
-        ComparisonExpression countGreaterThanZero = new ComparisonExpression(GREATER_THAN, count.toSymbolReference(), new Cast(new LongLiteral("0"), BIGINT.toString()));
-        subqueryPlan = new EnforceSingleRowNode(
-                idAllocator.getNextId(),
-                new ProjectNode(
-                        idAllocator.getNextId(),
-                        subqueryPlan,
-                        ImmutableMap.of(exists, countGreaterThanZero)));
-
-        return appendSubqueryApplyNode(subPlan, existsPredicate, existsPredicate.getSubquery(), subqueryPlan, correlationAllowed);
+                ImmutableMap.of(exists, existsPredicate),
+                correlationAllowed);
     }
 
     private PlanBuilder appendQuantifiedComparisonApplyNodes(PlanBuilder subPlan, Set<QuantifiedComparisonExpression> quantifiedComparisons, boolean correlationAllowed)
@@ -305,13 +274,14 @@ class SubqueryPlanner
             case EQUAL:
                 switch (quantifiedComparison.getQuantifier()) {
                     case ALL:
-                        return planQuantifiedEqualsAll(subPlan, quantifiedComparison, correlationAllowed);
+                        return planQuantifiedApplyNode(subPlan, quantifiedComparison, correlationAllowed);
                     case ANY:
                     case SOME:
                         // A = ANY B <=> A IN B
                         InPredicate inPredicate = new InPredicate(quantifiedComparison.getValue(), quantifiedComparison.getSubquery());
-                        subPlan.getTranslations().addIntermediateMapping(quantifiedComparison, inPredicate);
-                        return appendInPredicateApplyNode(subPlan, inPredicate, correlationAllowed);
+                        subPlan = appendInPredicateApplyNode(subPlan, inPredicate, correlationAllowed);
+                        subPlan.getTranslations().put(quantifiedComparison, subPlan.translate(inPredicate));
+                        return subPlan;
                 }
                 break;
 
@@ -349,115 +319,35 @@ class SubqueryPlanner
             case LESS_THAN_OR_EQUAL:
             case GREATER_THAN:
             case GREATER_THAN_OR_EQUAL:
-                return planQuantifiedOrderable(subPlan, quantifiedComparison, correlationAllowed);
+                return planQuantifiedApplyNode(subPlan, quantifiedComparison, correlationAllowed);
         }
         // all cases are checked, so this exception should never be thrown
         throw new IllegalArgumentException(
                 format("Unexpected quantified comparison: '%s %s'", quantifiedComparison.getComparisonType().getValue(), quantifiedComparison.getQuantifier()));
     }
 
-    private PlanBuilder planQuantifiedEqualsAll(PlanBuilder subPlan, QuantifiedComparisonExpression quantifiedComparison, boolean correlationAllowed)
+    private PlanBuilder planQuantifiedApplyNode(PlanBuilder subPlan, QuantifiedComparisonExpression quantifiedComparison, boolean correlationAllowed)
     {
-        checkArgument(quantifiedComparison.getComparisonType() == EQUAL && quantifiedComparison.getQuantifier() == Quantifier.ALL);
-        // A = ALL B <=> min B = max B && A = min B
         RelationPlan subqueryRelationPlan = createRelationPlan(quantifiedComparison.getSubquery());
         PlanNode subqueryPlan = subqueryRelationPlan.getRoot();
-        List<Expression> outputColumnReference = ImmutableList.of(getOnlyElement(subqueryRelationPlan.getOutputSymbols()).toSymbolReference());
-        Type outputColumnType = getOnlyElement(subqueryRelationPlan.getDescriptor().getAllFields()).getType();
-        if (!outputColumnType.isOrderable()) {
-            throwNotSupportedException(quantifiedComparison, "Quantified comparison '= ALL' or '<> ANY' for unorderable type " + outputColumnType.getDisplayName());
-        }
-        List<TypeSignature> outputColumnTypeSignature = ImmutableList.of(outputColumnType.getTypeSignature());
-        FunctionRegistry functionRegistry = metadata.getFunctionRegistry();
-        QualifiedName min = QualifiedName.of("min");
-        QualifiedName max = QualifiedName.of("max");
-        Symbol minValue = symbolAllocator.newSymbol(min.toString(), outputColumnType);
-        Symbol maxValue = symbolAllocator.newSymbol(max.toString(), outputColumnType);
-        subqueryPlan = new AggregationNode(
-                idAllocator.getNextId(),
+        SymbolReference subquerySymbolReference = getOnlyElement(subqueryRelationPlan.getOutputSymbols()).toSymbolReference();
+        subPlan = subPlan.appendProjections(ImmutableList.of(quantifiedComparison.getValue()), symbolAllocator, idAllocator);
+        QuantifiedComparisonExpression subqueryQuantifiedComparison = new QuantifiedComparisonExpression(
+                quantifiedComparison.getComparisonType(),
+                quantifiedComparison.getQuantifier(),
+                subPlan.translate(quantifiedComparison.getValue()).toSymbolReference(),
+                subquerySymbolReference);
+        Symbol subqueryQuantifiedComparisonSymbol = symbolAllocator.newSymbol(subqueryQuantifiedComparison, BOOLEAN);
+        subPlan.getTranslations().put(quantifiedComparison, subqueryQuantifiedComparisonSymbol);
+        return appendApplyNode(
+                subPlan,
+                quantifiedComparison.getSubquery(),
                 subqueryPlan,
-                ImmutableMap.of(
-                        minValue, new FunctionCall(min, outputColumnReference),
-                        maxValue, new FunctionCall(max, outputColumnReference)
-                ),
-                ImmutableMap.of(
-                        minValue, functionRegistry.resolveFunction(min, outputColumnTypeSignature),
-                        maxValue, functionRegistry.resolveFunction(max, outputColumnTypeSignature)
-                ),
-                ImmutableMap.of(),
-                ImmutableList.of(ImmutableList.of()),
-                AggregationNode.Step.SINGLE,
-                Optional.empty(),
-                Optional.empty());
-        subqueryPlan = new EnforceSingleRowNode(idAllocator.getNextId(), subqueryPlan);
-        LogicalBinaryExpression valueComparedToSubquery = new LogicalBinaryExpression(LogicalBinaryExpression.Type.AND,
-                new ComparisonExpression(EQUAL, minValue.toSymbolReference(), maxValue.toSymbolReference()),
-                new ComparisonExpression(EQUAL, quantifiedComparison.getValue(), minValue.toSymbolReference())
-        );
-        subPlan.getTranslations().addIntermediateMapping(quantifiedComparison, valueComparedToSubquery);
-        return appendSubqueryApplyNode(subPlan, quantifiedComparison.getSubquery(), quantifiedComparison.getSubquery(), subqueryPlan, correlationAllowed);
+                ImmutableMap.of(subqueryQuantifiedComparisonSymbol, subqueryQuantifiedComparison),
+                correlationAllowed);
     }
 
-    private PlanBuilder planQuantifiedOrderable(PlanBuilder subPlan, QuantifiedComparisonExpression quantifiedComparison, boolean correlationAllowed)
-    {
-        checkArgument(EnumSet.of(LESS_THAN, LESS_THAN_OR_EQUAL, GREATER_THAN, GREATER_THAN_OR_EQUAL).contains(quantifiedComparison.getComparisonType()));
-        // A < ALL B <=> A < min B
-        // A > ALL B <=> A > max B
-        // A < ANY B <=> A < max B
-        // A > ANY B <=> A > min B
-        QualifiedName aggregationFunction = chooseAggregationFunction(quantifiedComparison);
-        RelationPlan subqueryRelationPlan = createRelationPlan(quantifiedComparison.getSubquery());
-        PlanNode subqueryPlan = subqueryRelationPlan.getRoot();
-        Symbol outputColumn = getOnlyElement(subqueryRelationPlan.getOutputSymbols());
-        Type outputColumnType = getOnlyElement(subqueryRelationPlan.getDescriptor().getAllFields()).getType();
-        checkState(outputColumnType.isOrderable(), "Subquery result type must be orderable");
-        FunctionRegistry functionRegistry = metadata.getFunctionRegistry();
-        Symbol subValue = symbolAllocator.newSymbol(aggregationFunction.toString(), outputColumnType);
-        subqueryPlan = new AggregationNode(
-                idAllocator.getNextId(),
-                subqueryPlan,
-                ImmutableMap.of(subValue, new FunctionCall(aggregationFunction, ImmutableList.of(outputColumn.toSymbolReference()))),
-                ImmutableMap.of(subValue, functionRegistry.resolveFunction(aggregationFunction, ImmutableList.of(outputColumnType.getTypeSignature()))),
-                ImmutableMap.of(),
-                ImmutableList.of(ImmutableList.of()),
-                AggregationNode.Step.SINGLE,
-                Optional.empty(),
-                Optional.empty());
-        subqueryPlan = new EnforceSingleRowNode(idAllocator.getNextId(), subqueryPlan);
-        ComparisonExpression valueComparedToSubquery = new ComparisonExpression(quantifiedComparison.getComparisonType(), quantifiedComparison.getValue(), subValue.toSymbolReference());
-        subPlan.getTranslations().addIntermediateMapping(quantifiedComparison, valueComparedToSubquery);
-        return appendSubqueryApplyNode(subPlan, quantifiedComparison.getSubquery(), quantifiedComparison.getSubquery(), subqueryPlan, correlationAllowed);
-    }
-
-    private static QualifiedName chooseAggregationFunction(QuantifiedComparisonExpression quantifiedComparison)
-    {
-        switch (quantifiedComparison.getQuantifier()) {
-            case ALL:
-                switch (quantifiedComparison.getComparisonType()) {
-                    case LESS_THAN:
-                    case LESS_THAN_OR_EQUAL:
-                        return QualifiedName.of("min");
-                    case GREATER_THAN:
-                    case GREATER_THAN_OR_EQUAL:
-                        return QualifiedName.of("max");
-                }
-                break;
-            case ANY:
-            case SOME:
-                switch (quantifiedComparison.getComparisonType()) {
-                    case LESS_THAN:
-                    case LESS_THAN_OR_EQUAL:
-                        return QualifiedName.of("max");
-                    case GREATER_THAN:
-                    case GREATER_THAN_OR_EQUAL:
-                        return QualifiedName.of("min");
-                }
-                break;
-        }
-        throw new IllegalArgumentException("Unexpected quantifier: " + quantifiedComparison.getQuantifier());
-    }
-
-    private boolean isAggregationWithEmptyGroupBy(PlanNode subqueryPlan)
+    private static boolean isAggregationWithEmptyGroupBy(PlanNode subqueryPlan)
     {
         return searchFrom(subqueryPlan)
                 .skipOnlyWhen(Predicates.isInstanceOfAny(ProjectNode.class))
@@ -468,7 +358,7 @@ class SubqueryPlanner
                 .orElse(false);
     }
 
-    private PlanBuilder appendSubqueryApplyNode(PlanBuilder subPlan, Expression subqueryExpression, Node subquery, PlanNode subqueryNode, boolean correlationAllowed)
+    private PlanBuilder appendApplyNode(PlanBuilder subPlan, Node subquery, PlanNode subqueryNode, Map<Symbol, Expression> subqueryAssignments, boolean correlationAllowed)
     {
         Map<Expression, Symbol> correlation = extractCorrelation(subPlan, subqueryNode);
         if (!correlationAllowed && !correlation.isEmpty()) {
@@ -478,23 +368,20 @@ class SubqueryPlanner
         subqueryNode = replaceExpressionsWithSymbols(subqueryNode, correlation);
 
         TranslationMap translations = subPlan.copyTranslations();
-        if (subqueryNode.getOutputSymbols().size() == 1) {
-            translations.put(subqueryExpression, subqueryNode.getOutputSymbols().get(0));
-        }
-
         PlanNode root = subPlan.getRoot();
-        if (root.getOutputSymbols().isEmpty()) {
-            // there is nothing to join with - e.g. SELECT (SELECT 1)
-            return new PlanBuilder(translations, subqueryNode, analysis.getParameters());
-        }
-        else {
-            return new PlanBuilder(translations,
-                    new ApplyNode(idAllocator.getNextId(),
-                            root,
-                            subqueryNode,
-                            ImmutableList.copyOf(correlation.values())),
-                    analysis.getParameters());
-        }
+        return new PlanBuilder(translations,
+                new ApplyNode(idAllocator.getNextId(),
+                        root,
+                        subqueryNode,
+                        subqueryAssignments,
+                        ImmutableList.copyOf(correlation.values())),
+                analysis.getParameters());
+    }
+
+    private Map<Symbol, Expression> identityAssigments(PlanNode node)
+    {
+        return node.getOutputSymbols().stream()
+                .collect(toImmutableMap(symbol -> symbol, Symbol::toSymbolReference));
     }
 
     private Map<Expression, Symbol> extractCorrelation(PlanBuilder subPlan, PlanNode subquery)
@@ -513,7 +400,7 @@ class SubqueryPlanner
     /**
      * Checks if give reference expression can resolved within given plan.
      */
-    private Optional<Expression> tryResolveMissingExpression(PlanBuilder subPlan, Expression expression)
+    private static Optional<Expression> tryResolveMissingExpression(PlanBuilder subPlan, Expression expression)
     {
         Expression rewritten = subPlan.rewrite(expression);
         if (rewritten instanceof SymbolReference) {
@@ -524,13 +411,13 @@ class SubqueryPlanner
 
     private RelationPlan createRelationPlan(Query subquery)
     {
-        return new RelationPlanner(analysis, symbolAllocator, idAllocator, metadata, session)
+        return new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session)
                 .process(subquery, null);
     }
 
     private RelationPlan createRelationPlan(Expression subquery)
     {
-        return new RelationPlanner(analysis, symbolAllocator, idAllocator, metadata, session)
+        return new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session)
                 .process(subquery, null);
     }
 
