@@ -70,20 +70,45 @@ public abstract class AbstractResourceConfigurationManager
     {
         ImmutableList.Builder<ResourceGroupSelector> selectors = ImmutableList.builder();
         for (SelectorSpec spec : managerSpec.getSelectors()) {
+            validateSelectors(managerSpec.getRootGroups(), spec.getGroup().getSegments());
             selectors.add(new StaticSelector(spec.getUserRegex(), spec.getSourceRegex(), spec.getGroup()));
         }
         return selectors.build();
     }
 
+    private void validateSelectors(List<ResourceGroupSpec> groups, List<ResourceGroupNameTemplate> selectorGroups)
+    {
+        StringBuilder fullyQualifiedGroupName = new StringBuilder();
+        while (!selectorGroups.isEmpty()) {
+            ResourceGroupNameTemplate groupName = selectorGroups.get(0);
+            fullyQualifiedGroupName.append(groupName);
+            Optional<ResourceGroupSpec> match = groups
+                    .stream()
+                    .filter(groupSpec -> groupSpec.getName().equals(groupName))
+                    .findFirst();
+            if (!match.isPresent()) {
+                throw new IllegalArgumentException(format("Selector refers to nonexistent group: %s", fullyQualifiedGroupName.toString()));
+            }
+            fullyQualifiedGroupName.append(".");
+            groups = match.get().getSubGroups();
+            selectorGroups = selectorGroups.subList(1, selectorGroups.size());
+        }
+    }
+
     protected AbstractResourceConfigurationManager(ClusterMemoryPoolManager memoryPoolManager)
     {
         memoryPoolManager.addChangeListener(new MemoryPoolId("general"), poolInfo -> {
+            Map<ResourceGroup, DataSize> memoryLimits = new HashMap<>();
             synchronized (generalPoolMemoryFraction) {
                 for (Map.Entry<ResourceGroup, Double> entry : generalPoolMemoryFraction.entrySet()) {
                     double bytes = poolInfo.getMaxBytes() * entry.getValue();
-                    entry.getKey().setSoftMemoryLimit(new DataSize(bytes, BYTE));
+                    // setSoftMemoryLimit() acquires a lock on the root group of its tree, which could cause a deadlock if done while holding the "generalPoolMemoryFraction" lock
+                    memoryLimits.put(entry.getKey(), new DataSize(bytes, BYTE));
                 }
                 generalPoolBytes = poolInfo.getMaxBytes();
+            }
+            for (Map.Entry<ResourceGroup, DataSize> entry : memoryLimits.entrySet()) {
+                entry.getKey().setSoftMemoryLimit(entry.getValue());
             }
         });
     }
