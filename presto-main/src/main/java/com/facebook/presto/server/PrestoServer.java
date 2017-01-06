@@ -136,6 +136,21 @@ public class PrestoServer
             log.error(e);
             System.exit(1);
         }
+
+        ImmutableList.Builder<Module> uIModules = ImmutableList.builder();
+        uIModules.add(new CoordinatorUIHttpServerModule());
+
+        Bootstrap uIApp = new Bootstrap(uIModules.build());
+
+        try {
+            Injector injector = uIApp.strictConfig().initialize();
+
+            log.info("======== UI STARTED ========");
+        }
+        catch (Throwable e) {
+            log.error(e);
+            System.exit(1);
+        }
     }
 
     private static void updateConnectorIds(Announcer announcer, CatalogManager metadata, ServerConfig serverConfig, NodeSchedulerConfig schedulerConfig)

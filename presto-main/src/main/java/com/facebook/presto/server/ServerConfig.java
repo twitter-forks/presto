@@ -25,6 +25,7 @@ public class ServerConfig
     private String dataSources;
     private boolean includeExceptionInResponse = true;
     private Duration gracePeriod = new Duration(2, MINUTES);
+    private int uIHttpPort = 0;
 
     public boolean isCoordinator()
     {
@@ -35,6 +36,18 @@ public class ServerConfig
     public ServerConfig setCoordinator(boolean coordinator)
     {
         this.coordinator = coordinator;
+        return this;
+    }
+
+    public int getUIHttpPort()
+    {
+        return uIHttpPort;
+    }
+
+    @Config("http-server.ui.http.port")
+    public ServerConfig setUIHttpPort(int uIHttpPort)
+    {
+        this.uIHttpPort = uIHttpPort;
         return this;
     }
 
