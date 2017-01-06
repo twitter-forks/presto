@@ -130,7 +130,7 @@ public class CoordinatorModule
     @Override
     protected void setup(Binder binder)
     {
-        httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
+        // httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
 
         // presto coordinator announcement
         discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator");
