@@ -138,12 +138,18 @@ public class PrestoServer
         }
 
         ImmutableList.Builder<Module> uIModules = ImmutableList.builder();
-        uIModules.add(new CoordinatorUIHttpServerModule());
+        uIModules.add(
+            new NodeModule(),
+            new DiscoveryModule(),
+            new HttpEventModule(),
+            new JsonModule(),
+            new JaxrsModule(true),
+            new CoordinatorUIHttpServerModule());
 
         Bootstrap uIApp = new Bootstrap(uIModules.build());
 
         try {
-            Injector injector = uIApp.strictConfig().initialize();
+            Injector injector = uIApp.doNotInitializeLogging().initialize();
 
             log.info("======== UI STARTED ========");
         }
