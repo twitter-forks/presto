@@ -116,7 +116,7 @@ import static com.google.inject.multibindings.MapBinder.newMapBinder;
 import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.airlift.discovery.client.DiscoveryBinder.discoveryBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
-// import static io.airlift.http.server.HttpServerBinder.httpServerBinder;
+import static io.airlift.http.server.HttpServerBinder.httpServerBinder;
 import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static java.util.concurrent.Executors.newCachedThreadPool;
@@ -130,7 +130,7 @@ public class CoordinatorModule
     @Override
     protected void setup(Binder binder)
     {
-        // httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
+        httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
 
         // presto coordinator announcement
         discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator");

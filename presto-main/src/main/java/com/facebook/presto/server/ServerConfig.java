@@ -25,6 +25,7 @@ public class ServerConfig
     private String dataSources;
     private boolean includeExceptionInResponse = true;
     private Duration gracePeriod = new Duration(2, MINUTES);
+    private boolean bindUIonSecondaryPort = false;
     private int uIHttpPort = 0;
 
     public boolean isCoordinator()
@@ -36,6 +37,18 @@ public class ServerConfig
     public ServerConfig setCoordinator(boolean coordinator)
     {
         this.coordinator = coordinator;
+        return this;
+    }
+
+    public boolean isBindUIonSecondaryPort()
+    {
+        return bindUIonSecondaryPort;
+    }
+
+    @Config("http-server.ui.secondary.port.enable")
+    public ServerConfig setBindUIonSecondaryPort(boolean bindUIonSecondaryPort)
+    {
+        this.bindUIonSecondaryPort = bindUIonSecondaryPort;
         return this;
     }
 

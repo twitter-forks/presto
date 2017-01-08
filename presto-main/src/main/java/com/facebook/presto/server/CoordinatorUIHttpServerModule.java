@@ -76,71 +76,65 @@ public class CoordinatorUIHttpServerModule
     @Override
     protected void setup(Binder binder)
     {
-        ServerConfig serverConfig = buildConfigObject(ServerConfig.class);
+        binder.disableCircularProxies();
 
-        if (serverConfig.isCoordinator()) {
-            HttpServerConfig config = new HttpServerConfig().setHttpPort(serverConfig.getUIHttpPort());
-            binder.bind(HttpServerConfig.class).toInstance(config);
+        ServerConfig serverConfig = injector.getInstance(ServerConfig.class);
+        HttpServerConfig httpServerConfig = injector.getInstance(HttpServerConfig.class)
+                                          .setHttpPort(serverConfig.getUIHttpPort());
+        binder.bind(HttpServerConfig.class).toInstance(httpServerConfig);
 
-            binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
-            binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
-            binder.disableCircularProxies();
+        binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
+        binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
 
-            Multibinder.newSetBinder(binder, Filter.class, TheServlet.class);
-            Multibinder.newSetBinder(binder, Filter.class, TheAdminServlet.class);
-            Multibinder.newSetBinder(binder, HttpResourceBinding.class, TheServlet.class);
-            newExporter(binder).export(HttpServer.class).withGeneratedName();
-            binder.bind(RequestStats.class).in(Scopes.SINGLETON);
-            newExporter(binder).export(RequestStats.class).withGeneratedName();
-            eventBinder(binder).bindEventClient(HttpRequestEvent.class);
+        Multibinder.newSetBinder(binder, Filter.class, TheServlet.class);
+        Multibinder.newSetBinder(binder, Filter.class, TheAdminServlet.class);
+        Multibinder.newSetBinder(binder, HttpResourceBinding.class, TheServlet.class);
+        newExporter(binder).export(HttpServer.class).withGeneratedName();
+        binder.bind(RequestStats.class).in(Scopes.SINGLETON);
+        newExporter(binder).export(RequestStats.class).withGeneratedName();
+        eventBinder(binder).bindEventClient(HttpRequestEvent.class);
 
-            binder.bind(AnnouncementHttpServerInfo.class).to(LocalAnnouncementHttpServerInfo.class).in(Scopes.SINGLETON);
+        binder.bind(AnnouncementHttpServerInfo.class).to(LocalAnnouncementHttpServerInfo.class).in(Scopes.SINGLETON);
 
-            httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
+        
 
-            binder.bind(BlockEncodingSerde.class).toInstance(injector.getInstance(BlockEncodingSerde.class));
-            binder.bind(TypeManager.class).toInstance(injector.getInstance(TypeManager.class));
-            binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));
-            binder.bind(TransactionManager.class).toInstance(injector.getInstance(TransactionManager.class));
+        binder.bind(BlockEncodingSerde.class).toInstance(injector.getInstance(BlockEncodingSerde.class));
+        binder.bind(TypeManager.class).toInstance(injector.getInstance(TypeManager.class));
+        binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));
+        binder.bind(TransactionManager.class).toInstance(injector.getInstance(TransactionManager.class));
 
-            jsonCodecBinder(binder).bindJsonCodec(QueryInfo.class);
-            jsonCodecBinder(binder).bindJsonCodec(TaskInfo.class);
-            jsonCodecBinder(binder).bindJsonCodec(QueryResults.class);
-            jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
-            jsonCodecBinder(binder).bindJsonCodec(ViewDefinition.class);
-            jsonCodecBinder(binder).bindJsonCodec(MemoryInfo.class);
-            jsonCodecBinder(binder).bindJsonCodec(MemoryPoolAssignmentsRequest.class);
-            jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
-            jsonCodecBinder(binder).bindJsonCodec(ConnectorSplit.class);
-            jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
-            jsonBinder(binder).addSerializerBinding(Slice.class).to(SliceSerializer.class);
-            jsonBinder(binder).addDeserializerBinding(Slice.class).to(SliceDeserializer.class);
-            jsonBinder(binder).addSerializerBinding(Expression.class).to(ExpressionSerializer.class);
-            jsonBinder(binder).addDeserializerBinding(Expression.class).to(ExpressionDeserializer.class);
-            jsonBinder(binder).addDeserializerBinding(FunctionCall.class).to(FunctionCallDeserializer.class);
-            jsonBinder(binder).addSerializerBinding(Block.class).to(BlockJsonSerde.Serializer.class);
-            jsonBinder(binder).addDeserializerBinding(Block.class).to(BlockJsonSerde.Deserializer.class);
+        jsonCodecBinder(binder).bindJsonCodec(QueryInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(TaskInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(QueryResults.class);
+        jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
+        jsonCodecBinder(binder).bindJsonCodec(ViewDefinition.class);
+        jsonCodecBinder(binder).bindJsonCodec(MemoryInfo.class);
+        jsonCodecBinder(binder).bindJsonCodec(MemoryPoolAssignmentsRequest.class);
+        jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
+        jsonCodecBinder(binder).bindJsonCodec(ConnectorSplit.class);
+        jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
+        jsonBinder(binder).addSerializerBinding(Slice.class).to(SliceSerializer.class);
+        jsonBinder(binder).addDeserializerBinding(Slice.class).to(SliceDeserializer.class);
+        jsonBinder(binder).addSerializerBinding(Expression.class).to(ExpressionSerializer.class);
+        jsonBinder(binder).addDeserializerBinding(Expression.class).to(ExpressionDeserializer.class);
+        jsonBinder(binder).addDeserializerBinding(FunctionCall.class).to(FunctionCallDeserializer.class);
+        jsonBinder(binder).addSerializerBinding(Block.class).to(BlockJsonSerde.Serializer.class);
+        jsonBinder(binder).addDeserializerBinding(Block.class).to(BlockJsonSerde.Deserializer.class);
 
-            // presto coordinator announcement
-            discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator");
-            // query execution visualizer
-            jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
-            // query manager
-            jaxrsBinder(binder).bindInstance(injector.getInstance(QueryResource.class));
-            jaxrsBinder(binder).bindInstance(injector.getInstance(StageResource.class));
-            // cluster statistics
-            jaxrsBinder(binder).bindInstance(injector.getInstance(ClusterStatsResource.class));
-            // server info resource
-            jaxrsBinder(binder).bindInstance(injector.getInstance(ServerInfoResource.class));
-            // server node resource
-            jaxrsBinder(binder).bindInstance(injector.getInstance(NodeResource.class));
-            // task execution
-            // jaxrsBinder(binder).bindInstance(injector.getInstance(TaskResource.class));
-            // jaxrsBinder(binder).bindInstance(injector.getInstance(PagesResponseWriter.class));
-            // thread visualizer
-            // jaxrsBinder(binder).bindInstance(injector.getInstance(ThreadResource.class));
-            // memory manager
-            // jaxrsBinder(binder).bindInstance(injector.getInstance(MemoryResource.class));
-        }
+        // bind webapp
+        httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
+        // presto coordinator announcement
+        discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator");
+        // query execution visualizer
+        jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
+        // query manager
+        jaxrsBinder(binder).bindInstance(injector.getInstance(QueryResource.class));
+        jaxrsBinder(binder).bindInstance(injector.getInstance(StageResource.class));
+        // cluster statistics
+        jaxrsBinder(binder).bindInstance(injector.getInstance(ClusterStatsResource.class));
+        // server info resource
+        jaxrsBinder(binder).bindInstance(injector.getInstance(ServerInfoResource.class));
+        // server node resource
+        jaxrsBinder(binder).bindInstance(injector.getInstance(NodeResource.class));
     }
 }

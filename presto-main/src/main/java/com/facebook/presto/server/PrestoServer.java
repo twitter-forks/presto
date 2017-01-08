@@ -132,7 +132,9 @@ public class PrestoServer
 
             log.info("======== SERVER STARTED ========");
 
-            if (injector.getInstance(ServerConfig.class).isCoordinator()) {
+            ServerConfig serverConfig = injector.getInstance(ServerConfig.class);
+
+            if (serverConfig.isCoordinator() && serverConfig.isBindUIonSecondaryPort()) {
                 Bootstrap uIApp = new Bootstrap(new NodeModule(),
                                                 new DiscoveryModule(),
                                                 new JsonModule(),
