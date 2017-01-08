@@ -25,7 +25,7 @@ public class ServerConfig
     private String dataSources;
     private boolean includeExceptionInResponse = true;
     private Duration gracePeriod = new Duration(2, MINUTES);
-    private boolean bindUIonSecondaryPort = false;
+    private boolean enabledUIonSecondaryPort = false;
     private int uIHttpPort = 0;
 
     public boolean isCoordinator()
@@ -40,15 +40,15 @@ public class ServerConfig
         return this;
     }
 
-    public boolean isBindUIonSecondaryPort()
+    public boolean isEnabledUIonSecondaryPort()
     {
-        return bindUIonSecondaryPort;
+        return enabledUIonSecondaryPort;
     }
 
-    @Config("http-server.ui.secondary.port.enable")
-    public ServerConfig setBindUIonSecondaryPort(boolean bindUIonSecondaryPort)
+    @Config("http-server.ui.secondary.port.enabled")
+    public ServerConfig setEnabledUIonSecondaryPort(boolean enabledUIonSecondaryPort)
     {
-        this.bindUIonSecondaryPort = bindUIonSecondaryPort;
+        this.enabledUIonSecondaryPort = enabledUIonSecondaryPort;
         return this;
     }
 

@@ -134,7 +134,7 @@ public class PrestoServer
 
             ServerConfig serverConfig = injector.getInstance(ServerConfig.class);
 
-            if (serverConfig.isCoordinator() && serverConfig.isBindUIonSecondaryPort()) {
+            if (serverConfig.isCoordinator() && serverConfig.isEnabledUIonSecondaryPort()) {
                 Bootstrap uIApp = new Bootstrap(new NodeModule(),
                                                 new DiscoveryModule(),
                                                 new JsonModule(),
