@@ -95,9 +95,6 @@ public class CoordinatorUIHttpServerModule
         eventBinder(binder).bindEventClient(HttpRequestEvent.class);
 
         binder.bind(AnnouncementHttpServerInfo.class).to(LocalAnnouncementHttpServerInfo.class).in(Scopes.SINGLETON);
-
-        
-
         binder.bind(BlockEncodingSerde.class).toInstance(injector.getInstance(BlockEncodingSerde.class));
         binder.bind(TypeManager.class).toInstance(injector.getInstance(TypeManager.class));
         binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));

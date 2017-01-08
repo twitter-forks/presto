@@ -147,7 +147,7 @@ public class PrestoServer
                                                 new CoordinatorUIHttpServerModule(injector));
                 Injector uIInjector = uIApp.doNotInitializeLogging().initialize();
 
-                log.info("======== UI STARTED ========");
+                log.info("======== SECONDARY UI STARTED ========");
             }
         }
         catch (Throwable e) {
