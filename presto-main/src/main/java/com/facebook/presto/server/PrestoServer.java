@@ -131,27 +131,22 @@ public class PrestoServer
             injector.getInstance(Announcer.class).start();
 
             log.info("======== SERVER STARTED ========");
-        }
-        catch (Throwable e) {
-            log.error(e);
-            System.exit(1);
-        }
 
-        ImmutableList.Builder<Module> uIModules = ImmutableList.builder();
-        uIModules.add(
-            new NodeModule(),
-            new DiscoveryModule(),
-            new HttpEventModule(),
-            new JsonModule(),
-            new JaxrsModule(true),
-            new CoordinatorUIHttpServerModule());
+            if (injector.getInstance(ServerConfig.class).isCoordinator()) {
+                Bootstrap uIApp = new Bootstrap(new NodeModule(),
+                                                new DiscoveryModule(),
+                                                new JsonModule(),
+                                                new JaxrsModule(true),
+                                                new JmxModule(),
+                                                new JmxHttpModule(),
+                                                new JsonEventModule(),
+                                                new HttpEventModule(),
+                                                new ServerSecurityModule(),
+                                                new CoordinatorUIHttpServerModule(injector));
+                Injector uIInjector = uIApp.doNotInitializeLogging().initialize();
 
-        Bootstrap uIApp = new Bootstrap(uIModules.build());
-
-        try {
-            Injector injector = uIApp.doNotInitializeLogging().initialize();
-
-            log.info("======== UI STARTED ========");
+                log.info("======== UI STARTED ========");
+            }
         }
         catch (Throwable e) {
             log.error(e);
