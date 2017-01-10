@@ -130,8 +130,6 @@ public class PrestoServer
 
             injector.getInstance(Announcer.class).start();
 
-            log.info("======== SERVER STARTED ========");
-
             ServerConfig serverConfig = injector.getInstance(ServerConfig.class);
 
             if (serverConfig.isCoordinator() && serverConfig.isEnabledUIonSecondaryPort()) {
@@ -139,16 +137,12 @@ public class PrestoServer
                                                 new DiscoveryModule(),
                                                 new JsonModule(),
                                                 new JaxrsModule(true),
-                                                new JmxModule(),
-                                                new JmxHttpModule(),
-                                                new JsonEventModule(),
-                                                new HttpEventModule(),
-                                                new ServerSecurityModule(),
                                                 new CoordinatorUIHttpServerModule(injector));
                 Injector uIInjector = uIApp.doNotInitializeLogging().initialize();
-
-                log.info("======== SECONDARY UI STARTED ========");
+                log.info("UI runs on a seperate port: %d", serverConfig.getUIHttpPort());
             }
+
+            log.info("======== SERVER STARTED ========");
         }
         catch (Throwable e) {
             log.error(e);

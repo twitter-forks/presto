@@ -40,6 +40,7 @@ import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.discovery.client.AnnouncementHttpServerInfo;
+import io.airlift.event.client.EventClient;
 import io.airlift.http.server.HttpRequestEvent;
 import io.airlift.http.server.HttpServer;
 import io.airlift.http.server.HttpServerConfig;
@@ -84,6 +85,7 @@ public class CoordinatorUIHttpServerModule
         binder.bind(HttpServerConfig.class).toInstance(httpServerConfig);
 
         binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
+        binder.bind(EventClient.class).toInstance(injector.getInstance(EventClient.class));
         binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
 
         Multibinder.newSetBinder(binder, Filter.class, TheServlet.class);
@@ -120,8 +122,8 @@ public class CoordinatorUIHttpServerModule
 
         // bind webapp
         httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
-        // presto coordinator announcement
-        discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator");
+        // presto coordinator ui announcement
+        discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator-ui");
         // query execution visualizer
         jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
         // query manager
