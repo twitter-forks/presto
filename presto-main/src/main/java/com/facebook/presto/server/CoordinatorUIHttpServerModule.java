@@ -50,6 +50,7 @@ import io.airlift.http.server.LocalAnnouncementHttpServerInfo;
 import io.airlift.http.server.RequestStats;
 import io.airlift.http.server.TheAdminServlet;
 import io.airlift.http.server.TheServlet;
+import io.airlift.node.NodeInfo;
 import io.airlift.slice.Slice;
 
 import javax.servlet.Filter;
@@ -85,6 +86,7 @@ public class CoordinatorUIHttpServerModule
         binder.bind(HttpServerConfig.class).toInstance(httpServerConfig);
 
         binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
+        binder.bind(NodeInfo.class).toInstance(injector.getInstance(NodeInfo.class));
         binder.bind(EventClient.class).toInstance(injector.getInstance(EventClient.class));
         binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
 
