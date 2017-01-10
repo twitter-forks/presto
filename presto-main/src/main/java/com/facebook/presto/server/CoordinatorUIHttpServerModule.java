@@ -13,27 +13,11 @@
  */
 package com.facebook.presto.server;
 
-import com.facebook.presto.block.BlockJsonSerde;
-import com.facebook.presto.client.QueryResults;
-import com.facebook.presto.execution.QueryInfo;
-import com.facebook.presto.execution.TaskInfo;
-import com.facebook.presto.execution.TaskStatus;
-import com.facebook.presto.memory.MemoryInfo;
-import com.facebook.presto.memory.MemoryPoolAssignmentsRequest;
-import com.facebook.presto.metadata.ViewDefinition;
-import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.sql.Serialization.ExpressionDeserializer;
-import com.facebook.presto.sql.Serialization.ExpressionSerializer;
-import com.facebook.presto.sql.Serialization.FunctionCallDeserializer;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.transaction.TransactionManager;
-import com.facebook.presto.type.TypeDeserializer;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Binder;
 import com.google.inject.Injector;
 import com.google.inject.Scopes;
@@ -50,8 +34,8 @@ import io.airlift.http.server.LocalAnnouncementHttpServerInfo;
 import io.airlift.http.server.RequestStats;
 import io.airlift.http.server.TheAdminServlet;
 import io.airlift.http.server.TheServlet;
+import io.airlift.json.JsonCodecFactory;
 import io.airlift.node.NodeInfo;
-import io.airlift.slice.Slice;
 
 import javax.servlet.Filter;
 
@@ -60,8 +44,6 @@ import static io.airlift.event.client.EventBinder.eventBinder;
 import static io.airlift.http.server.HttpServerBinder.HttpResourceBinding;
 import static io.airlift.http.server.HttpServerBinder.httpServerBinder;
 import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
-import static io.airlift.json.JsonBinder.jsonBinder;
-import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static java.util.Objects.requireNonNull;
 import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
@@ -104,23 +86,8 @@ public class CoordinatorUIHttpServerModule
         binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));
         binder.bind(TransactionManager.class).toInstance(injector.getInstance(TransactionManager.class));
 
-        jsonCodecBinder(binder).bindJsonCodec(QueryInfo.class);
-        jsonCodecBinder(binder).bindJsonCodec(TaskInfo.class);
-        jsonCodecBinder(binder).bindJsonCodec(QueryResults.class);
-        jsonCodecBinder(binder).bindJsonCodec(TaskStatus.class);
-        jsonCodecBinder(binder).bindJsonCodec(ViewDefinition.class);
-        jsonCodecBinder(binder).bindJsonCodec(MemoryInfo.class);
-        jsonCodecBinder(binder).bindJsonCodec(MemoryPoolAssignmentsRequest.class);
-        jsonCodecBinder(binder).bindJsonCodec(TaskUpdateRequest.class);
-        jsonCodecBinder(binder).bindJsonCodec(ConnectorSplit.class);
-        jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
-        jsonBinder(binder).addSerializerBinding(Slice.class).to(SliceSerializer.class);
-        jsonBinder(binder).addDeserializerBinding(Slice.class).to(SliceDeserializer.class);
-        jsonBinder(binder).addSerializerBinding(Expression.class).to(ExpressionSerializer.class);
-        jsonBinder(binder).addDeserializerBinding(Expression.class).to(ExpressionDeserializer.class);
-        jsonBinder(binder).addDeserializerBinding(FunctionCall.class).to(FunctionCallDeserializer.class);
-        jsonBinder(binder).addSerializerBinding(Block.class).to(BlockJsonSerde.Serializer.class);
-        jsonBinder(binder).addDeserializerBinding(Block.class).to(BlockJsonSerde.Deserializer.class);
+        binder.bind(ObjectMapper.class).toInstance(injector.getInstance(ObjectMapper.class));
+        binder.bind(JsonCodecFactory.class).toInstance(injector.getInstance(JsonCodecFactory.class));
 
         // bind webapp
         httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
