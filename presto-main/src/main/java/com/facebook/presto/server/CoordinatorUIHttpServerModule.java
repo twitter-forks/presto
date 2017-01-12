@@ -97,7 +97,6 @@ public class CoordinatorUIHttpServerModule
         jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
         // query manager
         jaxrsBinder(binder).bindInstance(injector.getInstance(QueryResource.class));
-        jaxrsBinder(binder).bindInstance(injector.getInstance(StageResource.class));
         // cluster statistics
         jaxrsBinder(binder).bindInstance(injector.getInstance(ClusterStatsResource.class));
         // server info resource
