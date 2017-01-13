@@ -24,6 +24,7 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.twitter.hive.util.UgiUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.CharStreams;
 import io.airlift.units.DataSize;
@@ -55,7 +56,6 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -84,11 +84,6 @@ public class BackgroundHiveSplitLoader
     private static final String CORRUPT_BUCKETING = "Hive table is corrupt. It is declared as being bucketed, but the files do not match the bucketing declaration.";
 
     public static final CompletableFuture<?> COMPLETED_FUTURE = CompletableFuture.completedFuture(null);
-
-    // Every instance of a UserGroupInformation object for a given user has a unique hashcode, due
-    // to the hashCode() impl. If we don't cache the UGI per-user here, there will be a memory leak
-    // in the PrestoFileSystemCache.
-    private static final Map<String, UserGroupInformation> UGI_CACHE = new ConcurrentHashMap<>();
 
     private final String connectorId;
     private final Table table;
@@ -163,21 +158,10 @@ public class BackgroundHiveSplitLoader
         UserGroupInformation ugi = null;
 
         if (HiveSessionProperties.getReadAsQueryUser(session)) {
-            String user = session.getUser();
-            ugi = UGI_CACHE.get(user);
-
-            if (ugi == null) {
-                // TODO: Configure hadoop to allow presto daemon user to impersonate all presto users
-                // (HADOOPINFRA-7081) and then change to the approach below (IQ-85).
-                // See https://hadoop.apache.org/docs/r2.4.1/hadoop-project-dist/hadoop-common/Superusers.html
-                // UserGroupInformation ugi = UserGroupInformation.createProxyUser(
-                //        session.getUser(), UserGroupInformation.getLoginUser());
-                ugi = UserGroupInformation.createRemoteUser(user);
-                UGI_CACHE.put(user, ugi);
-            }
+            ugi = UgiUtils.getUgi(session.getUser());
         }
 
-         for (int i = 0; i < maxPartitionBatchSize; i++) {
+        for (int i = 0; i < maxPartitionBatchSize; i++) {
             ResumableTasks.submit(executor, new HiveSplitLoaderTask(ugi));
         }
     }
