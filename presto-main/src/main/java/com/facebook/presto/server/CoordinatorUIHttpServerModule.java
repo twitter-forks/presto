@@ -24,6 +24,8 @@ import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.discovery.client.AnnouncementHttpServerInfo;
+import io.airlift.discovery.client.Announcer;
+import io.airlift.discovery.server.DynamicAnnouncementResource;
 import io.airlift.event.client.EventClient;
 import io.airlift.http.server.HttpRequestEvent;
 import io.airlift.http.server.HttpServer;
@@ -81,6 +83,7 @@ public class CoordinatorUIHttpServerModule
         eventBinder(binder).bindEventClient(HttpRequestEvent.class);
 
         binder.bind(AnnouncementHttpServerInfo.class).to(LocalAnnouncementHttpServerInfo.class).in(Scopes.SINGLETON);
+        binder.bind(Announcer.class).toInstance(injector.getInstance(Announcer.class));
         binder.bind(BlockEncodingSerde.class).toInstance(injector.getInstance(BlockEncodingSerde.class));
         binder.bind(TypeManager.class).toInstance(injector.getInstance(TypeManager.class));
         binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));
@@ -93,6 +96,8 @@ public class CoordinatorUIHttpServerModule
         httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
         // presto coordinator ui announcement
         discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator-ui");
+        // accept presto worker's announcement
+        jaxrsBinder(binder).bindInstance(injector.getInstance(DynamicAnnouncementResource.class));
         // query execution visualizer
         jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
         // query manager
