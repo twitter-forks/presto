@@ -24,8 +24,8 @@ import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.discovery.client.AnnouncementHttpServerInfo;
-import io.airlift.discovery.client.Announcer;
 import io.airlift.discovery.server.DynamicAnnouncementResource;
+import io.airlift.discovery.server.ServiceResource;
 import io.airlift.event.client.EventClient;
 import io.airlift.http.server.HttpRequestEvent;
 import io.airlift.http.server.HttpServer;
@@ -37,9 +37,12 @@ import io.airlift.http.server.RequestStats;
 import io.airlift.http.server.TheAdminServlet;
 import io.airlift.http.server.TheServlet;
 import io.airlift.json.JsonCodecFactory;
+import io.airlift.node.NodeConfig;
 import io.airlift.node.NodeInfo;
 
 import javax.servlet.Filter;
+
+import java.util.UUID;
 
 import static io.airlift.discovery.client.DiscoveryBinder.discoveryBinder;
 import static io.airlift.event.client.EventBinder.eventBinder;
@@ -70,7 +73,6 @@ public class CoordinatorUIHttpServerModule
         binder.bind(HttpServerConfig.class).toInstance(httpServerConfig);
 
         binder.bind(HttpServerInfo.class).in(Scopes.SINGLETON);
-        binder.bind(NodeInfo.class).toInstance(injector.getInstance(NodeInfo.class));
         binder.bind(EventClient.class).toInstance(injector.getInstance(EventClient.class));
         binder.bind(HttpServer.class).toProvider(HttpServerProvider.class).in(Scopes.SINGLETON);
 
@@ -82,8 +84,10 @@ public class CoordinatorUIHttpServerModule
         newExporter(binder).export(RequestStats.class).withGeneratedName();
         eventBinder(binder).bindEventClient(HttpRequestEvent.class);
 
+        NodeConfig nodeConfig = injector.getInstance(NodeConfig.class);
+        nodeConfig.setNodeId(UUID.randomUUID().toString());
+        binder.bind(NodeInfo.class).toInstance(new NodeInfo(nodeConfig));
         binder.bind(AnnouncementHttpServerInfo.class).to(LocalAnnouncementHttpServerInfo.class).in(Scopes.SINGLETON);
-        binder.bind(Announcer.class).toInstance(injector.getInstance(Announcer.class));
         binder.bind(BlockEncodingSerde.class).toInstance(injector.getInstance(BlockEncodingSerde.class));
         binder.bind(TypeManager.class).toInstance(injector.getInstance(TypeManager.class));
         binder.bind(SqlParser.class).toInstance(injector.getInstance(SqlParser.class));
@@ -98,6 +102,8 @@ public class CoordinatorUIHttpServerModule
         discoveryBinder(binder).bindHttpAnnouncement("presto-coordinator-ui");
         // accept presto worker's announcement
         jaxrsBinder(binder).bindInstance(injector.getInstance(DynamicAnnouncementResource.class));
+        // service info
+        jaxrsBinder(binder).bindInstance(injector.getInstance(ServiceResource.class));
         // query execution visualizer
         jaxrsBinder(binder).bindInstance(injector.getInstance(QueryExecutionResource.class));
         // query manager
