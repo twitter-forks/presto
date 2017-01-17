@@ -96,6 +96,11 @@ public class CoordinatorUIHttpServerModule
         binder.bind(ObjectMapper.class).toInstance(injector.getInstance(ObjectMapper.class));
         binder.bind(JsonCodecFactory.class).toInstance(injector.getInstance(JsonCodecFactory.class));
 
+        resourceBinding(binder);
+    }
+
+    protected void resourceBinding(Binder binder)
+    {
         // bind webapp
         httpServerBinder(binder).bindResource("/", "webapp").withWelcomeFile("index.html");
         // presto coordinator ui announcement
