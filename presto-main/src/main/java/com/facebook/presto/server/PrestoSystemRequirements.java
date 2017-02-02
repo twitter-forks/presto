@@ -42,7 +42,7 @@ final class PrestoSystemRequirements
     {
         String vendor = StandardSystemProperty.JAVA_VENDOR.value();
         if (!"Oracle Corporation".equals(vendor)) {
-            warnRequirement("Presto requires an Oracle or OpenJDK JVM (found %s)", vendor);
+            failRequirement("Presto requires an Oracle or OpenJDK JVM (found %s)", vendor);
         }
 
         //verifyJavaVersion();
