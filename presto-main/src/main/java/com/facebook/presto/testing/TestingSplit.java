@@ -36,12 +36,12 @@ public class TestingSplit
 
     public static TestingSplit createEmptySplit()
     {
-        return new TestingSplit(false, ImmutableList.of());
+        return new TestingSplit(false, ImmutableList.<HostAddress>of());
     }
 
     public static TestingSplit createRemoteSplit()
     {
-        return new TestingSplit(true, ImmutableList.of());
+        return new TestingSplit(true, ImmutableList.<HostAddress>of());
     }
 
     @JsonCreator

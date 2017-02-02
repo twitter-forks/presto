@@ -35,7 +35,7 @@ public final class BlackHoleSplitManager
                 BlackHoleTableLayoutHandle.class,
                 "BlackHoleTableLayoutHandle");
 
-        ImmutableList.Builder<BlackHoleSplit> builder = ImmutableList.builder();
+        ImmutableList.Builder<BlackHoleSplit> builder = ImmutableList.<BlackHoleSplit>builder();
 
         for (int i = 0; i < layout.getSplitCount(); i++) {
             builder.add(

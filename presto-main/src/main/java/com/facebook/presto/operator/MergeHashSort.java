@@ -38,9 +38,6 @@ public class MergeHashSort
     {
     }
 
-    /**
-     * Rows with same hash value are guaranteed to be in the same result page.
-     */
     public static Iterator<Page> merge(List<Type> keyTypes, List<Type> allTypes, List<Iterator<Page>> channels)
     {
         List<Iterator<PagePosition>> channelIterators = channels.stream().map(SingleChannelPagePositions::new).collect(toList());
@@ -104,7 +101,7 @@ public class MergeHashSort
         }
     }
 
-    public interface PagePositions extends Iterator<PagePosition>
+    public static interface PagePositions extends Iterator<PagePosition>
     {
     }
 
@@ -140,6 +137,7 @@ public class MergeHashSort
 
     /**
      * This class rewrites iterator over PagePosition to iterator over Pages.
+     * Positions with same hash value are guaranteed to be in the same result page.
      */
     public static class PageRewriteIterator
             implements Iterator<Page>

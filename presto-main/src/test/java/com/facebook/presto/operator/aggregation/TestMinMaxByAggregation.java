@@ -82,7 +82,7 @@ public class TestMinMaxByAggregation
         }
     }
 
-    private static List<Type> getTypes()
+    private List<Type> getTypes()
     {
         List<Type> simpleTypes = METADATA.getTypeManager().getTypes();
         return new ImmutableList.Builder<Type>()

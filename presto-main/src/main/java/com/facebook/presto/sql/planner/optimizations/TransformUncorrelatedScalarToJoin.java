@@ -19,6 +19,7 @@ import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
+import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
@@ -52,7 +53,7 @@ public class TransformUncorrelatedScalarToJoin
         public PlanNode visitApply(ApplyNode node, RewriteContext<PlanNode> context)
         {
             ApplyNode rewrittenNode = (ApplyNode) context.defaultRewrite(node, context.get());
-            if (rewrittenNode.getCorrelation().isEmpty() && rewrittenNode.isResolvedScalarSubquery()) {
+            if (rewrittenNode.getCorrelation().isEmpty() && rewrittenNode.getSubquery() instanceof EnforceSingleRowNode) {
                 return new JoinNode(
                         idAllocator.getNextId(),
                         JoinNode.Type.INNER,

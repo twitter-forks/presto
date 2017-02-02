@@ -32,7 +32,7 @@ public class TestHostAddressFactory
     public void testToHostAddressList()
             throws Exception
     {
-        Set<Host> hosts = ImmutableSet.of(
+        Set<Host> hosts = ImmutableSet.<Host>of(
                 new TestHost(
                     new InetSocketAddress(
                         InetAddress.getByAddress(new byte[] {

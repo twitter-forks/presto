@@ -106,7 +106,7 @@ public enum ArrayOpCode
 
     static Map<Class<?>, ArrayOpCode> initializeArrayOpCodeMap()
     {
-        ImmutableMap.Builder<Class<?>, ArrayOpCode> builder = ImmutableMap.builder();
+        ImmutableMap.Builder<Class<?>, ArrayOpCode> builder = ImmutableMap.<Class<?>, ArrayOpCode>builder();
         for (ArrayOpCode arrayOpCode : values()) {
             if (arrayOpCode.getType() != null) {
                 builder.put(arrayOpCode.getType(), arrayOpCode);

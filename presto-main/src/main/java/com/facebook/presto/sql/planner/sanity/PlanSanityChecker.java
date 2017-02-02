@@ -34,8 +34,7 @@ public final class PlanSanityChecker
             new TypeValidator(),
             new NoSubqueryExpressionLeftChecker(),
             new NoApplyNodeLeftChecker(),
-            new VerifyNoFilteredAggregations(),
-            new VerifyOnlyOneOutputNode());
+            new VerifyNoFilteredAggregations());
 
     private PlanSanityChecker() {}
 

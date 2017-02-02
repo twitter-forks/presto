@@ -55,7 +55,7 @@ public class TestExampleRecordSet
                 new ExampleColumnHandle("test", "text", createUnboundedVarcharType(), 0)));
         assertEquals(recordSet.getColumnTypes(), ImmutableList.of(BIGINT, BIGINT, createUnboundedVarcharType()));
 
-        recordSet = new ExampleRecordSet(new ExampleSplit("test", "schema", "table", dataUri), ImmutableList.of());
+        recordSet = new ExampleRecordSet(new ExampleSplit("test", "schema", "table", dataUri), ImmutableList.<ExampleColumnHandle>of());
         assertEquals(recordSet.getColumnTypes(), ImmutableList.of());
     }
 

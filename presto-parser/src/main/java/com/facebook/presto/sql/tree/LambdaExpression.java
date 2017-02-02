@@ -22,27 +22,27 @@ import static java.util.Objects.requireNonNull;
 public class LambdaExpression
         extends Expression
 {
-    private final List<LambdaArgumentDeclaration> arguments;
+    private final List<String> arguments;
     private final Expression body;
 
-    public LambdaExpression(List<LambdaArgumentDeclaration> arguments, Expression body)
+    public LambdaExpression(List<String> arguments, Expression body)
     {
         this(Optional.empty(), arguments, body);
     }
 
-    public LambdaExpression(NodeLocation location, List<LambdaArgumentDeclaration> arguments, Expression body)
+    public LambdaExpression(NodeLocation location, List<String> arguments, Expression body)
     {
         this(Optional.of(location), arguments, body);
     }
 
-    private LambdaExpression(Optional<NodeLocation> location, List<LambdaArgumentDeclaration> arguments, Expression body)
+    private LambdaExpression(Optional<NodeLocation> location, List<String> arguments, Expression body)
     {
         super(location);
         this.arguments = requireNonNull(arguments, "arguments is null");
         this.body = requireNonNull(body, "body is null");
     }
 
-    public List<LambdaArgumentDeclaration> getArguments()
+    public List<String> getArguments()
     {
         return arguments;
     }

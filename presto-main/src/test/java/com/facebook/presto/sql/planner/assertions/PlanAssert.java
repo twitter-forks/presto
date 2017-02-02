@@ -19,6 +19,7 @@ import com.facebook.presto.sql.planner.Plan;
 
 import static com.facebook.presto.sql.planner.PlanPrinter.textLogicalPlan;
 import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
 import static org.testng.Assert.assertTrue;
 
 public final class PlanAssert
@@ -27,10 +28,12 @@ public final class PlanAssert
 
     public static void assertPlan(Session session, Metadata metadata, Plan actual, PlanMatchPattern pattern)
     {
-        MatchResult matches = actual.getRoot().accept(new PlanMatchingVisitor(session, metadata), pattern);
-        if (!matches.isMatch()) {
+        requireNonNull(actual, "root is null");
+
+        boolean matches = actual.getRoot().accept(new PlanMatchingVisitor(session, metadata), new PlanMatchingContext(pattern));
+        if (!matches) {
             String logicalPlan = textLogicalPlan(actual.getRoot(), actual.getTypes(), metadata, session);
-            assertTrue(matches.isMatch(), format("Plan does not match:\n %s\n, to pattern:\n%s", logicalPlan, pattern));
+            assertTrue(matches, format("Plan does not match:\n %s\n, to pattern:\n%s", logicalPlan, pattern));
         }
     }
 }

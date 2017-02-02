@@ -30,7 +30,6 @@ import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
-import static com.facebook.presto.spi.type.Chars.compareChars;
 
 public final class CharOperators
 {
@@ -57,7 +56,7 @@ public final class CharOperators
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean lessThan(@SqlType("char(x)") Slice left, @SqlType("char(x)") Slice right)
     {
-        return compareChars(left, right) < 0;
+        return left.compareTo(right) < 0;
     }
 
     @LiteralParameters({"x"})
@@ -65,7 +64,7 @@ public final class CharOperators
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean lessThanOrEqual(@SqlType("char(x)") Slice left, @SqlType("char(x)") Slice right)
     {
-        return compareChars(left, right) <= 0;
+        return left.compareTo(right) <= 0;
     }
 
     @LiteralParameters({"x"})
@@ -73,7 +72,7 @@ public final class CharOperators
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean greaterThan(@SqlType("char(x)") Slice left, @SqlType("char(x)") Slice right)
     {
-        return compareChars(left, right) > 0;
+        return left.compareTo(right) > 0;
     }
 
     @LiteralParameters({"x"})
@@ -81,7 +80,7 @@ public final class CharOperators
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean greaterThanOrEqual(@SqlType("char(x)") Slice left, @SqlType("char(x)") Slice right)
     {
-        return compareChars(left, right) >= 0;
+        return left.compareTo(right) >= 0;
     }
 
     @LiteralParameters({"x"})
@@ -89,7 +88,7 @@ public final class CharOperators
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean between(@SqlType("char(x)") Slice value, @SqlType("char(x)") Slice min, @SqlType("char(x)") Slice max)
     {
-        return compareChars(min, value) <= 0 && compareChars(value, max) <= 0;
+        return min.compareTo(value) <= 0 && value.compareTo(max) <= 0;
     }
 
     @LiteralParameters("x")

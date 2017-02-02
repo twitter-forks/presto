@@ -25,6 +25,7 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.primitives.Ints;
+import io.airlift.slice.Slices;
 import org.joda.time.DateTimeZone;
 
 import javax.annotation.Nonnull;
@@ -98,17 +99,13 @@ public class ListStreamReader
             }
         }
 
-        // The length vector could be reused, but this simplifies the code below by
-        // taking advantage of null entries being initialized to zero.  The vector
-        // could be reinitialized for each loop, but that is likely just as expensive
-        // as allocating a new array
-        int[] lengthVector = new int[nextBatchSize];
+        int[] offsets = new int[nextBatchSize];
         boolean[] nullVector = new boolean[nextBatchSize];
         if (presentStream == null) {
             if (lengthStream == null) {
                 throw new OrcCorruptionException("Value is not null but data stream is not present");
             }
-            lengthStream.nextIntVector(nextBatchSize, lengthVector);
+            lengthStream.nextIntVector(nextBatchSize, offsets);
         }
         else {
             int nullValues = presentStream.getUnsetBits(nextBatchSize, nullVector);
@@ -116,13 +113,11 @@ public class ListStreamReader
                 if (lengthStream == null) {
                     throw new OrcCorruptionException("Value is not null but data stream is not present");
                 }
-                lengthStream.nextIntVector(nextBatchSize, lengthVector, nullVector);
+                lengthStream.nextIntVector(nextBatchSize, offsets, nullVector);
             }
         }
-        int[] offsets = new int[nextBatchSize + 1];
         for (int i = 1; i < offsets.length; i++) {
-            int length = lengthVector[i - 1];
-            offsets[i] = offsets[i - 1] + length;
+            offsets[i] += offsets[i - 1];
         }
 
         Type elementType = type.getTypeParameters().get(0);
@@ -136,7 +131,7 @@ public class ListStreamReader
         else {
             elements = elementType.createBlockBuilder(new BlockBuilderStatus(), 0).build();
         }
-        ArrayBlock arrayBlock = new ArrayBlock(nextBatchSize, nullVector, offsets, elements);
+        ArrayBlock arrayBlock = new ArrayBlock(elements, Slices.wrappedIntArray(offsets), 0, Slices.wrappedBooleanArray(nullVector));
 
         readOffset = 0;
         nextBatchSize = 0;

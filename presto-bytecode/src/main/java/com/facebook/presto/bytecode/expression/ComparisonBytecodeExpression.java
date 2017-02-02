@@ -304,7 +304,7 @@ class ComparisonBytecodeExpression
     @Override
     public List<BytecodeNode> getChildNodes()
     {
-        return ImmutableList.of(left, right);
+        return ImmutableList.<BytecodeNode>of(left, right);
     }
 
     @Override

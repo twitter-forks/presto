@@ -35,6 +35,7 @@ import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.ConnectorAwareSplitSource;
 import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.Partitioning;
@@ -440,9 +441,9 @@ public class TestSourcePartitionedScheduler
                         new RemoteSourceNode(new PlanNodeId("remote_id"), new PlanFragmentId("plan_fragment_id"), ImmutableList.of()),
                         ImmutableList.of(),
                         Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()),
-                ImmutableMap.of(symbol, VARCHAR),
+                        Optional.<Symbol>empty(),
+                        Optional.<Symbol>empty()),
+                ImmutableMap.<Symbol, Type>of(symbol, VARCHAR),
                 SOURCE_DISTRIBUTION,
                 ImmutableList.of(tableScanNodeId),
                 new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), ImmutableList.of(symbol)));

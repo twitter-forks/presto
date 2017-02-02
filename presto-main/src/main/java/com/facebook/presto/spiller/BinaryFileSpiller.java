@@ -25,8 +25,6 @@ import io.airlift.slice.OutputStreamSliceOutput;
 import io.airlift.slice.RuntimeIOException;
 import io.airlift.slice.SliceOutput;
 
-import javax.annotation.concurrent.NotThreadSafe;
-
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
@@ -39,39 +37,28 @@ import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
-@NotThreadSafe
 public class BinaryFileSpiller
         implements Spiller
 {
     private final Path targetDirectory;
     private final Closer closer = Closer.create();
     private final BlockEncodingSerde blockEncodingSerde;
-    private final AtomicLong spilledDataSize;
-
-    private final ListeningExecutorService executor;
 
     private int spillsCount;
-    private CompletableFuture<?> previousSpill = CompletableFuture.completedFuture(null);
+    private final ListeningExecutorService executor;
 
-    public BinaryFileSpiller(
-            BlockEncodingSerde blockEncodingSerde,
-            ListeningExecutorService executor,
-            Path spillPath,
-            AtomicLong spilledDataSize)
+    public BinaryFileSpiller(BlockEncodingSerde blockEncodingSerde, ListeningExecutorService executor, Path spillPath)
     {
         this.blockEncodingSerde = requireNonNull(blockEncodingSerde, "blockEncodingSerde is null");
         this.executor = requireNonNull(executor, "executor is null");
-        this.spilledDataSize = requireNonNull(spilledDataSize, "spilledDataSize is null");
         try {
             this.targetDirectory = Files.createTempDirectory(spillPath, "presto-spill");
         }
@@ -83,18 +70,17 @@ public class BinaryFileSpiller
     @Override
     public CompletableFuture<?> spill(Iterator<Page> pageIterator)
     {
-        checkState(previousSpill.isDone());
         Path spillPath = getPath(spillsCount++);
 
-        previousSpill = MoreFutures.toCompletableFuture(executor.submit(
-                () -> writePages(pageIterator, spillPath)));
-        return previousSpill;
+        return MoreFutures.toCompletableFuture(executor.submit(
+                () -> writePages(pageIterator, spillPath)
+        ));
     }
 
     private void writePages(Iterator<Page> pageIterator, Path spillPath)
     {
         try (SliceOutput output = new OutputStreamSliceOutput(new BufferedOutputStream(new FileOutputStream(spillPath.toFile())))) {
-            spilledDataSize.addAndGet(PagesSerde.writePages(blockEncodingSerde, output, pageIterator));
+            PagesSerde.writePages(blockEncodingSerde, output, pageIterator);
         }
         catch (RuntimeIOException | IOException e) {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Failed to spill pages", e);
@@ -104,7 +90,6 @@ public class BinaryFileSpiller
     @Override
     public List<Iterator<Page>> getSpills()
     {
-        checkState(previousSpill.isDone());
         return IntStream.range(0, spillsCount)
                 .mapToObj(i -> readPages(getPath(i)))
                 .collect(toImmutableList());

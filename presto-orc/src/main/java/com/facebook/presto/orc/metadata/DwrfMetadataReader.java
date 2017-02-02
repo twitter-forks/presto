@@ -51,7 +51,7 @@ public class DwrfMetadataReader
         OrcProto.PostScript postScript = OrcProto.PostScript.parseFrom(input);
 
         return new PostScript(
-                ImmutableList.of(),
+                ImmutableList.<Integer>of(),
                 postScript.getFooterLength(),
                 0,
                 toCompression(postScript.getCompression()),
@@ -62,7 +62,7 @@ public class DwrfMetadataReader
     public Metadata readMetadata(InputStream inputStream)
             throws IOException
     {
-        return new Metadata(ImmutableList.of());
+        return new Metadata(ImmutableList.<StripeStatistics>of());
     }
 
     @Override

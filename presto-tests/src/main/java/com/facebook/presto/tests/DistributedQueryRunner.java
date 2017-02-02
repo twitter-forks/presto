@@ -253,7 +253,7 @@ public class DistributedQueryRunner
 
     public void createCatalog(String catalogName, String connectorName)
     {
-        createCatalog(catalogName, connectorName, ImmutableMap.of());
+        createCatalog(catalogName, connectorName, ImmutableMap.<String, String>of());
     }
 
     @Override

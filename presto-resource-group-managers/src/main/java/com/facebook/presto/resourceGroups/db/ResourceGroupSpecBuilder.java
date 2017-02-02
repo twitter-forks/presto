@@ -39,7 +39,7 @@ public class ResourceGroupSpecBuilder
     private final Optional<Duration> softCpuLimit;
     private final Optional<Duration> hardCpuLimit;
     private final Optional<Long> parentId;
-    private final ImmutableList.Builder<ResourceGroupSpec> subGroups = ImmutableList.builder();
+    private final ImmutableList.Builder<ResourceGroupSpec> subGroups = ImmutableList.<ResourceGroupSpec>builder();
 
     ResourceGroupSpecBuilder(
             long id,

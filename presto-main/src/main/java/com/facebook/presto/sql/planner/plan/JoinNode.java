@@ -23,7 +23,6 @@ import com.google.common.collect.ImmutableList;
 import javax.annotation.concurrent.Immutable;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
@@ -193,29 +192,6 @@ public class JoinNode
         public Symbol getRight()
         {
             return right;
-        }
-
-        @Override
-        public boolean equals(Object obj)
-        {
-            if (this == obj) {
-                return true;
-            }
-
-            if (obj == null || !this.getClass().equals(obj.getClass())) {
-                return false;
-            }
-
-            EquiJoinClause other = (EquiJoinClause) obj;
-
-            return Objects.equals(this.left, other.left) &&
-                    Objects.equals(this.right, other.right);
-        }
-
-        @Override
-        public int hashCode()
-        {
-            return Objects.hash(left, right);
         }
     }
 }

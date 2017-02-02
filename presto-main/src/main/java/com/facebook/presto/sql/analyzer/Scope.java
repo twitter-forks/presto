@@ -82,7 +82,7 @@ public class Scope
         return Optional.empty();
     }
 
-    private static QualifiedName asQualifiedName(Expression expression)
+    private QualifiedName asQualifiedName(Expression expression)
     {
         QualifiedName name = null;
         if (expression instanceof QualifiedNameReference) {
@@ -150,7 +150,7 @@ public class Scope
         return false;
     }
 
-    private static boolean isColumnReference(QualifiedName name, RelationType relation)
+    private boolean isColumnReference(QualifiedName name, RelationType relation)
     {
         while (name.getPrefix().isPresent()) {
             name = name.getPrefix().get();

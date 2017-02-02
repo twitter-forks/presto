@@ -14,13 +14,12 @@
 package com.facebook.presto.spi.block;
 
 import com.facebook.presto.spi.type.Type;
+import io.airlift.slice.DynamicSliceOutput;
+import io.airlift.slice.Slice;
+import io.airlift.slice.SliceOutput;
 import org.openjdk.jol.info.ClassLayout;
 
-import java.util.Arrays;
-
 import static com.facebook.presto.spi.block.BlockUtil.calculateBlockResetSize;
-import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
-import static io.airlift.slice.SizeOf.sizeOf;
 import static java.util.Objects.requireNonNull;
 
 public class ArrayBlockBuilder
@@ -29,17 +28,12 @@ public class ArrayBlockBuilder
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ArrayBlockBuilder.class).instanceSize() + BlockBuilderStatus.INSTANCE_SIZE;
 
-    private int positionCount;
-
     private BlockBuilderStatus blockBuilderStatus;
-
-    private int[] offsets;
-    private boolean[] valueIsNull;
-
     private final BlockBuilder values;
+    private SliceOutput offsets;
+    private SliceOutput valueIsNull;
+    private static final int OFFSET_BASE = 0;
     private int currentEntrySize;
-
-    private int retainedSizeInBytes;
 
     /**
      * Caller of this constructor is responsible for making sure `valuesBlock` is constructed with the same `blockBuilderStatus` as the one in the argument
@@ -49,8 +43,8 @@ public class ArrayBlockBuilder
         this(
                 blockBuilderStatus,
                 valuesBlock,
-                new int[expectedEntries + 1],
-                new boolean[expectedEntries]);
+                new DynamicSliceOutput(expectedEntries * Integer.BYTES),
+                new DynamicSliceOutput(expectedEntries));
     }
 
     public ArrayBlockBuilder(Type elementType, BlockBuilderStatus blockBuilderStatus, int expectedEntries, int expectedBytesPerEntry)
@@ -58,8 +52,8 @@ public class ArrayBlockBuilder
         this(
                 blockBuilderStatus,
                 elementType.createBlockBuilder(blockBuilderStatus, expectedEntries, expectedBytesPerEntry),
-                new int[expectedEntries + 1],
-                new boolean[expectedEntries]);
+                new DynamicSliceOutput(expectedEntries * Integer.BYTES),
+                new DynamicSliceOutput(expectedEntries));
     }
 
     public ArrayBlockBuilder(Type elementType, BlockBuilderStatus blockBuilderStatus, int expectedEntries)
@@ -67,42 +61,37 @@ public class ArrayBlockBuilder
         this(
                 blockBuilderStatus,
                 elementType.createBlockBuilder(blockBuilderStatus, expectedEntries),
-                new int[expectedEntries + 1],
-                new boolean[expectedEntries]);
+                new DynamicSliceOutput(expectedEntries * Integer.BYTES),
+                new DynamicSliceOutput(expectedEntries));
     }
 
     /**
      * Caller of this private constructor is responsible for making sure `values` is constructed with the same `blockBuilderStatus` as the one in the argument
      */
-    private ArrayBlockBuilder(BlockBuilderStatus blockBuilderStatus, BlockBuilder values, int[] offsets, boolean[] valueIsNull)
+    private ArrayBlockBuilder(BlockBuilderStatus blockBuilderStatus, BlockBuilder values, SliceOutput offsets, SliceOutput valueIsNull)
     {
         this.blockBuilderStatus = requireNonNull(blockBuilderStatus, "blockBuilderStatus is null");
         this.values = requireNonNull(values, "values is null");
         this.offsets = requireNonNull(offsets, "offset is null");
-        this.valueIsNull = requireNonNull(valueIsNull, "valueIsNull is null");
-        if (offsets.length != valueIsNull.length + 1) {
-            throw new IllegalArgumentException("expected offsets and valueIsNull to have same length");
-        }
-
-        updateDataSize();
+        this.valueIsNull = requireNonNull(valueIsNull);
     }
 
     @Override
     public int getPositionCount()
     {
-        return positionCount;
+        return valueIsNull.size();
     }
 
     @Override
     public int getSizeInBytes()
     {
-        return values.getSizeInBytes() + ((Integer.BYTES + Byte.BYTES) * positionCount);
+        return values.getSizeInBytes() + offsets.size() + valueIsNull.size();
     }
 
     @Override
     public int getRetainedSizeInBytes()
     {
-        return retainedSizeInBytes;
+        return INSTANCE_SIZE + values.getRetainedSizeInBytes() + offsets.getRetainedSize() + valueIsNull.getRetainedSize();
     }
 
     @Override
@@ -112,21 +101,21 @@ public class ArrayBlockBuilder
     }
 
     @Override
-    protected int[] getOffsets()
+    protected Slice getOffsets()
     {
-        return offsets;
+        return offsets.getUnderlyingSlice();
     }
 
     @Override
     protected int getOffsetBase()
     {
-        return 0;
+        return OFFSET_BASE;
     }
 
     @Override
-    protected boolean[] getValueIsNull()
+    protected Slice getValueIsNull()
     {
-        return valueIsNull;
+        return valueIsNull.getUnderlyingSlice();
     }
 
     @Override
@@ -186,27 +175,10 @@ public class ArrayBlockBuilder
 
     private void entryAdded(boolean isNull)
     {
-        if (valueIsNull.length <= positionCount) {
-            growCapacity();
-        }
-        offsets[positionCount + 1] = values.getPositionCount();
-        valueIsNull[positionCount] = isNull;
-        positionCount++;
+        offsets.appendInt(values.getPositionCount());
+        valueIsNull.appendByte(isNull ? 1 : 0);
 
         blockBuilderStatus.addBytes(Integer.BYTES + Byte.BYTES);
-    }
-
-    private void growCapacity()
-    {
-        int newSize = BlockUtil.calculateNewArraySize(valueIsNull.length);
-        valueIsNull = Arrays.copyOf(valueIsNull, newSize);
-        offsets = Arrays.copyOf(offsets, newSize + 1);
-        updateDataSize();
-    }
-
-    private void updateDataSize()
-    {
-        retainedSizeInBytes = intSaturatedCast(INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(offsets));
     }
 
     @Override
@@ -215,7 +187,7 @@ public class ArrayBlockBuilder
         if (currentEntrySize > 0) {
             throw new IllegalStateException("Current entry must be closed before the block can be built");
         }
-        return new ArrayBlock(positionCount, valueIsNull, offsets, values.build());
+        return new ArrayBlock(values.build(), offsets.slice(), OFFSET_BASE, valueIsNull.slice());
     }
 
     @Override
@@ -224,14 +196,11 @@ public class ArrayBlockBuilder
         this.blockBuilderStatus = requireNonNull(blockBuilderStatus, "blockBuilderStatus is null");
 
         int newSize = calculateBlockResetSize(getPositionCount());
-        valueIsNull = new boolean[newSize];
-        offsets = new int[newSize + 1];
+        valueIsNull = new DynamicSliceOutput(newSize);
+        offsets = new DynamicSliceOutput(newSize * Integer.BYTES);
         values.reset(blockBuilderStatus);
 
         currentEntrySize = 0;
-        positionCount = 0;
-
-        updateDataSize();
     }
 
     @Override

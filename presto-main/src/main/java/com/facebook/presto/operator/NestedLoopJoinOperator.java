@@ -272,13 +272,11 @@ public class NestedLoopJoinOperator
             return -1;
         }
 
-        @Override
         public boolean hasNext()
         {
             return rowIndex < maxRowIndex;
         }
 
-        @Override
         public Page next()
         {
             if (!hasNext()) {

@@ -36,7 +36,6 @@ public class TestingEventListenerManager
         configuredEventListener.set(Optional.of(eventListenerFactory.create(ImmutableMap.of())));
     }
 
-    @Override
     public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
     {
         if (configuredEventListener.get().isPresent()) {
@@ -44,7 +43,6 @@ public class TestingEventListenerManager
         }
     }
 
-    @Override
     public void queryCreated(QueryCreatedEvent queryCreatedEvent)
     {
         if (configuredEventListener.get().isPresent()) {
@@ -52,7 +50,6 @@ public class TestingEventListenerManager
         }
     }
 
-    @Override
     public void splitCompleted(SplitCompletedEvent splitCompletedEvent)
     {
         if (configuredEventListener.get().isPresent()) {

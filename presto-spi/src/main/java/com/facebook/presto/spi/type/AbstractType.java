@@ -90,67 +90,67 @@ public abstract class AbstractType
     @Override
     public boolean getBoolean(Block block, int position)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeBoolean(BlockBuilder blockBuilder, boolean value)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public long getLong(Block block, int position)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeLong(BlockBuilder blockBuilder, long value)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public double getDouble(Block block, int position)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeDouble(BlockBuilder blockBuilder, double value)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Slice getSlice(Block block, int position)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeSlice(BlockBuilder blockBuilder, Slice value)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeSlice(BlockBuilder blockBuilder, Slice value, int offset, int length)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Object getObject(Block block, int position)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void writeObject(BlockBuilder blockBuilder, Object value)
     {
-        throw new UnsupportedOperationException(getClass().getName());
+        throw new UnsupportedOperationException();
     }
 
     @Override

@@ -46,7 +46,6 @@ import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.FieldReference;
 import com.facebook.presto.sql.tree.FrameBound;
 import com.facebook.presto.sql.tree.FunctionCall;
-import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
@@ -64,7 +63,6 @@ import com.google.common.collect.Iterables;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,33 +85,24 @@ class QueryPlanner
     private final Analysis analysis;
     private final SymbolAllocator symbolAllocator;
     private final PlanNodeIdAllocator idAllocator;
-    private final IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap;
     private final Metadata metadata;
     private final Session session;
     private final SubqueryPlanner subqueryPlanner;
 
-    QueryPlanner(
-            Analysis analysis,
-            SymbolAllocator symbolAllocator,
-            PlanNodeIdAllocator idAllocator,
-            IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap,
-            Metadata metadata,
-            Session session)
+    QueryPlanner(Analysis analysis, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator, Metadata metadata, Session session)
     {
         requireNonNull(analysis, "analysis is null");
         requireNonNull(symbolAllocator, "symbolAllocator is null");
         requireNonNull(idAllocator, "idAllocator is null");
-        requireNonNull(lambdaDeclarationToSymbolMap, "lambdaDeclarationToSymbolMap is null");
         requireNonNull(metadata, "metadata is null");
         requireNonNull(session, "session is null");
 
         this.analysis = analysis;
         this.symbolAllocator = symbolAllocator;
         this.idAllocator = idAllocator;
-        this.lambdaDeclarationToSymbolMap = lambdaDeclarationToSymbolMap;
         this.metadata = metadata;
         this.session = session;
-        this.subqueryPlanner = new SubqueryPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session, analysis.getParameters());
+        this.subqueryPlanner = new SubqueryPlanner(analysis, symbolAllocator, idAllocator, metadata, session, analysis.getParameters());
     }
 
     public RelationPlan plan(Query query)
@@ -193,7 +182,7 @@ class QueryPlanner
         Scope scope = Scope.builder().withRelationType(new RelationType(fields.build())).build();
         RelationPlan relationPlan = new RelationPlan(tableScan, scope, outputSymbols.build());
 
-        TranslationMap translations = new TranslationMap(relationPlan, analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap translations = new TranslationMap(relationPlan, analysis);
         translations.setFieldMappings(relationPlan.getOutputSymbols());
 
         PlanBuilder builder = new PlanBuilder(translations, relationPlan.getRoot(), analysis.getParameters());
@@ -211,7 +200,7 @@ class QueryPlanner
         return new DeleteNode(idAllocator.getNextId(), builder.getRoot(), new DeleteHandle(handle, metadata.getTableMetadata(session, handle).getTable()), rowId, outputs);
     }
 
-    private static List<Symbol> computeOutputs(PlanBuilder builder, List<Expression> outputExpressions)
+    private List<Symbol> computeOutputs(PlanBuilder builder, List<Expression> outputExpressions)
     {
         ImmutableList.Builder<Symbol> outputSymbols = ImmutableList.builder();
         for (Expression expression : outputExpressions) {
@@ -222,10 +211,10 @@ class QueryPlanner
 
     private PlanBuilder planQueryBody(Query query)
     {
-        RelationPlan relationPlan = new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session)
+        RelationPlan relationPlan = new RelationPlanner(analysis, symbolAllocator, idAllocator, metadata, session)
                 .process(query.getQueryBody(), null);
 
-        TranslationMap translations = new TranslationMap(relationPlan, analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap translations = new TranslationMap(relationPlan, analysis);
 
         // Make field->symbol mapping from underlying relation plan available for translations
         // This makes it possible to rewrite FieldOrExpressions that reference fields from the QuerySpecification directly
@@ -239,14 +228,14 @@ class QueryPlanner
         RelationPlan relationPlan;
 
         if (node.getFrom().isPresent()) {
-            relationPlan = new RelationPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session)
+            relationPlan = new RelationPlanner(analysis, symbolAllocator, idAllocator, metadata, session)
                     .process(node.getFrom().get(), null);
         }
         else {
             relationPlan = planImplicitTable(node);
         }
 
-        TranslationMap translations = new TranslationMap(relationPlan, analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap translations = new TranslationMap(relationPlan, analysis);
 
         // Make field->symbol mapping from underlying relation plan available for translations
         // This makes it possible to rewrite FieldOrExpressions that reference fields from the FROM clause directly
@@ -260,9 +249,9 @@ class QueryPlanner
         List<Expression> emptyRow = ImmutableList.of();
         Scope scope = Scope.builder().withParent(analysis.getScope(node)).build();
         return new RelationPlan(
-                new ValuesNode(idAllocator.getNextId(), ImmutableList.of(), ImmutableList.of(emptyRow)),
+                new ValuesNode(idAllocator.getNextId(), ImmutableList.<Symbol>of(), ImmutableList.of(emptyRow)),
                 scope,
-                ImmutableList.of());
+                ImmutableList.<Symbol>of());
     }
 
     private PlanBuilder filter(PlanBuilder subPlan, Expression predicate, Node node)
@@ -283,7 +272,7 @@ class QueryPlanner
 
     private PlanBuilder project(PlanBuilder subPlan, Iterable<Expression> expressions)
     {
-        TranslationMap outputTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap outputTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis);
 
         ImmutableMap.Builder<Symbol, Expression> projections = ImmutableMap.builder();
         for (Expression expression : expressions) {
@@ -328,7 +317,7 @@ class QueryPlanner
 
     private PlanBuilder explicitCoercionFields(PlanBuilder subPlan, Iterable<Expression> alreadyCoerced, Iterable<? extends Expression> uncoerced)
     {
-        TranslationMap translations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap translations = new TranslationMap(subPlan.getRelationPlan(), analysis);
         ImmutableMap.Builder<Symbol, Expression> projections = ImmutableMap.builder();
 
         projections.putAll(coerce(uncoerced, subPlan, translations));
@@ -402,7 +391,7 @@ class QueryPlanner
         // 2. Aggregate
 
         // 2.a. Rewrite aggregate arguments
-        TranslationMap argumentTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap argumentTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis);
         ImmutableMap.Builder<Symbol, Symbol> argumentMappingBuilder = ImmutableMap.builder();
         for (Expression argument : arguments.build()) {
             Expression parametersReplaced = ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(analysis.getParameters(), analysis), argument);
@@ -418,7 +407,7 @@ class QueryPlanner
         Map<Symbol, Symbol> argumentMappings  = argumentMappingBuilder.build();
 
         // 2.b. Rewrite grouping columns
-        TranslationMap groupingTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap groupingTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis);
         Map<Symbol, Symbol> groupingSetMappings = new HashMap<>();
         List<List<Symbol>> groupingSymbols = new ArrayList<>();
 
@@ -465,7 +454,7 @@ class QueryPlanner
             subPlan = new PlanBuilder(groupingTranslations, project, analysis.getParameters());
         }
 
-        TranslationMap aggregationTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
+        TranslationMap aggregationTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis);
         aggregationTranslations.copyMappingsFrom(groupingTranslations);
 
         // 2.d. Rewrite aggregates
@@ -776,7 +765,7 @@ class QueryPlanner
         return subPlan;
     }
 
-    private static SortOrder toSortOrder(SortItem sortItem)
+    private SortOrder toSortOrder(SortItem sortItem)
     {
         if (sortItem.getOrdering() == Ordering.ASCENDING) {
             if (sortItem.getNullOrdering() == NullOrdering.FIRST) {

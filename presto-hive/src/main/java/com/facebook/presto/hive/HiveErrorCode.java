@@ -18,7 +18,6 @@ import com.facebook.presto.spi.ErrorCodeSupplier;
 import com.facebook.presto.spi.ErrorType;
 
 import static com.facebook.presto.spi.ErrorType.EXTERNAL;
-import static com.facebook.presto.spi.ErrorType.USER_ERROR;
 
 public enum HiveErrorCode
         implements ErrorCodeSupplier
@@ -51,8 +50,7 @@ public enum HiveErrorCode
     HIVE_WRITER_OPEN_ERROR(25, EXTERNAL),
     HIVE_WRITER_CLOSE_ERROR(26, EXTERNAL),
     HIVE_WRITER_DATA_ERROR(27, EXTERNAL),
-    HIVE_INVALID_BUCKET_FILES(28, EXTERNAL),
-    HIVE_EXCEEDED_PARTITION_LIMIT(29, USER_ERROR);
+    HIVE_INVALID_BUCKET_FILES(28, EXTERNAL);
 
     private final ErrorCode errorCode;
 

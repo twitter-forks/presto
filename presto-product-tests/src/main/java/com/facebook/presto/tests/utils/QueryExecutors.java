@@ -29,10 +29,5 @@ public class QueryExecutors
         return testContext().getDependency(QueryExecutor.class, prestoConfig);
     }
 
-    public static QueryExecutor onHive()
-    {
-        return testContext().getDependency(QueryExecutor.class, "hive");
-    }
-
     private QueryExecutors() {}
 }

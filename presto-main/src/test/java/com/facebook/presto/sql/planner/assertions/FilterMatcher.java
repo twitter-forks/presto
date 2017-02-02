@@ -21,7 +21,6 @@ import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.tree.Expression;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 final class FilterMatcher
@@ -35,19 +34,15 @@ final class FilterMatcher
     }
 
     @Override
-    public boolean shapeMatches(PlanNode node)
+    public boolean matches(PlanNode node, Session session, Metadata metadata, ExpressionAliases expressionAliases)
     {
-        return node instanceof FilterNode;
-    }
-
-    @Override
-    public MatchResult detailMatches(PlanNode node, Session session, Metadata metadata, SymbolAliases symbolAliases)
-    {
-        checkState(shapeMatches(node), "Plan testing framework error: shapeMatches returned false in detailMatches in %s", this.getClass().getName());
-
-        FilterNode filterNode = (FilterNode) node;
-        ExpressionVerifier verifier = new ExpressionVerifier(symbolAliases);
-        return new MatchResult(verifier.process(filterNode.getPredicate(), predicate));
+        if (node instanceof FilterNode) {
+            FilterNode filterNode = (FilterNode) node;
+            if (new ExpressionVerifier(expressionAliases).process(filterNode.getPredicate(), predicate)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

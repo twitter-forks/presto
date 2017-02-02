@@ -60,7 +60,7 @@ class InlineIfBytecodeExpression
     @Override
     public List<BytecodeNode> getChildNodes()
     {
-        return ImmutableList.of(condition, ifTrue, ifFalse);
+        return ImmutableList.<BytecodeNode>of(condition, ifTrue, ifFalse);
     }
 
     @Override

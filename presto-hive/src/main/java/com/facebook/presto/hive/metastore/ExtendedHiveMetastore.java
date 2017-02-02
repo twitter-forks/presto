@@ -25,6 +25,8 @@ import java.util.Set;
 
 public interface ExtendedHiveMetastore
 {
+    void flushCache();
+
     Optional<Database> getDatabase(String databaseName);
 
     List<String> getAllDatabases();

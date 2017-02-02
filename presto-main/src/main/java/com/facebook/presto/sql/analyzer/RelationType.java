@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -132,9 +133,9 @@ public class RelationType
                 .collect(toImmutableList());
     }
 
-    public boolean canResolve(QualifiedName name)
+    public Predicate<QualifiedName> canResolvePredicate()
     {
-        return !resolveFields(name).isEmpty();
+        return input -> !resolveFields(input).isEmpty();
     }
 
     /**

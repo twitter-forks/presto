@@ -34,7 +34,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 import static com.facebook.presto.SystemSessionProperties.getProcessingOptimization;
@@ -42,7 +41,6 @@ import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimiza
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimization.COLUMNAR_DICTIONARY;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimization.DISABLED;
 import static com.google.common.base.Preconditions.checkState;
-import static io.airlift.concurrent.MoreFutures.toListenableFuture;
 import static java.util.Objects.requireNonNull;
 
 public class ScanFilterAndProjectOperator
@@ -188,14 +186,7 @@ public class ScanFilterAndProjectOperator
     @Override
     public ListenableFuture<?> isBlocked()
     {
-        if (!blocked.isDone()) {
-            return blocked;
-        }
-        if (pageSource != null) {
-            CompletableFuture<?> pageSourceBlocked = pageSource.isBlocked();
-            return pageSourceBlocked.isDone() ? NOT_BLOCKED : toListenableFuture(pageSourceBlocked);
-        }
-        return NOT_BLOCKED;
+        return blocked;
     }
 
     @Override

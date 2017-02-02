@@ -16,6 +16,7 @@ package com.facebook.presto.operator;
 import com.facebook.presto.RowPagesBuilder;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.SortOrder;
+import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
 import com.google.common.collect.ImmutableList;
@@ -142,7 +143,7 @@ public class TestTopNRowNumberOperator
                 ImmutableList.of(BIGINT, DOUBLE),
                 Ints.asList(1, 0),
                 Ints.asList(),
-                ImmutableList.of(),
+                ImmutableList.<Type>of(),
                 Ints.asList(1),
                 ImmutableList.of(SortOrder.ASC_NULLS_LAST),
                 3,

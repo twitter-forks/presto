@@ -18,47 +18,58 @@ import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
+import com.facebook.presto.sql.tree.FunctionCall;
+import com.google.common.collect.ImmutableList;
+
+import java.util.LinkedList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.google.common.base.Preconditions.checkState;
+import static java.util.Objects.requireNonNull;
 
 final class WindowMatcher
         implements Matcher
 {
-    private final ExpectedValueProvider<WindowNode.Specification> specification;
+    private final List<FunctionCall> functionCalls;
 
-    WindowMatcher(
-            ExpectedValueProvider<WindowNode.Specification> specification)
+    WindowMatcher(List<FunctionCall> functionCalls)
     {
-        this.specification = specification;
+        this.functionCalls = ImmutableList.copyOf(requireNonNull(functionCalls, "functionCalls is null"));
     }
 
     @Override
-    public boolean shapeMatches(PlanNode node)
+    public boolean matches(PlanNode node, Session session, Metadata metadata, ExpressionAliases expressionAliases)
     {
-        return node instanceof WindowNode;
-    }
-
-    @Override
-    public MatchResult detailMatches(PlanNode node, Session session, Metadata metadata, SymbolAliases symbolAliases)
-    {
-        checkState(shapeMatches(node), "Plan testing framework error: shapeMatches returned false in detailMatches in %s", this.getClass().getName());
+        if (!(node instanceof WindowNode)) {
+            return false;
+        }
 
         WindowNode windowNode = (WindowNode) node;
+        LinkedList<FunctionCall> actualCalls = windowNode.getWindowFunctions().values().stream()
+                .map(WindowNode.Function::getFunctionCall)
+                .collect(Collectors.toCollection(LinkedList::new));
 
-        /*
-         * Window functions produce a symbol (the result of the function call) that we might
-         * want to bind to an alias so we can reference it further up the tree. As such,
-         * they need to be matched with an Alias matcher so we can bind the symbol if desired.
-         */
-        return new MatchResult(windowNode.getSpecification().equals(specification.getExpectedValue(symbolAliases)));
+        if (actualCalls.size() != functionCalls.size()) {
+            return false;
+        }
+
+        for (FunctionCall expectedCall : functionCalls) {
+            if (!actualCalls.remove(expectedCall)) {
+                // Found an expectedCall not in expectedCalls.
+                return false;
+            }
+        }
+
+        // expectedCalls was missing something in actualCalls.
+        return actualCalls.isEmpty();
     }
 
     @Override
     public String toString()
     {
         return toStringHelper(this)
-                .add("specification", specification)
+                .add("functionCalls", functionCalls)
                 .toString();
     }
 }
