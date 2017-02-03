@@ -139,6 +139,7 @@ import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.SqlToRowExpressionTranslator;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Expression;
+import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.HashMultimap;
@@ -174,10 +175,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static com.facebook.presto.SystemSessionProperties.getOperatorMemoryLimitBeforeSpill;
 import static com.facebook.presto.SystemSessionProperties.getTaskConcurrency;
 import static com.facebook.presto.SystemSessionProperties.getTaskWriterCount;
-import static com.facebook.presto.SystemSessionProperties.isSpillEnabled;
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.operator.DistinctLimitOperator.DistinctLimitOperatorFactory;
 import static com.facebook.presto.operator.NestedLoopBuildOperator.NestedLoopBuildOperatorFactory;
@@ -889,10 +888,7 @@ public class LocalExecutionPlanner
                 return planGlobalAggregation(context.getNextOperatorId(), node, source);
             }
 
-            boolean spillEnabled = isSpillEnabled(context.getSession());
-            DataSize memoryLimitBeforeSpill = getOperatorMemoryLimitBeforeSpill(context.getSession());
-
-            return planGroupByAggregation(node, source, context.getNextOperatorId(), spillEnabled, memoryLimitBeforeSpill);
+            return planGroupByAggregation(node, source, context.getNextOperatorId());
         }
 
         @Override
@@ -1003,11 +999,11 @@ public class LocalExecutionPlanner
 
             // compiler uses inputs instead of symbols, so rewrite the expressions first
             SymbolToInputRewriter symbolToInputRewriter = new SymbolToInputRewriter(sourceLayout);
-            Expression rewrittenFilter = symbolToInputRewriter.rewrite(filterExpression);
+            Expression rewrittenFilter = ExpressionTreeRewriter.rewriteWith(symbolToInputRewriter, filterExpression);
 
             List<Expression> rewrittenProjections = new ArrayList<>();
             for (Symbol symbol : outputSymbols) {
-                rewrittenProjections.add(symbolToInputRewriter.rewrite(projectionExpressions.get(symbol)));
+                rewrittenProjections.add(ExpressionTreeRewriter.rewriteWith(symbolToInputRewriter, projectionExpressions.get(symbol)));
             }
 
             IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(
@@ -1167,7 +1163,7 @@ public class LocalExecutionPlanner
                         context.getSession(),
                         metadata,
                         sqlParser,
-                        ImmutableMap.of(),
+                        ImmutableMap.<Symbol, Type>of(),
                         ImmutableList.copyOf(row),
                         emptyList(),
                         false);
@@ -1550,7 +1546,8 @@ public class LocalExecutionPlanner
             Map<Integer, Type> sourceTypes = joinSourcesLayout.entrySet().stream()
                     .collect(toImmutableMap(Map.Entry::getValue, entry -> types.get(entry.getKey())));
 
-            Expression rewrittenFilter = new SymbolToInputRewriter(joinSourcesLayout).rewrite(filterExpression);
+            SymbolToInputRewriter symbolToInputRewriter = new SymbolToInputRewriter(joinSourcesLayout);
+            Expression rewrittenFilter = ExpressionTreeRewriter.rewriteWith(symbolToInputRewriter, filterExpression);
 
             IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(
                     session,
@@ -1852,12 +1849,7 @@ public class LocalExecutionPlanner
             return new PhysicalOperation(operatorFactory, outputMappings.build(), source);
         }
 
-        private PhysicalOperation planGroupByAggregation(
-                AggregationNode node,
-                PhysicalOperation source,
-                int operatorId,
-                boolean spillEnabled,
-                DataSize memoryLimitBeforeSpill)
+        private PhysicalOperation planGroupByAggregation(AggregationNode node, PhysicalOperation source, int operatorId)
         {
             List<Symbol> groupBySymbols = node.getGroupingKeys();
 
@@ -1919,10 +1911,7 @@ public class LocalExecutionPlanner
                     hashChannel,
                     node.getGroupIdSymbol().map(mappings::get),
                     10_000,
-                    maxPartialAggregationMemorySize,
-                    spillEnabled,
-                    memoryLimitBeforeSpill,
-                    spillerFactory);
+                    maxPartialAggregationMemorySize);
 
             return new PhysicalOperation(operatorFactory, mappings, source);
         }

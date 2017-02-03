@@ -19,6 +19,7 @@ import com.facebook.presto.operator.GenericPageProcessor;
 import com.facebook.presto.operator.OperatorFactory;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.google.common.collect.ImmutableList;
@@ -47,7 +48,7 @@ public class PredicateFilterBenchmark
                 1,
                 new PlanNodeId("test"),
                 () -> new GenericPageProcessor(new DoubleFilter(50000.00), ImmutableList.of(singleColumn(DOUBLE, 0))),
-                ImmutableList.of(DOUBLE));
+                ImmutableList.<Type>of(DOUBLE));
 
         return ImmutableList.of(tableScanOperator, filterAndProjectOperator);
     }

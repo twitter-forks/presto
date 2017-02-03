@@ -63,11 +63,7 @@ import static java.util.Objects.requireNonNull;
  */
 public class PlanFragmenter
 {
-    private PlanFragmenter()
-    {
-    }
-
-    public static SubPlan createSubPlans(Session session, Metadata metadata, Plan plan)
+    public SubPlan createSubPlans(Session session, Metadata metadata, Plan plan)
     {
         Fragmenter fragmenter = new Fragmenter(session, metadata, plan.getSymbolAllocator().getTypes());
 
@@ -76,7 +72,6 @@ public class PlanFragmenter
         PlanNode root = SimplePlanRewriter.rewriteWith(fragmenter, plan.getRoot(), properties);
 
         SubPlan result = fragmenter.buildRootFragment(root, properties);
-        checkState(result.getFragment().getPartitioning().isSingleNode(), "Root of PlanFragment is not single node");
         result.sanityCheck();
 
         return result;

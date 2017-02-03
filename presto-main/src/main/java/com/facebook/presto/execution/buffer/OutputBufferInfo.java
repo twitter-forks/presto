@@ -111,11 +111,6 @@ public final class OutputBufferInfo
         return totalPagesSent;
     }
 
-    public OutputBufferInfo summarize()
-    {
-        return new OutputBufferInfo(type, state, canAddBuffers, canAddPages, totalBufferedBytes, totalBufferedPages, totalRowsSent, totalPagesSent, ImmutableList.of());
-    }
-
     @Override
     public boolean equals(Object o)
     {

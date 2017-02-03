@@ -190,7 +190,7 @@ public class TestEqualityInference
 
         EqualityInference inference = builder.build();
 
-        EqualityInference.EqualityPartition emptyScopePartition = inference.generateEqualitiesPartitionedBy(Predicates.alwaysFalse());
+        EqualityInference.EqualityPartition emptyScopePartition = inference.generateEqualitiesPartitionedBy(Predicates.<Symbol>alwaysFalse());
         // Cannot generate any scope equalities with no matching symbols
         assertTrue(emptyScopePartition.getScopeEqualities().isEmpty());
         // All equalities should be represented in the inverse scope

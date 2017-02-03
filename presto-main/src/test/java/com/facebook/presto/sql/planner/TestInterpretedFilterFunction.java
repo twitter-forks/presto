@@ -15,6 +15,7 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.MetadataManager;
+import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
@@ -192,11 +193,11 @@ public class TestInterpretedFilterFunction
 
     public static void assertFilter(String expression, boolean expectedValue)
     {
-        Expression parsed = createExpression(expression, METADATA, ImmutableMap.of());
+        Expression parsed = createExpression(expression, METADATA, ImmutableMap.<Symbol, Type>of());
 
         InterpretedInternalFilterFunction filterFunction = new InterpretedInternalFilterFunction(parsed,
-                ImmutableMap.of(),
-                ImmutableMap.of(),
+                ImmutableMap.<Symbol, Type>of(),
+                ImmutableMap.<Symbol, Integer>of(),
                 METADATA,
                 SQL_PARSER,
                 TEST_SESSION

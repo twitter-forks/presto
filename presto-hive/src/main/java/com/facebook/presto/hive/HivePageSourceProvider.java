@@ -39,7 +39,6 @@ import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Properties;
 import java.util.Set;
 
@@ -114,7 +113,6 @@ public class HivePageSourceProvider
                 hdfsEnvironment.getConfiguration(path),
                 session,
                 path,
-                hiveSplit.getBucketNumber(),
                 hiveSplit.getStart(),
                 hiveSplit.getLength(),
                 hiveSplit.getSchema(),
@@ -137,7 +135,6 @@ public class HivePageSourceProvider
             Configuration configuration,
             ConnectorSession session,
             Path path,
-            OptionalInt bucketNumber,
             long start,
             long length,
             Properties schema,
@@ -148,7 +145,7 @@ public class HivePageSourceProvider
             TypeManager typeManager,
             Map<Integer, HiveType> columnCoercions)
     {
-        List<ColumnMapping> columnMappings = ColumnMapping.buildColumnMappings(partitionKeys, hiveColumns, columnCoercions, path, bucketNumber);
+        List<ColumnMapping> columnMappings = ColumnMapping.buildColumnMappings(partitionKeys, hiveColumns, columnCoercions, path);
         List<ColumnMapping> regularColumnMappings = ColumnMapping.extractRegularColumnMappings(columnMappings);
 
         for (HivePageSourceFactory pageSourceFactory : pageSourceFactories) {
@@ -273,8 +270,7 @@ public class HivePageSourceProvider
                 List<HivePartitionKey> partitionKeys,
                 List<HiveColumnHandle> columns,
                 Map<Integer, HiveType> columnCoercions,
-                Path path,
-                OptionalInt bucketNumber)
+                Path path)
         {
             Map<String, HivePartitionKey> partitionKeysByName = uniqueIndex(partitionKeys, HivePartitionKey::getName);
             int regularIndex = 0;
@@ -292,7 +288,7 @@ public class HivePageSourceProvider
 
                     // prepare the prefilled value
                     HivePartitionKey partitionKey = partitionKeysByName.get(column.getName());
-                    prefilledValue = getPrefilledColumnValue(column, partitionKey, path, bucketNumber);
+                    prefilledValue = getPrefilledColumnValue(column, partitionKey, path);
                 }
 
                 Optional<HiveType> coercionFrom = Optional.ofNullable(columnCoercions.get(column.getHiveColumnIndex()));

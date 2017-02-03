@@ -52,7 +52,7 @@ public class TestHiveSplit
                 addresses,
                 OptionalInt.empty(),
                 true,
-                TupleDomain.all(),
+                TupleDomain.<HiveColumnHandle>all(),
                 ImmutableMap.of(1, HIVE_STRING));
 
         String json = codec.toJson(expected);

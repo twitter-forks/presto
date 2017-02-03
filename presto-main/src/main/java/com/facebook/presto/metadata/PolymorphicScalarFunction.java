@@ -142,17 +142,17 @@ class PolymorphicScalarFunction
         return method.getReturnType().equals(getNullAwareContainerType(returnType.getJavaType(), nullableResult));
     }
 
-    private static boolean onlyFirstMatchedMethodHasPredicate(MethodsGroup matchingMethodsGroup, MethodsGroup methodsGroup)
+    private boolean onlyFirstMatchedMethodHasPredicate(MethodsGroup matchingMethodsGroup, MethodsGroup methodsGroup)
     {
         return matchingMethodsGroup.getPredicate().isPresent() && !methodsGroup.getPredicate().isPresent();
     }
 
-    private static boolean predicateIsTrue(MethodsGroup methodsGroup, SpecializeContext context)
+    private boolean predicateIsTrue(MethodsGroup methodsGroup, SpecializeContext context)
     {
         return methodsGroup.getPredicate().map(predicate -> predicate.test(context)).orElse(true);
     }
 
-    private static List<Object> computeExtraParameters(MethodsGroup methodsGroup, SpecializeContext context)
+    private List<Object> computeExtraParameters(MethodsGroup methodsGroup, SpecializeContext context)
     {
         return methodsGroup.getExtraParametersFunction().map(function -> function.apply(context)).orElse(emptyList());
     }

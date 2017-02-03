@@ -101,7 +101,7 @@ public class TaskStats
                 0,
                 new DataSize(0, BYTE),
                 0,
-                ImmutableList.of());
+                ImmutableList.<PipelineStats>of());
     }
 
     @JsonCreator
@@ -401,6 +401,6 @@ public class TaskStats
                 processedInputPositions,
                 outputDataSize,
                 outputPositions,
-                ImmutableList.of());
+                ImmutableList.<PipelineStats>of());
     }
 }

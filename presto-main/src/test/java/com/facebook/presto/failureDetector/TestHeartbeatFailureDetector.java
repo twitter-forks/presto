@@ -90,7 +90,7 @@ public class TestHeartbeatFailureDetector
     public static class FooResource
     {
         @GET
-        public static String hello()
+        public String hello()
         {
             return "hello";
         }

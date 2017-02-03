@@ -18,6 +18,7 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
 import com.google.common.collect.ImmutableList;
@@ -105,7 +106,7 @@ public class TestRowNumberOperator
                 ImmutableList.of(BIGINT, DOUBLE),
                 Ints.asList(1, 0),
                 Ints.asList(),
-                ImmutableList.of(),
+                ImmutableList.<Type>of(),
                 Optional.empty(),
                 Optional.empty(),
                 10);
@@ -294,7 +295,7 @@ public class TestRowNumberOperator
                 ImmutableList.of(BIGINT, DOUBLE),
                 Ints.asList(1, 0),
                 Ints.asList(),
-                ImmutableList.of(),
+                ImmutableList.<Type>of(),
                 Optional.of(3),
                 Optional.empty(),
                 10);

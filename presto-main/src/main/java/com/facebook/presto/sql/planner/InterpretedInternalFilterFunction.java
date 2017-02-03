@@ -22,6 +22,7 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.Expression;
+import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
@@ -48,7 +49,7 @@ public class InterpretedInternalFilterFunction
             Session session)
     {
         // pre-compute symbol -> input mappings and replace the corresponding nodes in the tree
-        Expression rewritten = new SymbolToInputRewriter(symbolToInputMappings).rewrite(predicate);
+        Expression rewritten = ExpressionTreeRewriter.rewriteWith(new SymbolToInputRewriter(symbolToInputMappings), predicate);
 
         // analyze expression so we can know the type of every expression in the tree
         ImmutableMap.Builder<Integer, Type> inputTypes = ImmutableMap.builder();

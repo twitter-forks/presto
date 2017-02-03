@@ -191,7 +191,7 @@ public class JmxRecordSetProvider
         return columnHandles.stream()
                 .map(column -> checkType(column, JmxColumnHandle.class, "column"))
                 .map(JmxColumnHandle::getColumnName)
-                .collect(Collectors.toSet());
+                .collect(Collectors.<String>toSet());
     }
 
     private static List<Type> getColumnTypes(List<? extends ColumnHandle> columnHandles)
@@ -199,7 +199,7 @@ public class JmxRecordSetProvider
         return columnHandles.stream()
                 .map(column -> checkType(column, JmxColumnHandle.class, "column"))
                 .map(JmxColumnHandle::getColumnType)
-                .collect(Collectors.toList());
+                .collect(Collectors.<Type>toList());
     }
 
     private ImmutableMap<String, Optional<Object>> getAttributes(Set<String> uniqueColumnNames, JmxTableHandle tableHandle)

@@ -17,6 +17,7 @@ import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.PrivilegeGrantInfo;
 import org.apache.hadoop.hive.metastore.api.Table;
+import org.weakref.jmx.Managed;
 
 import java.util.List;
 import java.util.Optional;
@@ -40,6 +41,9 @@ public interface HiveMetastore
     void dropTable(String databaseName, String tableName, boolean deleteData);
 
     void alterTable(String databaseName, String tableName, Table table);
+
+    @Managed
+    void flushCache();
 
     List<String> getAllDatabases();
 

@@ -307,7 +307,7 @@ public class JoinCompiler
         appendToBody.ret();
     }
 
-    private static void generateIsPositionNull(ClassDefinition classDefinition, List<FieldDefinition> joinChannelFields)
+    private void generateIsPositionNull(ClassDefinition classDefinition, List<FieldDefinition> joinChannelFields)
     {
         Parameter blockIndex = arg("blockIndex", int.class);
         Parameter blockPosition = arg("blockPosition", int.class);

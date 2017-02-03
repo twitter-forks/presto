@@ -52,7 +52,6 @@ public class FeaturesConfig
     private boolean optimizeSingleDistinct = true;
     private boolean pushTableWriteThroughUnion = true;
     private boolean legacyArrayAgg;
-    private boolean legacyOrderBy;
     private boolean optimizeMixedDistinctAggregations;
 
     private String processingOptimization = ProcessingOptimization.DISABLED;
@@ -106,18 +105,6 @@ public class FeaturesConfig
     public boolean isLegacyArrayAgg()
     {
         return legacyArrayAgg;
-    }
-
-    @Config("deprecated.legacy-order-by")
-    public FeaturesConfig setLegacyOrderBy(boolean value)
-    {
-        this.legacyOrderBy = value;
-        return this;
-    }
-
-    public boolean isLegacyOrderBy()
-    {
-        return legacyOrderBy;
     }
 
     @Config("distributed-joins-enabled")

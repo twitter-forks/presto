@@ -13,8 +13,11 @@
  */
 package com.facebook.presto.spi.block;
 
+import io.airlift.slice.Slice;
+import io.airlift.slice.SliceOutput;
+import io.airlift.slice.Slices;
+
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public abstract class AbstractArrayBlock
@@ -22,16 +25,11 @@ public abstract class AbstractArrayBlock
 {
     protected abstract Block getValues();
 
-    protected abstract int[] getOffsets();
+    protected abstract Slice getOffsets();
 
     protected abstract int getOffsetBase();
 
-    protected abstract boolean[] getValueIsNull();
-
-    private int getOffset(int position)
-    {
-        return getOffsets()[position + getOffsetBase()];
-    }
+    protected abstract Slice getValueIsNull();
 
     @Override
     public BlockEncoding getEncoding()
@@ -39,58 +37,52 @@ public abstract class AbstractArrayBlock
         return new ArrayBlockEncoding(getValues().getEncoding());
     }
 
+    private int getOffset(int position)
+    {
+        return position == 0 ? 0 : getOffsets().getInt((position - 1) * 4) - getOffsetBase();
+    }
+
     @Override
     public Block copyPositions(List<Integer> positions)
     {
-        int[] newOffsets = new int[positions.size() + 1];
-        boolean[] newValueIsNull = new boolean[positions.size()];
+        SliceOutput newOffsets = Slices.allocate(positions.size() * Integer.BYTES).getOutput();
+        SliceOutput newValueIsNull = Slices.allocate(positions.size()).getOutput();
 
         List<Integer> valuesPositions = new ArrayList<>();
-        int newPosition = 0;
+        int countNewOffset = 0;
         for (int position : positions) {
             if (isNull(position)) {
-                newValueIsNull[newPosition] = true;
-                newOffsets[newPosition + 1] = newOffsets[newPosition];
+                newValueIsNull.appendByte(1);
+                newOffsets.appendInt(countNewOffset);
             }
             else {
-                int valuesStartOffset = getOffset(position);
-                int valuesEndOffset = getOffset(position + 1);
-                int valuesLength = valuesEndOffset - valuesStartOffset;
-
-                newOffsets[newPosition + 1] = newOffsets[newPosition] + valuesLength;
-
-                for (int elementIndex = valuesStartOffset; elementIndex < valuesEndOffset; elementIndex++) {
-                    valuesPositions.add(elementIndex);
+                newValueIsNull.appendByte(0);
+                int positionStartOffset = getOffset(position);
+                int positionEndOffset = getOffset(position + 1);
+                countNewOffset += positionEndOffset - positionStartOffset;
+                newOffsets.appendInt(countNewOffset);
+                for (int j = positionStartOffset; j < positionEndOffset; j++) {
+                    valuesPositions.add(j);
                 }
             }
-            newPosition++;
         }
         Block newValues = getValues().copyPositions(valuesPositions);
-        return new ArrayBlock(positions.size(), newValueIsNull, newOffsets, newValues);
+        return new ArrayBlock(newValues, newOffsets.slice(), 0, newValueIsNull.slice());
     }
 
     @Override
     public Block getRegion(int position, int length)
     {
-        int positionCount = getPositionCount();
-        if (position < 0 || length < 0 || position + length > positionCount) {
-            throw new IndexOutOfBoundsException("Invalid position " + position + " in block with " + positionCount + " positions");
-        }
-
-        if (position == 0 && length == positionCount) {
-            return this;
-        }
-
-        return new ArrayBlock(
-                position + getOffsetBase(),
-                length,
-                getValueIsNull(),
-                getOffsets(),
-                getValues());
+        return getRegion(position, length, false);
     }
 
     @Override
     public Block copyRegion(int position, int length)
+    {
+        return getRegion(position, length, true);
+    }
+
+    private Block getRegion(int position, int length, boolean compact)
     {
         int positionCount = getPositionCount();
         if (position < 0 || length < 0 || position + length > positionCount) {
@@ -99,16 +91,33 @@ public abstract class AbstractArrayBlock
 
         int startValueOffset = getOffset(position);
         int endValueOffset = getOffset(position + length);
-        Block newValues = getValues().copyRegion(startValueOffset, endValueOffset - startValueOffset);
-
-        int[] newOffsets = new int[length + 1];
-        for (int i = 1; i < newOffsets.length; i++) {
-            newOffsets[i] = getOffset(position + i) - startValueOffset;
+        Block newValues;
+        Slice newOffsets;
+        Slice newValueIsNull;
+        int newOffsetBase;
+        if (compact) {
+            newValues = getValues().copyRegion(startValueOffset, endValueOffset - startValueOffset);
+            int[] newOffsetsArray = new int[length];
+            for (int i = 0; i < length; i++) {
+                newOffsetsArray[i] = getOffset(position + i + 1) - getOffset(position);
+            }
+            newOffsets = Slices.wrappedIntArray(newOffsetsArray);
+            newValueIsNull = Slices.copyOf(getValueIsNull(), position, length);
+            newOffsetBase = 0;
         }
-
-        boolean[] newValueIsNull = Arrays.copyOfRange(getValueIsNull(), position + getOffsetBase(), position + getOffsetBase() + length);
-
-        return new ArrayBlock(length, newValueIsNull, newOffsets, newValues);
+        else {
+            if (position == 0 && length == positionCount) {
+                // It is incorrect to pull up this `if` because child blocks may be compact-able when this if condition is satisfied
+                return this;
+            }
+            else {
+                newValues = getValues().getRegion(startValueOffset, endValueOffset - startValueOffset);
+                newOffsets = getOffsets().slice(position * 4, length * 4);
+                newValueIsNull = getValueIsNull().slice(position, length);
+                newOffsetBase = startValueOffset + getOffsetBase();
+            }
+        }
+        return new ArrayBlock(newValues, newOffsets, newOffsetBase, newValueIsNull);
     }
 
     @Override
@@ -154,21 +163,23 @@ public abstract class AbstractArrayBlock
         checkReadablePosition(position);
 
         int startValueOffset = getOffset(position);
-        int valueLength = getOffset(position + 1) - startValueOffset;
-        Block newValues = getValues().copyRegion(startValueOffset, valueLength);
+        int endValueOffset = getOffset(position + 1);
 
-        return new ArrayBlock(
-                1,
-                new boolean[] {isNull(position)},
-                new int[] {0, valueLength},
-                newValues);
+        Block newValues = getValues().copyRegion(startValueOffset, endValueOffset - startValueOffset);
+
+        // rewrite offsets so that baseOffset is always zero
+        Slice newOffsets = Slices.wrappedIntArray(endValueOffset - startValueOffset);
+
+        Slice newValueIsNull = Slices.copyOf(getValueIsNull(), position, 1);
+
+        return new ArrayBlock(newValues, newOffsets, 0, newValueIsNull);
     }
 
     @Override
     public boolean isNull(int position)
     {
         checkReadablePosition(position);
-        return getValueIsNull()[position + getOffsetBase()];
+        return getValueIsNull().getByte(position) != 0;
     }
 
     public <T> T apply(ArrayBlockFunction<T> function, int position)

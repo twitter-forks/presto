@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.connector.jmx;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.configuration.Config;
@@ -24,8 +23,6 @@ import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -44,19 +41,7 @@ public class JmxConnectorConfig
     @Config("jmx.dump-tables")
     public JmxConnectorConfig setDumpTables(String tableNames)
     {
-        this.dumpTables = Splitter.on(Pattern.compile("(?<!\\\\),")) // match "," not preceded by "\"
-                .omitEmptyStrings()
-                .splitToList(tableNames)
-                .stream()
-                .map(part -> part.replace("\\,", ",")) // unescape all escaped commas
-                .collect(Collectors.toSet());
-        return this;
-    }
-
-    @VisibleForTesting
-    JmxConnectorConfig setDumpTables(Set<String> tableNames)
-    {
-        this.dumpTables = ImmutableSet.copyOf(tableNames);
+        this.dumpTables = ImmutableSet.copyOf(Splitter.on(',').omitEmptyStrings().trimResults().split(tableNames));
         return this;
     }
 

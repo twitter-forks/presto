@@ -222,7 +222,7 @@ public class SimplifyExpressions
             List<List<Expression>> subPredicates = getSubPredicates(predicates);
 
             Set<Expression> commonPredicates = ImmutableSet.copyOf(subPredicates.stream()
-                    .map(ExtractCommonPredicatesExpressionRewriter::filterDeterministicPredicates)
+                    .map(this::filterDeterministicPredicates)
                     .reduce(Sets::intersection)
                     .orElse(emptySet()));
 
@@ -249,7 +249,7 @@ public class SimplifyExpressions
                     .build());
         }
 
-        private static List<List<Expression>> getSubPredicates(List<Expression> predicates)
+        private List<List<Expression>> getSubPredicates(List<Expression> predicates)
         {
             return predicates.stream()
                     .map(predicate -> predicate instanceof LogicalBinaryExpression ?
@@ -257,7 +257,7 @@ public class SimplifyExpressions
                     .collect(toImmutableList());
         }
 
-        private static Set<Expression> filterDeterministicPredicates(List<Expression> predicates)
+        private Set<Expression> filterDeterministicPredicates(List<Expression> predicates)
         {
             return predicates.stream()
                     .filter(DeterminismEvaluator::isDeterministic)

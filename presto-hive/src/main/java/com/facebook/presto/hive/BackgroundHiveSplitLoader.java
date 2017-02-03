@@ -88,7 +88,7 @@ public class BackgroundHiveSplitLoader
     private final String connectorId;
     private final Table table;
     private final Optional<HiveBucketHandle> bucketHandle;
-    private final List<HiveBucket> buckets;
+    private final Optional<HiveBucket> bucket;
     private final HdfsEnvironment hdfsEnvironment;
     private final NamenodeStats namenodeStats;
     private final DirectoryLister directoryLister;
@@ -123,7 +123,7 @@ public class BackgroundHiveSplitLoader
             Table table,
             Iterable<HivePartitionMetadata> partitions,
             Optional<HiveBucketHandle> bucketHandle,
-            List<HiveBucket> buckets,
+            Optional<HiveBucket> bucket,
             ConnectorSession session,
             HdfsEnvironment hdfsEnvironment,
             NamenodeStats namenodeStats,
@@ -136,7 +136,7 @@ public class BackgroundHiveSplitLoader
         this.connectorId = connectorId;
         this.table = table;
         this.bucketHandle = bucketHandle;
-        this.buckets = buckets;
+        this.bucket = bucket;
         this.maxSplitSize = getMaxSplitSize(session);
         this.maxPartitionBatchSize = maxPartitionBatchSize;
         this.session = session;
@@ -358,30 +358,25 @@ public class BackgroundHiveSplitLoader
 
         // If only one bucket could match: load that one file
         HiveFileIterator iterator = new HiveFileIterator(path, fs, directoryLister, namenodeStats, partitionName, inputFormat, schema, partitionKeys, effectivePredicate, partition.getColumnCoercions());
-        if (!buckets.isEmpty()) {
-            int bucketCount = buckets.get(0).getBucketCount();
-            List<LocatedFileStatus> list = listAndSortBucketFiles(iterator, bucketCount);
+        if (bucket.isPresent()) {
+            List<LocatedFileStatus> locatedFileStatuses = listAndSortBucketFiles(iterator, bucket.get().getBucketCount());
+            FileStatus file = locatedFileStatuses.get(bucket.get().getBucketNumber());
+            BlockLocation[] blockLocations = fs.getFileBlockLocations(file, 0, file.getLen());
+            boolean splittable = isSplittable(inputFormat, fs, file.getPath());
 
-            for (HiveBucket bucket : buckets) {
-                int bucketNumber = bucket.getBucketNumber();
-                LocatedFileStatus file = list.get(bucketNumber);
-                boolean splittable = isSplittable(iterator.getInputFormat(), hdfsEnvironment.getFileSystem(session.getUser(), file.getPath()), file.getPath());
-
-                hiveSplitSource.addToQueue(createHiveSplits(
-                        iterator.getPartitionName(),
-                        file.getPath().toString(),
-                        file.getBlockLocations(),
-                        0,
-                        file.getLen(),
-                        iterator.getSchema(),
-                        iterator.getPartitionKeys(),
-                        splittable,
-                        session,
-                        OptionalInt.of(bucketNumber),
-                        effectivePredicate,
-                        partition.getColumnCoercions()));
-            }
-
+            hiveSplitSource.addToQueue(createHiveSplits(
+                    partitionName,
+                    file.getPath().toString(),
+                    blockLocations,
+                    0,
+                    file.getLen(),
+                    schema,
+                    partitionKeys,
+                    splittable,
+                    session,
+                    OptionalInt.of(bucket.get().getBucketNumber()),
+                    effectivePredicate,
+                    partition.getColumnCoercions()));
             return;
         }
 

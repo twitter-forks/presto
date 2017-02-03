@@ -79,33 +79,30 @@ public class CachingHiveMetastore
         this(requireNonNull(delegate, "delegate is null"),
                 requireNonNull(executor, "executor is null"),
                 requireNonNull(hiveClientConfig, "hiveClientConfig is null").getMetastoreCacheTtl(),
-                hiveClientConfig.getMetastoreRefreshInterval(),
-                hiveClientConfig.getMetastoreCacheMaximumSize());
+                hiveClientConfig.getMetastoreRefreshInterval());
     }
 
-    public CachingHiveMetastore(ExtendedHiveMetastore delegate, ExecutorService executor, Duration cacheTtl, Duration refreshInterval, long maximumSize)
+    public CachingHiveMetastore(ExtendedHiveMetastore delegate, ExecutorService executor, Duration cacheTtl, Duration refreshInterval)
     {
         this(requireNonNull(delegate, "delegate is null"),
                 requireNonNull(executor, "executor is null"),
                 OptionalLong.of(requireNonNull(cacheTtl, "cacheTtl is null").toMillis()),
-                OptionalLong.of(requireNonNull(refreshInterval, "refreshInterval is null").toMillis()),
-                maximumSize);
+                OptionalLong.of(requireNonNull(refreshInterval, "refreshInterval is null").toMillis()));
     }
 
-    public static CachingHiveMetastore memoizeMetastore(ExtendedHiveMetastore delegate, long maximumSize)
+    public static CachingHiveMetastore memoizeMetastore(ExtendedHiveMetastore delegate)
     {
         return new CachingHiveMetastore(requireNonNull(delegate, "delegate is null"),
                 newDirectExecutorService(),
                 OptionalLong.empty(),
-                OptionalLong.empty(),
-                maximumSize);
+                OptionalLong.empty());
     }
 
-    private CachingHiveMetastore(ExtendedHiveMetastore delegate, ExecutorService executor, OptionalLong expiresAfterWriteMillis, OptionalLong refreshMills, long maximumSize)
+    private CachingHiveMetastore(ExtendedHiveMetastore delegate, ExecutorService executor, OptionalLong expiresAfterWriteMillis, OptionalLong refreshMills)
     {
         this.delegate = delegate;
 
-        databaseNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        databaseNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<String, List<String>>()
                 {
                     @Override
@@ -116,7 +113,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        databaseCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        databaseCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<String, Optional<Database>>()
                 {
                     @Override
@@ -127,7 +124,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        tableNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        tableNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<String, Optional<List<String>>>()
                 {
                     @Override
@@ -138,7 +135,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        tableCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        tableCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<HiveTableName, Optional<Table>>()
                 {
                     @Override
@@ -149,7 +146,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        viewNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        viewNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<String, Optional<List<String>>>()
                 {
                     @Override
@@ -160,7 +157,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        partitionNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        partitionNamesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<HiveTableName, Optional<List<String>>>()
                 {
                     @Override
@@ -171,7 +168,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        partitionFilterCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        partitionFilterCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<PartitionFilter, Optional<List<String>>>()
                 {
                     @Override
@@ -182,7 +179,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        partitionCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        partitionCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<HivePartitionName, Optional<Partition>>()
                 {
                     @Override
@@ -200,7 +197,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        userRolesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        userRolesCache = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<String, Set<String>>()
                 {
                     @Override
@@ -211,7 +208,7 @@ public class CachingHiveMetastore
                     }
                 }, executor));
 
-        userTablePrivileges = newCacheBuilder(expiresAfterWriteMillis, refreshMills, maximumSize)
+        userTablePrivileges = newCacheBuilder(expiresAfterWriteMillis, refreshMills)
                 .build(asyncReloading(new CacheLoader<UserTableKey, Set<HivePrivilegeInfo>>()
                 {
                     @Override
@@ -223,6 +220,7 @@ public class CachingHiveMetastore
                 }, executor));
     }
 
+    @Override
     @Managed
     public void flushCache()
     {
@@ -612,7 +610,7 @@ public class CachingHiveMetastore
         }
     }
 
-    private static CacheBuilder<Object, Object> newCacheBuilder(OptionalLong expiresAfterWriteMillis, OptionalLong refreshMillis, long maximumSize)
+    private static CacheBuilder<Object, Object> newCacheBuilder(OptionalLong expiresAfterWriteMillis, OptionalLong refreshMillis)
     {
         CacheBuilder<Object, Object> cacheBuilder = CacheBuilder.newBuilder();
         if (expiresAfterWriteMillis.isPresent()) {
@@ -621,7 +619,6 @@ public class CachingHiveMetastore
         if (refreshMillis.isPresent()) {
             cacheBuilder = cacheBuilder.refreshAfterWrite(refreshMillis.getAsLong(), MILLISECONDS);
         }
-        cacheBuilder = cacheBuilder.maximumSize(maximumSize);
         return cacheBuilder;
     }
 

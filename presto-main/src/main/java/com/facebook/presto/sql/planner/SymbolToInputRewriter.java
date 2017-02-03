@@ -17,7 +17,6 @@ import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionRewriter;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.FieldReference;
-import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
@@ -27,6 +26,7 @@ import java.util.Map;
 import static java.util.Objects.requireNonNull;
 
 public class SymbolToInputRewriter
+        extends ExpressionRewriter<Void>
 {
     private final Map<Symbol, Integer> symbolToChannelMapping;
 
@@ -36,40 +36,12 @@ public class SymbolToInputRewriter
         this.symbolToChannelMapping = ImmutableMap.copyOf(symbolToChannelMapping);
     }
 
-    public Expression rewrite(Expression expression)
+    @Override
+    public Expression rewriteSymbolReference(SymbolReference node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
     {
-        return ExpressionTreeRewriter.rewriteWith(new ExpressionRewriter<Context>() {
-            @Override
-            public Expression rewriteSymbolReference(SymbolReference node, Context context, ExpressionTreeRewriter<Context> treeRewriter)
-            {
-                Integer channel = symbolToChannelMapping.get(Symbol.from(node));
-                if (channel == null) {
-                    Preconditions.checkArgument(context.isInLambda(), "Cannot resolve symbol %s", node.getName());
-                    return node;
-                }
-                return new FieldReference(channel);
-            }
+        Integer channel = symbolToChannelMapping.get(Symbol.from(node));
+        Preconditions.checkArgument(channel != null, "Cannot resolve symbol %s", node.getName());
 
-            @Override
-            public Expression rewriteLambdaExpression(LambdaExpression node, Context context, ExpressionTreeRewriter<Context> treeRewriter)
-            {
-                return treeRewriter.defaultRewrite(node, new Context(true));
-            }
-        }, expression, new Context(false));
-    }
-
-    private static class Context
-    {
-        private final boolean inLambda;
-
-        public Context(boolean inLambda)
-        {
-            this.inLambda = inLambda;
-        }
-
-        public boolean isInLambda()
-        {
-            return inLambda;
-        }
+        return new FieldReference(channel);
     }
 }

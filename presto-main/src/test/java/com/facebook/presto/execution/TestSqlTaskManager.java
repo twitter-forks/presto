@@ -14,6 +14,7 @@
 package com.facebook.presto.execution;
 
 import com.facebook.presto.OutputBuffers.OutputBufferId;
+import com.facebook.presto.ScheduledSplit;
 import com.facebook.presto.TaskSource;
 import com.facebook.presto.client.NodeVersion;
 import com.facebook.presto.event.query.QueryMonitor;
@@ -86,7 +87,7 @@ public class TestSqlTaskManager
             TaskInfo taskInfo = sqlTaskManager.updateTask(TEST_SESSION,
                     taskId,
                     Optional.of(PLAN_FRAGMENT),
-                    ImmutableList.of(),
+                    ImmutableList.<TaskSource>of(),
                     createInitialEmptyOutputBuffers(PARTITIONED)
                         .withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.RUNNING);
@@ -97,7 +98,7 @@ public class TestSqlTaskManager
             taskInfo = sqlTaskManager.updateTask(TEST_SESSION,
                     taskId,
                     Optional.of(PLAN_FRAGMENT),
-                    ImmutableList.of(new TaskSource(TABLE_SCAN_NODE_ID, ImmutableSet.of(), true)),
+                    ImmutableList.of(new TaskSource(TABLE_SCAN_NODE_ID, ImmutableSet.<ScheduledSplit>of(), true)),
                     createInitialEmptyOutputBuffers(PARTITIONED)
                             .withNoMoreBufferIds());
             assertEquals(taskInfo.getTaskStatus().getState(), TaskState.FINISHED);
@@ -156,7 +157,7 @@ public class TestSqlTaskManager
             TaskInfo taskInfo = sqlTaskManager.updateTask(TEST_SESSION,
                     taskId,
                     Optional.of(PLAN_FRAGMENT),
-                    ImmutableList.of(),
+                    ImmutableList.<TaskSource>of(),
                     createInitialEmptyOutputBuffers(PARTITIONED)
                         .withBuffer(OUT, 0)
                         .withNoMoreBufferIds());
@@ -186,7 +187,7 @@ public class TestSqlTaskManager
             TaskInfo taskInfo = sqlTaskManager.updateTask(TEST_SESSION,
                     taskId,
                     Optional.of(PLAN_FRAGMENT),
-                    ImmutableList.of(),
+                    ImmutableList.<TaskSource>of(),
                     createInitialEmptyOutputBuffers(PARTITIONED)
                         .withBuffer(OUT, 0)
                         .withNoMoreBufferIds());
@@ -245,7 +246,7 @@ public class TestSqlTaskManager
             TaskInfo taskInfo = sqlTaskManager.updateTask(TEST_SESSION,
                     taskId,
                     Optional.of(PLAN_FRAGMENT),
-                    ImmutableList.of(),
+                    ImmutableList.<TaskSource>of(),
                     createInitialEmptyOutputBuffers(PARTITIONED)
                         .withBuffer(OUT, 0)
                         .withNoMoreBufferIds());

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.plugin.jdbc;
 
+import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.Test;
@@ -32,7 +33,7 @@ public class TestJdbcOutputTableHandle
                 "schema",
                 "table",
                 ImmutableList.of("abc", "xyz"),
-                ImmutableList.of(VARCHAR, VARCHAR),
+                ImmutableList.<Type>of(VARCHAR, VARCHAR),
                 "tmp_table",
                 "jdbc:junk",
                 ImmutableMap.of("user", "test"));

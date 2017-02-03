@@ -46,7 +46,7 @@ public class TestLocalQueries
         localQueryRunner.createCatalog(
                 defaultSession.getCatalog().get(),
                 new TpchConnectorFactory(1),
-                ImmutableMap.of());
+                ImmutableMap.<String, String>of());
 
         localQueryRunner.getMetadata().addFunctions(CUSTOM_FUNCTIONS);
 

@@ -18,7 +18,6 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.analyzer.TypeSignatureProvider;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
@@ -170,10 +169,10 @@ public class OptimizeMixedDistinctAggregations
                     source,
                     aggregations.build(),
                     functions.build(),
-                    Collections.emptyMap(),
+                    Collections.<Symbol, Symbol>emptyMap(),
                     node.getGroupingSets(),
                     node.getStep(),
-                    Optional.empty(),
+                    Optional.<Symbol>empty(),
                     node.getGroupIdSymbol());
         }
 
@@ -419,7 +418,7 @@ public class OptimizeMixedDistinctAggregations
                     groupIdNode,
                     aggregations.build(),
                     functions.build(),
-                    Collections.emptyMap(),
+                    Collections.<Symbol, Symbol>emptyMap(),
                     ImmutableList.of(groupByKeys),
                     SINGLE,
                     originalNode.getHashSymbol(),
@@ -431,11 +430,11 @@ public class OptimizeMixedDistinctAggregations
             return metadata.getFunctionRegistry()
                     .resolveFunction(
                             functionName,
-                            ImmutableList.of(new TypeSignatureProvider(symbolAllocator.getTypes().get(argument).getTypeSignature())));
+                            ImmutableList.of(symbolAllocator.getTypes().get(argument).getTypeSignature()));
         }
 
         // creates if clause specific to use case here, default value always null
-        private static IfExpression createIfExpression(Expression left, Expression right, ComparisonExpressionType type, Expression result, Type trueValueType)
+        private IfExpression createIfExpression(Expression left, Expression right, ComparisonExpressionType type, Expression result, Type trueValueType)
         {
             return new IfExpression(
                     new ComparisonExpression(type, left, right),

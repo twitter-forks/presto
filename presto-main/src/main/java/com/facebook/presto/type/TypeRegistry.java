@@ -83,7 +83,7 @@ public final class TypeRegistry
 
     public TypeRegistry()
     {
-        this(ImmutableSet.of());
+        this(ImmutableSet.<Type>of());
     }
 
     @Inject
@@ -272,7 +272,7 @@ public final class TypeRegistry
         return Optional.empty();
     }
 
-    private static Type getCommonSuperTypeForDecimal(DecimalType firstType, DecimalType secondType)
+    private Type getCommonSuperTypeForDecimal(DecimalType firstType, DecimalType secondType)
     {
         int targetScale = Math.max(firstType.getScale(), secondType.getScale());
         int targetPrecision = Math.max(firstType.getPrecision() - firstType.getScale(), secondType.getPrecision() - secondType.getScale()) + targetScale;
@@ -281,7 +281,7 @@ public final class TypeRegistry
         return createDecimalType(targetPrecision, targetScale);
     }
 
-    private static Type getCommonSuperTypeForVarchar(VarcharType firstType, VarcharType secondType)
+    private Type getCommonSuperTypeForVarchar(VarcharType firstType, VarcharType secondType)
     {
         return createVarcharType(Math.max(firstType.getLength(), secondType.getLength()));
     }
@@ -322,7 +322,6 @@ public final class TypeRegistry
      * coerceTypeBase and isCovariantParametrizedType defines all hand-coded rules for type coercion.
      * Other methods should reference these two functions instead of hand-code new rules.
      */
-    @Override
     public Optional<Type> coerceTypeBase(Type sourceType, String resultTypeBase)
     {
         String sourceTypeName = sourceType.getTypeSignature().getBase();

@@ -18,10 +18,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 
-import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
-import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 final class SemiJoinMatcher
@@ -39,23 +36,16 @@ final class SemiJoinMatcher
     }
 
     @Override
-    public boolean shapeMatches(PlanNode node)
+    public boolean matches(PlanNode node, Session session, Metadata metadata, ExpressionAliases expressionAliases)
     {
-        return node instanceof SemiJoinNode;
-    }
-
-    @Override
-    public MatchResult detailMatches(PlanNode node, Session session, Metadata metadata, SymbolAliases symbolAliases)
-    {
-        checkState(shapeMatches(node), "Plan testing framework error: shapeMatches returned false in detailMatches in %s", this.getClass().getName());
-
-        SemiJoinNode semiJoinNode = (SemiJoinNode) node;
-        if (!(symbolAliases.get(sourceSymbolAlias).equals(semiJoinNode.getSourceJoinSymbol().toSymbolReference()) &&
-                symbolAliases.get(filteringSymbolAlias).equals(semiJoinNode.getFilteringSourceJoinSymbol().toSymbolReference()))) {
-            return NO_MATCH;
+        if (node instanceof SemiJoinNode) {
+            SemiJoinNode semiJoinNode = (SemiJoinNode) node;
+            expressionAliases.put(sourceSymbolAlias, semiJoinNode.getSourceJoinSymbol().toSymbolReference());
+            expressionAliases.put(filteringSymbolAlias, semiJoinNode.getFilteringSourceJoinSymbol().toSymbolReference());
+            expressionAliases.put(outputAlias, semiJoinNode.getSemiJoinOutput().toSymbolReference());
+            return true;
         }
-
-        return match(outputAlias, semiJoinNode.getSemiJoinOutput().toSymbolReference());
+        return false;
     }
 
     @Override

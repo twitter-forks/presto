@@ -26,6 +26,7 @@ import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlock;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.primitives.Ints;
+import io.airlift.slice.Slices;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.joda.time.DateTimeZone;
 
@@ -103,17 +104,13 @@ public class MapStreamReader
             }
         }
 
-        // The length vector could be reused, but this simplifies the code below by
-        // taking advantage of null entries being initialized to zero.  The vector
-        // could be reinitialized for each loop, but that is likely just as expensive
-        // as allocating a new array
-        int[] lengthVector = new int[nextBatchSize];
+        int[] lengths = new int[nextBatchSize];
         boolean[] nullVector = new boolean[nextBatchSize];
         if (presentStream == null) {
             if (lengthStream == null) {
                 throw new OrcCorruptionException("Value is not null but data stream is not present");
             }
-            lengthStream.nextIntVector(nextBatchSize, lengthVector);
+            lengthStream.nextIntVector(nextBatchSize, lengths);
         }
         else {
             int nullValues = presentStream.getUnsetBits(nextBatchSize, nullVector);
@@ -121,7 +118,7 @@ public class MapStreamReader
                 if (lengthStream == null) {
                     throw new OrcCorruptionException("Value is not null but data stream is not present");
                 }
-                lengthStream.nextIntVector(nextBatchSize, lengthVector, nullVector);
+                lengthStream.nextIntVector(nextBatchSize, lengths, nullVector);
             }
         }
 
@@ -129,7 +126,7 @@ public class MapStreamReader
         Type valueType = type.getTypeParameters().get(1);
 
         int entryCount = 0;
-        for (int length : lengthVector) {
+        for (int length : lengths) {
             entryCount += length;
         }
 
@@ -146,15 +143,14 @@ public class MapStreamReader
             values = valueType.createBlockBuilder(new BlockBuilderStatus(), 1).build();
         }
 
-        InterleavedBlock keyValueBlock = createKeyValueBlock(nextBatchSize, keys, values, lengthVector);
+        InterleavedBlock keyValueBlock = createKeyValueBlock(keys, values, lengths);
 
         // convert lengths into offsets into the keyValueBlock (e.g., two positions per entry)
-        int[] offsets = new int[nextBatchSize + 1];
-        for (int i = 1; i < offsets.length; i++) {
-            int length = lengthVector[i - 1] * 2;
-            offsets[i] = offsets[i - 1] + length;
+        lengths[0] = lengths[0] * 2;
+        for (int i = 1; i < lengths.length; i++) {
+            lengths[i] = lengths[i - 1] + (lengths[i] * 2);
         }
-        ArrayBlock arrayBlock = new ArrayBlock(nextBatchSize, nullVector, offsets, keyValueBlock);
+        ArrayBlock arrayBlock = new ArrayBlock(keyValueBlock, Slices.wrappedIntArray(lengths), 0, Slices.wrappedBooleanArray(nullVector));
 
         readOffset = 0;
         nextBatchSize = 0;
@@ -162,7 +158,7 @@ public class MapStreamReader
         return arrayBlock;
     }
 
-    private static InterleavedBlock createKeyValueBlock(int positionCount, Block keys, Block values, int[] lengths)
+    private static InterleavedBlock createKeyValueBlock(Block keys, Block values, int[] lengths)
     {
         if (!hasNull(keys)) {
             return new InterleavedBlock(new Block[] {keys, values});
@@ -175,7 +171,7 @@ public class MapStreamReader
         IntArrayList nonNullPositions = new IntArrayList(keys.getPositionCount());
 
         int position = 0;
-        for (int mapIndex = 0; mapIndex < positionCount; mapIndex++) {
+        for (int mapIndex = 0; mapIndex < lengths.length; mapIndex++) {
             int length = lengths[mapIndex];
             for (int entryIndex = 0; entryIndex < length; entryIndex++) {
                 if (keys.isNull(position)) {

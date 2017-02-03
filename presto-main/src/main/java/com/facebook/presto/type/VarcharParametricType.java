@@ -21,8 +21,6 @@ import com.facebook.presto.spi.type.VarcharType;
 
 import java.util.List;
 
-import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
-
 public class VarcharParametricType
         implements ParametricType
 {
@@ -38,7 +36,7 @@ public class VarcharParametricType
     public Type createType(List<TypeParameter> parameters)
     {
         if (parameters.isEmpty()) {
-            return createUnboundedVarcharType();
+            return VarcharType.createVarcharType(VarcharType.MAX_LENGTH);
         }
         if (parameters.size() != 1) {
             throw new IllegalArgumentException("Expected at most one parameter for VARCHAR");
