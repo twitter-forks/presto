@@ -174,7 +174,6 @@ public class BenchmarkHashBuildAndJoinOperators
 
         protected List<Page> probePages;
 
-        @Override
         @Setup
         public void setup()
         {

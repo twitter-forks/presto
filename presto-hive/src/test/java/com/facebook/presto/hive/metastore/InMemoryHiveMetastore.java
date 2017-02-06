@@ -482,6 +482,11 @@ public class InMemoryHiveMetastore
     }
 
     @Override
+    public void flushCache()
+    {
+    }
+
+    @Override
     public synchronized void grantTablePrivileges(String databaseName, String tableName, String grantee, Set<PrivilegeGrantInfo> privilegeGrantInfoSet)
     {
         Set<HivePrivilegeInfo> hivePrivileges = privilegeGrantInfoSet.stream()

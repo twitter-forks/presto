@@ -176,12 +176,12 @@ public class BenchmarkArraySubscript
 
         private static Block createArrayBlock(int positionCount, Block elementsBlock)
         {
-            int[] offsets = new int[positionCount + 1];
+            int[] offsets = new int[positionCount];
             int arraySize = elementsBlock.getPositionCount() / positionCount;
-            for (int i = 0; i < offsets.length; i++) {
-                offsets[i] = arraySize * i;
+            for (int i = 0; i < positionCount; i++) {
+                offsets[i] = arraySize * (i + 1);
             }
-            return new ArrayBlock(positionCount, new boolean[positionCount], offsets, elementsBlock);
+            return new ArrayBlock(elementsBlock, Slices.wrappedIntArray(offsets), 0, Slices.allocate(positionCount));
         }
 
         private static Block createFixWidthValueBlock(int positionCount, int mapSize)

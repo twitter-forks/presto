@@ -31,7 +31,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newFixedThreadPool;
 
 public class BinarySpillerFactory
-        extends SpillerFactoryWithStats
+        implements SpillerFactory
 {
     public static final String SPILLER_THREAD_NAME_PREFIX = "binary-spiller";
 
@@ -65,6 +65,6 @@ public class BinarySpillerFactory
     @Override
     public Spiller create(List<Type> types)
     {
-        return new BinaryFileSpiller(blockEncodingSerde, executor, spillPath, spilledBytes);
+        return new BinaryFileSpiller(blockEncodingSerde, executor, spillPath);
     }
 }

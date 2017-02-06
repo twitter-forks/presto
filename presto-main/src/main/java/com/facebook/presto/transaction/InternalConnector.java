@@ -20,7 +20,6 @@ import com.facebook.presto.spi.transaction.IsolationLevel;
 public interface InternalConnector
         extends Connector
 {
-    @Override
     default ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly)
     {
         throw new UnsupportedOperationException();

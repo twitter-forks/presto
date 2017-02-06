@@ -46,7 +46,6 @@ import com.facebook.presto.sql.tree.Delete;
 import com.facebook.presto.sql.tree.Explain;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Insert;
-import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.NullLiteral;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.Statement;
@@ -55,7 +54,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -132,35 +130,29 @@ public class LogicalPlanner
 
     public PlanNode planStatement(Analysis analysis, Statement statement)
     {
-        if (statement instanceof CreateTableAsSelect && analysis.isCreateTableAsSelectNoOp()) {
-            checkState(analysis.getCreateTableDestination().isPresent(), "Table destination is missing");
-            List<Expression> emptyRow = ImmutableList.of();
-            PlanNode source = new ValuesNode(idAllocator.getNextId(), ImmutableList.of(), ImmutableList.of(emptyRow));
-            return new OutputNode(idAllocator.getNextId(), source, ImmutableList.of(), ImmutableList.of());
-        }
-        return createOutputPlan(planStatementWithoutOutput(analysis, statement), analysis);
-    }
-
-    private RelationPlan planStatementWithoutOutput(Analysis analysis, Statement statement)
-    {
         if (statement instanceof CreateTableAsSelect) {
+            checkState(analysis.getCreateTableDestination().isPresent(), "Table destination is missing");
             if (analysis.isCreateTableAsSelectNoOp()) {
-                throw new PrestoException(NOT_SUPPORTED, "CREATE TABLE IF NOT EXISTS is not supported in this context " + statement.getClass().getSimpleName());
+                List<Expression> emptyRow = ImmutableList.of();
+                PlanNode source = new ValuesNode(idAllocator.getNextId(), ImmutableList.of(), ImmutableList.of(emptyRow));
+                return new OutputNode(idAllocator.getNextId(), source, ImmutableList.of(), ImmutableList.of());
             }
-            return createTableCreationPlan(analysis, ((CreateTableAsSelect) statement).getQuery());
+            else {
+                return createOutputPlan(createTableCreationPlan(analysis, ((CreateTableAsSelect) statement).getQuery()), analysis);
+            }
         }
         else if (statement instanceof Insert) {
             checkState(analysis.getInsert().isPresent(), "Insert handle is missing");
-            return createInsertPlan(analysis, (Insert) statement);
+            return createOutputPlan(createInsertPlan(analysis, (Insert) statement), analysis);
         }
         else if (statement instanceof Delete) {
-            return createDeletePlan(analysis, (Delete) statement);
+            return createOutputPlan(createDeletePlan(analysis, (Delete) statement), analysis);
         }
         else if (statement instanceof Query) {
-            return createRelationPlan(analysis, (Query) statement);
+            return createOutputPlan(createRelationPlan(analysis, (Query) statement), analysis);
         }
         else if (statement instanceof Explain && ((Explain) statement).isAnalyze()) {
-            return createExplainAnalyzePlan(analysis, (Explain) statement);
+            return createOutputPlan(createExplainAnalyzePlan(analysis, (Explain) statement), analysis);
         }
         else {
             throw new PrestoException(NOT_SUPPORTED, "Unsupported statement type " + statement.getClass().getSimpleName());
@@ -169,9 +161,8 @@ public class LogicalPlanner
 
     private RelationPlan createExplainAnalyzePlan(Analysis analysis, Explain statement)
     {
-        RelationPlan underlyingPlan = planStatementWithoutOutput(analysis, statement.getStatement());
-        PlanNode root = underlyingPlan.getRoot();
         Scope scope = analysis.getScope(statement);
+        PlanNode root = planStatement(analysis, statement.getStatement());
         Symbol outputSymbol = symbolAllocator.newSymbol(scope.getRelationType().getFieldByIndex(0));
         root = new ExplainAnalyzeNode(idAllocator.getNextId(), root, outputSymbol);
         return new RelationPlan(root, scope, ImmutableList.of(outputSymbol));
@@ -320,8 +311,8 @@ public class LogicalPlanner
 
     private RelationPlan createDeletePlan(Analysis analysis, Delete node)
     {
-        DeleteNode deleteNode = new QueryPlanner(analysis, symbolAllocator, idAllocator, buildLambdaDeclarationToSymbolMap(analysis, symbolAllocator), metadata, session)
-                .plan(node);
+        QueryPlanner planner = new QueryPlanner(analysis, symbolAllocator, idAllocator, metadata, session);
+        DeleteNode deleteNode = planner.plan(node);
 
         List<Symbol> outputs = ImmutableList.of(symbolAllocator.newSymbol("rows", BIGINT));
         TableFinishNode commitNode = new TableFinishNode(idAllocator.getNextId(), deleteNode, deleteNode.getTarget(), outputs);
@@ -352,7 +343,7 @@ public class LogicalPlanner
 
     private RelationPlan createRelationPlan(Analysis analysis, Query query)
     {
-        return new RelationPlanner(analysis, symbolAllocator, idAllocator, buildLambdaDeclarationToSymbolMap(analysis, symbolAllocator), metadata, session)
+        return new RelationPlanner(analysis, symbolAllocator, idAllocator, metadata, session)
                 .process(query, null);
     }
 
@@ -379,21 +370,5 @@ public class LogicalPlanner
             columns.add(new ColumnMetadata(field.getName().get(), field.getType()));
         }
         return columns.build();
-    }
-
-    private static IdentityHashMap<LambdaArgumentDeclaration, Symbol> buildLambdaDeclarationToSymbolMap(Analysis analysis, SymbolAllocator symbolAllocator)
-    {
-        IdentityHashMap<LambdaArgumentDeclaration, Symbol> resultMap = new IdentityHashMap<>();
-        for (Map.Entry<Expression, Type> entry : analysis.getTypes().entrySet()) {
-            if (!(entry.getKey() instanceof LambdaArgumentDeclaration)) {
-                continue;
-            }
-            LambdaArgumentDeclaration lambdaArgumentDeclaration = (LambdaArgumentDeclaration) entry.getKey();
-            if (resultMap.containsKey(lambdaArgumentDeclaration)) {
-                continue;
-            }
-            resultMap.put(lambdaArgumentDeclaration, symbolAllocator.newSymbol(lambdaArgumentDeclaration, entry.getValue()));
-        }
-        return resultMap;
     }
 }

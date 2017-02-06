@@ -47,6 +47,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.ByteArrayDataOutput;
 import io.airlift.json.JsonCodec;
+import io.airlift.slice.Slice;
 import org.skife.jdbi.v2.DBI;
 import org.skife.jdbi.v2.Handle;
 import org.skife.jdbi.v2.util.BooleanMapper;
@@ -663,7 +664,7 @@ public class TestRaptorMetadata
         assertNull(transactionSuccessful(transactionId));
 
         // commit insert
-        metadata.finishInsert(SESSION, insertHandle, ImmutableList.of());
+        metadata.finishInsert(SESSION, insertHandle, ImmutableList.<Slice>of());
         assertTrue(transactionExists(transactionId));
         assertTrue(transactionSuccessful(transactionId));
     }

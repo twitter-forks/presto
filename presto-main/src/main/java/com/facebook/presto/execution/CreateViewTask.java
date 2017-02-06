@@ -21,6 +21,7 @@ import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.analyzer.Analyzer;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
+import com.facebook.presto.sql.analyzer.QueryExplainer;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.Expression;
@@ -51,6 +52,7 @@ public class CreateViewTask
     public CreateViewTask(
             JsonCodec<ViewDefinition> codec,
             SqlParser sqlParser,
+            AccessControl accessControl,
             FeaturesConfig featuresConfig)
     {
         this.codec = requireNonNull(codec, "codec is null");
@@ -82,7 +84,7 @@ public class CreateViewTask
 
         Analysis analysis = analyzeStatement(statement, session, metadata, accessControl, parameters);
 
-        List<ViewColumn> columns = analysis.getOutputDescriptor(statement.getQuery())
+        List<ViewColumn> columns = analysis.getOutputDescriptor()
                 .getVisibleFields().stream()
                 .map(field -> new ViewColumn(field.getName().get(), field.getType()))
                 .collect(toImmutableList());
@@ -96,7 +98,7 @@ public class CreateViewTask
 
     private Analysis analyzeStatement(Statement statement, Session session, Metadata metadata, AccessControl accessControl, List<Expression> parameters)
     {
-        Analyzer analyzer = new Analyzer(session, metadata, sqlParser, accessControl, Optional.empty(), parameters);
+        Analyzer analyzer = new Analyzer(session, metadata, sqlParser, accessControl, Optional.<QueryExplainer>empty(), parameters);
         return analyzer.analyze(statement);
     }
 }

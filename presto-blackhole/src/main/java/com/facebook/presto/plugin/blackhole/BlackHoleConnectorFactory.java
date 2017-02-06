@@ -48,7 +48,7 @@ public class BlackHoleConnectorFactory
         return new BlackHoleConnector(
                 new BlackHoleMetadata(),
                 new BlackHoleSplitManager(),
-                new BlackHolePageSourceProvider(executorService),
+                new BlackHolePageSourceProvider(),
                 new BlackHolePageSinkProvider(executorService),
                 new BlackHoleNodePartitioningProvider(context.getNodeManager()),
                 context.getTypeManager(),

@@ -26,7 +26,6 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableSet;
 import org.apache.hadoop.conf.Configuration;
@@ -58,7 +57,6 @@ import static com.facebook.presto.hive.parquet.HdfsParquetDataSource.buildHdfsPa
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getParquetType;
 import static com.facebook.presto.hive.parquet.predicate.ParquetPredicateUtils.buildParquetPredicate;
 import static com.facebook.presto.hive.parquet.predicate.ParquetPredicateUtils.predicateMatches;
-import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
 import static com.facebook.presto.spi.type.StandardTypes.BIGINT;
 import static com.facebook.presto.spi.type.StandardTypes.BOOLEAN;
 import static com.facebook.presto.spi.type.StandardTypes.CHAR;
@@ -66,9 +64,7 @@ import static com.facebook.presto.spi.type.StandardTypes.DATE;
 import static com.facebook.presto.spi.type.StandardTypes.DECIMAL;
 import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
 import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
-import static com.facebook.presto.spi.type.StandardTypes.MAP;
 import static com.facebook.presto.spi.type.StandardTypes.REAL;
-import static com.facebook.presto.spi.type.StandardTypes.ROW;
 import static com.facebook.presto.spi.type.StandardTypes.SMALLINT;
 import static com.facebook.presto.spi.type.StandardTypes.TIMESTAMP;
 import static com.facebook.presto.spi.type.StandardTypes.TINYINT;
@@ -86,7 +82,7 @@ public class ParquetPageSourceFactory
             .add("parquet.hive.serde.ParquetHiveSerDe")
             .build();
     @VisibleForTesting
-    public static final Set<String> SUPPORTED_COLUMN_TYPES = ImmutableSet.of(INTEGER, BIGINT, BOOLEAN, DOUBLE, REAL, TIMESTAMP, VARCHAR, CHAR, VARBINARY, DATE, DECIMAL, ROW);
+    public static final Set<String> SUPPORTED_COLUMN_TYPES = ImmutableSet.of(INTEGER, BIGINT, BOOLEAN, DOUBLE, REAL, TIMESTAMP, VARCHAR, CHAR, VARBINARY, DATE, DECIMAL);
     private static final Set<String> SUPPORTED_PARTITION_TYPES = ImmutableSet.of(TINYINT, SMALLINT, INTEGER, BIGINT, BOOLEAN, DOUBLE, REAL, TIMESTAMP, VARCHAR, CHAR, DATE, DECIMAL);
 
     private final TypeManager typeManager;
@@ -192,11 +188,9 @@ public class ParquetPageSourceFactory
             }
 
             ParquetReader parquetReader = new ParquetReader(
-                    fileSchema,
                     requestedSchema,
                     blocks,
-                    dataSource,
-                    typeManager);
+                    dataSource);
 
             return new ParquetPageSource(
                     parquetReader,
@@ -235,7 +229,8 @@ public class ParquetPageSourceFactory
         boolean regularColumnsSupported = columns.stream()
                 .filter(column -> column.getColumnType() == REGULAR)
                 .map(HiveColumnHandle::getTypeSignature)
-                .allMatch(ParquetPageSourceFactory::isTypeSupported);
+                .map(TypeSignature::getBase)
+                .allMatch(SUPPORTED_COLUMN_TYPES::contains);
 
         boolean partitionColumnsSupported = columns.stream()
                 .filter(HiveColumnHandle::isPartitionKey)
@@ -244,20 +239,5 @@ public class ParquetPageSourceFactory
                 .allMatch(SUPPORTED_PARTITION_TYPES::contains);
 
         return regularColumnsSupported && partitionColumnsSupported;
-    }
-
-    private static boolean isTypeSupported(TypeSignature typeSignature)
-    {
-        if (MAP.equals(typeSignature.getBase()) || ARRAY.equals(typeSignature.getBase())) {
-            return false;
-        }
-        else if (ROW.equals(typeSignature.getBase())) {
-            return typeSignature.getParameters().stream()
-                .map(TypeSignatureParameter::getTypeSignatureOrNamedTypeSignature)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .allMatch(ParquetPageSourceFactory::isTypeSupported);
-        }
-        return true;
     }
 }

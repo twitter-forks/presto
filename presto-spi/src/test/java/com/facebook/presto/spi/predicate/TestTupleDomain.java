@@ -217,15 +217,15 @@ public class TestTupleDomain
             throws Exception
     {
         assertTrue(overlaps(
-                ImmutableMap.of(),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of(),
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(overlaps(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.singleValue(BIGINT, 0L))));
 
         assertFalse(overlaps(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.none(BIGINT))));
 
         assertFalse(overlaps(
@@ -270,24 +270,24 @@ public class TestTupleDomain
             throws Exception
     {
         assertTrue(contains(
-                ImmutableMap.of(),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of(),
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(contains(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.none(BIGINT))));
 
         assertTrue(contains(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.all(BIGINT))));
 
         assertTrue(contains(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.singleValue(DOUBLE, 0.0))));
 
         assertFalse(contains(
                 ImmutableMap.of(A, Domain.none(BIGINT)),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(contains(
                 ImmutableMap.of(A, Domain.none(BIGINT)),
@@ -303,7 +303,7 @@ public class TestTupleDomain
 
         assertTrue(contains(
                 ImmutableMap.of(A, Domain.all(BIGINT)),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(contains(
                 ImmutableMap.of(A, Domain.all(BIGINT)),
@@ -319,7 +319,7 @@ public class TestTupleDomain
 
         assertFalse(contains(
                 ImmutableMap.of(A, Domain.singleValue(BIGINT, 0L)),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(contains(
                 ImmutableMap.of(A, Domain.singleValue(BIGINT, 0L)),
@@ -413,19 +413,19 @@ public class TestTupleDomain
             throws Exception
     {
         assertTrue(equals(
-                ImmutableMap.of(),
-                ImmutableMap.of()));
+                ImmutableMap.<ColumnHandle, Domain>of(),
+                ImmutableMap.<ColumnHandle, Domain>of()));
 
         assertTrue(equals(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.all(BIGINT))));
 
         assertFalse(equals(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.none(BIGINT))));
 
         assertFalse(equals(
-                ImmutableMap.of(),
+                ImmutableMap.<ColumnHandle, Domain>of(),
                 ImmutableMap.of(A, Domain.singleValue(BIGINT, 0L))));
 
         assertTrue(equals(

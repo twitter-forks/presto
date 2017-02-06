@@ -400,7 +400,7 @@ existing data in S3::
 Drop the external table ``request_logs``. This only drops the metadata
 for the table. The referenced data directory is not deleted::
 
-    DROP TABLE hive.web.request_logs
+    DROP hive.web.request_logs
 
 Drop a schema::
 

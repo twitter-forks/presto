@@ -57,7 +57,7 @@ public class AlignedTablePrinter
     public void finish()
             throws IOException
     {
-        printRows(ImmutableList.of(), true);
+        printRows(ImmutableList.<List<?>>of(), true);
         writer.append(format("(%s row%s)%n", rowCount, (rowCount != 1) ? "s" : ""));
         writer.flush();
     }

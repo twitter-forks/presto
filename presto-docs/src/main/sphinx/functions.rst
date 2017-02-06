@@ -23,5 +23,4 @@ Functions and Operators
     functions/color
     functions/array
     functions/map
-    functions/lambda
     functions/teradata

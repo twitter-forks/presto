@@ -15,19 +15,17 @@ package com.facebook.presto.sql.gen;
 
 import com.facebook.presto.bytecode.BytecodeBlock;
 import com.facebook.presto.bytecode.BytecodeNode;
+import com.facebook.presto.bytecode.MethodDefinition;
 import com.facebook.presto.bytecode.Scope;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.sql.relational.CallExpression;
 import com.facebook.presto.sql.relational.ConstantExpression;
 import com.facebook.presto.sql.relational.InputReferenceExpression;
-import com.facebook.presto.sql.relational.LambdaDefinitionExpression;
 import com.facebook.presto.sql.relational.RowExpressionVisitor;
-import com.facebook.presto.sql.relational.VariableReferenceExpression;
 
-import java.lang.invoke.MethodHandle;
+import java.util.Map;
 
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantTrue;
-import static com.facebook.presto.bytecode.expression.BytecodeExpressions.getStatic;
 import static com.facebook.presto.bytecode.instruction.Constant.loadBoolean;
 import static com.facebook.presto.bytecode.instruction.Constant.loadDouble;
 import static com.facebook.presto.bytecode.instruction.Constant.loadFloat;
@@ -45,7 +43,6 @@ import static com.facebook.presto.sql.relational.Signatures.NULL_IF;
 import static com.facebook.presto.sql.relational.Signatures.ROW_CONSTRUCTOR;
 import static com.facebook.presto.sql.relational.Signatures.SWITCH;
 import static com.facebook.presto.sql.relational.Signatures.TRY;
-import static com.google.common.base.Preconditions.checkState;
 
 public class BytecodeExpressionVisitor
         implements RowExpressionVisitor<Scope, BytecodeNode>
@@ -54,20 +51,20 @@ public class BytecodeExpressionVisitor
     private final CachedInstanceBinder cachedInstanceBinder;
     private final RowExpressionVisitor<Scope, BytecodeNode> fieldReferenceCompiler;
     private final FunctionRegistry registry;
-    private final PreGeneratedExpressions preGeneratedExpressions;
+    private final Map<CallExpression, MethodDefinition> tryExpressionsMap;
 
     public BytecodeExpressionVisitor(
             CallSiteBinder callSiteBinder,
             CachedInstanceBinder cachedInstanceBinder,
             RowExpressionVisitor<Scope, BytecodeNode> fieldReferenceCompiler,
             FunctionRegistry registry,
-            PreGeneratedExpressions preGeneratedExpressions)
+            Map<CallExpression, MethodDefinition> tryExpressionsMap)
     {
         this.callSiteBinder = callSiteBinder;
         this.cachedInstanceBinder = cachedInstanceBinder;
         this.fieldReferenceCompiler = fieldReferenceCompiler;
         this.registry = registry;
-        this.preGeneratedExpressions = preGeneratedExpressions;
+        this.tryExpressionsMap = tryExpressionsMap;
     }
 
     @Override
@@ -92,7 +89,7 @@ public class BytecodeExpressionVisitor
                     generator = new SwitchCodeGenerator();
                     break;
                 case TRY:
-                    generator = new TryCodeGenerator(preGeneratedExpressions.getTryMethodMap());
+                    generator = new TryCodeGenerator(tryExpressionsMap);
                     break;
                 // functions that take null as input
                 case IS_NULL:
@@ -183,21 +180,5 @@ public class BytecodeExpressionVisitor
     public BytecodeNode visitInputReference(InputReferenceExpression node, Scope scope)
     {
         return fieldReferenceCompiler.visitInputReference(node, scope);
-    }
-
-    @Override
-    public BytecodeNode visitLambda(LambdaDefinitionExpression lambda, Scope scope)
-    {
-        checkState(preGeneratedExpressions.getLambdaFieldMap().containsKey(lambda), "lambda expressions map does not contain this lambda definition");
-
-        return getStatic(preGeneratedExpressions.getLambdaFieldMap().get(lambda))
-                .invoke("bindTo", MethodHandle.class, scope.getThis().cast(Object.class))
-                .invoke("bindTo", MethodHandle.class, scope.getVariable("session").cast(Object.class));
-    }
-
-    @Override
-    public BytecodeNode visitVariableReference(VariableReferenceExpression reference, Scope scope)
-    {
-        return fieldReferenceCompiler.visitVariableReference(reference, scope);
     }
 }

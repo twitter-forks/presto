@@ -69,7 +69,6 @@ import java.math.BigInteger;
 import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -77,8 +76,6 @@ import java.util.regex.Pattern;
 
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.PARTITION_KEY;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
-import static com.facebook.presto.hive.HiveColumnHandle.bucketColumnHandle;
-import static com.facebook.presto.hive.HiveColumnHandle.isBucketColumnHandle;
 import static com.facebook.presto.hive.HiveColumnHandle.isPathColumnHandle;
 import static com.facebook.presto.hive.HiveColumnHandle.pathColumnHandle;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CANNOT_OPEN_SPLIT;
@@ -712,11 +709,8 @@ public final class HiveUtil
         // add the partition keys last (like Hive does)
         columns.addAll(getPartitionKeyColumnHandles(connectorId, table));
 
-        // add hidden columns
+        // add hidden column
         columns.add(pathColumnHandle(connectorId));
-        if (table.getStorage().getBucketProperty().isPresent()) {
-            columns.add(bucketColumnHandle(connectorId));
-        }
 
         return columns.build();
     }
@@ -767,9 +761,18 @@ public final class HiveUtil
     }
 
     @Nullable
-    public static String columnExtraInfo(boolean partitionKey)
+    public static String annotateColumnComment(Optional<String> comment, boolean partitionKey)
     {
-        return partitionKey ? "partition key" : null;
+        String normalizedComment = comment.orElse("").trim();
+        if (partitionKey) {
+            if (normalizedComment.isEmpty()) {
+                normalizedComment = "Partition Key";
+            }
+            else {
+                normalizedComment = "Partition Key: " + normalizedComment;
+            }
+        }
+        return normalizedComment.isEmpty() ? null : normalizedComment;
     }
 
     public static List<String> toPartitionValues(String partitionName)
@@ -795,16 +798,13 @@ public final class HiveUtil
         return resultBuilder.build();
     }
 
-    public static String getPrefilledColumnValue(HiveColumnHandle columnHandle, HivePartitionKey partitionKey, Path path, OptionalInt bucketNumber)
+    public static String getPrefilledColumnValue(HiveColumnHandle columnHandle, HivePartitionKey partitionKey, Path path)
     {
         if (partitionKey != null) {
             return partitionKey.getValue();
         }
         if (isPathColumnHandle(columnHandle)) {
             return path.toString();
-        }
-        if (isBucketColumnHandle(columnHandle)) {
-            return String.valueOf(bucketNumber.getAsInt());
         }
         throw new PrestoException(NOT_SUPPORTED, "unsupported hidden column: " + columnHandle);
     }

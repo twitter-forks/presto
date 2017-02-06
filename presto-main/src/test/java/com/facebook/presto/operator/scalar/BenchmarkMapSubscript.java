@@ -189,12 +189,12 @@ public class BenchmarkMapSubscript
         private static Block createMapBlock(int positionCount, Block keyBlock, Block valueBlock)
         {
             InterleavedBlock interleavedBlock = new InterleavedBlock(new Block[] {keyBlock, valueBlock});
-            int[] offsets = new int[positionCount + 1];
+            int[] offsets = new int[positionCount];
             int mapSize = keyBlock.getPositionCount() / positionCount;
-            for (int i = 0; i < offsets.length; i++) {
+            for (int i = 0; i < positionCount; i++) {
                 offsets[i] = mapSize * 2 * i;
             }
-            return new ArrayBlock(positionCount, new boolean[positionCount], offsets, interleavedBlock);
+            return new ArrayBlock(interleavedBlock, Slices.wrappedIntArray(offsets), 0, Slices.allocate(positionCount));
         }
 
         private static Block createKeyBlock(int positionCount, List<String> keys)

@@ -5,7 +5,7 @@
     <parent>
         <artifactId>presto-root</artifactId>
         <groupId>com.facebook.presto</groupId>
-        <version>0.161-tw-0.29</version>
+        <version>0.157-tw-0.30</version>
     </parent>
 
     <artifactId>presto-product-tests</artifactId>
@@ -85,10 +85,6 @@
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>http-client</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.airlift.tpch</groupId>
-            <artifactId>tpch</artifactId>
         </dependency>
         <dependency>
             <groupId>com.facebook.presto.hive</groupId>

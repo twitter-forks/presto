@@ -46,7 +46,6 @@ import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.IntervalLiteral;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
-import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
@@ -290,12 +289,6 @@ public final class ExpressionFormatter
         protected String visitQualifiedNameReference(QualifiedNameReference node, Boolean unmangleNames)
         {
             return formatQualifiedName(node.getName());
-        }
-
-        @Override
-        protected String visitLambdaArgumentDeclaration(LambdaArgumentDeclaration node, Boolean context)
-        {
-            return formatIdentifier(node.getName());
         }
 
         @Override

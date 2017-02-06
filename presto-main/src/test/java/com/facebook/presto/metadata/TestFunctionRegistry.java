@@ -43,7 +43,6 @@ import static com.facebook.presto.metadata.Signature.typeVariable;
 import static com.facebook.presto.spi.type.HyperLogLogType.HYPER_LOG_LOG;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
-import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypeSignatures;
 import static com.facebook.presto.type.TypeUtils.resolveTypes;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.collect.Lists.transform;
@@ -101,7 +100,7 @@ public class TestFunctionRegistry
 
         TypeRegistry typeManager = new TypeRegistry();
         FunctionRegistry registry = new FunctionRegistry(typeManager, new BlockEncodingManager(typeManager), new FeaturesConfig());
-        Signature function = registry.resolveFunction(QualifiedName.of(signature.getName()), fromTypeSignatures(signature.getArgumentTypes()));
+        Signature function = registry.resolveFunction(QualifiedName.of(signature.getName()), signature.getArgumentTypes());
         assertEquals(function.getArgumentTypes(), ImmutableList.of(parseTypeSignature(StandardTypes.BIGINT)));
         assertEquals(signature.getReturnType().getBase(), StandardTypes.TIMESTAMP_WITH_TIME_ZONE);
     }
@@ -317,12 +316,12 @@ public class TestFunctionRegistry
         return functionSignature(ImmutableList.copyOf(argumentTypes), "boolean");
     }
 
-    private static SignatureBuilder functionSignature(List<String> arguments, String returnType)
+    private SignatureBuilder functionSignature(List<String> arguments, String returnType)
     {
         return functionSignature(arguments, returnType, ImmutableList.of());
     }
 
-    private static SignatureBuilder functionSignature(List<String> arguments, String returnType, List<TypeVariableConstraint> typeVariableConstraints)
+    private SignatureBuilder functionSignature(List<String> arguments, String returnType, List<TypeVariableConstraint> typeVariableConstraints)
     {
         ImmutableSet<String> literalParameters = ImmutableSet.of("p", "s", "p1", "s1", "p2", "s2", "p3", "s3");
         List<TypeSignature> argumentSignatures = arguments.stream()
@@ -391,7 +390,7 @@ public class TestFunctionRegistry
         {
             FunctionRegistry functionRegistry = new FunctionRegistry(typeRegistry, blockEncoding, new FeaturesConfig());
             functionRegistry.addFunctions(createFunctionsFromSignatures());
-            return functionRegistry.resolveFunction(QualifiedName.of(TEST_FUNCTION_NAME), fromTypeSignatures(parameterTypes));
+            return functionRegistry.resolveFunction(QualifiedName.of(TEST_FUNCTION_NAME), parameterTypes);
         }
 
         private List<SqlFunction> createFunctionsFromSignatures()
@@ -433,7 +432,7 @@ public class TestFunctionRegistry
             return functions.build();
         }
 
-        private static List<TypeSignature> parseTypeSignatures(String... signatures)
+        private List<TypeSignature> parseTypeSignatures(String... signatures)
         {
             return ImmutableList.copyOf(signatures)
                     .stream()

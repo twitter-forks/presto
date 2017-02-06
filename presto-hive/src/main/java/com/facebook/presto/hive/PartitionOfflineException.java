@@ -17,7 +17,6 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_PARTITION_OFFLINE;
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.Objects.requireNonNull;
 
 public class PartitionOfflineException
@@ -26,11 +25,21 @@ public class PartitionOfflineException
     private final SchemaTableName tableName;
     private final String partition;
 
-    public PartitionOfflineException(SchemaTableName tableName, String partitionName, boolean forPresto, String offlineMessage)
+    public PartitionOfflineException(SchemaTableName tableName, String partition)
     {
-        super(HIVE_PARTITION_OFFLINE, formatMessage(tableName, partitionName, forPresto, offlineMessage));
+        this(tableName, partition, String.format("Table '%s' partition '%s' is offline", tableName, partition));
+    }
+
+    public PartitionOfflineException(SchemaTableName tableName,
+            String partition,
+            String message)
+    {
+        super(HIVE_PARTITION_OFFLINE, message);
+        if (tableName == null) {
+            throw new NullPointerException("tableName is null");
+        }
         this.tableName = requireNonNull(tableName, "tableName is null");
-        this.partition = requireNonNull(partitionName, "partition is null");
+        this.partition = requireNonNull(partition, "partition is null");
     }
 
     public SchemaTableName getTableName()
@@ -41,20 +50,5 @@ public class PartitionOfflineException
     public String getPartition()
     {
         return partition;
-    }
-
-    private static String formatMessage(SchemaTableName tableName, String partitionName, boolean forPresto, String offlineMessage)
-    {
-        StringBuilder resultBuilder = new StringBuilder()
-                .append("Table '").append(tableName).append("'")
-                .append(" partition '").append(partitionName).append("'")
-                .append(" is offline");
-        if (forPresto) {
-            resultBuilder.append(" for Presto");
-        }
-        if (!isNullOrEmpty(offlineMessage)) {
-            resultBuilder.append(": ").append(offlineMessage);
-        }
-        return resultBuilder.toString();
     }
 }

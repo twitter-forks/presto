@@ -40,13 +40,6 @@ public final class MapConcatFunction
             @SqlType("map(K,V)") Block leftMap,
             @SqlType("map(K,V)") Block rightMap)
     {
-        if (leftMap.getPositionCount() == 0) {
-            return rightMap;
-        }
-        if (rightMap.getPositionCount() == 0) {
-            return leftMap;
-        }
-
         TypedSet typedSet = new TypedSet(keyType, rightMap.getPositionCount());
         BlockBuilder blockBuilder = new InterleavedBlockBuilder(ImmutableList.of(keyType, valueType), new BlockBuilderStatus(), leftMap.getPositionCount() + rightMap.getPositionCount());
         for (int i = 0; i < rightMap.getPositionCount(); i += 2) {

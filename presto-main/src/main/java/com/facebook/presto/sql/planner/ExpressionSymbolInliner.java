@@ -16,7 +16,6 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionRewriter;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
-import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.SymbolReference;
 
 import java.util.Map;
@@ -39,12 +38,5 @@ public class ExpressionSymbolInliner
         Expression expression = mappings.get(Symbol.from(node));
         checkState(expression != null, "Cannot resolve symbol %s", node.getName());
         return expression;
-    }
-
-    @Override
-    public Expression rewriteLambdaExpression(LambdaExpression node, Void context, ExpressionTreeRewriter<Void> treeRewriter)
-    {
-        // Lambda does not support capture yet. As a result, relation/columns can not exist in lambda.
-        return node;
     }
 }

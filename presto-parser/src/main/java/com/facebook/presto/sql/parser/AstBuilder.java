@@ -79,7 +79,6 @@ import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinCriteria;
 import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.JoinUsing;
-import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.LikeClause;
 import com.facebook.presto.sql.tree.LikePredicate;
@@ -447,7 +446,7 @@ class AstBuilder
 
             return new Query(
                     getLocation(context),
-                    Optional.empty(),
+                    Optional.<With>empty(),
                     new QuerySpecification(
                             getLocation(context),
                             query.getSelect(),
@@ -458,12 +457,12 @@ class AstBuilder
                             visit(context.sortItem(), SortItem.class),
                             getTextIfPresent(context.limit)),
                     ImmutableList.of(),
-                    Optional.empty());
+                    Optional.<String>empty());
         }
 
         return new Query(
                 getLocation(context),
-                Optional.empty(),
+                Optional.<With>empty(),
                 term,
                 visit(context.sortItem(), SortItem.class),
                 getTextIfPresent(context.limit));
@@ -482,7 +481,7 @@ class AstBuilder
             Relation relation = iterator.next();
 
             while (iterator.hasNext()) {
-                relation = new Join(getLocation(context), Join.Type.IMPLICIT, relation, iterator.next(), Optional.empty());
+                relation = new Join(getLocation(context), Join.Type.IMPLICIT, relation, iterator.next(), Optional.<JoinCriteria>empty());
             }
 
             from = Optional.of(relation);
@@ -773,7 +772,7 @@ class AstBuilder
 
         if (context.CROSS() != null) {
             right = (Relation) visit(context.right);
-            return new Join(getLocation(context), Join.Type.CROSS, left, right, Optional.empty());
+            return new Join(getLocation(context), Join.Type.CROSS, left, right, Optional.<JoinCriteria>empty());
         }
 
         JoinCriteria criteria;
@@ -1059,14 +1058,9 @@ class AstBuilder
     // ********************* primary expressions **********************
 
     @Override
-    public Node visitImplicitRowConstructor(SqlBaseParser.ImplicitRowConstructorContext context)
+    public Node visitParenthesizedExpression(SqlBaseParser.ParenthesizedExpressionContext context)
     {
-        List<Expression> items = visit(context.expression(), Expression.class);
-        if (items.size() == 1) {
-            return items.get(0);
-        }
-
-        return new Row(getLocation(context), items);
+        return visit(context.expression());
     }
 
     @Override
@@ -1246,9 +1240,8 @@ class AstBuilder
     @Override
     public Node visitLambda(SqlBaseParser.LambdaContext context)
     {
-        List<LambdaArgumentDeclaration> arguments = context.identifier().stream()
+        List<String> arguments = context.identifier().stream()
                 .map(SqlBaseParser.IdentifierContext::getText)
-                .map(LambdaArgumentDeclaration::new)
                 .collect(toList());
 
         Expression body = (Expression) visit(context.expression());

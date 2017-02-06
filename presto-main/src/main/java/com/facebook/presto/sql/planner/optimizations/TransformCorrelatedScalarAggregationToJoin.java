@@ -55,7 +55,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypeSignatures;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.planner.optimizations.Predicates.isInstanceOfAny;
 import static com.facebook.presto.sql.planner.plan.SimplePlanRewriter.rewriteWith;
@@ -131,7 +130,7 @@ public class TransformCorrelatedScalarAggregationToJoin
         public PlanNode visitApply(ApplyNode node, RewriteContext<PlanNode> context)
         {
             ApplyNode rewrittenNode = (ApplyNode) context.defaultRewrite(node, context.get());
-            if (!rewrittenNode.getCorrelation().isEmpty() && rewrittenNode.isResolvedScalarSubquery()) {
+            if (!rewrittenNode.getCorrelation().isEmpty()) {
                 Optional<AggregationNode> aggregation = searchFrom(rewrittenNode.getSubquery())
                         .where(AggregationNode.class::isInstance)
                         .skipOnlyWhen(isInstanceOfAny(ProjectNode.class, EnforceSingleRowNode.class))
@@ -238,9 +237,7 @@ public class TransformCorrelatedScalarAggregationToJoin
                             ImmutableList.of(nonNullableAggregationSourceSymbol.toSymbolReference())));
                     List<TypeSignature> scalarAggregationSourceTypeSignatures = ImmutableList.of(
                             symbolAllocator.getTypes().get(nonNullableAggregationSourceSymbol).getTypeSignature());
-                    functions.put(symbol, functionRegistry.resolveFunction(
-                            count,
-                            fromTypeSignatures(scalarAggregationSourceTypeSignatures)));
+                    functions.put(symbol, functionRegistry.resolveFunction(count, scalarAggregationSourceTypeSignatures));
                 }
                 else {
                     aggregations.put(symbol, entry.getValue());
@@ -304,7 +301,7 @@ public class TransformCorrelatedScalarAggregationToJoin
             return decorrelatedNode(correlatedPredicates, node, correlation);
         }
 
-        private static Optional<DecorrelatedNode> decorrelatedNode(
+        private Optional<DecorrelatedNode> decorrelatedNode(
                 List<Expression> correlatedPredicates,
                 PlanNode node,
                 List<Symbol> correlation)
@@ -316,7 +313,7 @@ public class TransformCorrelatedScalarAggregationToJoin
             return Optional.of(new DecorrelatedNode(correlatedPredicates, node));
         }
 
-        private static Predicate<Expression> isUsingPredicate(List<Symbol> symbols)
+        private Predicate<Expression> isUsingPredicate(List<Symbol> symbols)
         {
             return expression -> symbols.stream().anyMatch(DependencyExtractor.extractUnique(expression)::contains);
         }
@@ -334,7 +331,7 @@ public class TransformCorrelatedScalarAggregationToJoin
             return filterNodeSearcher.replaceAll(newFilterNode);
         }
 
-        private static PlanNode removeLimitNode(PlanNode node)
+        private PlanNode removeLimitNode(PlanNode node)
         {
             node = searchFrom(node)
                     .where(LimitNode.class::isInstance)

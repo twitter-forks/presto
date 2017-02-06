@@ -44,7 +44,6 @@ import java.util.Properties;
 import java.util.Set;
 
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
 import static com.facebook.presto.hive.HiveType.HIVE_BYTE;
 import static com.facebook.presto.hive.HiveType.HIVE_DATE;
@@ -317,7 +316,7 @@ class ColumnarBinaryHiveRecordCursor<K>
                 bytes = fieldData.getData();
             }
             catch (IOException e) {
-                throw new PrestoException(HIVE_BAD_DATA, e);
+                throw Throwables.propagate(e);
             }
 
             int start = fieldData.getStart();

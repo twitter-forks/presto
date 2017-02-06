@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
-import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 final class TableScanMatcher
@@ -48,22 +47,15 @@ final class TableScanMatcher
     }
 
     @Override
-    public boolean shapeMatches(PlanNode node)
+    public boolean matches(PlanNode node, Session session, Metadata metadata, ExpressionAliases expressionAliases)
     {
-        return node instanceof TableScanNode;
-    }
-
-    @Override
-    public MatchResult detailMatches(PlanNode node, Session session, Metadata metadata, SymbolAliases symbolAliases)
-    {
-        checkState(shapeMatches(node), "Plan testing framework error: shapeMatches returned false in detailMatches in %s", this.getClass().getName());
-
-        TableScanNode tableScanNode = (TableScanNode) node;
-        TableMetadata tableMetadata = metadata.getTableMetadata(session, tableScanNode.getTable());
-        String actualTableName = tableMetadata.getTable().getTableName();
-        return new MatchResult(
-                expectedTableName.equalsIgnoreCase(actualTableName) &&
-                domainMatches(tableScanNode, session, metadata));
+        if (node instanceof TableScanNode) {
+            TableScanNode tableScanNode = (TableScanNode) node;
+            TableMetadata tableMetadata = metadata.getTableMetadata(session, tableScanNode.getTable());
+            String actualTableName = tableMetadata.getTable().getTableName();
+            return expectedTableName.equalsIgnoreCase(actualTableName) && domainMatches(tableScanNode, session, metadata);
+        }
+        return false;
     }
 
     private boolean domainMatches(TableScanNode tableScanNode, Session session, Metadata metadata)

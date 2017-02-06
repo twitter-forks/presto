@@ -59,6 +59,7 @@ public abstract class ParquetColumnReader
     private int repetitionLevel;
     private int definitionLevel;
     private int currentValueCount;
+    private int pageValueCount;
     private ParquetDataPage page;
     private int remainingValueCountInPage;
     private int readOffset;
@@ -156,7 +157,7 @@ public abstract class ParquetColumnReader
         return totalValueCount;
     }
 
-    public Block readPrimitive(Type type)
+    public Block readBlock(Type type)
             throws IOException
     {
         checkArgument(currentValueCount <= totalValueCount, "Already read all values in column chunk");
@@ -199,6 +200,7 @@ public abstract class ParquetColumnReader
     {
         page = pageReader.readPage();
         validateParquet(page != null, "Not enough values to read in column chunk");
+        pageValueCount = page.getValueCount();
         remainingValueCountInPage = page.getValueCount();
 
         if (page instanceof ParquetDataPageV1) {
@@ -227,11 +229,11 @@ public abstract class ParquetColumnReader
         definitionReader = new ParquetLevelValuesReader(dlReader);
         try {
             byte[] bytes = page.getSlice().getBytes();
-            rlReader.initFromPage(page.getValueCount(), bytes, 0);
+            rlReader.initFromPage(pageValueCount, bytes, 0);
             int offset = rlReader.getNextOffset();
-            dlReader.initFromPage(page.getValueCount(), bytes, offset);
+            dlReader.initFromPage(pageValueCount, bytes, offset);
             offset = dlReader.getNextOffset();
-            return initDataReader(page.getValueEncoding(), bytes, offset, page.getValueCount());
+            return initDataReader(page.getValueEncoding(), bytes, offset);
         }
         catch (IOException e) {
             throw new ParquetDecodingException("Error reading parquet page " + page + " in column " + columnDescriptor, e);
@@ -242,7 +244,7 @@ public abstract class ParquetColumnReader
     {
         repetitionReader = buildLevelRLEReader(columnDescriptor.getMaxRepetitionLevel(), page.getRepetitionLevels());
         definitionReader = buildLevelRLEReader(columnDescriptor.getMaxDefinitionLevel(), page.getDefinitionLevels());
-        return initDataReader(page.getDataEncoding(), page.getSlice().getBytes(), 0, page.getValueCount());
+        return initDataReader(page.getDataEncoding(), page.getSlice().getBytes(), 0);
     }
 
     private ParquetLevelReader buildLevelRLEReader(int maxLevel, Slice slice)
@@ -253,7 +255,7 @@ public abstract class ParquetColumnReader
         return new ParquetLevelRLEReader(new RunLengthBitPackingHybridDecoder(BytesUtils.getWidthFromMaxInt(maxLevel), new ByteArrayInputStream(slice.getBytes())));
     }
 
-    private ValuesReader initDataReader(ParquetEncoding dataEncoding, byte[] bytes, int offset, int valueCount)
+    private ValuesReader initDataReader(ParquetEncoding dataEncoding, byte[] bytes, int offset)
     {
         ValuesReader valuesReader;
         if (dataEncoding.usesDictionary()) {
@@ -267,7 +269,7 @@ public abstract class ParquetColumnReader
         }
 
         try {
-            valuesReader.initFromPage(valueCount, bytes, offset);
+            valuesReader.initFromPage(pageValueCount, bytes, offset);
             return valuesReader;
         }
         catch (IOException e) {

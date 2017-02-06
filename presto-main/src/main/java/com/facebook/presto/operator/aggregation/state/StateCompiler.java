@@ -89,10 +89,6 @@ import static java.util.Objects.requireNonNull;
 
 public class StateCompiler
 {
-    private StateCompiler()
-    {
-    }
-
     private static Class<?> getBigArrayType(Class<?> type)
     {
         if (type.equals(long.class)) {
@@ -117,12 +113,12 @@ public class StateCompiler
         throw new IllegalArgumentException("Unsupported type: " + type.getName());
     }
 
-    public static <T> AccumulatorStateSerializer<T> generateStateSerializer(Class<T> clazz)
+    public <T> AccumulatorStateSerializer<T> generateStateSerializer(Class<T> clazz)
     {
         return generateStateSerializer(clazz, new DynamicClassLoader(clazz.getClassLoader()));
     }
 
-    public static <T> AccumulatorStateSerializer<T> generateStateSerializer(Class<T> clazz, DynamicClassLoader classLoader)
+    public <T> AccumulatorStateSerializer<T> generateStateSerializer(Class<T> clazz, DynamicClassLoader classLoader)
     {
         AccumulatorStateMetadata metadata = getMetadataAnnotation(clazz);
         if (metadata != null && metadata.stateSerializerClass() != void.class) {
@@ -318,12 +314,12 @@ public class StateCompiler
         }
     }
 
-    public static <T> AccumulatorStateFactory<T> generateStateFactory(Class<T> clazz)
+    public <T> AccumulatorStateFactory<T> generateStateFactory(Class<T> clazz)
     {
         return generateStateFactory(clazz, new DynamicClassLoader(clazz.getClassLoader()));
     }
 
-    public static <T> AccumulatorStateFactory<T> generateStateFactory(Class<T> clazz, DynamicClassLoader classLoader)
+    public <T> AccumulatorStateFactory<T> generateStateFactory(Class<T> clazz, DynamicClassLoader classLoader)
     {
         AccumulatorStateMetadata metadata = getMetadataAnnotation(clazz);
         if (metadata != null && metadata.stateFactoryClass() != void.class) {
@@ -541,8 +537,8 @@ public class StateCompiler
     private static List<StateField> enumerateFields(Class<?> clazz)
     {
         ImmutableList.Builder<StateField> builder = ImmutableList.builder();
-        final Set<Class<?>> primitiveClasses = ImmutableSet.of(byte.class, boolean.class, long.class, double.class);
-        Set<Class<?>> supportedClasses = ImmutableSet.of(byte.class, boolean.class, long.class, double.class, Slice.class, Block.class);
+        final Set<Class<?>> primitiveClasses = ImmutableSet.<Class<?>>of(byte.class, boolean.class, long.class, double.class);
+        Set<Class<?>> supportedClasses = ImmutableSet.<Class<?>>of(byte.class, boolean.class, long.class, double.class, Slice.class, Block.class);
 
         for (Method method : clazz.getMethods()) {
             if (method.getName().equals("getEstimatedSize")) {

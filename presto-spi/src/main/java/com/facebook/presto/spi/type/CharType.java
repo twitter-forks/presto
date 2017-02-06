@@ -23,7 +23,6 @@ import io.airlift.slice.Slices;
 import java.util.Objects;
 
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
-import static com.facebook.presto.spi.type.Chars.compareChars;
 import static java.lang.String.format;
 import static java.util.Collections.singletonList;
 
@@ -107,10 +106,9 @@ public final class CharType
     @Override
     public int compareTo(Block leftBlock, int leftPosition, Block rightBlock, int rightPosition)
     {
-        Slice leftSlice = leftBlock.getSlice(leftPosition, 0, leftBlock.getLength(leftPosition));
-        Slice rightSlice = rightBlock.getSlice(rightPosition, 0, rightBlock.getLength(rightPosition));
-
-        return compareChars(leftSlice, rightSlice);
+        int leftLength = leftBlock.getLength(leftPosition);
+        int rightLength = rightBlock.getLength(rightPosition);
+        return leftBlock.compareTo(leftPosition, 0, leftLength, rightBlock, rightPosition, 0, rightLength);
     }
 
     @Override

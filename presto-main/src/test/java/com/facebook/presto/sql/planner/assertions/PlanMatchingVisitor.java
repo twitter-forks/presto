@@ -15,24 +15,18 @@ package com.facebook.presto.sql.planner.assertions;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.PlanVisitor;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
-import com.facebook.presto.sql.tree.Expression;
-import com.google.common.collect.ImmutableMap;
 
 import java.util.List;
 
-import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
-import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
+import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkState;
-import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 final class PlanMatchingVisitor
-        extends PlanVisitor<PlanMatchPattern, MatchResult>
+        extends PlanVisitor<PlanMatchingContext, Boolean>
 {
     private final Metadata metadata;
     private final Session session;
@@ -44,137 +38,43 @@ final class PlanMatchingVisitor
     }
 
     @Override
-    public MatchResult visitExchange(ExchangeNode node, PlanMatchPattern pattern)
+    public Boolean visitProject(ProjectNode node, PlanMatchingContext context)
     {
-        checkState(node.getType() == ExchangeNode.Type.GATHER, "Only GATHER is supported");
-        List<List<Symbol>> allInputs = node.getInputs();
-        checkState(allInputs.size() == 1, "Multiple lists of inputs are not supported yet");
-
-        List<Symbol> inputs = allInputs.get(0);
-        List<Symbol> outputs = node.getOutputSymbols();
-
-        MatchResult result = super.visitExchange(node, pattern);
-
-        if (!result.isMatch()) {
-            return result;
-        }
-
-        ImmutableMap.Builder<Symbol, Expression> assignments = ImmutableMap.builder();
-        for (int i = 0; i < inputs.size(); ++i) {
-            assignments.put(outputs.get(i), inputs.get(i).toSymbolReference());
-        }
-
-        return match(result.getAliases().updateAssignments(assignments.build()));
+        context.getExpressionAliases().updateAssignments(node.getAssignments());
+        return super.visitProject(node, context);
     }
 
     @Override
-    public MatchResult visitProject(ProjectNode node, PlanMatchPattern pattern)
+    protected Boolean visitPlan(PlanNode node, PlanMatchingContext context)
     {
-        MatchResult result = super.visitProject(node, pattern);
+        List<PlanMatchingState> states = context.getPattern().matches(node, session, metadata, context.getExpressionAliases());
 
-        if (!result.isMatch()) {
-            return result;
-        }
-
-        return match(result.getAliases().replaceAssignments(node.getAssignments()));
-    }
-
-    @Override
-    protected MatchResult visitPlan(PlanNode node, PlanMatchPattern pattern)
-    {
-        List<PlanMatchingState> states = pattern.shapeMatches(node);
-
-        // No shape match; don't need to check the internals of any of the nodes.
         if (states.isEmpty()) {
-            return NO_MATCH;
+            return false;
         }
 
-        // Leaf node in the plan.
         if (node.getSources().isEmpty()) {
-            return matchLeaf(node, pattern, states);
+            return !filterTerminated(states).isEmpty();
         }
-
-        MatchResult result = NO_MATCH;
-        for (PlanMatchingState state : states) {
-            // Traverse down the tree, checking to see if the sources match the source patterns in state.
-            MatchResult sourcesMatch = matchSources(node, state);
-
-            if (!sourcesMatch.isMatch()) {
-                continue;
-            }
-
-            // Try upMatching this node with the the aliases gathered from the source nodes.
-            SymbolAliases allSourceAliases = sourcesMatch.getAliases();
-            MatchResult matchResult = pattern.detailMatches(node, session, metadata, allSourceAliases);
-            if (matchResult.isMatch()) {
-                checkState(result == NO_MATCH, format("Ambiguous match on node %s", node));
-                result = match(allSourceAliases.withNewAliases(matchResult.getAliases()));
-            }
-        }
-        return result;
-    }
-
-    private MatchResult matchLeaf(PlanNode node, PlanMatchPattern pattern, List<PlanMatchingState> states)
-    {
-        MatchResult result = NO_MATCH;
 
         for (PlanMatchingState state : states) {
-            // Don't consider un-terminated PlanMatchingStates.
-            if (!state.isTerminated()) {
-                continue;
+            checkState(node.getSources().size() == state.getPatterns().size(), "Matchers count does not match count of sources");
+            int i = 0;
+            boolean sourcesMatch = true;
+            for (PlanNode source : node.getSources()) {
+                sourcesMatch = sourcesMatch && source.accept(this, state.createContext(i++));
             }
-
-                /*
-                 * We have to call detailMatches for two reasons:
-                 * 1) Make sure there aren't any mismatches checking the internals of a leaf node.
-                 * 2) Collect the aliases from the source nodes so we can add them to
-                 *    SymbolAliases. They'll be needed further up.
-                 */
-            MatchResult matchResult = pattern.detailMatches(node, session, metadata, new SymbolAliases());
-            if (matchResult.isMatch()) {
-                checkState(result == NO_MATCH, format("Ambiguous match on leaf node %s", node));
-                result = matchResult;
+            if (sourcesMatch) {
+                return true;
             }
         }
-
-        return result;
+        return false;
     }
 
-    /*
-     * This is a little counter-intuitive. Calling matchSources calls
-     * source.accept, which (eventually) ends up calling into visitPlan
-     * recursively. Assuming the plan and pattern currently being matched
-     * actually match each other, eventually you hit the leaf nodes. At that
-     * point, visitPlan starts by returning the match result for the leaf nodes
-     * containing the symbol aliases needed by further up.
-     *
-     * For the non-leaf nodes, an invocation of matchSources returns a match
-     * result for a successful match containing the union of all of the symbol
-     * aliases added by the sources of the node currently being visited.
-     *
-     * Visiting that node proceeds by trying to apply the current pattern's
-     * detailMatches() method to the node being visited. When a match is found,
-     * visitPlan returns a match result containing the aliases for all of the
-     * current node's sources, and the aliases for the current node.
-     */
-    private MatchResult matchSources(PlanNode node, PlanMatchingState state)
+    private List<PlanMatchingState> filterTerminated(List<PlanMatchingState> states)
     {
-        List<PlanMatchPattern> sourcePatterns = state.getPatterns();
-        checkState(node.getSources().size() == sourcePatterns.size(), "Matchers count does not match count of sources");
-
-        int i = 0;
-        SymbolAliases.Builder allSourceAliases = SymbolAliases.builder();
-        for (PlanNode source : node.getSources()) {
-            // Match sources to patterns 1:1
-            MatchResult matchResult = source.accept(this, sourcePatterns.get(i++));
-            if (!matchResult.isMatch()) {
-                return NO_MATCH;
-            }
-
-            // Add the per-source aliases to the per-state aliases.
-            allSourceAliases.putAll(matchResult.getAliases());
-        }
-
-        return match(allSourceAliases.build());
+        return states.stream()
+                .filter(PlanMatchingState::isTerminated)
+                .collect(toImmutableList());
     }
 }
