@@ -14,6 +14,7 @@
 package com.facebook.presto.twitter.hive;
 
 import com.facebook.presto.hive.HiveCluster;
+import com.facebook.presto.hive.HiveMetastoreClientFactory;
 import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.google.common.net.HostAndPort;
 import io.airlift.log.Logger;
@@ -30,18 +31,26 @@ public class ZookeeperServersetHiveCluster
         implements HiveCluster
 {
     private static final Logger log = Logger.get(ZookeeperServersetHiveCluster.class);
-    private final PooledHiveMetastoreClientFactory clientFactory;
+    private final HiveMetastoreClientFactory clientFactory;
+    private final PooledHiveMetastoreClientFactory pooledClientFactory;
     private ZookeeperMetastoreMonitor zkMetastoreMonitor;
+    private final boolean usePool;
 
     @Inject
-    public ZookeeperServersetHiveCluster(ZookeeperServersetMetastoreConfig config, PooledHiveMetastoreClientFactory clientFactory)
+    public ZookeeperServersetHiveCluster(
+        ZookeeperServersetMetastoreConfig config,
+        HiveMetastoreClientFactory clientFactory,
+        PooledHiveMetastoreClientFactory pooledClientFactory
+    )
             throws Exception
     {
         String zkServerHostAndPort = requireNonNull(config.getZookeeperServerHostAndPort(), "zkServerHostAndPort is null");
         String zkMetastorePath = requireNonNull(config.getZookeeperMetastorePath(), "zkMetastorePath is null");
         int zkRetries = requireNonNull(config.getZookeeperMaxRetries(), "zkMaxRetried is null");
         int zkRetrySleepTime = requireNonNull(config.getZookeeperRetrySleepTime(), "zkRetrySleepTime is null");
+        this.usePool = config.isEnableConnectionPool();
         this.clientFactory = requireNonNull(clientFactory, "clientFactory is null");
+        this.pooledClientFactory = requireNonNull(pooledClientFactory, "clientFactory is null");
         this.zkMetastoreMonitor = new ZookeeperMetastoreMonitor(zkServerHostAndPort, zkMetastorePath, zkRetries, zkRetrySleepTime);
     }
 
@@ -54,7 +63,12 @@ public class ZookeeperServersetHiveCluster
         for (HostAndPort metastore : metastores) {
             try {
                 log.info("Connecting to metastore at: %s", metastore.toString());
-                return clientFactory.create(metastore.getHostText(), metastore.getPort());
+                if (usePool) {
+                    return pooledClientFactory.create(metastore.getHostText(), metastore.getPort());
+                }
+                else {
+                    return clientFactory.create(metastore.getHostText(), metastore.getPort());
+                }
             }
             catch (TTransportException e) {
                 log.debug("Failed connecting to Hive metastore at: %s", metastore.toString());

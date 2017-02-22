@@ -35,7 +35,8 @@ public class TestZookeeperServersetMetastoreConfig
                 .setMaxTransport(128)
                 .setTransportIdleTimeout(300_000L)
                 .setTransportEvictInterval(10_000L)
-                .setTransportEvictNumTests(3));
+                .setTransportEvictNumTests(3)
+                .setEnableConnectionPool(true));
     }
 
     @Test
@@ -50,6 +51,7 @@ public class TestZookeeperServersetMetastoreConfig
                 .put("hive.metastore.transport-idle-timeout", "100000")
                 .put("hive.metastore.transport-eviction-interval", "1000")
                 .put("hive.metastore.transport-eviction-num-tests", "10")
+                .put("hive.metastore.transport-pool-enable", "false")
                 .build();
 
         ZookeeperServersetMetastoreConfig expected = new ZookeeperServersetMetastoreConfig()
@@ -60,7 +62,8 @@ public class TestZookeeperServersetMetastoreConfig
                 .setMaxTransport(64)
                 .setTransportIdleTimeout(100_000L)
                 .setTransportEvictInterval(1_000L)
-                .setTransportEvictNumTests(10);
+                .setTransportEvictNumTests(10)
+                .setEnableConnectionPool(false);
 
         assertFullMapping(properties, expected);
     }

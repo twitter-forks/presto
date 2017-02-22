@@ -29,6 +29,7 @@ public class ZookeeperServersetMetastoreConfig
     private long transportIdleTimeout = 300_000L;
     private long transportEvictInterval = 10_000L;
     private int transportEvictNumTests = 3;
+    private boolean enableConnectionPool = true;
 
     public String getZookeeperServerHostAndPort()
     {
@@ -131,6 +132,18 @@ public class ZookeeperServersetMetastoreConfig
     public ZookeeperServersetMetastoreConfig setTransportEvictNumTests(int transportEvictNumTests)
     {
         this.transportEvictNumTests = transportEvictNumTests;
+        return this;
+    }
+
+    public boolean isEnableConnectionPool()
+    {
+        return enableConnectionPool;
+    }
+
+    @Config("hive.metastore.transport-pool-enable")
+    public ZookeeperServersetMetastoreConfig setEnableConnectionPool(boolean enableConnectionPool)
+    {
+        this.enableConnectionPool = enableConnectionPool;
         return this;
     }
 }
