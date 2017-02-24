@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,7 +23,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class Prepare
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final String name;
     private final Statement statement;
@@ -56,6 +59,12 @@ public class Prepare
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitPrepare(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        return ImmutableList.of(statement);
     }
 
     @Override

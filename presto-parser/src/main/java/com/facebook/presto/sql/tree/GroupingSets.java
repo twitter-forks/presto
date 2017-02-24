@@ -60,7 +60,7 @@ public final class GroupingSets
     {
         return sets.stream()
                 .map(groupingSet -> groupingSet.stream()
-                        .map(QualifiedNameReference::new)
+                        .map(DereferenceExpression::from)
                         .collect(Collectors.<Expression>toSet()))
                 .collect(collectingAndThen(Collectors.toList(), Collections::unmodifiableList));
     }
@@ -69,6 +69,12 @@ public final class GroupingSets
     protected <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitGroupingSets(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        return ImmutableList.of();
     }
 
     @Override

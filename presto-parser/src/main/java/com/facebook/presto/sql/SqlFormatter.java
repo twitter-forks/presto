@@ -341,7 +341,8 @@ public final class SqlFormatter
         @Override
         protected Void visitTable(Table node, Integer indent)
         {
-            builder.append(node.getName().toString());
+            builder.append(formatName(node.getName()));
+
             return null;
         }
 
@@ -765,7 +766,10 @@ public final class SqlFormatter
                     .map(element -> {
                         if (element instanceof ColumnDefinition) {
                             ColumnDefinition column = (ColumnDefinition) element;
-                            return elementIndent + formatName(column.getName()) + " " + column.getType();
+                            return elementIndent + formatName(column.getName()) + " " + column.getType() +
+                                    column.getComment()
+                                            .map(comment -> " COMMENT " + formatStringLiteral(comment))
+                                            .orElse("");
                         }
                         if (element instanceof LikeClause) {
                             LikeClause likeClause = (LikeClause) element;

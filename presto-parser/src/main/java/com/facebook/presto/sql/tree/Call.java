@@ -23,7 +23,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public final class Call
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final QualifiedName name;
     private final List<CallArgument> arguments;
@@ -59,6 +59,12 @@ public final class Call
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitCall(this, context);
+    }
+
+    @Override
+    public List<? extends Node> getChildren()
+    {
+        return arguments;
     }
 
     @Override

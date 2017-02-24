@@ -21,8 +21,6 @@ import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
-import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.ImmutableList;
 
 import java.util.Map;
@@ -33,6 +31,7 @@ import static java.util.Objects.requireNonNull;
 /**
  * Removes pure identity projections (e.g., Project $0 := $0, $1 := $1, ...)
  */
+@Deprecated
 public class PruneIdentityProjections
         implements PlanOptimizer
 {
@@ -61,17 +60,7 @@ public class PruneIdentityProjections
                 return replaceChildren(node, ImmutableList.of(source));
             }
 
-            boolean canElide = true;
-            for (Map.Entry<Symbol, Expression> entry : node.getAssignments().entrySet()) {
-                Expression expression = entry.getValue();
-                Symbol symbol = entry.getKey();
-                if (!(expression instanceof SymbolReference && ((SymbolReference) expression).getName().equals(symbol.getName()))) {
-                    canElide = false;
-                    break;
-                }
-            }
-
-            if (canElide) {
+            if (node.isIdentity()) {
                 return source;
             }
 

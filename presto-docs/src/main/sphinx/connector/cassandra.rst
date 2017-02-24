@@ -154,6 +154,10 @@ Property Name                                                 Description
 ``cassandra.load-policy.white-list.addresses``                Comma-separated list of hosts for ``WhiteListPolicy``.
 
 ``cassandra.no-host-available-retry-count``                   Retry count for ``NoHostAvailableException`` (defaults to ``1``).
+
+``cassandra.speculative-execution.limit``                     The number of speculative executions (defaults to ``1``).
+
+``cassandra.speculative-execution.delay``                     The delay between each speculative execution (defaults to ``500ms``).
 ============================================================= ======================================================================
 
 Querying Cassandra Tables
@@ -182,11 +186,11 @@ This table can be described in Presto::
 
 .. code-block:: none
 
-     Column  |  Type   | Null | Partition Key | Comment
-    ---------+---------+------+---------------+---------
-     user_id | bigint  | true | true          |
-     fname   | varchar | true | false         |
-     lname   | varchar | true | false         |
+     Column  |  Type   | Extra | Comment
+    ---------+---------+-------+---------
+     user_id | bigint  |       |
+     fname   | varchar |       |
+     lname   | varchar |       |
     (3 rows)
 
 This table can then be queried in Presto::

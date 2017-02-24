@@ -40,12 +40,14 @@ import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.GenericLiteral;
 import com.facebook.presto.sql.tree.GroupingElement;
 import com.facebook.presto.sql.tree.GroupingSets;
+import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.IfExpression;
 import com.facebook.presto.sql.tree.InListExpression;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.IntervalLiteral;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
+import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
@@ -56,7 +58,6 @@ import com.facebook.presto.sql.tree.NullIfExpression;
 import com.facebook.presto.sql.tree.NullLiteral;
 import com.facebook.presto.sql.tree.Parameter;
 import com.facebook.presto.sql.tree.QualifiedName;
-import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression;
 import com.facebook.presto.sql.tree.Rollup;
 import com.facebook.presto.sql.tree.Row;
@@ -282,13 +283,19 @@ public final class ExpressionFormatter
         @Override
         protected String visitExists(ExistsPredicate node, Boolean unmangleNames)
         {
-            return "(EXISTS (" + formatSql(node.getSubquery(), unmangleNames, parameters) + "))";
+            return "(EXISTS " + formatSql(node.getSubquery(), unmangleNames, parameters) + ")";
         }
 
         @Override
-        protected String visitQualifiedNameReference(QualifiedNameReference node, Boolean unmangleNames)
+        protected String visitIdentifier(Identifier node, Boolean unmangleNames)
         {
-            return formatQualifiedName(node.getName());
+            return formatIdentifier(node.getName());
+        }
+
+        @Override
+        protected String visitLambdaArgumentDeclaration(LambdaArgumentDeclaration node, Boolean context)
+        {
+            return formatIdentifier(node.getName());
         }
 
         @Override

@@ -21,7 +21,6 @@ import com.facebook.presto.metadata.TableLayout;
 import com.facebook.presto.metadata.TableLayoutResult;
 import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.ColumnMetadata;
-import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -48,7 +47,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 
+import static com.facebook.presto.hive.HiveColumnHandle.BUCKET_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveColumnHandle.PATH_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveQueryRunner.HIVE_CATALOG;
 import static com.facebook.presto.hive.HiveQueryRunner.TPCH_SCHEMA;
@@ -58,7 +59,7 @@ import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
-import static com.facebook.presto.hive.HiveUtil.annotateColumnComment;
+import static com.facebook.presto.hive.HiveUtil.columnExtraInfo;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.CharType.createCharType;
 import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
@@ -112,9 +113,9 @@ public class TestHiveIntegrationSmokeTest
         this.typeManager = new TypeRegistry();
     }
 
-    protected List<?> getPartitions(ConnectorTableLayoutHandle tableLayoutHandle)
+    protected List<?> getPartitions(HiveTableLayoutHandle tableLayoutHandle)
     {
-        return ((HiveTableLayoutHandle) tableLayoutHandle).getPartitions().get();
+        return tableLayoutHandle.getPartitions().get();
     }
 
     @Test
@@ -262,7 +263,7 @@ public class TestHiveIntegrationSmokeTest
         assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), partitionedBy);
         for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
             boolean partitionKey = partitionedBy.contains(columnMetadata.getName());
-            assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
+            assertEquals(columnMetadata.getExtraInfo(), columnExtraInfo(partitionKey));
         }
 
         assertColumnType(tableMetadata, "_string", createUnboundedVarcharType());
@@ -355,10 +356,6 @@ public class TestHiveIntegrationSmokeTest
         // Verify the partition keys are correctly created
         List<String> partitionedBy = ImmutableList.of("partition_bigint", "partition_decimal_long");
         assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), partitionedBy);
-        for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
-            boolean partitionKey = partitionedBy.contains(columnMetadata.getName());
-            assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
-        }
 
         // Verify the column types
         assertColumnType(tableMetadata, "string_col", createUnboundedVarcharType());
@@ -470,6 +467,9 @@ public class TestHiveIntegrationSmokeTest
         assertColumnType(tableMetadata, "_varchar", createVarcharType(3));
         assertColumnType(tableMetadata, "_char", createCharType(10));
 
+        // assure reader supports basic column reordering and pruning
+        assertQuery(session, "SELECT _integer, _varchar, _integer from test_format_table", "SELECT 2, 'foo', 2");
+
         assertQuery(session, "SELECT * from test_format_table", select);
 
         assertUpdate(session, "DROP TABLE test_format_table");
@@ -503,13 +503,7 @@ public class TestHiveIntegrationSmokeTest
 
         TableMetadata tableMetadata = getTableMetadata(catalog, TPCH_SCHEMA, "test_create_partitioned_table_as");
         assertEquals(tableMetadata.getMetadata().getProperties().get(STORAGE_FORMAT_PROPERTY), storageFormat);
-
-        List<String> partitionedBy = ImmutableList.of("ship_priority", "order_status");
-        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), partitionedBy);
-        for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
-            boolean partitionKey = partitionedBy.contains(columnMetadata.getName());
-            assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
-        }
+        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), ImmutableList.of("ship_priority", "order_status"));
 
         List<?> partitions = getPartitions("test_create_partitioned_table_as");
         assertEquals(partitions.size(), 3);
@@ -611,7 +605,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Can not insert into existing partitions of bucketed Hive table");
+            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: partition_key=c");
         }
 
         assertUpdate(session, "DROP TABLE " + tableName);
@@ -701,13 +695,7 @@ public class TestHiveIntegrationSmokeTest
         TableMetadata tableMetadata = getTableMetadata(catalog, TPCH_SCHEMA, tableName);
         assertEquals(tableMetadata.getMetadata().getProperties().get(STORAGE_FORMAT_PROPERTY), storageFormat);
 
-        List<String> partitionedBy = ImmutableList.of("orderstatus");
-        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), partitionedBy);
-        for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
-            boolean partitionKey = partitionedBy.contains(columnMetadata.getName());
-            assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
-        }
-
+        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), ImmutableList.of("orderstatus"));
         assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKETED_BY_PROPERTY), ImmutableList.of("custkey", "custkey2"));
         assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKET_COUNT_PROPERTY), 11);
 
@@ -727,7 +715,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Can not insert into existing partitions of bucketed Hive table");
+            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: orderstatus=O");
         }
     }
 
@@ -825,7 +813,7 @@ public class TestHiveIntegrationSmokeTest
             fail("expected failure");
         }
         catch (Exception e) {
-            assertEquals(e.getMessage(), "Can not insert into existing partitions of bucketed Hive table");
+            assertEquals(e.getMessage(), "Cannot insert into existing partition of bucketed Hive table: partition_key=c");
         }
 
         assertUpdate(session, "DROP TABLE test_insert_partitioned_bucketed_table_few_rows");
@@ -837,13 +825,7 @@ public class TestHiveIntegrationSmokeTest
         TableMetadata tableMetadata = getTableMetadata(catalog, TPCH_SCHEMA, tableName);
         assertEquals(tableMetadata.getMetadata().getProperties().get(STORAGE_FORMAT_PROPERTY), storageFormat);
 
-        List<String> partitionedBy = ImmutableList.of("partition_key");
-        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), partitionedBy);
-        for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
-            boolean partitionKey = partitionedBy.contains(columnMetadata.getName());
-            assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
-        }
-
+        assertEquals(tableMetadata.getMetadata().getProperties().get(PARTITIONED_BY_PROPERTY), ImmutableList.of("partition_key"));
         assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKETED_BY_PROPERTY), ImmutableList.of("bucket_key"));
         assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKET_COUNT_PROPERTY), 11);
 
@@ -1299,7 +1281,7 @@ public class TestHiveIntegrationSmokeTest
                 });
     }
 
-    private List<?> getPartitions(String tableName)
+    private Object getHiveTableProperty(String tableName, Function<HiveTableLayoutHandle, Object> propertyGetter)
     {
         Session session = getSession();
         Metadata metadata = ((DistributedQueryRunner) queryRunner).getCoordinator().getMetadata();
@@ -1312,8 +1294,18 @@ public class TestHiveIntegrationSmokeTest
 
                     List<TableLayoutResult> layouts = metadata.getLayouts(transactionSession, tableHandle.get(), Constraint.alwaysTrue(), Optional.empty());
                     TableLayout layout = getOnlyElement(layouts).getLayout();
-                    return getPartitions(layout.getHandle().getConnectorHandle());
+                    return propertyGetter.apply((HiveTableLayoutHandle) layout.getHandle().getConnectorHandle());
                 });
+    }
+
+    private List<?> getPartitions(String tableName)
+    {
+        return (List<?>) getHiveTableProperty(tableName, (HiveTableLayoutHandle table) -> getPartitions(table));
+    }
+
+    private int getBucketCount(String tableName)
+    {
+        return (int) getHiveTableProperty(tableName, (HiveTableLayoutHandle table) -> table.getBucketHandle().get().getBucketCount());
     }
 
     @Test
@@ -1326,14 +1318,14 @@ public class TestHiveIntegrationSmokeTest
 
         MaterializedResult actual = computeActual("SHOW COLUMNS FROM test_show_columns_partition_key");
         MaterializedResult expected = resultBuilder(getSession(), canonicalizeType(createUnboundedVarcharType()), canonicalizeType(createUnboundedVarcharType()), canonicalizeType(createUnboundedVarcharType()))
-                .row("grape", canonicalizeTypeName("bigint"), "")
-                .row("orange", canonicalizeTypeName("bigint"), "")
-                .row("pear", canonicalizeTypeName("varchar(65535)"), "")
-                .row("mango", canonicalizeTypeName("integer"), "")
-                .row("lychee", canonicalizeTypeName("smallint"), "")
-                .row("kiwi", canonicalizeTypeName("tinyint"), "")
-                .row("apple", canonicalizeTypeName("varchar"), "Partition Key")
-                .row("pineapple", canonicalizeTypeName("varchar(65535)"), "Partition Key")
+                .row("grape", canonicalizeTypeName("bigint"), "", "")
+                .row("orange", canonicalizeTypeName("bigint"), "", "")
+                .row("pear", canonicalizeTypeName("varchar(65535)"), "", "")
+                .row("mango", canonicalizeTypeName("integer"), "", "")
+                .row("lychee", canonicalizeTypeName("smallint"), "", "")
+                .row("kiwi", canonicalizeTypeName("tinyint"), "", "")
+                .row("apple", canonicalizeTypeName("varchar"), "partition key", "")
+                .row("pineapple", canonicalizeTypeName("varchar(65535)"), "partition key", "")
                 .build();
         assertEquals(actual, expected);
     }
@@ -1514,8 +1506,8 @@ public class TestHiveIntegrationSmokeTest
                         "   c1 bigint,\n" +
                         "   \"c 2\" varchar,\n" +
                         "   \"c'3\" array(bigint),\n" +
-                        "   c4 map(bigint, varchar),\n" +
-                        "   c5 double\n)\n" +
+                        "   c4 map(bigint, varchar) COMMENT 'comment test4',\n" +
+                        "   c5 double COMMENT 'comment test5'\n)\n" +
                         "WITH (\n" +
                         "   format = 'ORC',\n" +
                         "   partitioned_by = ARRAY['c4','c5']\n" +
@@ -1626,6 +1618,60 @@ public class TestHiveIntegrationSmokeTest
 
         assertUpdate(session, "DROP TABLE test_path");
         assertFalse(queryRunner.tableExists(session, "test_path"));
+    }
+
+    @Test
+    public void testBucketHiddenColumn()
+            throws Exception
+    {
+        @Language("SQL") String createTable = "CREATE TABLE test_bucket_hidden_column " +
+                "WITH (" +
+                "bucketed_by = ARRAY['col0']," +
+                "bucket_count = 2" +
+                ") AS " +
+                "SELECT * FROM (VALUES " +
+                "(0, 11), (1, 12), (2, 13), " +
+                "(3, 14), (4, 15), (5, 16), " +
+                "(6, 17), (7, 18), (8, 19)" +
+                " ) t (col0, col1) ";
+        assertUpdate(createTable, 9);
+        assertTrue(queryRunner.tableExists(getSession(), "test_bucket_hidden_column"));
+
+        TableMetadata tableMetadata = getTableMetadata(catalog, TPCH_SCHEMA, "test_bucket_hidden_column");
+        assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKETED_BY_PROPERTY), ImmutableList.of("col0"));
+        assertEquals(tableMetadata.getMetadata().getProperties().get(BUCKET_COUNT_PROPERTY), 2);
+
+        List<String> columnNames = ImmutableList.of("col0", "col1", PATH_COLUMN_NAME, BUCKET_COLUMN_NAME);
+        List<ColumnMetadata> columnMetadatas = tableMetadata.getColumns();
+        assertEquals(columnMetadatas.size(), columnNames.size());
+        for (int i = 0; i < columnMetadatas.size(); i++) {
+            ColumnMetadata columnMetadata = columnMetadatas.get(i);
+            assertEquals(columnMetadata.getName(), columnNames.get(i));
+            if (columnMetadata.getName().equals(BUCKET_COLUMN_NAME)) {
+                // $bucket_number should be hidden column
+                assertTrue(columnMetadata.isHidden());
+            }
+        }
+        assertEquals(getBucketCount("test_bucket_hidden_column"), 2);
+
+        MaterializedResult results = computeActual(format("SELECT *, \"%1$s\" FROM test_bucket_hidden_column WHERE \"%1$s\" = 1",
+                BUCKET_COLUMN_NAME));
+        for (int i = 0; i < results.getRowCount(); i++) {
+            MaterializedRow row = results.getMaterializedRows().get(i);
+            int col0 = (int) row.getField(0);
+            int col1 = (int) row.getField(1);
+            int bucket = (int) row.getField(2);
+
+            assertEquals(col1, col0 + 11);
+            assertTrue(col1 % 2 == 0);
+
+            // Because Hive's hash function for integer n is h(n) = n.
+            assertEquals(bucket, col0 % 2);
+        }
+        assertEquals(results.getRowCount(), 4);
+
+        assertUpdate("DROP TABLE test_bucket_hidden_column");
+        assertFalse(queryRunner.tableExists(getSession(), "test_bucket_hidden_column"));
     }
 
     @Test
@@ -1800,7 +1846,7 @@ public class TestHiveIntegrationSmokeTest
             assertEquals(partitionByProperty, partitionKeys);
             for (ColumnMetadata columnMetadata : tableMetadata.getColumns()) {
                 boolean partitionKey = partitionKeys.contains(columnMetadata.getName());
-                assertEquals(columnMetadata.getComment(), annotateColumnComment(Optional.empty(), partitionKey));
+                assertEquals(columnMetadata.getExtraInfo(), columnExtraInfo(partitionKey));
             }
         }
         else {

@@ -13,10 +13,13 @@
  */
 package com.facebook.presto.hive.parquet;
 
+import com.facebook.presto.hive.parquet.memory.AggregatedMemoryContext;
 import com.facebook.presto.hive.parquet.reader.ParquetMetadataReader;
 import com.facebook.presto.hive.parquet.reader.ParquetReader;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.type.TypeRegistry;
 import com.google.common.base.Function;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
@@ -146,7 +149,6 @@ public class ParquetTester
                                     objectInspector,
                                     writeValues.iterator());
                     assertFileContents(jobConf,
-                                    objectInspector,
                                     tempFile,
                                     readValues,
                                     type);
@@ -156,7 +158,6 @@ public class ParquetTester
     }
 
     private static void assertFileContents(JobConf jobConf,
-            ObjectInspector objectInspector,
             TempFile tempFile,
             Iterable<?> expectedValues,
             Type type)
@@ -172,16 +173,15 @@ public class ParquetTester
         FSDataInputStream inputStream = fileSystem.open(path);
         ParquetDataSource dataSource = new HdfsParquetDataSource(path, size, inputStream);
 
-        ParquetReader parquetReader = new ParquetReader(fileSchema,
-                                                        parquetMetadata.getBlocks(),
-                                                        dataSource);
+        TypeManager typeManager = new TypeRegistry();
+        ParquetReader parquetReader = new ParquetReader(fileSchema, fileSchema, parquetMetadata.getBlocks(), dataSource, typeManager, new AggregatedMemoryContext());
         assertEquals(parquetReader.getPosition(), 0);
 
         int rowsProcessed = 0;
         Iterator<?> iterator = expectedValues.iterator();
         for (int batchSize = parquetReader.nextBatch(); batchSize >= 0; batchSize = parquetReader.nextBatch()) {
             ColumnDescriptor columnDescriptor = fileSchema.getColumns().get(0);
-            Block block = parquetReader.readBlock(columnDescriptor, type);
+            Block block = parquetReader.readPrimitive(columnDescriptor, type);
             for (int i = 0; i < batchSize; i++) {
                 assertTrue(iterator.hasNext());
                 Object expected = iterator.next();

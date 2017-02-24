@@ -65,8 +65,8 @@ General Aggregate Functions
 
 .. function:: max_by(x, y, n) -> array<[same as x]>
 
-    Returns ``n`` values of ``x`` associated with the ``n`` largest of all input values of ``y``,
-    in non-ascending order of ``y``.
+    Returns ``n`` values of ``x`` associated with the ``n`` largest of all input values of ``y``
+    in descending order of ``y``.
 
 .. function:: min_by(x, y) -> [same as x]
 
@@ -74,8 +74,8 @@ General Aggregate Functions
 
 .. function:: min_by(x, y, n) -> array<[same as x]>
 
-    Returns ``n`` values of ``x`` associated with the ``n`` smallest of all input values of ``y``,
-    in non-descending order of ``y``.
+    Returns ``n`` values of ``x`` associated with the ``n`` smallest of all input values of ``y``
+    in ascending order of ``y``.
 
 .. function:: max(x) -> [same as input]
 
@@ -97,13 +97,16 @@ General Aggregate Functions
 
     Returns the sum of all input values.
 
-.. function:: bitwise_and_agg(x) -> [same as input]
+Bitwise Aggregate Functions
+---------------------------
 
-    Returns the bitwise "and" of all input values. The binary representation of integers is two's complement.
+.. function:: bitwise_and_agg(x) -> bigint
 
-.. function:: bitwise_or_agg(x) -> [same as input]
+    Returns the bitwise AND of all input values in 2's complement representation.
 
-    Returns the bitwise "or" of all input values. The binary representation of integers is two's complement.
+.. function:: bitwise_or_agg(x) -> bigint
+
+    Returns the bitwise OR of all input values in 2's complement representation.
 
 Map Aggregate Functions
 -----------------------

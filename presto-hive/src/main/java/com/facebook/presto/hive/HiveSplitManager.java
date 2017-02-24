@@ -151,7 +151,7 @@ public class HiveSplitManager
             return new FixedSplitSource(ImmutableList.of());
         }
         SchemaTableName tableName = partition.getTableName();
-        Optional<HiveBucketing.HiveBucket> bucket = partition.getBucket();
+        List<HiveBucketing.HiveBucket> buckets = partition.getBuckets();
         Optional<HiveBucketHandle> bucketHandle = layout.getBucketHandle();
 
         // sort partitions
@@ -169,7 +169,7 @@ public class HiveSplitManager
                 table.get(),
                 hivePartitions,
                 bucketHandle,
-                bucket,
+                buckets,
                 session,
                 hdfsEnvironment,
                 namenodeStats,
@@ -228,11 +228,11 @@ public class HiveSplitManager
                 String protectMode = partition.getParameters().get(ProtectMode.PARAMETER_NAME);
                 String partName = makePartName(table.getPartitionColumns(), partition.getValues());
                 if (protectMode != null && getProtectModeFromString(protectMode).offline) {
-                    throw new PartitionOfflineException(tableName, partName);
+                    throw new PartitionOfflineException(tableName, partName, false, null);
                 }
                 String prestoOffline = partition.getParameters().get(PRESTO_OFFLINE);
                 if (!isNullOrEmpty(prestoOffline)) {
-                    throw new PartitionOfflineException(tableName, partName, format("Partition '%s' is offline for Presto: %s", partName, prestoOffline));
+                    throw new PartitionOfflineException(tableName, partName, true, prestoOffline);
                 }
 
                 // Verify that the partition schema matches the table schema.

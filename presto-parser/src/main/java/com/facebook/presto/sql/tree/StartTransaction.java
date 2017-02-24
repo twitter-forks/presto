@@ -24,7 +24,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public final class StartTransaction
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final List<TransactionMode> transactionModes;
 
@@ -53,6 +53,12 @@ public final class StartTransaction
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitStartTransaction(this, context);
+    }
+
+    @Override
+    public List<? extends Node> getChildren()
+    {
+        return transactionModes;
     }
 
     @Override

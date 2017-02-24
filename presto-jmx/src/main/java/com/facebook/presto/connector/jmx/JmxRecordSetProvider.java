@@ -24,9 +24,9 @@ import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.inject.Inject;
 import io.airlift.slice.Slice;
 
+import javax.inject.Inject;
 import javax.management.Attribute;
 import javax.management.JMException;
 import javax.management.MBeanServer;
@@ -191,7 +191,7 @@ public class JmxRecordSetProvider
         return columnHandles.stream()
                 .map(column -> checkType(column, JmxColumnHandle.class, "column"))
                 .map(JmxColumnHandle::getColumnName)
-                .collect(Collectors.<String>toSet());
+                .collect(Collectors.toSet());
     }
 
     private static List<Type> getColumnTypes(List<? extends ColumnHandle> columnHandles)
@@ -199,7 +199,7 @@ public class JmxRecordSetProvider
         return columnHandles.stream()
                 .map(column -> checkType(column, JmxColumnHandle.class, "column"))
                 .map(JmxColumnHandle::getColumnType)
-                .collect(Collectors.<Type>toList());
+                .collect(Collectors.toList());
     }
 
     private ImmutableMap<String, Optional<Object>> getAttributes(Set<String> uniqueColumnNames, JmxTableHandle tableHandle)

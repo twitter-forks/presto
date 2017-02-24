@@ -20,7 +20,6 @@ import com.facebook.presto.hive.metastore.HiveMetastoreClient;
 import com.facebook.presto.twitter.hive.util.PooledTTransportFactory;
 import com.facebook.presto.twitter.hive.util.TTransportPool;
 import com.google.common.net.HostAndPort;
-import com.google.common.primitives.Ints;
 import io.airlift.units.Duration;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.apache.thrift.transport.TTransport;
@@ -29,6 +28,7 @@ import org.apache.thrift.transport.TTransportException;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 
+import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 public class PooledHiveMetastoreClientFactory
@@ -43,7 +43,7 @@ public class PooledHiveMetastoreClientFactory
         int maxTransport, long idleTimeout, long transportEvictInterval, int evictNumTests)
     {
         this.socksProxy = socksProxy;
-        this.timeoutMillis = Ints.checkedCast(timeout.toMillis());
+        this.timeoutMillis = toIntExact(timeout.toMillis());
         this.metastoreAuthentication = requireNonNull(metastoreAuthentication, "metastoreAuthentication is null");
         GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
         poolConfig.setMaxIdle(maxTransport);

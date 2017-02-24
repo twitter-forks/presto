@@ -46,12 +46,17 @@ public class FeaturesConfig
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
+    private boolean reorderJoins;
     private boolean redistributeWrites = true;
     private boolean optimizeMetadataQueries;
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
+    private boolean optimizerReorderWindows = true;
     private boolean pushTableWriteThroughUnion = true;
+    private boolean exchangeCompressionEnabled = false;
     private boolean legacyArrayAgg;
+    private boolean legacyOrderBy;
+    private boolean legacyMapSubscript;
     private boolean optimizeMixedDistinctAggregations;
 
     private String processingOptimization = ProcessingOptimization.DISABLED;
@@ -65,6 +70,7 @@ public class FeaturesConfig
     private DataSize operatorMemoryLimitBeforeSpill = new DataSize(4, DataSize.Unit.MEGABYTE);
     private Path spillerSpillPath = Paths.get(System.getProperty("java.io.tmpdir"), "presto", "spills");
     private int spillerThreads = 4;
+    private boolean iterativeOptimizerEnabled;
 
     public boolean isResourceGroupsEnabled()
     {
@@ -107,6 +113,30 @@ public class FeaturesConfig
         return legacyArrayAgg;
     }
 
+    @Config("deprecated.legacy-order-by")
+    public FeaturesConfig setLegacyOrderBy(boolean value)
+    {
+        this.legacyOrderBy = value;
+        return this;
+    }
+
+    public boolean isLegacyOrderBy()
+    {
+        return legacyOrderBy;
+    }
+
+    @Config("deprecated.legacy-map-subscript")
+    public FeaturesConfig setLegacyMapSubscript(boolean value)
+    {
+        this.legacyMapSubscript = value;
+        return this;
+    }
+
+    public boolean isLegacyMapSubscript()
+    {
+        return legacyMapSubscript;
+    }
+
     @Config("distributed-joins-enabled")
     public FeaturesConfig setDistributedJoinsEnabled(boolean distributedJoinsEnabled)
     {
@@ -124,6 +154,19 @@ public class FeaturesConfig
     public FeaturesConfig setColocatedJoinsEnabled(boolean colocatedJoinsEnabled)
     {
         this.colocatedJoinsEnabled = colocatedJoinsEnabled;
+        return this;
+    }
+
+    public boolean isJoinReorderingEnabled()
+    {
+        return reorderJoins;
+    }
+
+    @Config("reorder-joins")
+    @ConfigDescription("Experimental: Reorder joins to optimize plan")
+    public FeaturesConfig setJoinReorderingEnabled(boolean reorderJoins)
+    {
+        this.reorderJoins = reorderJoins;
         return this;
     }
 
@@ -172,6 +215,18 @@ public class FeaturesConfig
     public FeaturesConfig setOptimizeSingleDistinct(boolean optimizeSingleDistinct)
     {
         this.optimizeSingleDistinct = optimizeSingleDistinct;
+        return this;
+    }
+
+    public boolean isReorderWindows()
+    {
+        return optimizerReorderWindows;
+    }
+
+    @Config("optimizer.reorder-windows")
+    public FeaturesConfig setReorderWindows(boolean reorderWindows)
+    {
+        this.optimizerReorderWindows = reorderWindows;
         return this;
     }
 
@@ -264,6 +319,18 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isIterativeOptimizerEnabled()
+    {
+        return iterativeOptimizerEnabled;
+    }
+
+    @Config("experimental.iterative-optimizer-enabled")
+    public FeaturesConfig setIterativeOptimizerEnabled(boolean value)
+    {
+        this.iterativeOptimizerEnabled = value;
+        return this;
+    }
+
     public DataSize getOperatorMemoryLimitBeforeSpill()
     {
         return operatorMemoryLimitBeforeSpill;
@@ -309,6 +376,18 @@ public class FeaturesConfig
     public FeaturesConfig setOptimizeMixedDistinctAggregations(boolean value)
     {
         this.optimizeMixedDistinctAggregations = value;
+        return this;
+    }
+
+    public boolean isExchangeCompressionEnabled()
+    {
+        return exchangeCompressionEnabled;
+    }
+
+    @Config("exchange.compression-enabled")
+    public FeaturesConfig setExchangeCompressionEnabled(boolean exchangeCompressionEnabled)
+    {
+        this.exchangeCompressionEnabled = exchangeCompressionEnabled;
         return this;
     }
 }

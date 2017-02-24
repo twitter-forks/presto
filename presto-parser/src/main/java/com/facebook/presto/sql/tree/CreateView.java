@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,7 +23,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class CreateView
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final QualifiedName name;
     private final Query query;
@@ -63,6 +66,12 @@ public class CreateView
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitCreateView(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        return ImmutableList.of(query);
     }
 
     @Override

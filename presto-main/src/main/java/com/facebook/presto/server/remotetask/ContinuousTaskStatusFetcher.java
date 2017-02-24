@@ -83,6 +83,7 @@ class ContinuousTaskStatusFetcher
             Executor executor,
             HttpClient httpClient,
             Duration minErrorDuration,
+            Duration maxErrorDuration,
             ScheduledExecutorService errorScheduledExecutor,
             RemoteTaskStats stats)
     {
@@ -98,7 +99,7 @@ class ContinuousTaskStatusFetcher
         this.executor = requireNonNull(executor, "executor is null");
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
 
-        this.errorTracker = new RequestErrorTracker(taskId, initialTaskStatus.getSelf(), minErrorDuration, errorScheduledExecutor, "getting task status");
+        this.errorTracker = new RequestErrorTracker(taskId, initialTaskStatus.getSelf(), minErrorDuration, maxErrorDuration, errorScheduledExecutor, "getting task status");
         this.stats = requireNonNull(stats, "stats is null");
     }
 
@@ -233,6 +234,9 @@ class ContinuousTaskStatusFetcher
         });
 
         if (taskMismatch.get()) {
+            // This will also set the task status to FAILED state directly.
+            // Additionally, this will issue a DELETE for the task to the worker.
+            // While sending the DELETE is not required, it is preferred because a task was created by the previous request.
             onFail.accept(new PrestoException(REMOTE_TASK_MISMATCH, format("%s (%s)", REMOTE_TASK_MISMATCH_ERROR, HostAddress.fromUri(getTaskStatus().getSelf()))));
         }
     }
