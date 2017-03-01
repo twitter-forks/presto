@@ -30,6 +30,7 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AssignUniqueId;
+import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.GroupIdNode;
@@ -52,9 +53,7 @@ import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.NullLiteral;
 import com.facebook.presto.sql.tree.SymbolReference;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import io.airlift.log.Logger;
@@ -82,7 +81,6 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.Type.FULL;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.equalTo;
@@ -206,7 +204,7 @@ public class PredicatePushDown
 
             // Push down conjuncts from the inherited predicate that don't depend on non-deterministic assignments
             PlanNode rewrittenNode = context.defaultRewrite(node,
-                    ExpressionTreeRewriter.rewriteWith(new ExpressionSymbolInliner(node.getAssignments()), combineConjuncts(conjuncts.get(true))));
+                    ExpressionTreeRewriter.rewriteWith(new ExpressionSymbolInliner(node.getAssignments().getMap()), combineConjuncts(conjuncts.get(true))));
 
             // All non-deterministic conjuncts, if any, will be in the filter node.
             if (!conjuncts.get(false).isEmpty()) {
@@ -358,12 +356,12 @@ public class PredicatePushDown
                     rightSource != node.getRight() ||
                     !expressionEquivalence.areExpressionsEquivalent(session, newJoinPredicate, joinPredicate, types)) {
                 // Create identity projections for all existing symbols
-                ImmutableMap.Builder<Symbol, Expression> leftProjections = ImmutableMap.builder();
+                Assignments.Builder leftProjections = Assignments.builder();
                 leftProjections.putAll(node.getLeft()
                         .getOutputSymbols().stream()
                         .collect(Collectors.toMap(key -> key, Symbol::toSymbolReference)));
 
-                ImmutableMap.Builder<Symbol, Expression> rightProjections = ImmutableMap.builder();
+                Assignments.Builder rightProjections = Assignments.builder();
                 rightProjections.putAll(node.getRight()
                         .getOutputSymbols().stream()
                         .collect(Collectors.toMap(key -> key, Symbol::toSymbolReference)));
@@ -379,10 +377,15 @@ public class PredicatePushDown
                         Expression leftExpression = (alignedComparison) ? equality.getLeft() : equality.getRight();
                         Expression rightExpression = (alignedComparison) ? equality.getRight() : equality.getLeft();
 
-                        Symbol leftSymbol = symbolAllocator.newSymbol(leftExpression, extractType(leftExpression));
-                        leftProjections.put(leftSymbol, leftExpression);
-                        Symbol rightSymbol = symbolAllocator.newSymbol(rightExpression, extractType(rightExpression));
-                        rightProjections.put(rightSymbol, rightExpression);
+                        Symbol leftSymbol = symbolForExpression(leftExpression);
+                        if (!node.getLeft().getOutputSymbols().contains(leftSymbol)) {
+                            leftProjections.put(leftSymbol, leftExpression);
+                        }
+
+                        Symbol rightSymbol = symbolForExpression(rightExpression);
+                        if (!node.getRight().getOutputSymbols().contains(rightSymbol)) {
+                            rightProjections.put(rightSymbol, rightExpression);
+                        }
 
                         joinConditionBuilder.add(new JoinNode.EquiJoinClause(leftSymbol, rightSymbol));
                     }
@@ -399,7 +402,15 @@ public class PredicatePushDown
                 leftSource = new ProjectNode(idAllocator.getNextId(), leftSource, leftProjections.build());
                 rightSource = new ProjectNode(idAllocator.getNextId(), rightSource, rightProjections.build());
 
-                output = new JoinNode(node.getId(), node.getType(), leftSource, rightSource, joinConditionBuilder.build(), newJoinFilter, node.getLeftHashSymbol(), node.getRightHashSymbol());
+                output = createJoinNodeWithExpectedOutputs(
+                        node.getOutputSymbols(), idAllocator,
+                        node.getType(),
+                        leftSource,
+                        rightSource,
+                        newJoinFilter,
+                        joinConditionBuilder.build(),
+                        node.getLeftHashSymbol(),
+                        node.getRightHashSymbol());
             }
             if (!postJoinPredicate.equals(BooleanLiteral.TRUE_LITERAL)) {
                 output = new FilterNode(idAllocator.getNextId(), output, postJoinPredicate);
@@ -407,7 +418,58 @@ public class PredicatePushDown
             return output;
         }
 
-        private OuterJoinPushDownResult processLimitedOuterJoin(Expression inheritedPredicate, Expression outerEffectivePredicate, Expression innerEffectivePredicate, Expression joinPredicate, Collection<Symbol> outerSymbols)
+        private Symbol symbolForExpression(Expression expression)
+        {
+            if (expression instanceof SymbolReference) {
+                return Symbol.from(expression);
+            }
+
+            return symbolAllocator.newSymbol(expression, extractType(expression));
+        }
+
+        private static PlanNode createJoinNodeWithExpectedOutputs(
+                List<Symbol> expectedOutputs,
+                PlanNodeIdAllocator idAllocator,
+                JoinNode.Type type,
+                PlanNode left,
+                PlanNode right,
+                Optional<Expression> filter,
+                List<JoinNode.EquiJoinClause> conditions,
+                Optional<Symbol> leftHashSymbol,
+                Optional<Symbol> rightHashSymbol)
+        {
+            // TODO: this should be removed once join nodes with output column pruning is supported for cross join
+            if (conditions.isEmpty() && !filter.isPresent()) {
+                PlanNode output = new JoinNode(
+                        idAllocator.getNextId(),
+                        type,
+                        left,
+                        right,
+                        conditions,
+                        ImmutableList.<Symbol>builder()
+                                .addAll(left.getOutputSymbols())
+                                .addAll(right.getOutputSymbols())
+                                .build(),
+                        filter,
+                        leftHashSymbol,
+                        rightHashSymbol);
+
+                if (!output.getOutputSymbols().equals(expectedOutputs)) {
+                    // Introduce a projection to constrain the outputs to what was originally expected
+                    // Some nodes are sensitive to what's produced (e.g., DistinctLimit node)
+                    output = new ProjectNode(
+                            idAllocator.getNextId(),
+                            output,
+                            Assignments.identity(expectedOutputs));
+                }
+                return output;
+            }
+            else {
+                return new JoinNode(idAllocator.getNextId(), type, left, right, conditions, expectedOutputs, filter, leftHashSymbol, rightHashSymbol);
+            }
+        }
+
+        private static OuterJoinPushDownResult processLimitedOuterJoin(Expression inheritedPredicate, Expression outerEffectivePredicate, Expression innerEffectivePredicate, Expression joinPredicate, Collection<Symbol> outerSymbols)
         {
             checkArgument(Iterables.all(DependencyExtractor.extractUnique(outerEffectivePredicate), in(outerSymbols)), "outerEffectivePredicate must only contain symbols from outerSymbols");
             checkArgument(Iterables.all(DependencyExtractor.extractUnique(innerEffectivePredicate), not(in(outerSymbols))), "innerEffectivePredicate must not contain symbols from outerSymbols");
@@ -528,7 +590,7 @@ public class PredicatePushDown
             }
         }
 
-        private InnerJoinPushDownResult processInnerJoin(Expression inheritedPredicate, Expression leftEffectivePredicate, Expression rightEffectivePredicate, Expression joinPredicate, Collection<Symbol> leftSymbols)
+        private static InnerJoinPushDownResult processInnerJoin(Expression inheritedPredicate, Expression leftEffectivePredicate, Expression rightEffectivePredicate, Expression joinPredicate, Collection<Symbol> leftSymbols)
         {
             checkArgument(Iterables.all(DependencyExtractor.extractUnique(leftEffectivePredicate), in(leftSymbols)), "leftEffectivePredicate must only contain symbols from leftSymbols");
             checkArgument(Iterables.all(DependencyExtractor.extractUnique(rightEffectivePredicate), not(in(leftSymbols))), "rightEffectivePredicate must not contain symbols from leftSymbols");
@@ -608,18 +670,7 @@ public class PredicatePushDown
             rightPushDownConjuncts.addAll(allInferenceWithoutRightInferred.generateEqualitiesPartitionedBy(not(in(leftSymbols))).getScopeEqualities());
             joinConjuncts.addAll(allInference.generateEqualitiesPartitionedBy(in(leftSymbols)).getScopeStraddlingEqualities()); // scope straddling equalities get dropped in as part of the join predicate
 
-            // Since we only currently support equality in join conjuncts, factor out the non-equality conjuncts to a post-join filter
-            List<Expression> joinConjunctsList = joinConjuncts.build();
-
-            List<Expression> postJoinConjuncts = joinConjunctsList.stream()
-                    .filter(joinEqualityExpression(leftSymbols).negate())
-                    .collect(toImmutableList());
-
-            joinConjunctsList = joinConjunctsList.stream()
-                    .filter(joinEqualityExpression(leftSymbols))
-                    .collect(toImmutableList());
-
-            return new InnerJoinPushDownResult(combineConjuncts(leftPushDownConjuncts.build()), combineConjuncts(rightPushDownConjuncts.build()), combineConjuncts(joinConjunctsList), combineConjuncts(postJoinConjuncts));
+            return new InnerJoinPushDownResult(combineConjuncts(leftPushDownConjuncts.build()), combineConjuncts(rightPushDownConjuncts.build()), combineConjuncts(joinConjuncts.build()), BooleanLiteral.TRUE_LITERAL);
         }
 
         private static class InnerJoinPushDownResult
@@ -682,7 +733,7 @@ public class PredicatePushDown
 
         private JoinNode tryNormalizeToOuterToInnerJoin(JoinNode node, Expression inheritedPredicate)
         {
-            Preconditions.checkArgument(EnumSet.of(INNER, RIGHT, LEFT, FULL).contains(node.getType()), "Unsupported join type: %s", node.getType());
+            checkArgument(EnumSet.of(INNER, RIGHT, LEFT, FULL).contains(node.getType()), "Unsupported join type: %s", node.getType());
 
             if (node.getType() == JoinNode.Type.INNER) {
                 return node;
@@ -695,11 +746,11 @@ public class PredicatePushDown
                     return node;
                 }
                 if (canConvertToLeftJoin && canConvertToRightJoin) {
-                    return new JoinNode(node.getId(), INNER, node.getLeft(), node.getRight(), node.getCriteria(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
+                    return new JoinNode(node.getId(), INNER, node.getLeft(), node.getRight(), node.getCriteria(), node.getOutputSymbols(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
                 }
                 else {
                     return new JoinNode(node.getId(), canConvertToLeftJoin ? LEFT : RIGHT,
-                            node.getLeft(), node.getRight(), node.getCriteria(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
+                            node.getLeft(), node.getRight(), node.getCriteria(), node.getOutputSymbols(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
                 }
             }
 
@@ -707,7 +758,7 @@ public class PredicatePushDown
                     node.getType() == JoinNode.Type.RIGHT && !canConvertOuterToInner(node.getLeft().getOutputSymbols(), inheritedPredicate)) {
                 return node;
             }
-            return new JoinNode(node.getId(), JoinNode.Type.INNER, node.getLeft(), node.getRight(), node.getCriteria(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
+            return new JoinNode(node.getId(), JoinNode.Type.INNER, node.getLeft(), node.getRight(), node.getCriteria(), node.getOutputSymbols(), node.getFilter(), node.getLeftHashSymbol(), node.getRightHashSymbol());
         }
 
         private boolean canConvertOuterToInner(List<Symbol> innerSymbolsForOuterJoin, Expression inheritedPredicate)

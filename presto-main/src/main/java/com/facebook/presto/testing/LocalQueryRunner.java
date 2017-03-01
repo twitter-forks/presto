@@ -152,6 +152,8 @@ import com.google.common.io.Closer;
 import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
 import org.intellij.lang.annotations.Language;
+import org.weakref.jmx.MBeanExporter;
+import org.weakref.jmx.testing.TestingMBeanServer;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -203,7 +205,6 @@ public class LocalQueryRunner
     private final PageIndexerFactory pageIndexerFactory;
     private final MetadataManager metadata;
     private final TestingAccessControlManager accessControl;
-    private final TestingEventListenerManager eventListener;
     private final SplitManager splitManager;
     private final BlockEncodingSerde blockEncodingSerde;
     private final PageSourceManager pageSourceManager;
@@ -224,7 +225,12 @@ public class LocalQueryRunner
 
     public LocalQueryRunner(Session defaultSession)
     {
-        this(defaultSession, new FeaturesConfig().setOptimizeMixedDistinctAggregations(true), false);
+        this(
+                defaultSession,
+                new FeaturesConfig()
+                        .setOptimizeMixedDistinctAggregations(true)
+                        .setIterativeOptimizerEnabled(true),
+                false);
     }
 
     public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig)
@@ -273,7 +279,6 @@ public class LocalQueryRunner
                 new TablePropertyManager(),
                 transactionManager);
         this.accessControl = new TestingAccessControlManager(transactionManager);
-        this.eventListener = new TestingEventListenerManager();
         this.pageSourceManager = new PageSourceManager();
 
         this.expressionCompiler = new ExpressionCompiler(metadata);
@@ -323,6 +328,7 @@ public class LocalQueryRunner
                 defaultSession.getLocale(),
                 defaultSession.getRemoteUserAddress(),
                 defaultSession.getUserAgent(),
+                defaultSession.getClientInfo(),
                 defaultSession.getStartTime(),
                 defaultSession.getSystemProperties(),
                 defaultSession.getConnectorProperties(),
@@ -332,7 +338,7 @@ public class LocalQueryRunner
 
         dataDefinitionTask = ImmutableMap.<Class<? extends Statement>, DataDefinitionTask<?>>builder()
                 .put(CreateTable.class, new CreateTableTask())
-                .put(CreateView.class, new CreateViewTask(jsonCodec(ViewDefinition.class), sqlParser, accessControl, new FeaturesConfig()))
+                .put(CreateView.class, new CreateViewTask(jsonCodec(ViewDefinition.class), sqlParser, new FeaturesConfig()))
                 .put(DropTable.class, new DropTableTask())
                 .put(DropView.class, new DropViewTask())
                 .put(RenameColumn.class, new RenameColumnTask())
@@ -498,7 +504,7 @@ public class LocalQueryRunner
             TaskContext taskContext = createTaskContext(executor, session);
 
             List<Driver> drivers = createDrivers(session, sql, outputFactory, taskContext);
-            drivers.stream().map(closer::register);
+            drivers.forEach(closer::register);
 
             boolean done = false;
             while (!done) {
@@ -542,7 +548,7 @@ public class LocalQueryRunner
             System.out.println(PlanPrinter.textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata, session));
         }
 
-        SubPlan subplan = new PlanFragmenter().createSubPlans(session, metadata, plan);
+        SubPlan subplan = PlanFragmenter.createSubPlans(session, metadata, plan);
         if (!subplan.getChildren().isEmpty()) {
             throw new AssertionError("Expected subplan to have no children");
         }
@@ -561,7 +567,8 @@ public class LocalQueryRunner
                 new IndexJoinLookupStats(),
                 new CompilerConfig().setInterpreterEnabled(false), // make sure tests fail if compiler breaks
                 new TaskManagerConfig().setTaskConcurrency(4),
-                spillerFactory);
+                spillerFactory,
+                blockEncodingSerde);
 
         // plan query
         LocalExecutionPlan localExecutionPlan = executionPlanner.plan(
@@ -638,16 +645,16 @@ public class LocalQueryRunner
         FeaturesConfig featuresConfig = new FeaturesConfig()
                 .setDistributedIndexJoinsEnabled(false)
                 .setOptimizeHashGeneration(true);
-        PlanOptimizers planOptimizers = new PlanOptimizers(metadata, sqlParser, featuresConfig, true);
-        return createPlan(session, sql, featuresConfig, planOptimizers.get(), stage);
+        PlanOptimizers planOptimizers = new PlanOptimizers(metadata, sqlParser, featuresConfig, true, new MBeanExporter(new TestingMBeanServer()));
+        return createPlan(session, sql, planOptimizers.get(), stage);
     }
 
-    public Plan createPlan(Session session, @Language("SQL") String sql, FeaturesConfig featuresConfig, List<PlanOptimizer> optimizers)
+    public Plan createPlan(Session session, @Language("SQL") String sql, List<PlanOptimizer> optimizers)
     {
-        return createPlan(session, sql, featuresConfig, optimizers, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED);
+        return createPlan(session, sql, optimizers, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED);
     }
 
-    public Plan createPlan(Session session, @Language("SQL") String sql, FeaturesConfig featuresConfig, List<PlanOptimizer> optimizers, LogicalPlanner.Stage stage)
+    public Plan createPlan(Session session, @Language("SQL") String sql, List<PlanOptimizer> optimizers, LogicalPlanner.Stage stage)
     {
         Statement wrapped = sqlParser.createStatement(sql);
         Statement statement = unwrapExecuteStatement(wrapped, sqlParser, session);
@@ -738,7 +745,7 @@ public class LocalQueryRunner
         };
     }
 
-    public OperatorFactory createHashProjectOperator(int operatorId, PlanNodeId planNodeId, List<Type> columnTypes)
+    public static OperatorFactory createHashProjectOperator(int operatorId, PlanNodeId planNodeId, List<Type> columnTypes)
     {
         ImmutableList.Builder<ProjectionFunction> projectionFunctions = ImmutableList.builder();
         for (int i = 0; i < columnTypes.size(); i++) {

@@ -62,7 +62,7 @@ public class TestResourceGroups
         MockQueryExecution query3 = new MockQueryExecution(0);
         root.run(query3);
         assertEquals(query3.getState(), FAILED);
-        assertEquals(query3.getFailureCause().getMessage(), "Too many queued queries for \"root\"!");
+        assertEquals(query3.getFailureCause().getMessage(), "Too many queued queries for \"root\"");
     }
 
     @Test(timeOut = 10_000)
@@ -179,6 +179,36 @@ public class TestResourceGroups
         assertEquals(query2.getState(), QUEUED);
         MockQueryExecution query3 = new MockQueryExecution(0);
         root.run(query3);
+        assertEquals(query3.getState(), QUEUED);
+
+        query1.complete();
+        root.processQueuedQueries();
+        assertEquals(query2.getState(), RUNNING);
+        assertEquals(query3.getState(), RUNNING);
+    }
+
+    @Test
+    public void testSubgroupMemoryLimit()
+    {
+        RootInternalResourceGroup root = new RootInternalResourceGroup("root", (group, export) -> { }, directExecutor());
+        root.setSoftMemoryLimit(new DataSize(10, BYTE));
+        root.setMaxQueuedQueries(4);
+        root.setMaxRunningQueries(3);
+        InternalResourceGroup subgroup = root.getOrCreateSubGroup("subgroup");
+        subgroup.setSoftMemoryLimit(new DataSize(1, BYTE));
+        subgroup.setMaxQueuedQueries(4);
+        subgroup.setMaxRunningQueries(3);
+
+        MockQueryExecution query1 = new MockQueryExecution(1);
+        subgroup.run(query1);
+        // Process the group to refresh stats
+        root.processQueuedQueries();
+        assertEquals(query1.getState(), RUNNING);
+        MockQueryExecution query2 = new MockQueryExecution(0);
+        subgroup.run(query2);
+        assertEquals(query2.getState(), QUEUED);
+        MockQueryExecution query3 = new MockQueryExecution(0);
+        subgroup.run(query3);
         assertEquals(query3.getState(), QUEUED);
 
         query1.complete();

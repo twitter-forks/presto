@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Iterables;
 
 import javax.annotation.concurrent.Immutable;
 
@@ -71,6 +72,26 @@ public class AggregationNode
         public boolean isOutputPartial()
         {
             return outputPartial;
+        }
+
+        public static Step partialOutput(Step step)
+        {
+            if (step.isInputRaw()) {
+                return Step.PARTIAL;
+            }
+            else {
+                return Step.INTERMEDIATE;
+            }
+        }
+
+        public static Step partialInput(Step step)
+        {
+            if (step.isOutputPartial()) {
+                return Step.INTERMEDIATE;
+            }
+            else {
+                return Step.FINAL;
+            }
         }
     }
 
@@ -183,5 +204,11 @@ public class AggregationNode
     public <C, R> R accept(PlanVisitor<C, R> visitor, C context)
     {
         return visitor.visitAggregation(this, context);
+    }
+
+    @Override
+    public PlanNode replaceChildren(List<PlanNode> newChildren)
+    {
+        return new AggregationNode(getId(), Iterables.getOnlyElement(newChildren), aggregations, functions, masks, groupingSets, step, hashSymbol, groupIdSymbol);
     }
 }

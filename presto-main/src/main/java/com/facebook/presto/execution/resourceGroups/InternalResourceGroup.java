@@ -412,7 +412,7 @@ public class InternalResourceGroup
                 group = group.parent.get();
             }
             if (!canQueue && !canRun) {
-                query.fail(new PrestoException(QUERY_QUEUE_FULL, format("Too many queued queries for \"%s\"!", id)));
+                query.fail(new PrestoException(QUERY_QUEUE_FULL, format("Too many queued queries for \"%s\"", id)));
                 return;
             }
             if (canRun) {
@@ -475,7 +475,7 @@ public class InternalResourceGroup
                 group = group.parent.get();
             }
             updateEligiblility();
-            executor.execute(query::start);
+            executor.execute(() -> query.start(Optional.of(id.toString())));
         }
     }
 
@@ -532,11 +532,15 @@ public class InternalResourceGroup
             else {
                 for (Iterator<InternalResourceGroup> iterator = dirtySubGroups.iterator(); iterator.hasNext(); ) {
                     InternalResourceGroup subGroup = iterator.next();
-                    cachedMemoryUsageBytes -= subGroup.cachedMemoryUsageBytes;
+                    long oldMemoryUsageBytes = subGroup.cachedMemoryUsageBytes;
+                    cachedMemoryUsageBytes -= oldMemoryUsageBytes;
                     subGroup.internalRefreshStats();
                     cachedMemoryUsageBytes += subGroup.cachedMemoryUsageBytes;
                     if (!subGroup.isDirty()) {
                         iterator.remove();
+                    }
+                    if (oldMemoryUsageBytes != subGroup.cachedMemoryUsageBytes) {
+                        subGroup.updateEligiblility();
                     }
                 }
             }

@@ -32,11 +32,13 @@ import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.Extract;
 import com.facebook.presto.sql.tree.FieldReference;
 import com.facebook.presto.sql.tree.FunctionCall;
+import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.IfExpression;
 import com.facebook.presto.sql.tree.InListExpression;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.IsNotNullPredicate;
 import com.facebook.presto.sql.tree.IsNullPredicate;
+import com.facebook.presto.sql.tree.LambdaExpression;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.Literal;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
@@ -45,7 +47,6 @@ import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.NullIfExpression;
 import com.facebook.presto.sql.tree.Parameter;
 import com.facebook.presto.sql.tree.QualifiedName;
-import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.Row;
 import com.facebook.presto.sql.tree.SearchedCaseExpression;
 import com.facebook.presto.sql.tree.SimpleCaseExpression;
@@ -67,6 +68,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGATE_OR_GROUP_BY;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGATION_FUNCTION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NESTED_AGGREGATION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NESTED_WINDOW;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
@@ -88,10 +90,11 @@ class AggregationAnalyzer
     private final Metadata metadata;
     private final Set<Expression> columnReferences;
     private final List<Expression> parameters;
+    private final boolean isDescribe;
 
     private final Scope scope;
 
-    public AggregationAnalyzer(List<Expression> groupByExpressions, Metadata metadata, Scope scope, Set<Expression> columnReferences, List<Expression> parameters)
+    public AggregationAnalyzer(List<Expression> groupByExpressions, Metadata metadata, Scope scope, Set<Expression> columnReferences, List<Expression> parameters, boolean isDescribe)
     {
         requireNonNull(groupByExpressions, "groupByExpressions is null");
         requireNonNull(metadata, "metadata is null");
@@ -103,6 +106,7 @@ class AggregationAnalyzer
         this.metadata = metadata;
         this.columnReferences = ImmutableSet.copyOf(columnReferences);
         this.parameters = parameters;
+        this.isDescribe = isDescribe;
         this.expressions = groupByExpressions.stream()
                 .map(e -> ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(parameters), e))
                 .collect(toImmutableList());
@@ -119,8 +123,8 @@ class AggregationAnalyzer
         // in the group by clause to fields they reference so that the expansion from '*' can be matched against them
         for (Expression expression : Iterables.filter(expressions, columnReferences::contains)) {
             QualifiedName name;
-            if (expression instanceof QualifiedNameReference) {
-                name = ((QualifiedNameReference) expression).getName();
+            if (expression instanceof Identifier) {
+                name = QualifiedName.of(((Identifier) expression).getName());
             }
             else {
                 name = DereferenceExpression.getQualifiedName(checkType(expression, DereferenceExpression.class, "expression"));
@@ -274,38 +278,46 @@ class AggregationAnalyzer
         @Override
         protected Boolean visitFunctionCall(FunctionCall node, Void context)
         {
-            if (!node.getWindow().isPresent() && metadata.isAggregationFunction(node.getName())) {
-                AggregateExtractor aggregateExtractor = new AggregateExtractor(metadata);
-                WindowFunctionExtractor windowExtractor = new WindowFunctionExtractor();
+            if (metadata.isAggregationFunction(node.getName())) {
+                if (!node.getWindow().isPresent()) {
+                    AggregateExtractor aggregateExtractor = new AggregateExtractor(metadata.getFunctionRegistry());
+                    WindowFunctionExtractor windowExtractor = new WindowFunctionExtractor();
 
-                for (Expression argument : node.getArguments()) {
-                    aggregateExtractor.process(argument, null);
-                    windowExtractor.process(argument, null);
+                    for (Expression argument : node.getArguments()) {
+                        aggregateExtractor.process(argument, null);
+                        windowExtractor.process(argument, null);
+                    }
+
+                    if (!aggregateExtractor.getAggregates().isEmpty()) {
+                        throw new SemanticException(NESTED_AGGREGATION,
+                                node,
+                                "Cannot nest aggregations inside aggregation '%s': %s",
+                                node.getName(),
+                                aggregateExtractor.getAggregates());
+                    }
+
+                    if (!windowExtractor.getWindowFunctions().isEmpty()) {
+                        throw new SemanticException(NESTED_WINDOW,
+                                node,
+                                "Cannot nest window functions inside aggregation '%s': %s",
+                                node.getName(),
+                                windowExtractor.getWindowFunctions());
+                    }
+
+                    if (node.getFilter().isPresent() && node.isDistinct()) {
+                        throw new SemanticException(NOT_SUPPORTED,
+                                node,
+                                "Filtered aggregations not supported with DISTINCT: '%s'",
+                                node);
+                    }
+                    return true;
                 }
-
-                if (!aggregateExtractor.getAggregates().isEmpty()) {
-                    throw new SemanticException(NESTED_AGGREGATION,
+            }
+            else if (node.getFilter().isPresent()) {
+                    throw new SemanticException(MUST_BE_AGGREGATION_FUNCTION,
                             node,
-                            "Cannot nest aggregations inside aggregation '%s': %s",
-                            node.getName(),
-                            aggregateExtractor.getAggregates());
-                }
-
-                if (!windowExtractor.getWindowFunctions().isEmpty()) {
-                    throw new SemanticException(NESTED_WINDOW,
-                            node,
-                            "Cannot nest window functions inside aggregation '%s': %s",
-                            node.getName(),
-                            windowExtractor.getWindowFunctions());
-                }
-
-                if (node.getFilter().isPresent() && node.isDistinct()) {
-                    throw new SemanticException(NOT_SUPPORTED,
-                            node,
-                            "Filtered aggregations not supported with DISTINCT: '%s'",
+                            "Filter is only valid for aggregation functions",
                             node);
-                }
-                return true;
             }
 
             if (node.getWindow().isPresent() && !process(node.getWindow().get(), context)) {
@@ -313,6 +325,13 @@ class AggregationAnalyzer
             }
 
             return node.getArguments().stream().allMatch(expression -> process(expression, context));
+        }
+
+        @Override
+        protected Boolean visitLambdaExpression(LambdaExpression node, Void context)
+        {
+            // Lambda does not support capture yet
+            return true;
         }
 
         @Override
@@ -364,9 +383,9 @@ class AggregationAnalyzer
         }
 
         @Override
-        protected Boolean visitQualifiedNameReference(QualifiedNameReference node, Void context)
+        protected Boolean visitIdentifier(Identifier node, Void context)
         {
-            return isField(node.getName());
+            return isField(QualifiedName.of(node.getName()));
         }
 
         @Override
@@ -493,6 +512,9 @@ class AggregationAnalyzer
         @Override
         public Boolean visitParameter(Parameter node, Void context)
         {
+            if (isDescribe) {
+                return true;
+            }
             checkArgument(node.getPosition() < parameters.size(), "Invalid parameter number %s, max values is %s", node.getPosition(), parameters.size() - 1);
             return process(parameters.get(node.getPosition()), context);
         }

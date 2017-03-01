@@ -5,7 +5,7 @@
     <parent>
         <artifactId>presto-root</artifactId>
         <groupId>com.facebook.presto</groupId>
-        <version>0.157-tw-0.30</version>
+        <version>0.166-tw-0.31</version>
     </parent>
 
     <artifactId>presto-product-tests</artifactId>
@@ -14,15 +14,6 @@
     <properties>
         <air.main.basedir>${project.parent.basedir}</air.main.basedir>
         <main-class>com.facebook.presto.tests.TemptoProductTestRunner</main-class>
-
-        <!--
-        Versions newer than 6.9 appear to have an issue where the @BeforeClass method in
-        children of AbstractTestHiveClient doesn't always get called. Therefore, an older
-        version is used for other artifacts in Presto. This artifact overrides it with a
-        newer version because it is required for Tempto
-        TODO: remove once we can upgrade to a version that fixes it
-        -->
-        <dep.testng.version>6.9.6</dep.testng.version>
     </properties>
 
     <dependencies>
@@ -87,6 +78,10 @@
             <artifactId>http-client</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.airlift.tpch</groupId>
+            <artifactId>tpch</artifactId>
+        </dependency>
+        <dependency>
             <groupId>com.facebook.presto.hive</groupId>
             <artifactId>hive-apache-jdbc</artifactId>
             <scope>runtime</scope>
@@ -100,6 +95,12 @@
             <groupId>mysql</groupId>
             <artifactId>mysql-connector-java</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.datastax.cassandra</groupId>
+            <artifactId>cassandra-driver-core</artifactId>
+            <scope>compile</scope>
+            <version>3.0.0</version>
         </dependency>
     </dependencies>
 
@@ -120,6 +121,7 @@
                 </excludes>
             </resource>
         </resources>
+
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

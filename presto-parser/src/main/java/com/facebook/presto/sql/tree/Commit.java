@@ -15,10 +15,13 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import java.util.Optional;
 
 public final class Commit
-        extends DataDefinitionStatement
+        extends Statement
 {
     public Commit()
     {
@@ -39,6 +42,12 @@ public final class Commit
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitCommit(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        return ImmutableList.of();
     }
 
     @Override

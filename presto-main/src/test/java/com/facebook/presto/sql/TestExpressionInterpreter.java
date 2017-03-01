@@ -431,8 +431,8 @@ public class TestExpressionInterpreter
             throws Exception
     {
         // integer
-        assertOptimizedEquals("cast(123 as VARCHAR)", "'123'");
-        assertOptimizedEquals("cast(-123 as VARCHAR)", "'-123'");
+        assertOptimizedEquals("cast(123 as VARCHAR(20))", "'123'");
+        assertOptimizedEquals("cast(-123 as VARCHAR(20))", "'-123'");
 
         // bigint
         assertOptimizedEquals("cast(BIGINT '123' as VARCHAR)", "'123'");
@@ -1073,7 +1073,7 @@ public class TestExpressionInterpreter
     public void testLikeOptimization()
             throws Exception
     {
-        assertOptimizedEquals("unbound_string like 'abc'", "unbound_string = 'abc'");
+        assertOptimizedEquals("unbound_string like 'abc'", "unbound_string = CAST('abc' AS VARCHAR)");
 
         assertOptimizedEquals("bound_string like bound_pattern", "true");
         assertOptimizedEquals("'abc' like bound_pattern", "false");
@@ -1169,13 +1169,18 @@ public class TestExpressionInterpreter
         optimize("ARRAY [1, 2, 3][0]");
     }
 
+    @Test(expectedExceptions = PrestoException.class)
+    public void testMapSubscriptMissingKey()
+    {
+        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[-1]");
+    }
+
     @Test
     public void testMapSubscriptConstantIndexes()
     {
-        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[-1]");
-        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[0]");
-        optimize("MAP(ARRAY [BIGINT '1', 2], ARRAY [3, 4])[0]");
-        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[5]");
+        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[1]");
+        optimize("MAP(ARRAY [BIGINT '1', 2], ARRAY [3, 4])[1]");
+        optimize("MAP(ARRAY [1, 2], ARRAY [3, 4])[2]");
         optimize("MAP(ARRAY [ARRAY[1,1]], ARRAY['a'])[ARRAY[1,1]]");
     }
 

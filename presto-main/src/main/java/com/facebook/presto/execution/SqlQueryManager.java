@@ -19,6 +19,9 @@ import com.facebook.presto.event.query.QueryMonitor;
 import com.facebook.presto.execution.QueryExecution.QueryExecutionFactory;
 import com.facebook.presto.execution.SqlQueryExecution.SqlQueryExecutionFactory;
 import com.facebook.presto.memory.ClusterMemoryManager;
+import com.facebook.presto.metadata.SessionPropertyManager;
+import com.facebook.presto.security.AccessControl;
+import com.facebook.presto.server.SessionSupplier;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.sql.analyzer.SemanticException;
@@ -63,6 +66,7 @@ import static com.facebook.presto.execution.QueryState.RUNNING;
 import static com.facebook.presto.spi.StandardErrorCode.ABANDONED_QUERY;
 import static com.facebook.presto.spi.StandardErrorCode.EXCEEDED_TIME_LIMIT;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.spi.StandardErrorCode.QUERY_TEXT_TOO_LARGE;
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_SHUTTING_DOWN;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARAMETER_USAGE;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.verifyExpressionIsConstant;
@@ -90,6 +94,7 @@ public class SqlQueryManager
 
     private final int maxQueryHistory;
     private final Duration minQueryExpireAge;
+    private final int maxQueryLength;
 
     private final ConcurrentMap<QueryId, QueryExecution> queries = new ConcurrentHashMap<>();
     private final Queue<QueryExecution> expirationQueue = new LinkedBlockingQueue<>();
@@ -104,6 +109,12 @@ public class SqlQueryManager
 
     private final TransactionManager transactionManager;
 
+    private final AccessControl accessControl;
+
+    private final QueryIdGenerator queryIdGenerator;
+
+    private final SessionPropertyManager sessionPropertyManager;
+
     private final Map<Class<? extends Statement>, QueryExecutionFactory<?>> executionFactories;
 
     private final SqlQueryManagerStats stats = new SqlQueryManagerStats();
@@ -117,6 +128,9 @@ public class SqlQueryManager
             ClusterMemoryManager memoryManager,
             LocationFactory locationFactory,
             TransactionManager transactionManager,
+            AccessControl accessControl,
+            QueryIdGenerator queryIdGenerator,
+            SessionPropertyManager sessionPropertyManager,
             Map<Class<? extends Statement>, QueryExecutionFactory<?>> executionFactories)
     {
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
@@ -135,9 +149,16 @@ public class SqlQueryManager
 
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
 
+        this.accessControl = requireNonNull(accessControl, "accessControl is null");
+
+        this.queryIdGenerator = requireNonNull(queryIdGenerator, "queryIdGenerator is null");
+
+        this.sessionPropertyManager = requireNonNull(sessionPropertyManager, "sessionPropertyManager is null");
+
         this.minQueryExpireAge = config.getMinQueryExpireAge();
         this.maxQueryHistory = config.getMaxQueryHistory();
         this.clientTimeout = config.getClientTimeout();
+        this.maxQueryLength = config.getMaxQueryLength();
 
         queryManagementExecutor = Executors.newScheduledThreadPool(config.getQueryManagerExecutorPoolSize(), threadsNamed("query-management-%s"));
         queryManagementExecutorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) queryManagementExecutor);
@@ -276,16 +297,25 @@ public class SqlQueryManager
     }
 
     @Override
-    public QueryInfo createQuery(Session session, String query)
+    public QueryInfo createQuery(SessionSupplier sessionSupplier, String query)
     {
+        requireNonNull(sessionSupplier, "sessionFactory is null");
         requireNonNull(query, "query is null");
         checkArgument(!query.isEmpty(), "query must not be empty string");
 
-        QueryId queryId = session.getQueryId();
+        QueryId queryId = queryIdGenerator.createNextQueryId();
 
+        Session session = null;
         QueryExecution queryExecution;
         Statement statement;
         try {
+            session = sessionSupplier.createSession(queryId, transactionManager, accessControl, sessionPropertyManager);
+            if (query.length() > maxQueryLength) {
+                int queryLength = query.length();
+                query = query.substring(0, maxQueryLength);
+                throw new PrestoException(QUERY_TEXT_TOO_LARGE, format("Query text length (%s) exceeds the maximum length (%s)", queryLength, maxQueryLength));
+            }
+
             Statement wrappedStatement = sqlParser.createStatement(query);
             statement = unwrapExecuteStatement(wrappedStatement, sqlParser, session);
             List<Expression> parameters = wrappedStatement instanceof Execute ? ((Execute) wrappedStatement).getParameters() : emptyList();
@@ -306,6 +336,14 @@ public class SqlQueryManager
             // This is intentionally not a method, since after the state change listener is registered
             // it's not safe to do any of this, and we had bugs before where people reused this code in a method
             URI self = locationFactory.createQueryLocation(queryId);
+
+            // if session creation failed, create a minimal session object
+            if (session == null) {
+                session = Session.builder(new SessionPropertyManager())
+                        .setQueryId(queryId)
+                        .setIdentity(sessionSupplier.getIdentity())
+                        .build();
+            }
             QueryExecution execution = new FailedQueryExecution(queryId, query, session, self, transactionManager, queryExecutor, e);
 
             QueryInfo queryInfo = null;
@@ -501,17 +539,17 @@ public class SqlQueryManager
                 continue;
             }
 
-            if (isAbandoned(queryExecution)) {
+            if (isAbandoned(queryInfo)) {
                 log.info("Failing abandoned query %s", queryExecution.getQueryId());
                 queryExecution.fail(new PrestoException(ABANDONED_QUERY, format("Query %s has not been accessed since %s: currentTime %s", queryInfo.getQueryId(), queryInfo.getQueryStats().getLastHeartbeat(), DateTime.now())));
             }
         }
     }
 
-    private boolean isAbandoned(QueryExecution query)
+    private boolean isAbandoned(QueryInfo queryInfo)
     {
         DateTime oldestAllowedHeartbeat = DateTime.now().minus(clientTimeout.toMillis());
-        DateTime lastHeartbeat = query.getQueryInfo().getQueryStats().getLastHeartbeat();
+        DateTime lastHeartbeat = queryInfo.getQueryStats().getLastHeartbeat();
 
         return lastHeartbeat != null && lastHeartbeat.isBefore(oldestAllowedHeartbeat);
     }

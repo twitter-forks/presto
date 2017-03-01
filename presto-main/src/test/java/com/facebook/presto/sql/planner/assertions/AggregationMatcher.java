@@ -18,7 +18,6 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
-import com.facebook.presto.sql.tree.FunctionCall;
 
 import java.util.Collection;
 import java.util.List;
@@ -26,39 +25,44 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.sql.planner.assertions.MatchResult.NO_MATCH;
+import static com.facebook.presto.sql.planner.assertions.MatchResult.match;
+import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.MoreObjects.toStringHelper;
+import static com.google.common.base.Preconditions.checkState;
 
 public class AggregationMatcher
         implements Matcher
 {
-    private final List<FunctionCall> aggregations;
     private final Map<Symbol, Symbol> masks;
-    private final List<List<Symbol>> groupingSets;
+    private final List<List<String>> groupingSets;
     private final Optional<Symbol> groupId;
 
-    public AggregationMatcher(List<List<Symbol>> groupingSets, List<FunctionCall> aggregations, Map<Symbol, Symbol> masks, Optional<Symbol> groupId)
+    public AggregationMatcher(List<List<String>> groupingSets, Map<Symbol, Symbol> masks, Optional<Symbol> groupId)
     {
-        this.aggregations = aggregations;
         this.masks = masks;
         this.groupingSets = groupingSets;
         this.groupId = groupId;
     }
 
     @Override
-    public boolean matches(PlanNode node, Session session, Metadata metadata, ExpressionAliases expressionAliases)
+    public boolean shapeMatches(PlanNode node)
     {
-        if (!(node instanceof AggregationNode)) {
-            return false;
-        }
+        return node instanceof AggregationNode;
+    }
 
+    @Override
+    public MatchResult detailMatches(PlanNode node, Session session, Metadata metadata, SymbolAliases symbolAliases)
+    {
+        checkState(shapeMatches(node), "Plan testing framework error: shapeMatches returned false in detailMatches in %s", this.getClass().getName());
         AggregationNode aggregationNode = (AggregationNode) node;
 
         if (groupId.isPresent() != aggregationNode.getGroupIdSymbol().isPresent()) {
-            return false;
+            return NO_MATCH;
         }
 
         if (groupingSets.size() != aggregationNode.getGroupingSets().size()) {
-            return false;
+            return NO_MATCH;
         }
 
         List<Symbol> aggregationsWithMask = aggregationNode.getAggregations()
@@ -69,40 +73,39 @@ public class AggregationMatcher
                 .collect(Collectors.toList());
 
         if (aggregationsWithMask.size() != masks.keySet().size()) {
-            return false;
+            return NO_MATCH;
         }
 
         for (Symbol symbol : aggregationsWithMask) {
             if (!masks.keySet().contains(symbol)) {
-                return false;
+                return NO_MATCH;
             }
         }
 
         for (int i = 0; i < groupingSets.size(); i++) {
-            if (!matches(groupingSets.get(i), aggregationNode.getGroupingSets().get(i))) {
-                return false;
+            if (!matches(groupingSets.get(i), aggregationNode.getGroupingSets().get(i), symbolAliases)) {
+                return NO_MATCH;
             }
         }
 
-        if (!matches(aggregations, aggregationNode.getAggregations().values().stream().collect(Collectors.toList()))) {
-            return false;
-        }
-
-        return true;
+        return match();
     }
 
-    static <T> boolean matches(Collection<T> expected, Collection<T> actual)
+    static boolean matches(Collection<String> expectedAliases, Collection<Symbol> actualSymbols, SymbolAliases symbolAliases)
     {
-        if (expected.size() != actual.size()) {
+        if (expectedAliases.size() != actualSymbols.size()) {
             return false;
         }
 
-        for (T symbol : expected) {
-            if (!actual.contains(symbol)) {
+        List<Symbol> expectedSymbols = expectedAliases
+                .stream()
+                .map(alias -> new Symbol(symbolAliases.get(alias).getName()))
+                .collect(toImmutableList());
+        for (Symbol symbol : expectedSymbols) {
+            if (!actualSymbols.contains(symbol)) {
                 return false;
             }
         }
-
         return true;
     }
 
@@ -111,7 +114,6 @@ public class AggregationMatcher
     {
         return toStringHelper(this)
                 .add("groupingSets", groupingSets)
-                .add("aggregations", aggregations)
                 .add("masks", masks)
                 .add("groudId", groupId)
                 .toString();
