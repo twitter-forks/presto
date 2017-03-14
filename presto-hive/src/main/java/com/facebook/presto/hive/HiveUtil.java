@@ -257,6 +257,10 @@ public final class HiveUtil
             return true;
         }
 
+        if (inputFormat.getClass().getSimpleName().equals("HiveMultiInputFormat")) {
+            return false;
+        }
+
         // use reflection to get isSplittable method on FileInputFormat
         Method method = null;
         for (Class<?> clazz = inputFormat.getClass(); clazz != null; clazz = clazz.getSuperclass()) {
