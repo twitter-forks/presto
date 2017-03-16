@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.157-tw-0.30</version>
+        <version>0.166-tw-0.31</version>
     </parent>
 
     <artifactId>presto-docs</artifactId>
@@ -45,7 +45,7 @@
 
         <plugins>
             <plugin>
-                <groupId>kr.motd.maven</groupId>
+                <groupId>io.airlift.maven.plugins</groupId>
                 <artifactId>sphinx-maven-plugin</artifactId>
                 <configuration>
                     <fork>true</fork>

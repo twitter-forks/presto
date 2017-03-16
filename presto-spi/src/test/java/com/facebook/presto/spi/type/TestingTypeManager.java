@@ -51,13 +51,7 @@ public class TestingTypeManager
     @Override
     public List<Type> getTypes()
     {
-        return ImmutableList.<Type>of(BOOLEAN, BIGINT, DOUBLE, VARCHAR, VARBINARY, TIMESTAMP, DATE, ID, HYPER_LOG_LOG);
-    }
-
-    @Override
-    public Optional<Type> getCommonSuperType(List<? extends Type> types)
-    {
-        throw new UnsupportedOperationException();
+        return ImmutableList.of(BOOLEAN, BIGINT, DOUBLE, VARCHAR, VARBINARY, TIMESTAMP, DATE, ID, HYPER_LOG_LOG);
     }
 
     @Override

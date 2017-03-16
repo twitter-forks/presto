@@ -43,6 +43,7 @@ import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.ViewNotFoundException;
 import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
@@ -71,7 +72,9 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.LongConsumer;
 
+import static com.facebook.presto.raptor.RaptorBucketFunction.validateBucketType;
 import static com.facebook.presto.raptor.RaptorColumnHandle.BUCKET_NUMBER_COLUMN_NAME;
 import static com.facebook.presto.raptor.RaptorColumnHandle.SHARD_UUID_COLUMN_NAME;
 import static com.facebook.presto.raptor.RaptorColumnHandle.SHARD_UUID_COLUMN_TYPE;
@@ -104,13 +107,13 @@ import static com.facebook.presto.spi.StandardErrorCode.INVALID_TABLE_PROPERTY;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.block.SortOrder.ASC_NULLS_FIRST;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static io.airlift.json.JsonCodec.jsonCodec;
 import static java.lang.String.format;
 import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
@@ -122,28 +125,33 @@ public class RaptorMetadata
 {
     private static final Logger log = Logger.get(RaptorMetadata.class);
 
+    private static final JsonCodec<ShardInfo> SHARD_INFO_CODEC = jsonCodec(ShardInfo.class);
+    private static final JsonCodec<ShardDelta> SHARD_DELTA_CODEC = jsonCodec(ShardDelta.class);
+
     private final IDBI dbi;
     private final MetadataDao dao;
     private final ShardManager shardManager;
-    private final JsonCodec<ShardInfo> shardInfoCodec;
-    private final JsonCodec<ShardDelta> shardDeltaCodec;
     private final String connectorId;
+    private final LongConsumer beginDeleteForTableId;
 
     private final AtomicReference<Long> currentTransactionId = new AtomicReference<>();
+
+    public RaptorMetadata(String connectorId, IDBI dbi, ShardManager shardManager)
+    {
+        this(connectorId, dbi, shardManager, tableId -> { });
+    }
 
     public RaptorMetadata(
             String connectorId,
             IDBI dbi,
             ShardManager shardManager,
-            JsonCodec<ShardInfo> shardInfoCodec,
-            JsonCodec<ShardDelta> shardDeltaCodec)
+            LongConsumer beginDeleteForTableId)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.dbi = requireNonNull(dbi, "dbi is null");
         this.dao = onDemandDao(dbi, MetadataDao.class);
         this.shardManager = requireNonNull(shardManager, "shardManager is null");
-        this.shardInfoCodec = requireNonNull(shardInfoCodec, "shardInfoCodec is null");
-        this.shardDeltaCodec = requireNonNull(shardDeltaCodec, "shardDeltaCodec is null");
+        this.beginDeleteForTableId = requireNonNull(beginDeleteForTableId, "beginDeleteForTableId is null");
     }
 
     @Override
@@ -297,6 +305,7 @@ public class RaptorMetadata
         }
 
         List<RaptorColumnHandle> bucketColumnHandles = getBucketColumnHandles(handle.getTableId());
+
         RaptorPartitioningHandle partitioning = getPartitioningHandle(handle.getDistributionId().getAsLong());
 
         boolean oneSplitPerBucket = handle.getBucketCount().getAsInt() >= getOneSplitPerBucketThreshold(session);
@@ -354,9 +363,7 @@ public class RaptorMetadata
         }
         ImmutableList.Builder<Type> bucketColumnTypes = ImmutableList.builder();
         for (RaptorColumnHandle column : bucketColumnHandles) {
-            if (!column.getColumnType().equals(BIGINT)) {
-                throw new PrestoException(NOT_SUPPORTED, "Bucketing is only supported for BIGINT columns");
-            }
+            validateBucketType(column.getColumnType());
             bucketColumnTypes.add(column.getColumnType());
         }
 
@@ -574,7 +581,7 @@ public class RaptorMetadata
     }
 
     @Override
-    public void finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle outputTableHandle, Collection<Slice> fragments)
+    public Optional<ConnectorOutputMetadata> finishCreateTable(ConnectorSession session, ConnectorOutputTableHandle outputTableHandle, Collection<Slice> fragments)
     {
         RaptorOutputTableHandle table = checkType(outputTableHandle, RaptorOutputTableHandle.class, "outputTableHandle");
         long transactionId = table.getTransactionId();
@@ -619,6 +626,8 @@ public class RaptorMetadata
         shardManager.commitShards(transactionId, newTableId, columns, parseFragments(fragments), Optional.empty(), updateTime);
 
         clearRollback();
+
+        return Optional.empty();
     }
 
     @Override
@@ -675,7 +684,7 @@ public class RaptorMetadata
     }
 
     @Override
-    public void finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
+    public Optional<ConnectorOutputMetadata> finishInsert(ConnectorSession session, ConnectorInsertTableHandle insertHandle, Collection<Slice> fragments)
     {
         RaptorInsertTableHandle handle = checkType(insertHandle, RaptorInsertTableHandle.class, "insertHandle");
         long transactionId = handle.getTransactionId();
@@ -687,6 +696,8 @@ public class RaptorMetadata
         shardManager.commitShards(transactionId, tableId, columns, parseFragments(fragments), externalBatchId, updateTime);
 
         clearRollback();
+
+        return Optional.empty();
     }
 
     @Override
@@ -699,6 +710,8 @@ public class RaptorMetadata
     public ConnectorTableHandle beginDelete(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
         RaptorTableHandle handle = checkType(tableHandle, RaptorTableHandle.class, "tableHandle");
+
+        beginDeleteForTableId.accept(handle.getTableId());
 
         long transactionId = shardManager.beginTransaction();
 
@@ -732,7 +745,7 @@ public class RaptorMetadata
         ImmutableList.Builder<ShardInfo> newShardsBuilder = ImmutableList.builder();
 
         fragments.stream()
-                .map(fragment -> shardDeltaCodec.fromJson(fragment.getBytes()))
+                .map(fragment -> SHARD_DELTA_CODEC.fromJson(fragment.getBytes()))
                 .forEach(delta -> {
                     oldShardUuidsBuilder.addAll(delta.getOldShardUuids());
                     newShardsBuilder.addAll(delta.getNewShards());
@@ -840,10 +853,10 @@ public class RaptorMetadata
         return new RaptorColumnHandle(connectorId, tableColumn.getColumnName(), tableColumn.getColumnId(), tableColumn.getDataType());
     }
 
-    private Collection<ShardInfo> parseFragments(Collection<Slice> fragments)
+    private static Collection<ShardInfo> parseFragments(Collection<Slice> fragments)
     {
         return fragments.stream()
-                .map(fragment -> shardInfoCodec.fromJson(fragment.getBytes()))
+                .map(fragment -> SHARD_INFO_CODEC.fromJson(fragment.getBytes()))
                 .collect(toList());
     }
 

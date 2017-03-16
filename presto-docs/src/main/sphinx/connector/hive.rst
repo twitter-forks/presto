@@ -31,8 +31,10 @@ The following file types are supported for the Hive connector:
 
 * ORC
 * Parquet
+* Avro
 * RCFile
 * SequenceFile
+* JSON
 * Text
 
 Configuration
@@ -205,7 +207,9 @@ Property Name                                Description
 
 ``hive.s3.endpoint``                         The S3 storage endpoint server. This can be used to
                                              connect to an S3-compatible storage system instead
-                                             of AWS.
+                                             of AWS. When using v4 signatures, it is recommended to
+                                             set this to the AWS region-specific endpoint
+                                             (e.g., ``http[s]://<bucket>.s3-<AWS-region>.amazonaws.com``).
 
 ``hive.s3.signer-type``                      Specify a different signer type for S3-compatible storage.
                                              Example: ``S3SignerType`` for v2 signer type
@@ -400,7 +404,7 @@ existing data in S3::
 Drop the external table ``request_logs``. This only drops the metadata
 for the table. The referenced data directory is not deleted::
 
-    DROP hive.web.request_logs
+    DROP TABLE hive.web.request_logs
 
 Drop a schema::
 

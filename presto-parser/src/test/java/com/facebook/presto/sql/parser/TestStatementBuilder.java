@@ -128,7 +128,7 @@ public class TestStatementBuilder
         printStatement("select * from a.b.c");
         printStatement("select * from a.b.c.e.f.g");
 
-        printStatement("select \"TOTALPRICE\" \"my price\" from \"ORDERS\"");
+        printStatement("select \"TOTALPRICE\" \"my price\" from \"$MY\"\"ORDERS\"");
 
         printStatement("select * from foo tablesample system (10+1)");
         printStatement("select * from foo tablesample system (10) join bar tablesample bernoulli (30) on a.id = b.id");
@@ -189,6 +189,7 @@ public class TestStatementBuilder
         printStatement("alter schema foo.bar rename to baz");
 
         printStatement("create table test (a boolean, b bigint, c double, d varchar, e timestamp)");
+        printStatement("create table test (a boolean, b bigint comment 'test')");
         printStatement("create table if not exists baz (a timestamp, b varchar)");
         printStatement("create table test (a boolean, b bigint) with (a = 'apple', b = 'banana')");
         printStatement("drop table test");

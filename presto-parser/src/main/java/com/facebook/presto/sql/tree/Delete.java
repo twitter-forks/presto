@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -20,7 +23,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class Delete
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final Table table;
     private final Optional<Expression> where;
@@ -56,6 +59,15 @@ public class Delete
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitDelete(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        ImmutableList.Builder<Node> nodes = ImmutableList.builder();
+        nodes.add(table);
+        where.ifPresent(nodes::add);
+        return nodes.build();
     }
 
     @Override

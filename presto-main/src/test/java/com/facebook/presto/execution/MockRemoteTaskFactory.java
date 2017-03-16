@@ -17,8 +17,10 @@ import com.facebook.presto.OutputBuffers;
 import com.facebook.presto.Session;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.execution.NodeTaskMap.PartitionedSplitCountTracker;
+import com.facebook.presto.execution.buffer.LazyOutputBuffer;
 import com.facebook.presto.execution.buffer.OutputBuffer;
-import com.facebook.presto.execution.buffer.SharedOutputBuffer;
+import com.facebook.presto.execution.buffer.PagesSerdeFactory;
+import com.facebook.presto.execution.buffer.TestingPagesSerdeFactory;
 import com.facebook.presto.memory.MemoryPool;
 import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.metadata.Split;
@@ -28,7 +30,6 @@ import com.facebook.presto.operator.TaskStats;
 import com.facebook.presto.spi.Node;
 import com.facebook.presto.spi.memory.MemoryPoolId;
 import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanFragment;
@@ -104,7 +105,7 @@ public class MockRemoteTaskFactory
                         Optional.empty(),
                         TupleDomain.all(),
                         null),
-                ImmutableMap.<Symbol, Type>of(symbol, VARCHAR),
+                ImmutableMap.of(symbol, VARCHAR),
                 SOURCE_DISTRIBUTION,
                 ImmutableList.of(sourceId),
                 new PartitioningScheme(Partitioning.create(SINGLE_DISTRIBUTION, ImmutableList.of()), ImmutableList.of(symbol)));
@@ -133,6 +134,8 @@ public class MockRemoteTaskFactory
     public static final class MockRemoteTask
             implements RemoteTask
     {
+        private static final PagesSerdeFactory PAGES_SERDE_FACTORY = new TestingPagesSerdeFactory();
+
         private final AtomicLong nextTaskInfoVersion = new AtomicLong(TaskStatus.STARTING_VERSION);
 
         private final URI location;
@@ -168,11 +171,18 @@ public class MockRemoteTaskFactory
 
             MemoryPool memoryPool = new MemoryPool(new MemoryPoolId("test"), new DataSize(1, GIGABYTE));
             MemoryPool memorySystemPool = new MemoryPool(new MemoryPoolId("testSystem"), new DataSize(1, GIGABYTE));
-            this.taskContext = new QueryContext(taskId.getQueryId(), new DataSize(1, MEGABYTE), memoryPool, memorySystemPool, executor).addTaskContext(taskStateMachine, TEST_SESSION, true, true);
+            QueryContext queryContext = new QueryContext(taskId.getQueryId(), new DataSize(1, MEGABYTE), memoryPool, memorySystemPool, executor);
+            this.taskContext = queryContext.addTaskContext(taskStateMachine, TEST_SESSION, true, true);
 
             this.location = URI.create("fake://task/" + taskId);
 
-            this.outputBuffer = new SharedOutputBuffer(taskId, TASK_INSTANCE_ID, executor, requireNonNull(new DataSize(1, BYTE), "maxBufferSize is null"));
+            this.outputBuffer = new LazyOutputBuffer(
+                    taskId,
+                    TASK_INSTANCE_ID,
+                    executor,
+                    requireNonNull(new DataSize(1, BYTE), "maxBufferSize is null"),
+                    new UpdateSystemMemory(queryContext));
+
             this.fragment = requireNonNull(fragment, "fragment is null");
             this.nodeId = requireNonNull(nodeId, "nodeId is null");
             splits.putAll(initialSplits);
@@ -205,7 +215,7 @@ public class MockRemoteTaskFactory
             return new TaskInfo(new TaskStatus(taskStateMachine.getTaskId(), TASK_INSTANCE_ID, nextTaskInfoVersion.getAndIncrement(), state, location, failures, 0, 0, new DataSize(0, BYTE)),
                     DateTime.now(),
                     outputBuffer.getInfo(),
-                    ImmutableSet.<PlanNodeId>of(),
+                    ImmutableSet.of(),
                     taskContext.getTaskStats(),
                     true,
                     false);
@@ -357,6 +367,28 @@ public class MockRemoteTaskFactory
                 return 0;
             }
             return getPartitionedSplitCount() - runningDrivers;
+        }
+
+        private static final class UpdateSystemMemory
+                implements SystemMemoryUsageListener
+        {
+            private final QueryContext queryContext;
+
+            public UpdateSystemMemory(QueryContext queryContext)
+            {
+                this.queryContext = requireNonNull(queryContext, "queryContext is null");
+            }
+
+            @Override
+            public void updateSystemMemoryUsage(long deltaMemoryInBytes)
+            {
+                if (deltaMemoryInBytes > 0) {
+                    queryContext.reserveSystemMemory(deltaMemoryInBytes);
+                }
+                else {
+                    queryContext.freeSystemMemory(-deltaMemoryInBytes);
+                }
+            }
         }
     }
 }

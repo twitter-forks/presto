@@ -320,7 +320,7 @@ public class Driver
         try (DriverLockResult lockResult = tryLockAndProcessPendingStateChanges(100, TimeUnit.MILLISECONDS)) {
             if (!lockResult.wasAcquired()) {
                 // this is unlikely to happen unless the driver is being
-                // destroyed and in that case the caller should notice notice
+                // destroyed and in that case the caller should notice
                 // this state change by calling isFinished
                 return NOT_BLOCKED;
             }
@@ -483,6 +483,14 @@ public class Driver
                             driverContext.getTaskId());
                 }
             }
+            if (driverContext.getMemoryUsage() > 0) {
+                log.error("Driver still has memory reserved after freeing all operator memory. Freeing it.");
+            }
+            if (driverContext.getSystemMemoryUsage() > 0) {
+                log.error("Driver still has system memory reserved after freeing all operator memory. Freeing it.");
+            }
+            driverContext.freeMemory(driverContext.getMemoryUsage());
+            driverContext.freeSystemMemory(driverContext.getSystemMemoryUsage());
             driverContext.finished();
         }
         catch (Throwable t) {

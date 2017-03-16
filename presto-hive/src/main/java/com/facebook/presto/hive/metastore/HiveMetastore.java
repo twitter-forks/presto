@@ -17,19 +17,17 @@ import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.Partition;
 import org.apache.hadoop.hive.metastore.api.PrivilegeGrantInfo;
 import org.apache.hadoop.hive.metastore.api.Table;
-import org.weakref.jmx.Managed;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.facebook.presto.hive.metastore.Database.DEFAULT_DATABASE_NAME;
 import static org.apache.hadoop.hive.metastore.api.PrincipalType.ROLE;
 import static org.apache.hadoop.hive.metastore.api.PrincipalType.USER;
 
 public interface HiveMetastore
 {
-    String DEFAULT_DATABASE_NAME = "default";
-
     void createDatabase(Database database);
 
     void dropDatabase(String databaseName);
@@ -41,9 +39,6 @@ public interface HiveMetastore
     void dropTable(String databaseName, String tableName, boolean deleteData);
 
     void alterTable(String databaseName, String tableName, Table table);
-
-    @Managed
-    void flushCache();
 
     List<String> getAllDatabases();
 

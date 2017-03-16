@@ -41,8 +41,10 @@ public interface SchemaDao
             "  row_count BIGINT NOT NULL,\n" +
             "  compressed_size BIGINT NOT NULL,\n" +
             "  uncompressed_size BIGINT NOT NULL,\n" +
+            "  maintenance_blocked DATETIME,\n" +
             "  UNIQUE (schema_name, table_name),\n" +
             "  UNIQUE (distribution_id, table_id),\n" +
+            "  UNIQUE (maintenance_blocked, table_id),\n" +
             "  FOREIGN KEY (distribution_id) REFERENCES distributions (distribution_id)\n" +
             ")")
     void createTableTables();
@@ -116,7 +118,8 @@ public interface SchemaDao
             "  successful BOOLEAN,\n" +
             "  start_time DATETIME NOT NULL,\n" +
             "  end_time DATETIME,\n" +
-            "  UNIQUE (successful, start_time, transaction_id)\n" +
+            "  UNIQUE (successful, start_time, transaction_id),\n" +
+            "  UNIQUE (end_time, transaction_id, successful)\n" +
             ")")
     void createTableTransactions();
 

@@ -22,8 +22,10 @@ import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.ExistsPredicate;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
+import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.Join;
+import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression;
 import com.facebook.presto.sql.tree.Query;
@@ -43,6 +45,8 @@ import com.google.common.collect.ListMultimap;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +89,7 @@ public class Analysis
     private final Set<Expression> typeOnlyCoercions = newIdentityHashSet();
     private final IdentityHashMap<Relation, Type[]> relationCoercions = new IdentityHashMap<>();
     private final IdentityHashMap<FunctionCall, Signature> functionSignature = new IdentityHashMap<>();
+    private final IdentityHashMap<Identifier, LambdaArgumentDeclaration> lambdaArgumentReferences = new IdentityHashMap<>();
 
     private final IdentityHashMap<Field, ColumnHandle> columns = new IdentityHashMap<>();
 
@@ -100,6 +105,9 @@ public class Analysis
 
     // for describe input and describe output
     private final boolean isDescribe;
+
+    // for recursive view detection
+    private final Deque<Table> tablesForView = new ArrayDeque<>();
 
     public Analysis(Statement root, List<Expression> parameters, boolean isDescribe)
     {
@@ -193,6 +201,21 @@ public class Analysis
     public Type getCoercion(Expression expression)
     {
         return coercions.get(expression);
+    }
+
+    public void addLambdaArgumentReferences(IdentityHashMap<Identifier, LambdaArgumentDeclaration> lambdaArgumentReferences)
+    {
+        this.lambdaArgumentReferences.putAll(lambdaArgumentReferences);
+    }
+
+    public LambdaArgumentDeclaration getLambdaArgumentReference(Identifier identifier)
+    {
+        return lambdaArgumentReferences.get(identifier);
+    }
+
+    public Map<Identifier, LambdaArgumentDeclaration> getLambdaArgumentReferences()
+    {
+        return lambdaArgumentReferences;
     }
 
     public void setGroupingSets(QuerySpecification node, List<List<Expression>> expressions)
@@ -494,6 +517,21 @@ public class Analysis
         requireNonNull(query, "query is null");
 
         namedQueries.put(tableReference, query);
+    }
+
+    public void registerTableForView(Table tableReference)
+    {
+        tablesForView.push(requireNonNull(tableReference, "table is null"));
+    }
+
+    public void unregisterTableForView()
+    {
+        tablesForView.pop();
+    }
+
+    public boolean hasTableInView(Table tableReference)
+    {
+        return tablesForView.contains(tableReference);
     }
 
     public void setSampleRatio(SampledRelation relation, double ratio)

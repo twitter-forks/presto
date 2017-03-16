@@ -496,7 +496,7 @@ public class MongoSession
                 builder.add(metadata);
             }
             else {
-                log.debug("Unable to guess field type from %s : %s", value.getClass().getName(), value);
+                log.debug("Unable to guess field type from %s : %s", value == null ? "null" : value.getClass().getName(), value);
             }
         }
 
@@ -505,6 +505,10 @@ public class MongoSession
 
     private Optional<TypeSignature> guessFieldType(Object value)
     {
+        if (value == null) {
+            return Optional.empty();
+        }
+
         TypeSignature typeSignature = null;
         if (value instanceof String) {
             typeSignature = createUnboundedVarcharType().getTypeSignature();

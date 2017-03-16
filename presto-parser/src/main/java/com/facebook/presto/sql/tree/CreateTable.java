@@ -25,7 +25,7 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class CreateTable
-        extends DataDefinitionStatement
+        extends Statement
 {
     private final QualifiedName name;
     private final List<TableElement> elements;
@@ -75,6 +75,15 @@ public class CreateTable
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitCreateTable(this, context);
+    }
+
+    @Override
+    public List<Node> getChildren()
+    {
+        return ImmutableList.<Node>builder()
+                .addAll(elements)
+                .addAll(properties.values())
+                .build();
     }
 
     @Override
