@@ -27,6 +27,7 @@ import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.twitter.hive.PooledHiveMetastoreClientFactory;
+import com.facebook.presto.twitter.hive.thrift.ThriftHiveRecordCursorProvider;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Provides;

@@ -30,12 +30,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class DummyClass implements TBase<DummyClass, DummyClass.Fields>
+public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRow.Fields>
 {
-    private static final Logger log = Logger.get(DummyClass.class);
-    public final Map<Short, Object> values = new HashMap<>();
+    private static final Logger log = Logger.get(ThriftGeneralRow.class);
+    private final Map<Short, Object> values = new HashMap<>();
 
-    public DummyClass() {}
+    public ThriftGeneralRow() {}
+
+    public ThriftGeneralRow(Map<Short, Object> values)
+    {
+        this.values.putAll(values);
+    }
 
     public class Fields implements TFieldIdEnum
     {
@@ -59,43 +64,16 @@ public class DummyClass implements TBase<DummyClass, DummyClass.Fields>
         }
     }
 
-    public DummyClass deepCopy()
-    {
-        return new DummyClass();
-    }
-
-    public void clear() {}
-
-    public Fields fieldForId(int fieldId)
-    {
-        return new Fields((short) fieldId, "dummy");
-    }
-
-    public Object getFieldValue(Fields field)
-    {
-        return values.get(field.thriftId);
-    }
-
-    public boolean isSet(Fields field)
-    {
-        return values.containsKey(field.getThriftFieldId());
-    }
-
     public void read(TProtocol iprot) throws TException
     {
         TField field;
-        // int i = 0;
         iprot.readStructBegin();
         while (true) {
             field = iprot.readFieldBegin();
             if (field.type == TType.STOP) {
                 break;
             }
-            // NOTES: The thrift id may not the same of hive table column number
-            // We can either fill the hive table with discontinued id or discard
-            // the field.id here and use a counter as its column number. Like:
-            // values.put((short) ++i, readElem(iprot, field.type));
-            values.put((short) (field.id - 1), readElem(iprot, field.type));
+            values.put(field.id, readElem(iprot, field.type));
             iprot.readFieldEnd();
         }
         iprot.readStructEnd();
@@ -135,7 +113,7 @@ public class DummyClass implements TBase<DummyClass, DummyClass.Fields>
 
     private Object readStruct(TProtocol iprot) throws TException
     {
-        DummyClass elem = new DummyClass();
+        ThriftGeneralRow elem = new ThriftGeneralRow();
         elem.read(iprot);
         return elem;
     }
@@ -173,18 +151,45 @@ public class DummyClass implements TBase<DummyClass, DummyClass.Fields>
         return mapValue;
     }
 
+    public Object getFieldValueForHiveIndex(int hiveIndex)
+    {
+        return values.get((short) (hiveIndex + 1));
+    }
+
+    public ThriftGeneralRow deepCopy()
+    {
+        return new ThriftGeneralRow(values);
+    }
+
+    public void clear() {}
+
+    public Fields fieldForId(int fieldId)
+    {
+        return new Fields((short) fieldId, "dummy");
+    }
+
+    public Object getFieldValue(Fields field)
+    {
+        return values.get(field.thriftId);
+    }
+
+    public boolean isSet(Fields field)
+    {
+        return values.containsKey(field.getThriftFieldId());
+    }
+
     public void setFieldValue(Fields field, Object value)
     {
-        throw new UnsupportedOperationException("DummyClass.setFieldValue is not supported.");
+        throw new UnsupportedOperationException("ThriftGeneralRow.setFieldValue is not supported.");
     }
 
     public void write(TProtocol oprot)
     {
-        throw new UnsupportedOperationException("DummyClass.write is not supported.");
+        throw new UnsupportedOperationException("ThriftGeneralRow.write is not supported.");
     }
 
-    public int compareTo(DummyClass other)
+    public int compareTo(ThriftGeneralRow other)
     {
-        throw new UnsupportedOperationException("Dummy.compareTo is not supported.");
+        throw new UnsupportedOperationException("ThriftGeneralRow.compareTo is not supported.");
     }
 }

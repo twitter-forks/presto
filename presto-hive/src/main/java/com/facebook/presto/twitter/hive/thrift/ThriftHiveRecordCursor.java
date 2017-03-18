@@ -11,8 +11,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive;
+package com.facebook.presto.twitter.hive.thrift;
 
+import com.facebook.presto.hive.HiveColumnHandle;
+import com.facebook.presto.hive.HiveType;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
@@ -23,16 +25,14 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.twitter.hive.thrift.DummyClass;
 import com.google.common.base.Throwables;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.type.HiveChar;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveVarchar;
-import org.apache.hadoop.hive.serde2.Deserializer;
-import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.RecordReader;
 import org.joda.time.DateTimeZone;
@@ -50,7 +50,6 @@ import java.util.concurrent.TimeUnit;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
 import static com.facebook.presto.hive.HiveUtil.closeWithSuppression;
-import static com.facebook.presto.hive.HiveUtil.getDeserializer;
 import static com.facebook.presto.hive.HiveUtil.isArrayType;
 import static com.facebook.presto.hive.HiveUtil.isMapType;
 import static com.facebook.presto.hive.HiveUtil.isRowType;
@@ -86,8 +85,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final K key;
     private final V value;
 
-    @SuppressWarnings("deprecation")
-    private final Deserializer deserializer;
+    private final ThriftGeneralDeserializer deserializer;
 
     private final Type[] types;
     private final HiveType[] hiveTypes;
@@ -105,7 +103,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final DateTimeZone hiveStorageTimeZone;
 
     private long completedBytes;
-    private Object rowData;
+    private ThriftGeneralRow rowData;
     private boolean closed;
 
     public ThriftHiveRecordCursor(
@@ -128,7 +126,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         this.value = recordReader.createValue();
         this.hiveStorageTimeZone = hiveStorageTimeZone;
 
-        this.deserializer = getDeserializer(splitSchema);
+        this.deserializer = new ThriftGeneralDeserializer();
+        deserializer.initialize(new Configuration(false), splitSchema);
 
         int size = columns.size();
 
@@ -209,7 +208,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
 
             return true;
         }
-        catch (IOException | SerDeException | RuntimeException e) {
+        catch (IOException | RuntimeException e) {
             closeWithSuppression(this, e);
             throw new PrestoException(HIVE_CURSOR_ERROR, e);
         }
@@ -231,8 +230,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -259,8 +257,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -318,8 +315,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -346,8 +342,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -393,8 +388,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -430,8 +424,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        DummyClass dummy = (DummyClass) rowData;
-        Object fieldValue = dummy.values.get((short) hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -629,7 +622,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
 
         List<Type> typeParameters = type.getTypeParameters();
-        Map<Short, Object> allValues = ((DummyClass) object).values;
+        ThriftGeneralRow structData = (ThriftGeneralRow) object;
         BlockBuilder currentBuilder;
         if (builder != null) {
             currentBuilder = builder.beginBlockEntry();
@@ -639,8 +632,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
 
         for (int i = 0; i < typeParameters.size(); i++) {
-            Object field = allValues.get((short) i);
-            serializeObject(typeParameters.get(i), currentBuilder, field, hiveStorageTimeZone);
+            Object fieldValue = structData.getFieldValueForHiveIndex(i);
+            serializeObject(typeParameters.get(i), currentBuilder, fieldValue, hiveStorageTimeZone);
         }
 
         if (builder != null) {

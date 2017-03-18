@@ -11,8 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.hive;
+package com.facebook.presto.twitter.hive.thrift;
 
+import com.facebook.presto.hive.HdfsEnvironment;
+import com.facebook.presto.hive.HiveColumnHandle;
+import com.facebook.presto.hive.HiveRecordCursorProvider;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -33,6 +36,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.facebook.presto.hive.HiveUtil.createRecordReader;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static java.util.Objects.requireNonNull;
 
@@ -40,7 +44,8 @@ public class ThriftHiveRecordCursorProvider
         implements HiveRecordCursorProvider
 {
     private static final Set<String> THRIFT_SERDE_CLASS_NAMES = ImmutableSet.<String>builder()
-            .add("com.twitter.elephantbird.hive.serde.ThriftSerDe")
+            .add("com.facebook.presto.twitter.hive.thrift.ThriftGeneralSerDe")
+            .add("com.facebook.presto.twitter.hive.thrift.ThriftGeneralDeserializer")
             .build();
     private final HdfsEnvironment hdfsEnvironment;
 
@@ -74,7 +79,7 @@ public class ThriftHiveRecordCursorProvider
         }
         else {
             recordReader = hdfsEnvironment.doAs(session.getUser(),
-                () -> HiveUtil.createRecordReader(configuration, path, start, length, schema, columns));
+                () -> createRecordReader(configuration, path, start, length, schema, columns));
         }
 
         return Optional.of(new ThriftHiveRecordCursor<>(

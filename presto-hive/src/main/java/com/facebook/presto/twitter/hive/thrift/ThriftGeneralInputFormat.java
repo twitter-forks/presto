@@ -11,14 +11,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.twitter.elephantbird.mapred.input;
+package com.facebook.presto.twitter.hive.thrift;
 
 import com.twitter.elephantbird.mapred.input.DeprecatedFileInputFormatWrapper;
 import com.twitter.elephantbird.mapreduce.input.MultiInputFormat;
 import com.twitter.elephantbird.mapreduce.io.BinaryWritable;
 import com.twitter.elephantbird.util.TypeRef;
-import io.airlift.log.Logger;
-import org.apache.hadoop.hive.serde.Constants;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputSplit;
@@ -28,31 +26,25 @@ import org.apache.hadoop.mapred.Reporter;
 
 import java.io.IOException;
 
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.HiveUtil.checkCondition;
+import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
+
 /**
  * Customized version of com.twitter.elephantbird.mapred.input.HiveMultiInputFormat
  */
 @SuppressWarnings("deprecation")
-public class HiveMultiInputFormat extends DeprecatedFileInputFormatWrapper<LongWritable, BinaryWritable>
+public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<LongWritable, BinaryWritable>
 {
-    private static final Logger log = Logger.get(HiveMultiInputFormat.class);
-
-    public HiveMultiInputFormat()
+    public ThriftGeneralInputFormat()
     {
         super(new MultiInputFormat());
     }
 
     private void initialize(FileSplit split, JobConf job) throws IOException
     {
-        log.info("Initializing HiveMultiInputFormat for " + split + " with job " + job);
-
-        String thriftClassName = null;
-
-        thriftClassName = job.get(Constants.SERIALIZATION_CLASS);
-
-        if (thriftClassName == null) {
-            throw new RuntimeException(
-                    "Required property " + Constants.SERIALIZATION_CLASS + " is null.");
-        }
+        String thriftClassName = job.get(SERIALIZATION_CLASS);
+        checkCondition(thriftClassName != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive deserializer property: %s", SERIALIZATION_CLASS);
 
         try {
             Class thriftClass = job.getClassByName(thriftClassName);

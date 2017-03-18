@@ -257,7 +257,7 @@ public final class HiveUtil
             return true;
         }
 
-        if (inputFormat.getClass().getSimpleName().equals("HiveMultiInputFormat")) {
+        if (inputFormat.getClass().getSimpleName().equals("ThriftGeneralInputFormat")) {
             return false;
         }
 
