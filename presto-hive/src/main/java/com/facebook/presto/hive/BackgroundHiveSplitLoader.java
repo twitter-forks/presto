@@ -24,6 +24,7 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat;
 import com.facebook.presto.twitter.hive.util.UgiUtils;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
@@ -368,6 +369,11 @@ public class BackgroundHiveSplitLoader
         if (!buckets.isEmpty()) {
             int bucketCount = buckets.get(0).getBucketCount();
             List<LocatedFileStatus> list = listAndSortBucketFiles(iterator, bucketCount);
+            if (inputFormat instanceof ThriftGeneralInputFormat) {
+                addThriftSplitsToQueue(list, partitionName, schema, partitionKeys, session, effectivePredicate, partition.getColumnCoercions());
+                return;
+            }
+
             List<Iterator<HiveSplit>> iteratorList = new ArrayList<>();
 
             for (HiveBucket bucket : buckets) {
@@ -425,6 +431,46 @@ public class BackgroundHiveSplitLoader
         }
 
         fileIterators.addLast(iterator);
+    }
+
+    private void addThriftSplitsToQueue(
+            List<LocatedFileStatus> files,
+            String partitionName,
+            Properties schema,
+            List<HivePartitionKey> partitionKeys,
+            ConnectorSession session,
+            TupleDomain<HiveColumnHandle> effectivePredicate,
+            Map<Integer, HiveType> columnCoercions)
+            throws IOException
+    {
+        for (LocatedFileStatus lfs : files) {
+            ThriftGeneralInputFormat targetInputFormat = new ThriftGeneralInputFormat();
+            Configuration targetConfiguration = hdfsEnvironment.getConfiguration(lfs.getPath());
+            JobConf targetJob = new JobConf(targetConfiguration);
+            targetJob.setInputFormat(ThriftGeneralInputFormat.class);
+            InputSplit[] targetSplits = targetInputFormat.getSplits(targetJob, 0);
+            for (InputSplit inputSplit : targetSplits) {
+                FileSplit split = (FileSplit) inputSplit;
+                FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), split.getPath());
+                FileStatus file = targetFilesystem.getFileStatus(split.getPath());
+                hiveSplitSource.addToQueue(createHiveSplitIterator(
+                        partitionName,
+                        file.getPath().toString(),
+                        targetFilesystem.getFileBlockLocations(file, split.getStart(), split.getLength()),
+                        split.getStart(),
+                        split.getLength(),
+                        schema,
+                        partitionKeys,
+                        false,
+                        session,
+                        OptionalInt.empty(),
+                        effectivePredicate,
+                        columnCoercions));
+                if (stopped) {
+                    return;
+                }
+            }
+        }
     }
 
     private void addToHiveSplitSourceRoundRobin(List<Iterator<HiveSplit>> iteratorList)
