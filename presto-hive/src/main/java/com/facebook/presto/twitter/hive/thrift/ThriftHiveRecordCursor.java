@@ -106,7 +106,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final ThriftFieldIdResolver thriftFieldIdResolver;
 
     private long completedBytes;
-    private ThriftGeneralRow rowData;
+    private ThriftGenericRow rowData;
     private boolean closed;
 
     public ThriftHiveRecordCursor(
@@ -634,7 +634,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
 
         List<Type> typeParameters = type.getTypeParameters();
-        ThriftGeneralRow structData = (ThriftGeneralRow) object;
+        ThriftGenericRow structData = (ThriftGenericRow) object;
         BlockBuilder currentBuilder;
         if (builder != null) {
             currentBuilder = builder.beginBlockEntry();

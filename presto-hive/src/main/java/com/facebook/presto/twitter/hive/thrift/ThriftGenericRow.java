@@ -30,14 +30,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRow.Fields>
+public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
 {
-    private static final Logger log = Logger.get(ThriftGeneralRow.class);
+    private static final Logger log = Logger.get(ThriftGenericRow.class);
     private final Map<Short, Object> values = new HashMap<>();
 
-    public ThriftGeneralRow() {}
+    public ThriftGenericRow() {}
 
-    public ThriftGeneralRow(Map<Short, Object> values)
+    public ThriftGenericRow(Map<Short, Object> values)
     {
         this.values.putAll(values);
     }
@@ -113,7 +113,7 @@ public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRo
 
     private Object readStruct(TProtocol iprot) throws TException
     {
-        ThriftGeneralRow elem = new ThriftGeneralRow();
+        ThriftGenericRow elem = new ThriftGenericRow();
         elem.read(iprot);
         return elem;
     }
@@ -156,9 +156,9 @@ public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRo
         return values.get(thriftId);
     }
 
-    public ThriftGeneralRow deepCopy()
+    public ThriftGenericRow deepCopy()
     {
-        return new ThriftGeneralRow(values);
+        return new ThriftGenericRow(values);
     }
 
     public void clear() {}
@@ -180,16 +180,16 @@ public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRo
 
     public void setFieldValue(Fields field, Object value)
     {
-        throw new UnsupportedOperationException("ThriftGeneralRow.setFieldValue is not supported.");
+        throw new UnsupportedOperationException("ThriftGenericRow.setFieldValue is not supported.");
     }
 
     public void write(TProtocol oprot)
     {
-        throw new UnsupportedOperationException("ThriftGeneralRow.write is not supported.");
+        throw new UnsupportedOperationException("ThriftGenericRow.write is not supported.");
     }
 
-    public int compareTo(ThriftGeneralRow other)
+    public int compareTo(ThriftGenericRow other)
     {
-        throw new UnsupportedOperationException("ThriftGeneralRow.compareTo is not supported.");
+        throw new UnsupportedOperationException("ThriftGenericRow.compareTo is not supported.");
     }
 }

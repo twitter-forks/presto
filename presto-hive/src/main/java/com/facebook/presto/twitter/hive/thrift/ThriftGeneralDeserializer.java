@@ -26,7 +26,7 @@ import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 public class ThriftGeneralDeserializer
 {
-    private static final String REQUIRED_SERIALIZATION_CLASS = "com.facebook.presto.twitter.hive.thrift.ThriftGeneralRow";
+    private static final String REQUIRED_SERIALIZATION_CLASS = "com.facebook.presto.twitter.hive.thrift.ThriftGenericRow";
 
     public void initialize(Configuration conf, Properties properties)
     {
@@ -36,9 +36,9 @@ public class ThriftGeneralDeserializer
         return;
     }
 
-    public ThriftGeneralRow deserialize(Writable writable)
+    public ThriftGenericRow deserialize(Writable writable)
     {
         checkCondition(writable instanceof ThriftWritable, HIVE_UNKNOWN_ERROR, "Not an instance of ThriftWritable: " + writable);
-        return (ThriftGeneralRow) ((ThriftWritable) writable).get();
+        return (ThriftGenericRow) ((ThriftWritable) writable).get();
     }
 }
