@@ -90,6 +90,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final Type[] types;
     private final HiveType[] hiveTypes;
     private final int[] hiveIndexs;
+    private final short[] thriftIds;
 
     private final boolean[] loaded;
     private final boolean[] booleans;
@@ -102,6 +103,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final long totalBytes;
     private final DateTimeZone hiveStorageTimeZone;
 
+    private final ThriftFieldIdResolver thriftFieldIdResolver;
+
     private long completedBytes;
     private ThriftGeneralRow rowData;
     private boolean closed;
@@ -112,19 +115,22 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             Properties splitSchema,
             List<HiveColumnHandle> columns,
             DateTimeZone hiveStorageTimeZone,
-            TypeManager typeManager)
+            TypeManager typeManager,
+            ThriftFieldIdResolver thriftFieldIdResolver)
     {
         requireNonNull(recordReader, "recordReader is null");
         checkArgument(totalBytes >= 0, "totalBytes is negative");
         requireNonNull(splitSchema, "splitSchema is null");
         requireNonNull(columns, "columns is null");
         requireNonNull(hiveStorageTimeZone, "hiveStorageTimeZone is null");
+        requireNonNull(thriftFieldIdResolver, "thriftFieldIdResolver is null");
 
         this.recordReader = recordReader;
         this.totalBytes = totalBytes;
         this.key = recordReader.createKey();
         this.value = recordReader.createValue();
         this.hiveStorageTimeZone = hiveStorageTimeZone;
+        this.thriftFieldIdResolver = thriftFieldIdResolver;
 
         this.deserializer = new ThriftGeneralDeserializer();
         deserializer.initialize(new Configuration(false), splitSchema);
@@ -134,6 +140,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         this.types = new Type[size];
         this.hiveTypes = new HiveType[size];
         this.hiveIndexs = new int[size];
+        this.thriftIds = new short[size];
 
         this.loaded = new boolean[size];
         this.booleans = new boolean[size];
@@ -151,6 +158,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             types[i] = typeManager.getType(column.getTypeSignature());
             hiveTypes[i] = column.getHiveType();
             hiveIndexs[i] = column.getHiveColumnIndex();
+            thriftIds[i] = thriftFieldIdResolver.getThriftId(hiveIndexs[i]);
         }
     }
 
@@ -230,7 +238,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -257,7 +265,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -315,7 +323,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -342,7 +350,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -388,7 +396,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
@@ -424,13 +432,14 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         loaded[column] = true;
 
-        Object fieldValue = rowData.getFieldValueForHiveIndex(hiveIndexs[column]);
+        Object fieldValue = rowData.getFieldValueForThriftId(thriftIds[column]);
 
         if (fieldValue == null) {
             nulls[column] = true;
         }
         else {
-            objects[column] = getBlockObject(types[column], fieldValue, hiveStorageTimeZone);
+            ThriftFieldIdResolver resolver = thriftFieldIdResolver.getNestedResolver(hiveIndexs[column]);
+            objects[column] = getBlockObject(types[column], resolver, fieldValue, hiveStorageTimeZone);
             nulls[column] = false;
         }
     }
@@ -520,30 +529,30 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
     }
 
-    private static Block getBlockObject(Type type, Object object, DateTimeZone hiveStorageTimeZone)
+    private static Block getBlockObject(Type type, ThriftFieldIdResolver resolver, Object object, DateTimeZone hiveStorageTimeZone)
     {
-        return requireNonNull(serializeObject(type, null, object, hiveStorageTimeZone), "serialized result is null");
+        return requireNonNull(serializeObject(type, resolver, null, object, hiveStorageTimeZone), "serialized result is null");
     }
 
-    private static Block serializeObject(Type type, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
+    private static Block serializeObject(Type type, ThriftFieldIdResolver resolver, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
     {
         if (!isStructuralType(type)) {
-            serializePrimitive(type, builder, object, hiveStorageTimeZone);
+            serializePrimitive(type, resolver, builder, object, hiveStorageTimeZone);
             return null;
         }
         else if (isArrayType(type)) {
-            return serializeList(type, builder, object, hiveStorageTimeZone);
+            return serializeList(type, resolver, builder, object, hiveStorageTimeZone);
         }
         else if (isMapType(type)) {
-            return serializeMap(type, builder, object, hiveStorageTimeZone);
+            return serializeMap(type, resolver, builder, object, hiveStorageTimeZone);
         }
         else if (isRowType(type)) {
-            return serializeStruct(type, builder, object, hiveStorageTimeZone);
+            return serializeStruct(type, resolver, builder, object, hiveStorageTimeZone);
         }
         throw new RuntimeException("Unknown object type: " + type);
     }
 
-    private static Block serializeList(Type type, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
+    private static Block serializeList(Type type, ThriftFieldIdResolver resolver, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
     {
         List<?> list = (List) object;
         if (list == null) {
@@ -554,6 +563,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         List<Type> typeParameters = type.getTypeParameters();
         checkArgument(typeParameters.size() == 1, "list must have exactly 1 type parameter");
         Type elementType = typeParameters.get(0);
+        ThriftFieldIdResolver elementResolver = resolver.getNestedResolver(0);
         BlockBuilder currentBuilder;
         if (builder != null) {
             currentBuilder = builder.beginBlockEntry();
@@ -563,7 +573,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
 
         for (Object element : list) {
-            serializeObject(elementType, currentBuilder, element, hiveStorageTimeZone);
+            serializeObject(elementType, elementResolver, currentBuilder, element, hiveStorageTimeZone);
         }
 
         if (builder != null) {
@@ -576,7 +586,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
     }
 
-    private static Block serializeMap(Type type, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
+    private static Block serializeMap(Type type, ThriftFieldIdResolver resolver, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
     {
         Map<?, ?> map = (Map) object;
         if (map == null) {
@@ -588,6 +598,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         checkArgument(typeParameters.size() == 2, "map must have exactly 2 type parameter");
         Type keyType = typeParameters.get(0);
         Type valueType = typeParameters.get(1);
+        ThriftFieldIdResolver keyResolver = resolver.getNestedResolver(0);
+        ThriftFieldIdResolver valueResolver = resolver.getNestedResolver(1);
         BlockBuilder currentBuilder;
         if (builder != null) {
             currentBuilder = builder.beginBlockEntry();
@@ -599,8 +611,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             // Hive skips map entries with null keys
             if (entry.getKey() != null) {
-                serializeObject(keyType, currentBuilder, entry.getKey(), hiveStorageTimeZone);
-                serializeObject(valueType, currentBuilder, entry.getValue(), hiveStorageTimeZone);
+                serializeObject(keyType, keyResolver, currentBuilder, entry.getKey(), hiveStorageTimeZone);
+                serializeObject(valueType, valueResolver, currentBuilder, entry.getValue(), hiveStorageTimeZone);
             }
         }
 
@@ -614,7 +626,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
     }
 
-    private static Block serializeStruct(Type type, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
+    private static Block serializeStruct(Type type, ThriftFieldIdResolver resolver, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
     {
         if (object == null) {
             requireNonNull(builder, "parent builder is null").appendNull();
@@ -632,8 +644,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
 
         for (int i = 0; i < typeParameters.size(); i++) {
-            Object fieldValue = structData.getFieldValueForHiveIndex(i);
-            serializeObject(typeParameters.get(i), currentBuilder, fieldValue, hiveStorageTimeZone);
+            Object fieldValue = structData.getFieldValueForThriftId(resolver.getThriftId(i));
+            serializeObject(typeParameters.get(i), resolver.getNestedResolver(i), currentBuilder, fieldValue, hiveStorageTimeZone);
         }
 
         if (builder != null) {
@@ -646,7 +658,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
     }
 
-    private static void serializePrimitive(Type type, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
+    private static void serializePrimitive(Type type, ThriftFieldIdResolver resolver, BlockBuilder builder, Object object, DateTimeZone hiveStorageTimeZone)
     {
         requireNonNull(builder, "parent builder is null");
 

@@ -27,6 +27,8 @@ import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.twitter.hive.PooledHiveMetastoreClientFactory;
+import com.facebook.presto.twitter.hive.thrift.HiveThriftFieldIdResolver;
+import com.facebook.presto.twitter.hive.thrift.ThriftFieldIdResolver;
 import com.facebook.presto.twitter.hive.thrift.ThriftHiveRecordCursorProvider;
 import com.google.inject.Binder;
 import com.google.inject.Module;
@@ -89,6 +91,7 @@ public class HiveClientModule
         binder.bind(NodeManager.class).toInstance(nodeManager);
         binder.bind(TypeManager.class).toInstance(typeManager);
         binder.bind(PageIndexerFactory.class).toInstance(pageIndexerFactory);
+        binder.bind(ThriftFieldIdResolver.class).toInstance(new HiveThriftFieldIdResolver());
 
         Multibinder<HiveRecordCursorProvider> recordCursorProviderBinder = Multibinder.newSetBinder(binder, HiveRecordCursorProvider.class);
         recordCursorProviderBinder.addBinding().to(ParquetRecordCursorProvider.class).in(Scopes.SINGLETON);

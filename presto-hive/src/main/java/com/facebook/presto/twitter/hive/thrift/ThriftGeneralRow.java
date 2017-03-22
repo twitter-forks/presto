@@ -151,9 +151,9 @@ public class ThriftGeneralRow implements TBase<ThriftGeneralRow, ThriftGeneralRo
         return mapValue;
     }
 
-    public Object getFieldValueForHiveIndex(int hiveIndex)
+    public Object getFieldValueForThriftId(short thriftId)
     {
-        return values.get((short) (hiveIndex + 1));
+        return values.get(thriftId);
     }
 
     public ThriftGeneralRow deepCopy()
