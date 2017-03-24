@@ -23,14 +23,12 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableSet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.RecordReader;
 import org.joda.time.DateTimeZone;
 
 import javax.inject.Inject;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -75,14 +73,8 @@ public class ThriftHiveRecordCursorProvider
             return Optional.empty();
         }
 
-        RecordReader<?, ?> recordReader;
-        if (path.toString().endsWith(".index")) {
-            recordReader = new DummyRecordReader<NullWritable, NullWritable>();
-        }
-        else {
-            recordReader = hdfsEnvironment.doAs(session.getUser(),
+        RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
                 () -> createRecordReader(configuration, path, start, length, schema, columns));
-        }
 
         return Optional.of(new ThriftHiveRecordCursor<>(
                 genericRecordReader(recordReader),
@@ -98,35 +90,5 @@ public class ThriftHiveRecordCursorProvider
     private static RecordReader<?, ? extends Writable> genericRecordReader(RecordReader<?, ?> recordReader)
     {
         return (RecordReader<?, ? extends Writable>) recordReader;
-    }
-
-    private static final class DummyRecordReader<K, V> implements RecordReader<K, V>
-    {
-        public boolean next(K key, V value) throws IOException
-        {
-            return false;
-        }
-
-        public K createKey()
-        {
-            return null;
-        }
-
-        public V createValue()
-        {
-            return null;
-        }
-
-        public long getPos() throws IOException
-        {
-            return 0;
-        }
-
-        public float getProgress() throws IOException
-        {
-            return 0;
-        }
-
-        public void close() throws IOException {}
     }
 }
