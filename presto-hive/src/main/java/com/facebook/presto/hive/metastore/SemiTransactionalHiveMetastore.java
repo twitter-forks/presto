@@ -1363,7 +1363,7 @@ public class SemiTransactionalHiveMetastore
                     return;
                 }
                 try {
-                    if (!fileSystem.rename(source, target)) {
+                    if (fileSystem.exists(target) || !fileSystem.rename(source, target)) {
                         throw new PrestoException(HIVE_FILESYSTEM_ERROR, format("Error moving data files from %s to final location %s", source, target));
                     }
                 }
@@ -1762,9 +1762,9 @@ public class SemiTransactionalHiveMetastore
             Partition partition = this.partition;
             String currentLocation = this.currentLocation.toString();
             if (!currentLocation.equals(partition.getStorage().getLocation())) {
-                Partition.Builder partitionBuilder = Partition.builder(partition);
-                partitionBuilder.getStorageBuilder().setLocation(currentLocation);
-                partition = partitionBuilder.build();
+                partition = Partition.builder(partition)
+                        .withStorage(storage -> storage.setLocation(currentLocation))
+                        .build();
             }
             return partition;
         }

@@ -25,6 +25,7 @@ import com.facebook.presto.spi.security.Privilege;
 import javax.inject.Inject;
 
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 import static com.facebook.presto.spi.security.AccessDeniedException.denyAddColumn;
@@ -72,6 +73,17 @@ public class LegacyAccessControl
     }
 
     @Override
+    public void checkCanShowSchemas(ConnectorTransactionHandle transactionHandle, Identity identity)
+    {
+    }
+
+    @Override
+    public Set<String> filterSchemas(ConnectorTransactionHandle transactionHandle, Identity identity, Set<String> schemaNames)
+    {
+        return schemaNames;
+    }
+
+    @Override
     public void checkCanCreateTable(ConnectorTransactionHandle transaction, Identity identity, SchemaTableName tableName)
     {
     }
@@ -100,6 +112,17 @@ public class LegacyAccessControl
         if (!allowRenameTable) {
             denyRenameTable(tableName.toString(), newTableName.toString());
         }
+    }
+
+    @Override
+    public void checkCanShowTables(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName)
+    {
+    }
+
+    @Override
+    public Set<SchemaTableName> filterTables(ConnectorTransactionHandle transactionHandle, Identity identity, Set<SchemaTableName> tableNames)
+    {
+        return tableNames;
     }
 
     @Override

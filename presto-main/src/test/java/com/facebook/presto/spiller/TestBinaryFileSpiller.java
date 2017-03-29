@@ -62,7 +62,7 @@ public class TestBinaryFileSpiller
 
         BlockBuilder col1 = BIGINT.createBlockBuilder(new BlockBuilderStatus(), 1);
         BlockBuilder col2 = DOUBLE.createBlockBuilder(new BlockBuilderStatus(), 1);
-        BlockBuilder col3 = VARCHAR.createBlockBuilder(new BlockBuilderStatus(), 1);
+        BlockBuilder col3 = VARBINARY.createBlockBuilder(new BlockBuilderStatus(), 1);
 
         col1.writeLong(42).closeEntry();
         col2.writeLong(doubleToLongBits(43.0)).closeEntry();
@@ -96,13 +96,13 @@ public class TestBinaryFileSpiller
     private void testSpiller(List<Type> types, Spiller spiller, List<Page>... spills)
             throws ExecutionException, InterruptedException
     {
-        long spilledBytesBefore = factory.getSpilledBytes();
+        long spilledBytesBefore = factory.getTotalSpilledBytes();
         long spilledBytes = 0;
         for (List<Page> spill : spills) {
             spilledBytes += spill.stream().mapToLong(Page::getSizeInBytes).sum();
             spiller.spill(spill.iterator()).get();
         }
-        assertEquals(factory.getSpilledBytes() - spilledBytesBefore, spilledBytes);
+        assertEquals(factory.getTotalSpilledBytes() - spilledBytesBefore, spilledBytes);
 
         List<Iterator<Page>> actualSpills = spiller.getSpills();
         assertEquals(actualSpills.size(), spills.length);

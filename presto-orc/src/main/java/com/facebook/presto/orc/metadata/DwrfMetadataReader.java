@@ -17,6 +17,12 @@ import com.facebook.presto.orc.metadata.ColumnEncoding.ColumnEncodingKind;
 import com.facebook.presto.orc.metadata.OrcType.OrcTypeKind;
 import com.facebook.presto.orc.metadata.PostScript.HiveWriterVersion;
 import com.facebook.presto.orc.metadata.Stream.StreamKind;
+import com.facebook.presto.orc.metadata.statistics.BooleanStatistics;
+import com.facebook.presto.orc.metadata.statistics.ColumnStatistics;
+import com.facebook.presto.orc.metadata.statistics.DoubleStatistics;
+import com.facebook.presto.orc.metadata.statistics.HiveBloomFilter;
+import com.facebook.presto.orc.metadata.statistics.IntegerStatistics;
+import com.facebook.presto.orc.metadata.statistics.StringStatistics;
 import com.facebook.presto.orc.proto.DwrfProto;
 import com.facebook.presto.orc.protobuf.CodedInputStream;
 import com.google.common.collect.ImmutableList;
@@ -34,6 +40,7 @@ import java.util.Optional;
 import static com.facebook.presto.orc.metadata.CompressionKind.SNAPPY;
 import static com.facebook.presto.orc.metadata.CompressionKind.UNCOMPRESSED;
 import static com.facebook.presto.orc.metadata.CompressionKind.ZLIB;
+import static com.facebook.presto.orc.metadata.CompressionKind.ZSTD;
 import static com.facebook.presto.orc.metadata.OrcMetadataReader.getMaxSlice;
 import static com.facebook.presto.orc.metadata.OrcMetadataReader.getMinSlice;
 import static com.facebook.presto.orc.metadata.PostScript.HiveWriterVersion.ORIGINAL;
@@ -349,6 +356,8 @@ public class DwrfMetadataReader
                 return ZLIB;
             case SNAPPY:
                 return SNAPPY;
+            case ZSTD:
+                return ZSTD;
             default:
                 throw new IllegalArgumentException(compression + " compression not implemented yet");
         }

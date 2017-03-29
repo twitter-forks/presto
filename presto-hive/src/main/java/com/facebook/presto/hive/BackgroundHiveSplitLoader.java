@@ -50,6 +50,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.annotation.Annotation;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
@@ -338,28 +339,21 @@ public class BackgroundHiveSplitLoader
                 FileInputFormat.setInputPaths(targetJob, targetPath);
                 InputSplit[] targetSplits = targetInputFormat.getSplits(targetJob, 0);
 
-                for (InputSplit inputSplit : targetSplits) {
-                    FileSplit split = (FileSplit) inputSplit;
-                    FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), split.getPath());
-                    FileStatus file = targetFilesystem.getFileStatus(split.getPath());
-                    hiveSplitSource.addToQueue(createHiveSplitIterator(
-                            partitionName,
-                            file.getPath().toString(),
-                            targetFilesystem.getFileBlockLocations(file, split.getStart(), split.getLength()),
-                            split.getStart(),
-                            split.getLength(),
-                            schema,
-                            partitionKeys,
-                            false,
-                            session,
-                            OptionalInt.empty(),
-                            effectivePredicate,
-                            partition.getColumnCoercions()));
-                    if (stopped) {
-                        return;
-                    }
+                if (addSplitsToSource(targetSplits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions())) {
+                    return;
                 }
             }
+            return;
+        }
+
+        // To support custom input formats, we want to call getSplits()
+        // on the input format to obtain file splits.
+        if (shouldUseFileSplitsFromInputFormat(inputFormat)) {
+            JobConf jobConf = new JobConf(configuration);
+            FileInputFormat.setInputPaths(jobConf, path);
+            InputSplit[] splits = inputFormat.getSplits(jobConf, 0);
+
+            addSplitsToSource(splits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions());
             return;
         }
 
@@ -425,6 +419,47 @@ public class BackgroundHiveSplitLoader
         }
 
         fileIterators.addLast(iterator);
+    }
+
+    private boolean addSplitsToSource(
+            InputSplit[] targetSplits,
+            String partitionName,
+            List<HivePartitionKey> partitionKeys,
+            Properties schema,
+            TupleDomain<HiveColumnHandle> effectivePredicate,
+            Map<Integer, HiveType> columnCoercions)
+            throws IOException
+    {
+        for (InputSplit inputSplit : targetSplits) {
+            FileSplit split = (FileSplit) inputSplit;
+            FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), split.getPath());
+            FileStatus file = targetFilesystem.getFileStatus(split.getPath());
+            hiveSplitSource.addToQueue(createHiveSplitIterator(
+                    partitionName,
+                    file.getPath().toString(),
+                    targetFilesystem.getFileBlockLocations(file, split.getStart(), split.getLength()),
+                    split.getStart(),
+                    split.getLength(),
+                    schema,
+                    partitionKeys,
+                    false,
+                    session,
+                    OptionalInt.empty(),
+                    effectivePredicate,
+                    columnCoercions));
+            if (stopped) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean shouldUseFileSplitsFromInputFormat(InputFormat<?, ?> inputFormat)
+    {
+        return Arrays.stream(inputFormat.getClass().getAnnotations())
+                .map(Annotation::annotationType)
+                .map(Class::getSimpleName)
+                .anyMatch(name -> name.equals("UseFileSplitsFromInputFormat"));
     }
 
     private void addToHiveSplitSourceRoundRobin(List<Iterator<HiveSplit>> iteratorList)

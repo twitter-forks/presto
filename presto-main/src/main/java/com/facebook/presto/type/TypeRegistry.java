@@ -30,6 +30,7 @@ import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -70,7 +71,6 @@ import static com.facebook.presto.type.MapParametricType.MAP;
 import static com.facebook.presto.type.Re2JRegexpType.RE2J_REGEXP;
 import static com.facebook.presto.type.RowParametricType.ROW;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
-import static com.facebook.presto.util.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -247,11 +247,11 @@ public final class TypeRegistry
         if (firstTypeBaseName.equals(secondTypeBaseName)) {
             if (firstTypeBaseName.equals(StandardTypes.DECIMAL)) {
                 return Optional.of(getCommonSuperTypeForDecimal(
-                        checkType(firstType, DecimalType.class, "firstType"), checkType(secondType, DecimalType.class, "secondType")));
+                        (DecimalType) firstType, (DecimalType) secondType));
             }
             if (firstTypeBaseName.equals(StandardTypes.VARCHAR)) {
                 return Optional.of(getCommonSuperTypeForVarchar(
-                        checkType(firstType, VarcharType.class, "firstType"), checkType(secondType, VarcharType.class, "secondType")));
+                        (VarcharType) firstType, (VarcharType) secondType));
             }
 
             if (isCovariantParametrizedType(firstType)) {
@@ -321,6 +321,12 @@ public final class TypeRegistry
         String name = parametricType.getName().toLowerCase(Locale.ENGLISH);
         checkArgument(!parametricTypes.containsKey(name), "Parametric type already registered: %s", name);
         parametricTypes.putIfAbsent(name, parametricType);
+    }
+
+    @Override
+    public Collection<ParametricType> getParametricTypes()
+    {
+        return ImmutableList.copyOf(parametricTypes.values());
     }
 
     /**

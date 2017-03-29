@@ -31,6 +31,10 @@
         </dependency>
         <dependency>
             <groupId>com.teradata.tempto</groupId>
+            <artifactId>tempto-ldap</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.teradata.tempto</groupId>
             <artifactId>tempto-runner</artifactId>
         </dependency>
         <dependency>
@@ -97,10 +101,8 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.datastax.cassandra</groupId>
-            <artifactId>cassandra-driver-core</artifactId>
-            <scope>compile</scope>
-            <version>3.0.0</version>
+            <groupId>com.facebook.presto.cassandra</groupId>
+            <artifactId>cassandra-driver</artifactId>
         </dependency>
     </dependencies>
 

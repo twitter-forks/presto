@@ -20,7 +20,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 public interface OutputBuffer
 {
@@ -58,7 +57,7 @@ public interface OutputBuffer
      * If the buffer result is marked as complete, the client must call abort to acknowledge
      * receipt of the final state.
      */
-    CompletableFuture<BufferResult> get(OutputBufferId bufferId, long token, DataSize maxSize);
+    ListenableFuture<BufferResult> get(OutputBufferId bufferId, long token, DataSize maxSize);
 
     /**
      * Closes the specified output buffer.
@@ -69,13 +68,13 @@ public interface OutputBuffer
      * Adds a split-up page to an unpartitioned buffer. If no-more-pages has been set, the enqueue
      * page call is ignored.  This can happen with limit queries.
      */
-    ListenableFuture<?> enqueue(List<SerializedPage> page);
+    ListenableFuture<?> enqueue(List<SerializedPage> pages);
 
     /**
      * Adds a split-up page to a specific partition.  If no-more-pages has been set, the enqueue
      * page call is ignored.  This can happen with limit queries.
      */
-    ListenableFuture<?> enqueue(int partition, List<SerializedPage> page);
+    ListenableFuture<?> enqueue(int partition, List<SerializedPage> pages);
 
     /**
      * Notify buffer that no more pages will be added. Any future calls to enqueue a

@@ -95,7 +95,7 @@ public class TestWindowOperator
     {
         executor = newCachedThreadPool(daemonThreadsNamed("test-%s"));
         driverContext = createTaskContext(executor, TEST_SESSION)
-                .addPipelineContext(true, true)
+                .addPipelineContext(0, true, true)
                 .addDriverContext();
     }
 
@@ -220,7 +220,7 @@ public class TestWindowOperator
                 .build();
 
         DriverContext driverContext = createTaskContext(executor, TEST_SESSION, new DataSize(10, Unit.BYTE))
-                .addPipelineContext(true, true)
+                .addPipelineContext(0, true, true)
                 .addDriverContext();
 
         WindowOperatorFactory operatorFactory = createFactoryUnbounded(
@@ -635,6 +635,7 @@ public class TestWindowOperator
                 sortChannels,
                 sortOrder,
                 preSortedChannelPrefix,
-                10);
+                10,
+                new PagesIndex.TestingFactory());
     }
 }

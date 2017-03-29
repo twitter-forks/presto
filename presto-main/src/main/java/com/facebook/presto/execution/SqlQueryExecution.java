@@ -17,6 +17,7 @@ import com.facebook.presto.OutputBuffers;
 import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.scheduler.ExecutionPolicy;
 import com.facebook.presto.execution.scheduler.NodeScheduler;
@@ -24,9 +25,11 @@ import com.facebook.presto.execution.scheduler.SplitSchedulerStats;
 import com.facebook.presto.execution.scheduler.SqlQueryScheduler;
 import com.facebook.presto.memory.VersionedMemoryPoolId;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.analyzer.Analysis;
@@ -52,6 +55,7 @@ import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.concurrent.SetThreadName;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -63,6 +67,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -150,7 +155,7 @@ public final class SqlQueryExecution
             requireNonNull(query, "query is null");
             requireNonNull(session, "session is null");
             requireNonNull(self, "self is null");
-            this.stateMachine = QueryStateMachine.begin(queryId, query, session, self, false, transactionManager, accessControl, queryExecutor);
+            this.stateMachine = QueryStateMachine.begin(queryId, query, session, self, false, transactionManager, accessControl, queryExecutor, metadata);
 
             // when the query finishes cache the final query info, and clear the reference to the output stage
             stateMachine.addStateChangeListener(state -> {
@@ -219,11 +224,10 @@ public final class SqlQueryExecution
     }
 
     @Override
-    public void start(Optional<String> resourceGroupName)
+    public void start()
     {
         try (SetThreadName ignored = new SetThreadName("Query-%s", stateMachine.getQueryId())) {
             try {
-                resourceGroupName.ifPresent(groupName -> stateMachine.setResourceGroup(groupName));
                 // transition to planning
                 if (!stateMachine.transitionToPlanning()) {
                     // query already started or finished
@@ -232,6 +236,8 @@ public final class SqlQueryExecution
 
                 // analyze query
                 PlanRoot plan = analyzeQuery();
+
+                metadata.beginQuery(getSession(), plan.getConnectors());
 
                 // plan distribution of query
                 planDistribution(plan);
@@ -311,7 +317,23 @@ public final class SqlQueryExecution
         stateMachine.recordAnalysisTime(analysisStart);
 
         boolean explainAnalyze = analysis.getStatement() instanceof Explain && ((Explain) analysis.getStatement()).isAnalyze();
-        return new PlanRoot(subplan, !explainAnalyze);
+        return new PlanRoot(subplan, !explainAnalyze, extractConnectors(analysis));
+    }
+
+    private Set<ConnectorId> extractConnectors(Analysis analysis)
+    {
+        ImmutableSet.Builder<ConnectorId> connectors = ImmutableSet.builder();
+
+        for (TableHandle tableHandle : analysis.getTables()) {
+            connectors.add(tableHandle.getConnectorId());
+        }
+
+        if (analysis.getInsert().isPresent()) {
+            TableHandle target = analysis.getInsert().get().getTarget();
+            connectors.add(target.getConnectorId());
+        }
+
+        return connectors.build();
     }
 
     private void planDistribution(PlanRoot plan)
@@ -465,6 +487,18 @@ public final class SqlQueryExecution
         return stateMachine.getQueryState();
     }
 
+    @Override
+    public Optional<ResourceGroupId> getResourceGroup()
+    {
+        return stateMachine.getResourceGroup();
+    }
+
+    @Override
+    public void setResourceGroup(ResourceGroupId resourceGroupId)
+    {
+        stateMachine.setResourceGroup(resourceGroupId);
+    }
+
     private QueryInfo buildQueryInfo(SqlQueryScheduler scheduler)
     {
         Optional<StageInfo> stageInfo = Optional.empty();
@@ -485,11 +519,13 @@ public final class SqlQueryExecution
     {
         private final SubPlan root;
         private final boolean summarizeTaskInfos;
+        private final Set<ConnectorId> connectors;
 
-        public PlanRoot(SubPlan root, boolean summarizeTaskInfos)
+        public PlanRoot(SubPlan root, boolean summarizeTaskInfos, Set<ConnectorId> connectors)
         {
             this.root = requireNonNull(root, "root is null");
             this.summarizeTaskInfos = summarizeTaskInfos;
+            this.connectors = ImmutableSet.copyOf(connectors);
         }
 
         public SubPlan getRoot()
@@ -500,6 +536,11 @@ public final class SqlQueryExecution
         public boolean isSummarizeTaskInfos()
         {
             return summarizeTaskInfos;
+        }
+
+        public Set<ConnectorId> getConnectors()
+        {
+            return connectors;
         }
     }
 

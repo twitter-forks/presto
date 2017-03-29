@@ -43,10 +43,10 @@ public class LazyBlock
     }
 
     @Override
-    public int getLength(int position)
+    public int getSliceLength(int position)
     {
         assureLoaded();
-        return block.getLength(position);
+        return block.getSliceLength(position);
     }
 
     @Override
@@ -168,6 +168,13 @@ public class LazyBlock
     {
         assureLoaded();
         return block.getSizeInBytes();
+    }
+
+    @Override
+    public int getRegionSizeInBytes(int position, int length)
+    {
+        assureLoaded();
+        return block.getRegionSizeInBytes(position, length);
     }
 
     @Override

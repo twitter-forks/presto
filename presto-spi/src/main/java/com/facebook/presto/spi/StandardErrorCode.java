@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.spi;
 
-import static com.facebook.presto.spi.ErrorType.EXTERNAL;
 import static com.facebook.presto.spi.ErrorType.INSUFFICIENT_RESOURCES;
 import static com.facebook.presto.spi.ErrorType.INTERNAL_ERROR;
 import static com.facebook.presto.spi.ErrorType.USER_ERROR;
@@ -78,6 +77,7 @@ public enum StandardErrorCode
     ABANDONED_TASK(0x0001_0011, INTERNAL_ERROR),
     CORRUPT_SERIALIZED_IDENTITY(0x0001_0012, INTERNAL_ERROR),
     CORRUPT_PAGE(0x0001_0013, INTERNAL_ERROR),
+    OPTIMIZER_TIMEOUT(0x0001_0014, INTERNAL_ERROR),
 
     GENERIC_INSUFFICIENT_RESOURCES(0x0002_0000, INSUFFICIENT_RESOURCES),
     EXCEEDED_MEMORY_LIMIT(0x0002_0001, INSUFFICIENT_RESOURCES),
@@ -85,10 +85,10 @@ public enum StandardErrorCode
     EXCEEDED_TIME_LIMIT(0x0002_0003, INSUFFICIENT_RESOURCES),
     CLUSTER_OUT_OF_MEMORY(0x0002_0004, INSUFFICIENT_RESOURCES),
     EXCEEDED_CPU_LIMIT(0x0002_0005, INSUFFICIENT_RESOURCES),
+    /**/;
 
-    // Connectors can use error codes starting at EXTERNAL
+    // Connectors can use error codes starting at the range 0x0100_0000
     // See https://github.com/prestodb/presto/wiki/Error-Codes
-    GENERIC_EXTERNAL(0x0100_0000, EXTERNAL);
 
     private final ErrorCode errorCode;
 

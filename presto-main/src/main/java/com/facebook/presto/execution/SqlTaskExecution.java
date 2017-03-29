@@ -304,7 +304,7 @@ public class SqlTaskExecution
         return updatedUnpartitionedSources;
     }
 
-    private void schedulePartitionedSource(TaskSource source)
+    private synchronized void schedulePartitionedSource(TaskSource source)
     {
         // if this is not for the currently scheduling source, save off the splits for
         // when the source is scheduled
@@ -335,12 +335,12 @@ public class SqlTaskExecution
         }
     }
 
-    private boolean isSchedulingSource(PlanNodeId sourceId)
+    private synchronized boolean isSchedulingSource(PlanNodeId sourceId)
     {
         return !sourceStartOrder.isEmpty() && sourceStartOrder.peek().equals(sourceId);
     }
 
-    private void scheduleUnpartitionedSource(TaskSource source, Map<PlanNodeId, TaskSource> updatedUnpartitionedSources)
+    private synchronized void scheduleUnpartitionedSource(TaskSource source, Map<PlanNodeId, TaskSource> updatedUnpartitionedSources)
     {
         // create new source
         TaskSource newSource;
@@ -419,7 +419,7 @@ public class SqlTaskExecution
         }
     }
 
-    public Set<PlanNodeId> getNoMoreSplits()
+    public synchronized Set<PlanNodeId> getNoMoreSplits()
     {
         ImmutableSet.Builder<PlanNodeId> noMoreSplits = ImmutableSet.builder();
         for (Entry<PlanNodeId, DriverSplitRunnerFactory> entry : partitionedDriverFactories.entrySet()) {
@@ -498,7 +498,7 @@ public class SqlTaskExecution
         private DriverSplitRunnerFactory(DriverFactory driverFactory)
         {
             this.driverFactory = driverFactory;
-            this.pipelineContext = taskContext.addPipelineContext(driverFactory.isInputDriver(), driverFactory.isOutputDriver());
+            this.pipelineContext = taskContext.addPipelineContext(driverFactory.getPipelineId(), driverFactory.isInputDriver(), driverFactory.isOutputDriver());
         }
 
         private DriverSplitRunner createDriverRunner(@Nullable ScheduledSplit partitionedSplit, boolean partitioned)

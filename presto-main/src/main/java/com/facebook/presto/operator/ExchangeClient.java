@@ -33,7 +33,6 @@ import java.io.Closeable;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
@@ -64,9 +63,6 @@ public class ExchangeClient
     private final Duration maxErrorDuration;
     private final HttpClient httpClient;
     private final ScheduledExecutorService executor;
-
-    @GuardedBy("this")
-    private final Set<URI> locations = new HashSet<>();
 
     @GuardedBy("this")
     private boolean noMoreLocations;
@@ -131,11 +127,31 @@ public class ExchangeClient
     public synchronized void addLocation(URI location)
     {
         requireNonNull(location, "location is null");
-        if (locations.contains(location)) {
+
+        // Ignore new locations after close
+        // NOTE: this MUST happen before checking no more locations is checked
+        if (closed.get()) {
             return;
         }
+
+        // ignore duplicate locations
+        if (allClients.containsKey(location)) {
+            return;
+        }
+
         checkState(!noMoreLocations, "No more locations already set");
-        locations.add(location);
+
+        HttpPageBufferClient client = new HttpPageBufferClient(
+                httpClient,
+                maxResponseSize,
+                minErrorDuration,
+                maxErrorDuration,
+                location,
+                new ExchangeClientCallback(),
+                executor);
+        allClients.put(location, client);
+        queuedClients.add(client);
+
         scheduleRequestIfNecessary();
     }
 
@@ -187,37 +203,38 @@ public class ExchangeClient
     {
         checkState(!Thread.holdsLock(this), "Can not get next page while holding a lock on this");
 
-        if (page == NO_MORE_PAGES) {
-            // mark client closed
-            closed.set(true);
+        if (page == null) {
+            return null;
+        }
 
-            // add end marker back to queue
-            checkState(pageBuffer.add(NO_MORE_PAGES), "Could not add no more pages marker");
+        if (page == NO_MORE_PAGES) {
+            // mark client closed; close() will add the end marker
+            close();
+
             notifyBlockedCallers();
 
             // don't return end of stream marker
-            page = null;
+            return null;
         }
 
-        if (page != null) {
-            synchronized (this) {
-                if (!closed.get()) {
-                    bufferBytes -= page.getRetainedSizeInBytes();
-                    systemMemoryUsageListener.updateSystemMemoryUsage(-page.getRetainedSizeInBytes());
+        synchronized (this) {
+            if (!closed.get()) {
+                bufferBytes -= page.getRetainedSizeInBytes();
+                systemMemoryUsageListener.updateSystemMemoryUsage(-page.getRetainedSizeInBytes());
+                if (pageBuffer.peek() == NO_MORE_PAGES) {
+                    close();
                 }
             }
-            if (!closed.get() && pageBuffer.peek() == NO_MORE_PAGES) {
-                closed.set(true);
-            }
-            scheduleRequestIfNecessary();
         }
+        scheduleRequestIfNecessary();
         return page;
     }
 
     public boolean isFinished()
     {
         throwIfFailed();
-        return isClosed() && completedClients.size() == locations.size();
+        // For this to works, locations must never be added after is closed is set
+        return isClosed() && completedClients.size() == allClients.size();
     }
 
     public boolean isClosed()
@@ -251,31 +268,15 @@ public class ExchangeClient
         }
 
         // if finished, add the end marker
-        if (noMoreLocations && completedClients.size() == locations.size()) {
+        if (noMoreLocations && completedClients.size() == allClients.size()) {
             if (pageBuffer.peekLast() != NO_MORE_PAGES) {
                 checkState(pageBuffer.add(NO_MORE_PAGES), "Could not add no more pages marker");
             }
-            if (!closed.get() && pageBuffer.peek() == NO_MORE_PAGES) {
-                closed.set(true);
+            if (pageBuffer.peek() == NO_MORE_PAGES) {
+                close();
             }
             notifyBlockedCallers();
             return;
-        }
-
-        // add clients for new locations
-        for (URI location : locations) {
-            if (!allClients.containsKey(location)) {
-                HttpPageBufferClient client = new HttpPageBufferClient(
-                        httpClient,
-                        maxResponseSize,
-                        minErrorDuration,
-                        maxErrorDuration,
-                        location,
-                        new ExchangeClientCallback(),
-                        executor);
-                allClients.put(location, client);
-                queuedClients.add(client);
-            }
         }
 
         long neededBytes = maxBufferedBytes - bufferBytes;
@@ -317,8 +318,10 @@ public class ExchangeClient
 
         pageBuffer.addAll(pages);
 
-        // notify all blocked callers
-        notifyBlockedCallers();
+        if (!pages.isEmpty()) {
+            // notify all blocked callers
+            notifyBlockedCallers();
+        }
 
         long memorySize = pages.stream()
                 .mapToLong(SerializedPage::getRetainedSizeInBytes)
@@ -334,7 +337,6 @@ public class ExchangeClient
         // AVG_n = AVG_(n-1) * (n-1)/n + VALUE_n / n
         averageBytesPerRequest = (long) (1.0 * averageBytesPerRequest * (successfulRequests - 1) / successfulRequests + responseSize / successfulRequests);
 
-        scheduleRequestIfNecessary();
         return true;
     }
 
@@ -393,9 +395,7 @@ public class ExchangeClient
         {
             requireNonNull(client, "client is null");
             requireNonNull(pages, "pages is null");
-            boolean added = ExchangeClient.this.addPages(pages);
-            scheduleRequestIfNecessary();
-            return added;
+            return ExchangeClient.this.addPages(pages);
         }
 
         @Override

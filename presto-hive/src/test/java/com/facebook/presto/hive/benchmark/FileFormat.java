@@ -21,33 +21,42 @@ import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.HiveCompressionCodec;
 import com.facebook.presto.hive.HivePageSourceFactory;
 import com.facebook.presto.hive.HiveRecordCursorProvider;
-import com.facebook.presto.hive.HiveRecordWriter;
 import com.facebook.presto.hive.HiveStorageFormat;
 import com.facebook.presto.hive.HiveType;
 import com.facebook.presto.hive.HiveTypeTranslator;
+import com.facebook.presto.hive.RecordFileWriter;
 import com.facebook.presto.hive.TypeTranslator;
+import com.facebook.presto.hive.benchmark.HiveFileFormatBenchmark.TestData;
 import com.facebook.presto.hive.orc.DwrfPageSourceFactory;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetRecordCursorProvider;
 import com.facebook.presto.hive.rcfile.RcFilePageSourceFactory;
+import com.facebook.presto.rcfile.AircompressorCodecFactory;
+import com.facebook.presto.rcfile.HadoopCodecFactory;
+import com.facebook.presto.rcfile.RcFileEncoding;
+import com.facebook.presto.rcfile.RcFileWriter;
+import com.facebook.presto.rcfile.binary.BinaryRcFileEncoding;
+import com.facebook.presto.rcfile.text.TextRcFileEncoding;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordPageSource;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableMap;
+import io.airlift.slice.OutputStreamSliceOutput;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.mapred.JobConf;
 import org.joda.time.DateTimeZone;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +65,7 @@ import java.util.Properties;
 
 import static com.facebook.presto.hive.HdfsConfigurationUpdater.configureCompression;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
+import static com.facebook.presto.hive.HiveType.toHiveType;
 import static com.facebook.presto.hive.metastore.StorageFormat.fromHiveStorageFormat;
 import static java.util.stream.Collectors.joining;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.FILE_INPUT_FORMAT;
@@ -82,7 +92,11 @@ public enum FileFormat
                 HiveCompressionCodec compressionCodec)
                 throws IOException
         {
-            return new RecordFormatWriter(targetFile, columnNames, columnTypes, compressionCodec, HiveStorageFormat.RCBINARY);
+            return new PrestoRcFileFormatWriter(
+                    targetFile,
+                    columnTypes,
+                    new BinaryRcFileEncoding(),
+                    compressionCodec);
         }
     },
 
@@ -103,7 +117,11 @@ public enum FileFormat
                 HiveCompressionCodec compressionCodec)
                 throws IOException
         {
-            return new RecordFormatWriter(targetFile, columnNames, columnTypes, compressionCodec, HiveStorageFormat.RCTEXT);
+            return new PrestoRcFileFormatWriter(
+                    targetFile,
+                    columnTypes,
+                    new TextRcFileEncoding(DateTimeZone.forID(session.getTimeZoneKey().getId())),
+                    compressionCodec);
         }
     },
 
@@ -320,6 +338,11 @@ public enum FileFormat
         }
     }
 
+    public boolean supports(TestData testData)
+    {
+        return true;
+    }
+
     private static ConnectorPageSource createPageSource(
             HiveRecordCursorProvider cursorProvider,
             ConnectorSession session, File targetFile, List<String> columnNames, List<Type> columnTypes, HiveStorageFormat format)
@@ -329,7 +352,7 @@ public enum FileFormat
         for (int i = 0; i < columnNames.size(); i++) {
             String columnName = columnNames.get(i);
             Type columnType = columnTypes.get(i);
-            columnHandles.add(new HiveColumnHandle("test", columnName, HiveType.toHiveType(typeTranslator, columnType), columnType.getTypeSignature(), i, REGULAR, Optional.empty()));
+            columnHandles.add(new HiveColumnHandle("test", columnName, toHiveType(typeTranslator, columnType), columnType.getTypeSignature(), i, REGULAR, Optional.empty()));
         }
 
         RecordCursor recordCursor = cursorProvider
@@ -362,7 +385,7 @@ public enum FileFormat
         for (int i = 0; i < columnNames.size(); i++) {
             String columnName = columnNames.get(i);
             Type columnType = columnTypes.get(i);
-            columnHandles.add(new HiveColumnHandle("test", columnName, HiveType.toHiveType(typeTranslator, columnType), columnType.getTypeSignature(), i, REGULAR, Optional.empty()));
+            columnHandles.add(new HiveColumnHandle("test", columnName, toHiveType(typeTranslator, columnType), columnType.getTypeSignature(), i, REGULAR, Optional.empty()));
         }
 
         return pageSourceFactory
@@ -383,7 +406,7 @@ public enum FileFormat
             implements FormatWriter
     {
         private static final TypeRegistry TYPE_MANAGER = new TypeRegistry();
-        private final HiveRecordWriter recordWriter;
+        private final RecordFileWriter recordWriter;
 
         public RecordFormatWriter(File targetFile,
                 List<String> columnNames,
@@ -394,21 +417,21 @@ public enum FileFormat
             JobConf config = new JobConf(conf);
             configureCompression(config, compressionCodec);
 
-            recordWriter = new HiveRecordWriter(
+            recordWriter = new RecordFileWriter(
                     new Path(targetFile.toURI()),
                     columnNames,
                     fromHiveStorageFormat(format),
                     createSchema(format, columnNames, columnTypes),
-                    TYPE_MANAGER,
-                    config);
+                    format.getEstimatedWriterSystemMemoryUsage(),
+                    config,
+                    TYPE_MANAGER);
         }
 
         @Override
         public void writePage(Page page)
         {
-            Block[] columns = page.getBlocks();
             for (int position = 0; position < page.getPositionCount(); position++) {
-                recordWriter.addRow(columns, position);
+                recordWriter.appendRow(page, position);
             }
         }
 
@@ -428,9 +451,42 @@ public enum FileFormat
         schema.setProperty(META_TABLE_COLUMNS, columnNames.stream()
                 .collect(joining(",")));
         schema.setProperty(META_TABLE_COLUMN_TYPES, columnTypes.stream()
-                .map(type -> HiveType.toHiveType(typeTranslator, type))
+                .map(type -> toHiveType(typeTranslator, type))
                 .map(HiveType::getHiveTypeName)
                 .collect(joining(":")));
         return schema;
+    }
+
+    private static class PrestoRcFileFormatWriter
+            implements FormatWriter
+    {
+        private final RcFileWriter writer;
+
+        public PrestoRcFileFormatWriter(File targetFile, List<Type> types, RcFileEncoding encoding, HiveCompressionCodec compressionCodec)
+                throws IOException
+        {
+            writer = new RcFileWriter(
+                    new OutputStreamSliceOutput(new FileOutputStream(targetFile)),
+                    types,
+                    encoding,
+                    compressionCodec.getCodec().map(Class::getName),
+                    new AircompressorCodecFactory(new HadoopCodecFactory(getClass().getClassLoader())),
+                    ImmutableMap.of(),
+                    true);
+        }
+
+        @Override
+        public void writePage(Page page)
+                throws IOException
+        {
+            writer.write(page);
+        }
+
+        @Override
+        public void close()
+                throws IOException
+        {
+            writer.close();
+        }
     }
 }

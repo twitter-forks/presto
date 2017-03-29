@@ -72,6 +72,12 @@ public class ShortArrayBlock
     }
 
     @Override
+    public int getRegionSizeInBytes(int position, int length)
+    {
+        return intSaturatedCast((Short.BYTES + Byte.BYTES) * (long) length);
+    }
+
+    @Override
     public int getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;
@@ -81,12 +87,6 @@ public class ShortArrayBlock
     public int getPositionCount()
     {
         return positionCount;
-    }
-
-    @Override
-    public int getLength(int position)
-    {
-        return Short.BYTES;
     }
 
     @Override

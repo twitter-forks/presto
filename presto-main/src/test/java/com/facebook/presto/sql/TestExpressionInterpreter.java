@@ -31,6 +31,7 @@ import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.StringLiteral;
+import com.facebook.presto.util.maps.IdentityLinkedHashMap;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -43,7 +44,6 @@ import org.joda.time.LocalDate;
 import org.joda.time.LocalTime;
 import org.testng.annotations.Test;
 
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -61,7 +61,7 @@ import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.ExpressionFormatter.formatExpression;
-import static com.facebook.presto.sql.ExpressionUtils.rewriteQualifiedNamesToSymbolReferences;
+import static com.facebook.presto.sql.ExpressionUtils.rewriteIdentifiersToSymbolReferences;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.expressionInterpreter;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.expressionOptimizer;
@@ -71,6 +71,7 @@ import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Locale.ENGLISH;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 public class TestExpressionInterpreter
@@ -1062,25 +1063,43 @@ public class TestExpressionInterpreter
         assertOptimizedEquals("'^' LIKE '^'", "true");
         assertOptimizedEquals("'$' LIKE '$'", "true");
 
-        assertOptimizedEquals("null like '%'", "null");
-        assertOptimizedEquals("'a' like null", "null");
-        assertOptimizedEquals("'a' like '%' escape null", "null");
+        assertOptimizedEquals("null LIKE '%'", "null");
+        assertOptimizedEquals("'a' LIKE null", "null");
+        assertOptimizedEquals("'a' LIKE '%' ESCAPE null", "null");
 
-        assertOptimizedEquals("'%' like 'z%' escape 'z'", "true");
+        assertOptimizedEquals("'%' LIKE 'z%' ESCAPE 'z'", "true");
     }
 
     @Test
     public void testLikeOptimization()
             throws Exception
     {
-        assertOptimizedEquals("unbound_string like 'abc'", "unbound_string = CAST('abc' AS VARCHAR)");
+        assertOptimizedEquals("unbound_string LIKE 'abc'", "unbound_string = CAST('abc' AS VARCHAR)");
 
-        assertOptimizedEquals("bound_string like bound_pattern", "true");
-        assertOptimizedEquals("'abc' like bound_pattern", "false");
+        assertOptimizedEquals("unbound_string LIKE '' ESCAPE '#'", "unbound_string LIKE '' ESCAPE '#'");
+        assertOptimizedEquals("unbound_string LIKE 'abc' ESCAPE '#'", "unbound_string = CAST('abc' AS VARCHAR)");
+        assertOptimizedEquals("unbound_string LIKE 'a#_b' ESCAPE '#'", "unbound_string = CAST('a_b' AS VARCHAR)");
+        assertOptimizedEquals("unbound_string LIKE 'a#%b' ESCAPE '#'", "unbound_string = CAST('a%b' AS VARCHAR)");
+        assertOptimizedEquals("unbound_string LIKE 'a#_##b' ESCAPE '#'", "unbound_string = CAST('a_#b' AS VARCHAR)");
+        assertOptimizedEquals("unbound_string LIKE 'a#__b' ESCAPE '#'", "unbound_string LIKE 'a#__b' ESCAPE '#'");
+        assertOptimizedEquals("unbound_string LIKE 'a##%b' ESCAPE '#'", "unbound_string LIKE 'a##%b' ESCAPE '#'");
 
-        assertOptimizedEquals("unbound_string like bound_pattern", "unbound_string like bound_pattern");
+        assertOptimizedEquals("bound_string LIKE bound_pattern", "true");
+        assertOptimizedEquals("'abc' LIKE bound_pattern", "false");
 
-        assertOptimizedEquals("unbound_string like unbound_pattern escape unbound_string", "unbound_string like unbound_pattern escape unbound_string");
+        assertOptimizedEquals("unbound_string LIKE bound_pattern", "unbound_string LIKE bound_pattern");
+
+        assertOptimizedEquals("unbound_string LIKE unbound_pattern ESCAPE unbound_string", "unbound_string LIKE unbound_pattern ESCAPE unbound_string");
+    }
+
+    @Test
+    public void testInvalidLike()
+    {
+        assertThrows(PrestoException.class, () -> optimize("unbound_string LIKE 'abc' ESCAPE ''"));
+        assertThrows(PrestoException.class, () -> optimize("unbound_string LIKE 'abc' ESCAPE 'bc'"));
+        assertThrows(PrestoException.class, () -> optimize("unbound_string LIKE '#' ESCAPE '#'"));
+        assertThrows(PrestoException.class, () -> optimize("unbound_string LIKE '#abc' ESCAPE '#'"));
+        assertThrows(PrestoException.class, () -> optimize("unbound_string LIKE 'ab#' ESCAPE '#'"));
     }
 
     @Test
@@ -1241,7 +1260,7 @@ public class TestExpressionInterpreter
         }
         assertEquals(
                 actualOptimized,
-                rewriteQualifiedNamesToSymbolReferences(SQL_PARSER.createExpression(expected)));
+                rewriteIdentifiersToSymbolReferences(SQL_PARSER.createExpression(expected)));
     }
 
     private static Object optimize(@Language("SQL") String expression)
@@ -1250,7 +1269,7 @@ public class TestExpressionInterpreter
 
         Expression parsedExpression = FunctionAssertions.createExpression(expression, METADATA, SYMBOL_TYPES);
 
-        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, parsedExpression, emptyList());
+        IdentityLinkedHashMap<Expression, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, parsedExpression, emptyList());
         ExpressionInterpreter interpreter = expressionOptimizer(parsedExpression, METADATA, TEST_SESSION, expressionTypes);
         return interpreter.optimize(symbol -> {
             switch (symbol.getName().toLowerCase(ENGLISH)) {
@@ -1297,7 +1316,7 @@ public class TestExpressionInterpreter
 
     private static Object evaluate(Expression expression)
     {
-        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyList());
+        IdentityLinkedHashMap<Expression, Type> expressionTypes = getExpressionTypes(TEST_SESSION, METADATA, SQL_PARSER, SYMBOL_TYPES, expression, emptyList());
         ExpressionInterpreter interpreter = expressionInterpreter(expression, METADATA, TEST_SESSION, expressionTypes);
 
         return interpreter.evaluate((RecordCursor) null);

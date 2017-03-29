@@ -88,6 +88,7 @@ import com.facebook.presto.type.RowType;
 import com.facebook.presto.type.RowType.RowField;
 import com.facebook.presto.util.Failures;
 import com.facebook.presto.util.FastutilSetHelper;
+import com.facebook.presto.util.maps.IdentityLinkedHashMap;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Defaults;
 import com.google.common.base.Functions;
@@ -102,7 +103,6 @@ import io.airlift.slice.Slice;
 
 import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -113,6 +113,7 @@ import java.util.stream.Stream;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.createConstantAnalyzer;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.EXPRESSION_NOT_CONSTANT;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
@@ -120,8 +121,9 @@ import static com.facebook.presto.sql.gen.TryCodeGenerator.tryExpressionExceptio
 import static com.facebook.presto.sql.gen.VarArgsToMapAdapterGenerator.generateVarArgsToMapAdapter;
 import static com.facebook.presto.sql.planner.LiteralInterpreter.toExpression;
 import static com.facebook.presto.sql.planner.LiteralInterpreter.toExpressions;
+import static com.facebook.presto.type.LikeFunctions.isLikePattern;
+import static com.facebook.presto.type.LikeFunctions.unescapeLiteralLikePattern;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
-import static com.facebook.presto.util.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.instanceOf;
@@ -135,15 +137,15 @@ public class ExpressionInterpreter
     private final Metadata metadata;
     private final ConnectorSession session;
     private final boolean optimize;
-    private final IdentityHashMap<Expression, Type> expressionTypes;
+    private final IdentityLinkedHashMap<Expression, Type> expressionTypes;
 
     private final Visitor visitor;
 
     // identity-based cache for LIKE expressions with constant pattern and escape char
-    private final IdentityHashMap<LikePredicate, Regex> likePatternCache = new IdentityHashMap<>();
-    private final IdentityHashMap<InListExpression, Set<?>> inListCache = new IdentityHashMap<>();
+    private final IdentityLinkedHashMap<LikePredicate, Regex> likePatternCache = new IdentityLinkedHashMap<>();
+    private final IdentityLinkedHashMap<InListExpression, Set<?>> inListCache = new IdentityLinkedHashMap<>();
 
-    public static ExpressionInterpreter expressionInterpreter(Expression expression, Metadata metadata, Session session, IdentityHashMap<Expression, Type> expressionTypes)
+    public static ExpressionInterpreter expressionInterpreter(Expression expression, Metadata metadata, Session session, IdentityLinkedHashMap<Expression, Type> expressionTypes)
     {
         requireNonNull(expression, "expression is null");
         requireNonNull(metadata, "metadata is null");
@@ -152,7 +154,7 @@ public class ExpressionInterpreter
         return new ExpressionInterpreter(expression, metadata, session, expressionTypes, false);
     }
 
-    public static ExpressionInterpreter expressionOptimizer(Expression expression, Metadata metadata, Session session, IdentityHashMap<Expression, Type> expressionTypes)
+    public static ExpressionInterpreter expressionOptimizer(Expression expression, Metadata metadata, Session session, IdentityLinkedHashMap<Expression, Type> expressionTypes)
     {
         requireNonNull(expression, "expression is null");
         requireNonNull(metadata, "metadata is null");
@@ -173,7 +175,7 @@ public class ExpressionInterpreter
                     actualType.getTypeSignature()));
         }
 
-        IdentityHashMap<Expression, Type> coercions = new IdentityHashMap<>();
+        IdentityLinkedHashMap<Expression, Type> coercions = new IdentityLinkedHashMap<>();
         coercions.putAll(analyzer.getExpressionCoercions());
         coercions.put(expression, expectedType);
         return evaluateConstantExpression(expression, coercions, metadata, session, ImmutableSet.of(), parameters);
@@ -181,7 +183,7 @@ public class ExpressionInterpreter
 
     public static Object evaluateConstantExpression(
             Expression expression,
-            IdentityHashMap<Expression, Type> coercions,
+            IdentityLinkedHashMap<Expression, Type> coercions,
             Metadata metadata, Session session,
             Set<Expression> columnReferences,
             List<Expression> parameters)
@@ -236,7 +238,7 @@ public class ExpressionInterpreter
         new ConstantExpressionVerifierVisitor(columnReferences, expression).process(expression, null);
     }
 
-    private ExpressionInterpreter(Expression expression, Metadata metadata, Session session, IdentityHashMap<Expression, Type> expressionTypes, boolean optimize)
+    private ExpressionInterpreter(Expression expression, Metadata metadata, Session session, IdentityLinkedHashMap<Expression, Type> expressionTypes, boolean optimize)
     {
         this.expression = expression;
         this.metadata = metadata;
@@ -394,7 +396,7 @@ public class ExpressionInterpreter
                 return new DereferenceExpression(toExpression(base, type), node.getFieldName());
             }
 
-            RowType rowType = checkType(type, RowType.class, "type");
+            RowType rowType = (RowType) type;
             Block row = (Block) base;
             Type returnType = expressionTypes.get(node);
             List<RowField> fields = rowType.getFields();
@@ -1034,25 +1036,23 @@ public class ExpressionInterpreter
             }
 
             // if pattern is a constant without % or _ replace with a comparison
-            if (pattern instanceof Slice && escape == null) {
-                String stringPattern = ((Slice) pattern).toStringUtf8();
-                if (!stringPattern.contains("%") && !stringPattern.contains("_")) {
-                    Type valueType = expressionTypes.get(node.getValue());
-                    Type patternType = expressionTypes.get(node.getPattern());
-                    TypeManager typeManager = metadata.getTypeManager();
-                    Optional<Type> commonSuperType = typeManager.getCommonSuperType(valueType, patternType);
-                    checkArgument(commonSuperType.isPresent(), "Missing super type when optimizing %s", node);
-                    Expression valueExpression = toExpression(value, valueType);
-                    Expression patternExpression = toExpression(pattern, patternType);
-                    Type superType = commonSuperType.get();
-                    if (!valueType.equals(superType)) {
-                        valueExpression = new Cast(valueExpression, superType.getTypeSignature().toString(), false, typeManager.isTypeOnlyCoercion(valueType, superType));
-                    }
-                    if (!patternType.equals(superType)) {
-                        patternExpression = new Cast(patternExpression, superType.getTypeSignature().toString(), false, typeManager.isTypeOnlyCoercion(patternType, superType));
-                    }
-                    return new ComparisonExpression(ComparisonExpressionType.EQUAL, valueExpression, patternExpression);
+            if (pattern instanceof Slice && (escape == null || escape instanceof Slice) && !isLikePattern((Slice) pattern, (Slice) escape)) {
+                Slice unescapedPattern = unescapeLiteralLikePattern((Slice) pattern, (Slice) escape);
+                Type valueType = expressionTypes.get(node.getValue());
+                Type patternType = createVarcharType(unescapedPattern.length());
+                TypeManager typeManager = metadata.getTypeManager();
+                Optional<Type> commonSuperType = typeManager.getCommonSuperType(valueType, patternType);
+                checkArgument(commonSuperType.isPresent(), "Missing super type when optimizing %s", node);
+                Expression valueExpression = toExpression(value, valueType);
+                Expression patternExpression = toExpression(unescapedPattern, patternType);
+                Type superType = commonSuperType.get();
+                if (!valueType.equals(superType)) {
+                    valueExpression = new Cast(valueExpression, superType.getTypeSignature().toString(), false, typeManager.isTypeOnlyCoercion(valueType, superType));
                 }
+                if (!patternType.equals(superType)) {
+                    patternExpression = new Cast(patternExpression, superType.getTypeSignature().toString(), false, typeManager.isTypeOnlyCoercion(patternType, superType));
+                }
+                return new ComparisonExpression(ComparisonExpressionType.EQUAL, valueExpression, patternExpression);
             }
 
             Expression optimizedEscape = null;
@@ -1165,7 +1165,7 @@ public class ExpressionInterpreter
         @Override
         protected Object visitRow(Row node, Object context)
         {
-            RowType rowType = checkType(expressionTypes.get(node), RowType.class, "type");
+            RowType rowType = (RowType) expressionTypes.get(node);
             List<Type> parameterTypes = rowType.getTypeParameters();
             List<Expression> arguments = node.getItems();
 
