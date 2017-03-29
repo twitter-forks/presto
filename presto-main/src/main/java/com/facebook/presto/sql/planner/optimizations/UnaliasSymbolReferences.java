@@ -129,35 +129,9 @@ public class UnaliasSymbolReferences
         public PlanNode visitAggregation(AggregationNode node, RewriteContext<Void> context)
         {
             PlanNode source = context.rewrite(node.getSource());
-
-            ImmutableMap.Builder<Symbol, Signature> functionInfos = ImmutableMap.builder();
-            ImmutableMap.Builder<Symbol, FunctionCall> functionCalls = ImmutableMap.builder();
-            ImmutableMap.Builder<Symbol, Symbol> masks = ImmutableMap.builder();
-            for (Map.Entry<Symbol, FunctionCall> entry : node.getAggregations().entrySet()) {
-                Symbol symbol = entry.getKey();
-                Symbol canonical = canonicalize(symbol);
-                FunctionCall canonicalCall = (FunctionCall) canonicalize(entry.getValue());
-                functionCalls.put(canonical, canonicalCall);
-                functionInfos.put(canonical, node.getFunctions().get(symbol));
-            }
-            for (Map.Entry<Symbol, Symbol> entry : node.getMasks().entrySet()) {
-                masks.put(canonicalize(entry.getKey()), canonicalize(entry.getValue()));
-            }
-
-            List<List<Symbol>> groupingSets = node.getGroupingSets().stream()
-                    .map(this::canonicalizeAndDistinct)
-                    .collect(toImmutableList());
-
-            return new AggregationNode(
-                    node.getId(),
-                    source,
-                    functionCalls.build(),
-                    functionInfos.build(),
-                    masks.build(),
-                    groupingSets,
-                    node.getStep(),
-                    canonicalize(node.getHashSymbol()),
-                    canonicalize(node.getGroupIdSymbol()));
+            //TODO: use mapper in other methods
+            SymbolMapper mapper = new SymbolMapper(mapping);
+            return mapper.map(node, source);
         }
 
         @Override
@@ -518,7 +492,7 @@ public class UnaliasSymbolReferences
                         .forEach(clause -> map(clause.getRight(), clause.getLeft()));
             }
 
-            return new JoinNode(node.getId(), node.getType(), left, right, canonicalCriteria, canonicalizeAndDistinct(node.getOutputSymbols()), canonicalFilter, canonicalLeftHashSymbol, canonicalRightHashSymbol);
+            return new JoinNode(node.getId(), node.getType(), left, right, canonicalCriteria, canonicalizeAndDistinct(node.getOutputSymbols()), canonicalFilter, canonicalLeftHashSymbol, canonicalRightHashSymbol, node.getDistributionType());
         }
 
         @Override
@@ -527,7 +501,16 @@ public class UnaliasSymbolReferences
             PlanNode source = context.rewrite(node.getSource());
             PlanNode filteringSource = context.rewrite(node.getFilteringSource());
 
-            return new SemiJoinNode(node.getId(), source, filteringSource, canonicalize(node.getSourceJoinSymbol()), canonicalize(node.getFilteringSourceJoinSymbol()), canonicalize(node.getSemiJoinOutput()), canonicalize(node.getSourceHashSymbol()), canonicalize(node.getFilteringSourceHashSymbol()));
+            return new SemiJoinNode(
+                    node.getId(),
+                    source,
+                    filteringSource,
+                    canonicalize(node.getSourceJoinSymbol()),
+                    canonicalize(node.getFilteringSourceJoinSymbol()),
+                    canonicalize(node.getSemiJoinOutput()),
+                    canonicalize(node.getSourceHashSymbol()),
+                    canonicalize(node.getFilteringSourceHashSymbol()),
+                    node.getDistributionType());
         }
 
         @Override

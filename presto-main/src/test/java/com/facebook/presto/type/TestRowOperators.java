@@ -14,21 +14,23 @@
 package com.facebook.presto.type;
 
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
-import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.analyzer.SemanticException;
+import com.facebook.presto.sql.analyzer.SemanticErrorCode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
@@ -44,7 +46,6 @@ import static com.facebook.presto.type.TypeJsonUtils.appendToBlockBuilder;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.String.format;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.fail;
 
 public class TestRowOperators
         extends AbstractTestFunctions
@@ -118,13 +119,7 @@ public class TestRowOperators
         assertFunction("cast(row(1,null,3) as row(aa bigint, bb boolean, cc boolean)).aa", BIGINT, 1L);
         assertFunction("cast(row(null,null,null) as row(aa bigint, bb boolean, cc boolean)).aa", BIGINT, null);
 
-        try {
-            assertFunction("CAST(ROW(1, 2) AS ROW(a BIGINT, A DOUBLE)).a", BIGINT, 1L);
-            fail("fields in Row are case insensitive");
-        }
-        catch (RuntimeException e) {
-            // Expected
-        }
+        assertInvalidFunction("CAST(ROW(1, 2) AS ROW(a BIGINT, A DOUBLE)).a");
 
         // there are totally 7 field names
         String longFieldNameCast = "CAST(row(1.2, ARRAY[row(233, 6.9)], row(1000, 6.3)) AS ROW(%s VARCHAR, %s ARRAY(ROW(%s VARCHAR, %s VARCHAR)), %s ROW(%s VARCHAR, %s VARCHAR))).%s[1].%s";
@@ -156,61 +151,41 @@ public class TestRowOperators
     }
 
     @Test
-    public void testRowEquality()
+    public void testRowComparison()
             throws Exception
     {
-        assertFunction("row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10') = " +
-                "row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10')", BOOLEAN, true);
-        assertFunction("row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10')) =" +
-                "row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10'))", BOOLEAN, true);
-        assertFunction("row(1.0, 'kittens') = row(1.0, 'kittens')", BOOLEAN, true);
-        assertFunction("row(1, 2.0) = row(1, 2.0)", BOOLEAN, true);
-        assertFunction("row(TRUE, FALSE, TRUE, FALSE) = row(TRUE, FALSE, TRUE, FALSE)", BOOLEAN, true);
-        assertFunction("row(TRUE, FALSE, TRUE, FALSE) = row(TRUE, TRUE, TRUE, FALSE)", BOOLEAN, false);
-        assertFunction("row(1, 2.0, TRUE, 'kittens', from_unixtime(1)) = row(1, 2.0, TRUE, 'kittens', from_unixtime(1))", BOOLEAN, true);
+        assertFunction("row(TIMESTAMP '2002-01-02 03:04:05.321 +08:10', TIMESTAMP '2002-01-02 03:04:05.321 +08:10') = " +
+                "row(TIMESTAMP '2002-01-02 02:04:05.321 +07:10', TIMESTAMP '2002-01-02 03:05:05.321 +08:11')", BOOLEAN, true);
+        assertFunction("row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10')) = " +
+                "row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:11'))", BOOLEAN, false);
 
-        assertFunction("row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10')) !=" +
-                "row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:11'))", BOOLEAN, true);
-        assertFunction("row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10') != " +
-                "row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:11')", BOOLEAN, true);
-        assertFunction("row(1.0, 'kittens') != row(1.0, 'kittens')", BOOLEAN, false);
-        assertFunction("row(1, 2.0) != row(1, 2.0)", BOOLEAN, false);
-        assertFunction("row(TRUE, FALSE, TRUE, FALSE) != row(TRUE, FALSE, TRUE, FALSE)", BOOLEAN, false);
-        assertFunction("row(TRUE, FALSE, TRUE, FALSE) != row(TRUE, TRUE, TRUE, FALSE)", BOOLEAN, true);
-        assertFunction("row(1, 2.0, TRUE, 'kittens', from_unixtime(1)) != row(1, 2.0, TRUE, 'puppies', from_unixtime(1))", BOOLEAN, true);
+        assertComparisonCombination("row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10')",
+                "row(TIMESTAMP '2002-01-02 03:04:05.321 +07:09', TIMESTAMP '2002-01-02 03:04:05.321 +07:09')");
+        assertComparisonCombination("row(1.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10'))",
+                "row(2.0, row(TIMESTAMP '2001-01-02 03:04:05.321 +07:09', TIMESTAMP '2001-01-02 03:04:05.321 +07:10'))");
 
-        try {
-            assertFunction("cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog)) = cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog))", BOOLEAN, true);
-            fail("hyperloglog is not comparable");
-        }
-        catch (SemanticException e) {
-            if (!e.getMessage().matches("\\Qline 1:81: '=' cannot be applied to row(col0 HyperLogLog), row(col0 HyperLogLog)\\E")) {
-                throw e;
-            }
-            //Expected
-        }
+        assertComparisonCombination("row(1.0, 'kittens')", "row(1.0, 'puppies')");
+        assertComparisonCombination("row(1, 2.0)", "row(5, 2.0)");
+        assertComparisonCombination("row(TRUE, FALSE, TRUE, FALSE)", "row(TRUE, TRUE, TRUE, FALSE)");
+        assertComparisonCombination("row(1, 2.0, TRUE, 'kittens', from_unixtime(1))", "row(1, 3.0, TRUE, 'kittens', from_unixtime(1))");
+
+        assertInvalidFunction("cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog)) = cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog))",
+                SemanticErrorCode.TYPE_MISMATCH, "line 1:81: '=' cannot be applied to row(col0 HyperLogLog), row(col0 HyperLogLog)");
+        assertInvalidFunction("cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog)) > cast(row(cast(cast ('' as varbinary) as hyperloglog)) as row(col0 hyperloglog))",
+                SemanticErrorCode.TYPE_MISMATCH, "line 1:81: '>' cannot be applied to row(col0 HyperLogLog), row(col0 HyperLogLog)");
 
         assertFunction("row(TRUE, ARRAY [1], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0])) = row(TRUE, ARRAY [1, 2], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0]))", BOOLEAN, false);
         assertFunction("row(TRUE, ARRAY [1, 2], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0])) = row(TRUE, ARRAY [1, 2], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0]))", BOOLEAN, true);
 
-        try {
-            assertFunction("row(1, CAST(NULL AS INTEGER)) = row(1, 2)", BOOLEAN, false);
-            fail("ROW comparison not implemented for NULL values");
-        }
-        catch (PrestoException e) {
-            assertEquals(e.getErrorCode().getCode(), StandardErrorCode.NOT_SUPPORTED.toErrorCode().getCode());
-        }
+        assertInvalidFunction("row(1, CAST(NULL AS INTEGER)) = row(1, 2)", StandardErrorCode.NOT_SUPPORTED);
+        assertInvalidFunction("row(TRUE, ARRAY [1, 2], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0])) > row(TRUE, ARRAY [1, 2], MAP(ARRAY[1, 3], ARRAY[2.0, 4.0]))",
+                SemanticErrorCode.TYPE_MISMATCH, "line 1:60: '>' cannot be applied to row(field0 boolean,field1 array(integer),field2 map(integer,double)), row(field0 boolean,field1 array(integer),field2 map(integer,double))");
 
-        assertFunction("row(TRUE, ARRAY [1]) = row(TRUE, ARRAY [1])", BOOLEAN, true);
-        assertFunction("row(TRUE, ARRAY [1]) = row(TRUE, ARRAY [1,2])", BOOLEAN, false);
-        assertFunction("row(1.0, ARRAY [1,2,3], row(2,2.0)) = row(1.0, ARRAY [1,2,3], row(2,2.0))", BOOLEAN, true);
+        assertInvalidFunction("row(1, CAST(NULL AS INTEGER)) < row(1, 2)", StandardErrorCode.NOT_SUPPORTED);
 
-        assertFunction("row(TRUE, ARRAY [1]) != row(TRUE, ARRAY [1])", BOOLEAN, false);
-        assertFunction("row(TRUE, ARRAY [1]) != row(TRUE, ARRAY [1,2])", BOOLEAN, true);
-        assertFunction("row(1.0, ARRAY [1,2,3], row(2,2.0)) != row(1.0, ARRAY [1,2,3], row(1,2.0))", BOOLEAN, true);
-
-        assertFunction("ROW(1, 2) = ROW(1, 2)", BOOLEAN, true);
-        assertFunction("ROW(2, 1) != ROW(1, 2)", BOOLEAN, true);
+        assertComparisonCombination("row(1.0, ARRAY [1,2,3], row(2,2.0))", "row(1.0, ARRAY [1,3,3], row(2,2.0))");
+        assertComparisonCombination("row(TRUE, ARRAY [1])", "row(TRUE, ARRAY [1, 2])");
+        assertComparisonCombination("ROW(1, 2)", "ROW(2, 1)");
     }
 
     @Test
@@ -232,5 +207,17 @@ public class TestRowOperators
         rowType.writeObject(rowArrayBuilder, rowBuilder.build());
 
         assertOperator(HASH_CODE, inputString, BIGINT, rowType.hash(rowArrayBuilder.build(), 0));
+    }
+
+    private void assertComparisonCombination(String base, String greater)
+    {
+        Set<String> equalOperators = new HashSet<>(ImmutableSet.of("=", ">=", "<="));
+        Set<String> greaterOrInequalityOperators = new HashSet<>(ImmutableSet.of(">=", ">", "!="));
+        Set<String> lessOrInequalityOperators = new HashSet<>(ImmutableSet.of("<=", "<", "!="));
+        for (String operator : ImmutableList.of(">", "=", "<", ">=", "<=", "!=")) {
+            assertFunction(base + operator + base, BOOLEAN, equalOperators.contains(operator));
+            assertFunction(base + operator + greater, BOOLEAN, lessOrInequalityOperators.contains(operator));
+            assertFunction(greater + operator + base, BOOLEAN, greaterOrInequalityOperators.contains(operator));
+        }
     }
 }

@@ -83,7 +83,7 @@ public class MapAggregationFunction
         DynamicClassLoader classLoader = new DynamicClassLoader(MapAggregationFunction.class.getClassLoader());
         List<Type> inputTypes = ImmutableList.of(keyType, valueType);
         Type outputType = new MapType(keyType, valueType);
-        KeyValuePairStateSerializer stateSerializer = new KeyValuePairStateSerializer(keyType, valueType, false);
+        KeyValuePairStateSerializer stateSerializer = new KeyValuePairStateSerializer(keyType, valueType);
         Type intermediateType = stateSerializer.getSerializedType();
 
         AggregationMetadata metadata = new AggregationMetadata(
@@ -156,9 +156,7 @@ public class MapAggregationFunction
             out.appendNull();
         }
         else {
-            Block block = pairs.toMapNativeEncoding();
-            out.writeObject(block);
-            out.closeEntry();
+            pairs.serialize(out);
         }
     }
 }

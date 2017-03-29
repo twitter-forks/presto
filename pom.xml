@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>59</version>
+        <version>61</version>
     </parent>
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.166-tw-0.31</version>
+    <version>0.170-tw-0.32</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -30,30 +30,28 @@
     <scm>
         <connection>scm:git:git://github.com/twitter-forks/presto.git</connection>
         <url>https://github.com/twitter-forks/presto</url>
-        <tag>0.166-tw-0.31</tag>
+        <tag>0.170-tw-0.32</tag>
     </scm>
 
     <properties>
         <air.main.basedir>${project.basedir}</air.main.basedir>
 
-        <air.check.skip-extended>true</air.check.skip-extended>
-        <air.check.skip-license>false</air.check.skip-license>
+        <air.check.skip-findbugs>true</air.check.skip-findbugs>
+        <air.check.skip-pmd>true</air.check.skip-pmd>
+        <air.check.skip-jacoco>true</air.check.skip-jacoco>
 
         <air.check.skip-checkstyle>${air.check.skip-basic}</air.check.skip-checkstyle>
         <air.check.fail-checkstyle>${air.check.fail-basic}</air.check.fail-checkstyle>
-
-        <air.check.skip-modernizer>${air.check.skip-basic}</air.check.skip-modernizer>
-        <air.check.fail-modernizer>${air.check.fail-basic}</air.check.fail-modernizer>
 
         <air.java.version>1.8.0-60</air.java.version>
         <air.maven.version>3.3.9</air.maven.version>
 
         <dep.antlr.version>4.6</dep.antlr.version>
-        <dep.airlift.version>0.142</dep.airlift.version>
+        <dep.airlift.version>0.144</dep.airlift.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
-        <dep.slice.version>0.28</dep.slice.version>
+        <dep.slice.version>0.29</dep.slice.version>
         <dep.aws-sdk.version>1.11.30</dep.aws-sdk.version>
-        <dep.tempto.version>1.26</dep.tempto.version>
+        <dep.tempto.version>1.27</dep.tempto.version>
         <dep.testng.version>6.10</dep.testng.version>
 
         <cli.skip-execute>true</cli.skip-execute>
@@ -79,6 +77,7 @@
         <module>presto-accumulo</module>
         <module>presto-cassandra</module>
         <module>presto-blackhole</module>
+        <module>presto-memory</module>
         <module>presto-orc</module>
         <module>presto-rcfile</module>
         <module>presto-hive</module>
@@ -227,6 +226,12 @@
 
             <dependency>
                 <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-memory</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-base-jdbc</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -344,54 +349,25 @@
             <dependency>
                 <groupId>com.facebook.presto.hive</groupId>
                 <artifactId>hive-apache</artifactId>
-                <version>0.21</version>
+                <version>1.2.0-1</version>
             </dependency>
 
             <dependency>
                 <groupId>com.facebook.presto.orc</groupId>
                 <artifactId>orc-protobuf</artifactId>
-                <version>1</version>
+                <version>2</version>
             </dependency>
 
             <dependency>
                 <groupId>com.facebook.hive</groupId>
                 <artifactId>hive-dwrf</artifactId>
-                <version>0.8</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>commons-logging</groupId>
-                        <artifactId>commons-logging</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.iq80.snappy</groupId>
-                        <artifactId>snappy</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>com.facebook.presto.hadoop</groupId>
-                        <artifactId>hadoop-cdh4</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>it.unimi.dsi</groupId>
-                        <artifactId>fastutil</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-            <dependency>
-                <groupId>com.facebook.hive</groupId>
-                <artifactId>hive-dwrf-shims</artifactId>
-                <version>0.8</version>
-                <exclusions>
-                    <exclusion>
-                        <artifactId>commons-logging</artifactId>
-                        <groupId>commons-logging</groupId>
-                    </exclusion>
-                </exclusions>
+                <version>0.8.2</version>
             </dependency>
 
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>aircompressor</artifactId>
-                <version>0.4</version>
+                <version>0.5</version>
             </dependency>
 
             <dependency>
@@ -613,7 +589,7 @@
             <dependency>
                 <groupId>org.jdbi</groupId>
                 <artifactId>jdbi</artifactId>
-                <version>2.63.1</version>
+                <version>2.78</version>
             </dependency>
 
             <dependency>
@@ -663,7 +639,7 @@
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty</artifactId>
-                <version>3.7.0.Final</version>
+                <version>3.10.6.Final</version>
             </dependency>
 
             <dependency>
@@ -733,11 +709,11 @@
             <dependency>
                 <groupId>org.apache.zookeeper</groupId>
                 <artifactId>zookeeper</artifactId>
-                <version>3.4.6</version>
+                <version>3.4.9</version>
                 <exclusions>
                     <exclusion>
-                        <artifactId>junit</artifactId>
-                        <groupId>junit</groupId>
+                        <artifactId>jline</artifactId>
+                        <groupId>jline</groupId>
                     </exclusion>
                     <exclusion>
                         <artifactId>log4j</artifactId>
@@ -794,6 +770,18 @@
                 <groupId>com.teradata.tempto</groupId>
                 <artifactId>tempto-core</artifactId>
                 <version>${dep.tempto.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.datastax.cassandra</groupId>
+                        <artifactId>cassandra-driver-core</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>com.teradata.tempto</groupId>
+                <artifactId>tempto-ldap</artifactId>
+                <version>${dep.tempto.version}</version>
             </dependency>
 
             <dependency>
@@ -834,6 +822,23 @@
                 </exclusions>
             </dependency>
 
+            <dependency>
+                <groupId>com.facebook.presto.cassandra</groupId>
+                <artifactId>cassandra-server</artifactId>
+                <version>2.1.16-1</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>io.netty</groupId>
+                        <artifactId>netty-all</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto.cassandra</groupId>
+                <artifactId>cassandra-driver</artifactId>
+                <version>3.1.4-1</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -883,11 +888,7 @@
                 <plugin>
                     <groupId>org.gaul</groupId>
                     <artifactId>modernizer-maven-plugin</artifactId>
-                    <version>1.5.0</version>
                     <configuration>
-                        <skip>${air.check.skip-modernizer}</skip>
-                        <javaVersion>1.8</javaVersion>
-                        <failOnViolations>true</failOnViolations>
                         <exclusionPatterns>
                             <exclusionPattern>org/joda/time/.*</exclusionPattern>
                         </exclusionPatterns>
@@ -1002,19 +1003,6 @@
                                         <ignore />
                                     </action>
                                 </pluginExecution>
-                                <pluginExecution>
-                                    <pluginExecutionFilter>
-                                        <groupId>org.gaul</groupId>
-                                        <artifactId>modernizer-maven-plugin</artifactId>
-                                        <versionRange>[0,)</versionRange>
-                                        <goals>
-                                            <goal>modernizer</goal>
-                                        </goals>
-                                    </pluginExecutionFilter>
-                                    <action>
-                                        <ignore />
-                                    </action>
-                                </pluginExecution>
                             </pluginExecutions>
                         </lifecycleMappingMetadata>
                     </configuration>
@@ -1023,19 +1011,6 @@
         </pluginManagement>
 
         <plugins>
-            <plugin>
-                <groupId>org.gaul</groupId>
-                <artifactId>modernizer-maven-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>modernizer</id>
-                        <goals>
-                            <goal>modernizer</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>

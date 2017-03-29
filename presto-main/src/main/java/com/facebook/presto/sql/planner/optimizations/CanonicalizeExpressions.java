@@ -20,6 +20,7 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.FilterNode;
+import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
@@ -68,6 +69,29 @@ public class CanonicalizeExpressions
     private static class Rewriter
             extends SimplePlanRewriter<Void>
     {
+        @Override
+        public PlanNode visitJoin(JoinNode node, RewriteContext<Void> context)
+        {
+            if (node.getFilter().isPresent()) {
+                Expression canonicalizedExpression = canonicalizeExpression(node.getFilter().get());
+                if (!canonicalizedExpression.equals(node.getFilter().get())) {
+                    return new JoinNode(
+                            node.getId(),
+                            node.getType(),
+                            context.rewrite(node.getLeft()),
+                            context.rewrite(node.getRight()),
+                            node.getCriteria(),
+                            node.getOutputSymbols(),
+                            Optional.of(canonicalizedExpression),
+                            node.getLeftHashSymbol(),
+                            node.getRightHashSymbol(),
+                            node.getDistributionType());
+                }
+            }
+
+            return context.defaultRewrite(node);
+        }
+
         @Override
         public PlanNode visitProject(ProjectNode node, RewriteContext<Void> context)
         {

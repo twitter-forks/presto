@@ -91,9 +91,9 @@ public class DictionaryBlock
     }
 
     @Override
-    public int getLength(int position)
+    public int getSliceLength(int position)
     {
-        return dictionary.getLength(getId(position));
+        return dictionary.getSliceLength(getId(position));
     }
 
     @Override
@@ -205,8 +205,7 @@ public class DictionaryBlock
             int position = getId(i);
             if (!seen[position]) {
                 if (!dictionary.isNull(position)) {
-                    // todo this is wrong for ArrayBlock and InterleavedBlock as length means entry count
-                    sizeInBytes += dictionary.getLength(position);
+                    sizeInBytes += dictionary.getRegionSizeInBytes(position, 1);
                 }
                 uniqueIds++;
                 seen[position] = true;
@@ -214,6 +213,29 @@ public class DictionaryBlock
         }
         this.sizeInBytes = sizeInBytes + (positionCount * Integer.BYTES);
         this.uniqueIds = uniqueIds;
+    }
+
+    @Override
+    public int getRegionSizeInBytes(int positionOffset, int length)
+    {
+        if (positionOffset == 0 && length == getPositionCount()) {
+            // Calculation of getRegionSizeInBytes is expensive in this class.
+            // On the other hand, getSizeInBytes result is cached.
+            return getSizeInBytes();
+        }
+
+        int sizeInBytes = 0;
+        boolean[] seen = new boolean[dictionary.getPositionCount()];
+        for (int i = positionOffset; i < positionOffset + length; i++) {
+            int position = getId(i);
+            if (!seen[position]) {
+                if (!dictionary.isNull(position)) {
+                    sizeInBytes += dictionary.getRegionSizeInBytes(position, 1);
+                }
+                seen[position] = true;
+            }
+        }
+        return sizeInBytes + (length * Integer.BYTES);
     }
 
     @Override
@@ -295,6 +317,9 @@ public class DictionaryBlock
 
     public int getId(int position)
     {
+        if (position < 0 || position >= positionCount) {
+            throw new IllegalArgumentException("Invalid position " + position + " in block with " + positionCount + " positions");
+        }
         return ids[position + idsOffset];
     }
 

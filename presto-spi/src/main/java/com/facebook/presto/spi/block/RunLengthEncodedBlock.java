@@ -102,6 +102,12 @@ public class RunLengthEncodedBlock
     }
 
     @Override
+    public int getRegionSizeInBytes(int position, int length)
+    {
+        return value.getSizeInBytes();
+    }
+
+    @Override
     public Block copyRegion(int positionOffset, int length)
     {
         checkPositionIndexes(positionOffset, length);
@@ -109,9 +115,9 @@ public class RunLengthEncodedBlock
     }
 
     @Override
-    public int getLength(int position)
+    public int getSliceLength(int position)
     {
-        return value.getLength(0);
+        return value.getSliceLength(0);
     }
 
     @Override

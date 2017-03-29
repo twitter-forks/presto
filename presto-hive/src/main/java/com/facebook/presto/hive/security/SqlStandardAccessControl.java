@@ -106,6 +106,17 @@ public class SqlStandardAccessControl
     }
 
     @Override
+    public void checkCanShowSchemas(ConnectorTransactionHandle transactionHandle, Identity identity)
+    {
+    }
+
+    @Override
+    public Set<String> filterSchemas(ConnectorTransactionHandle transactionHandle, Identity identity, Set<String> schemaNames)
+    {
+        return schemaNames;
+    }
+
+    @Override
     public void checkCanCreateTable(ConnectorTransactionHandle transaction, Identity identity, SchemaTableName tableName)
     {
         if (!isDatabaseOwner(transaction, identity, tableName.getSchemaName())) {
@@ -127,6 +138,17 @@ public class SqlStandardAccessControl
         if (!checkTablePermission(transaction, identity, tableName, OWNERSHIP)) {
             denyRenameTable(tableName.toString(), newTableName.toString());
         }
+    }
+
+    @Override
+    public void checkCanShowTables(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName)
+    {
+    }
+
+    @Override
+    public Set<SchemaTableName> filterTables(ConnectorTransactionHandle transactionHandle, Identity identity, Set<SchemaTableName> tableNames)
+    {
+        return tableNames;
     }
 
     @Override

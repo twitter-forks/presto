@@ -79,6 +79,11 @@ public final class Signature
         return internalScalarFunction(mangleOperatorName(operator.name()), returnType.getTypeSignature(), argumentTypes.stream().map(Type::getTypeSignature).collect(toImmutableList()));
     }
 
+    public static Signature internalOperator(OperatorType operator, TypeSignature returnType, TypeSignature... argumentTypes)
+    {
+        return internalOperator(operator, returnType, ImmutableList.copyOf(argumentTypes));
+    }
+
     public static Signature internalOperator(OperatorType operator, TypeSignature returnType, List<TypeSignature> argumentTypes)
     {
         return internalScalarFunction(mangleOperatorName(operator.name()), returnType, argumentTypes);
@@ -208,6 +213,11 @@ public final class Signature
     public static TypeVariableConstraint comparableTypeParameter(String name)
     {
         return new TypeVariableConstraint(name, true, false, null);
+    }
+
+    public static TypeVariableConstraint orderableWithVariadicBound(String name, String variadicBound)
+    {
+        return new TypeVariableConstraint(name, false, true, variadicBound);
     }
 
     public static TypeVariableConstraint orderableTypeParameter(String name)

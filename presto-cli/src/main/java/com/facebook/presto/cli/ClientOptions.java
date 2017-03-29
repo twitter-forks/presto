@@ -83,6 +83,9 @@ public class ClientOptions
     @Option(name = "--truststore-password", title = "truststore password", description = "Truststore password")
     public String truststorePassword;
 
+    @Option(name = "--password", title = "password", description = "Prompt for password")
+    public boolean password;
+
     @Option(name = "--source", title = "source", description = "Name of source making query")
     public String source = "presto-cli";
 

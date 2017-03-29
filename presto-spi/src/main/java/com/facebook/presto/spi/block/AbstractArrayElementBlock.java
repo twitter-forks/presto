@@ -37,10 +37,10 @@ public abstract class AbstractArrayElementBlock
     }
 
     @Override
-    public int getLength(int position)
+    public int getSliceLength(int position)
     {
         checkReadablePosition(position);
-        return getBlock().getLength(position + start);
+        return getBlock().getSliceLength(position + start);
     }
 
     @Override
@@ -163,6 +163,12 @@ public abstract class AbstractArrayElementBlock
 
     @Override
     public Block getRegion(int position, int length)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getRegionSizeInBytes(int position, int length)
     {
         throw new UnsupportedOperationException();
     }

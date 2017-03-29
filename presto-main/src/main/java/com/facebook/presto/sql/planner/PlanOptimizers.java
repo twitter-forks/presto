@@ -17,8 +17,11 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
+import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroLimit;
+import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroSample;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementBernoulliSampleAsFilter;
+import com.facebook.presto.sql.planner.iterative.rule.MergeFilters;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithTopN;
@@ -28,6 +31,8 @@ import com.facebook.presto.sql.planner.iterative.rule.PruneValuesColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughMarkDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughProject;
 import com.facebook.presto.sql.planner.iterative.rule.PushLimitThroughSemiJoin;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveEmptyDelete;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveFullSample;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantIdentityProjections;
 import com.facebook.presto.sql.planner.iterative.rule.SimplifyCountOverConstant;
 import com.facebook.presto.sql.planner.iterative.rule.SingleMarkDistinctToGroupBy;
@@ -37,6 +42,7 @@ import com.facebook.presto.sql.planner.optimizations.BeginTableWrite;
 import com.facebook.presto.sql.planner.optimizations.CanonicalizeExpressions;
 import com.facebook.presto.sql.planner.optimizations.CountConstantOptimizer;
 import com.facebook.presto.sql.planner.optimizations.DesugaringOptimizer;
+import com.facebook.presto.sql.planner.optimizations.DetermineJoinDistributionType;
 import com.facebook.presto.sql.planner.optimizations.EliminateCrossJoins;
 import com.facebook.presto.sql.planner.optimizations.EmptyDeleteOptimizer;
 import com.facebook.presto.sql.planner.optimizations.HashGenerationOptimizer;
@@ -79,6 +85,7 @@ import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Set;
 
 public class PlanOptimizers
 {
@@ -109,25 +116,33 @@ public class PlanOptimizers
         this.exporter = exporter;
         ImmutableList.Builder<PlanOptimizer> builder = ImmutableList.builder();
 
+        Set<Rule> predicatePushDownRules = ImmutableSet.of(
+                new MergeFilters());
+
         builder.add(
                 new DesugaringOptimizer(metadata, sqlParser), // Clean up all the sugar in expressions, e.g. AtTimeZone, must be run before all the other optimizers
                 new CanonicalizeExpressions(),
                 new IterativeOptimizer(
                         stats,
-                        ImmutableSet.of(
-                                new RemoveRedundantIdentityProjections(),
-                                new EvaluateZeroLimit(),
-                                new PushLimitThroughProject(),
-                                new MergeLimits(),
-                                new MergeLimitWithSort(),
-                                new MergeLimitWithTopN(),
-                                new PushLimitThroughMarkDistinct(),
-                                new PushLimitThroughSemiJoin(),
-                                new MergeLimitWithDistinct(),
+                        ImmutableSet.<Rule>builder()
+                                .addAll(predicatePushDownRules)
+                                .addAll(ImmutableSet.of(
+                                        new RemoveRedundantIdentityProjections(),
+                                        new RemoveFullSample(),
+                                        new EvaluateZeroLimit(),
+                                        new EvaluateZeroSample(),
+                                        new PushLimitThroughProject(),
+                                        new MergeLimits(),
+                                        new MergeLimitWithSort(),
+                                        new MergeLimitWithTopN(),
+                                        new PushLimitThroughMarkDistinct(),
+                                        new PushLimitThroughSemiJoin(),
+                                        new MergeLimitWithDistinct(),
 
-                                new PruneValuesColumns(),
-                                new PruneTableScanColumns()
-                        )),
+                                        new PruneValuesColumns(),
+                                        new PruneTableScanColumns()))
+                                .build()
+                        ),
                 new IterativeOptimizer(
                         stats,
                         ImmutableList.of(
@@ -195,13 +210,19 @@ public class PlanOptimizers
         builder.add(new OptimizeMixedDistinctAggregations(metadata));
 
         if (!forceSingleNode) {
+            builder.add(new DetermineJoinDistributionType()); // Must run before AddExchanges
             builder.add(new PushTableWriteThroughUnion()); // Must run before AddExchanges
             builder.add(new AddExchanges(metadata, sqlParser));
         }
 
         builder.add(new PickLayout(metadata));
 
-        builder.add(new EmptyDeleteOptimizer()); // Run after table scan is removed by PickLayout
+        builder.add(
+                new IterativeOptimizer(
+                        stats,
+                        ImmutableList.of(new EmptyDeleteOptimizer()),
+                        ImmutableSet.of(new RemoveEmptyDelete()) // Run RemoveEmptyDelete after table scan is removed by PickLayout/AddExchanges
+                ));
 
         builder.add(new PredicatePushDown(metadata, sqlParser)); // Run predicate push down one more time in case we can leverage new information from layouts' effective predicate
         builder.add(new ProjectionPushDown());

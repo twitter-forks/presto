@@ -68,6 +68,16 @@ public class AccessDeniedException
         throw new AccessDeniedException(format("Cannot rename schema from %s to %s%s", schemaName, newSchemaName, formatExtraInfo(extraInfo)));
     }
 
+    public static void denyShowSchemas()
+    {
+        denyShowSchemas(null);
+    }
+
+    public static void denyShowSchemas(String extraInfo)
+    {
+        throw new AccessDeniedException(format("Cannot show schemas%s", formatExtraInfo(extraInfo)));
+    }
+
     public static void denyCreateTable(String tableName)
     {
         denyCreateTable(tableName, null);
@@ -96,6 +106,16 @@ public class AccessDeniedException
     public static void denyRenameTable(String tableName, String newTableName, String extraInfo)
     {
         throw new AccessDeniedException(format("Cannot rename table from %s to %s%s", tableName, newTableName, formatExtraInfo(extraInfo)));
+    }
+
+    public static void denyShowTables(String schemaName)
+    {
+        denyShowTables(schemaName, null);
+    }
+
+    public static void denyShowTables(String schemaName, String extraInfo)
+    {
+        throw new AccessDeniedException(format("Cannot show tables in %s%s", schemaName, formatExtraInfo(extraInfo)));
     }
 
     public static void denyAddColumn(String tableName)

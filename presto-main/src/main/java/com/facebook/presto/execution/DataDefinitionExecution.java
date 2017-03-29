@@ -20,19 +20,23 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.base.Throwables;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -99,7 +103,7 @@ public class DataDefinitionExecution<T extends Statement>
     }
 
     @Override
-    public void start(Optional<String> resourceGroupName)
+    public void start()
     {
         try {
             // transition to running
@@ -108,12 +112,17 @@ public class DataDefinitionExecution<T extends Statement>
                 return;
             }
 
-            CompletableFuture<?> future = task.execute(statement, transactionManager, metadata, accessControl, stateMachine, parameters);
-            future.whenComplete((o, throwable) -> {
-                if (throwable == null) {
+            ListenableFuture<?> future = task.execute(statement, transactionManager, metadata, accessControl, stateMachine, parameters);
+            Futures.addCallback(future, new FutureCallback<Object>() {
+                @Override
+                public void onSuccess(@Nullable Object result)
+                {
                     stateMachine.transitionToFinishing();
                 }
-                else {
+
+                @Override
+                public void onFailure(Throwable throwable)
+                {
                     fail(throwable);
                 }
             });
@@ -193,6 +202,18 @@ public class DataDefinitionExecution<T extends Statement>
         return stateMachine.getQueryState();
     }
 
+    @Override
+    public Optional<ResourceGroupId> getResourceGroup()
+    {
+        return stateMachine.getResourceGroup();
+    }
+
+    @Override
+    public void setResourceGroup(ResourceGroupId resourceGroupId)
+    {
+        stateMachine.setResourceGroup(resourceGroupId);
+    }
+
     public List<Expression> getParameters()
     {
         return parameters;
@@ -245,7 +266,7 @@ public class DataDefinitionExecution<T extends Statement>
             DataDefinitionTask<Statement> task = getTask(statement);
             checkArgument(task != null, "no task for statement: %s", statement.getClass().getSimpleName());
 
-            QueryStateMachine stateMachine = QueryStateMachine.begin(queryId, query, session, self, task.isTransactionControl(), transactionManager, accessControl, executor);
+            QueryStateMachine stateMachine = QueryStateMachine.begin(queryId, query, session, self, task.isTransactionControl(), transactionManager, accessControl, executor, metadata);
             stateMachine.setUpdateType(task.getName());
             return new DataDefinitionExecution<>(task, statement, transactionManager, metadata, accessControl, stateMachine, parameters);
         }

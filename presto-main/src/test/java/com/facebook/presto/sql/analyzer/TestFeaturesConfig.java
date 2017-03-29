@@ -16,6 +16,7 @@ package com.facebook.presto.sql.analyzer;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.configuration.testing.ConfigAssertions;
 import io.airlift.units.DataSize;
+import io.airlift.units.Duration;
 import org.testng.annotations.Test;
 
 import java.nio.file.Paths;
@@ -28,6 +29,8 @@ import static com.facebook.presto.sql.analyzer.RegexLibrary.RE2J;
 import static io.airlift.configuration.testing.ConfigAssertions.assertDeprecatedEquivalence;
 import static io.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class TestFeaturesConfig
 {
@@ -44,7 +47,7 @@ public class TestFeaturesConfig
                 .setOptimizeMetadataQueries(false)
                 .setOptimizeHashGeneration(true)
                 .setOptimizeSingleDistinct(true)
-                .setReorderWindows(true)
+                .setReorderWindows(false)
                 .setPushTableWriteThroughUnion(true)
                 .setProcessingOptimization(DISABLED)
                 .setDictionaryAggregation(false)
@@ -60,6 +63,7 @@ public class TestFeaturesConfig
                 .setOptimizeMixedDistinctAggregations(false)
                 .setLegacyOrderBy(false)
                 .setIterativeOptimizerEnabled(false)
+                .setIterativeOptimizerTimeout(new Duration(3, MINUTES))
                 .setExchangeCompressionEnabled(false));
     }
 
@@ -69,6 +73,7 @@ public class TestFeaturesConfig
         Map<String, String> propertiesLegacy = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
                 .put("experimental.iterative-optimizer-enabled", "true")
+                .put("experimental.iterative-optimizer-timeout", "10s")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-order-by", "true")
                 .put("deprecated.legacy-map-subscript", "true")
@@ -80,7 +85,7 @@ public class TestFeaturesConfig
                 .put("optimizer.optimize-metadata-queries", "true")
                 .put("optimizer.optimize-hash-generation", "false")
                 .put("optimizer.optimize-single-distinct", "false")
-                .put("optimizer.reorder-windows", "false")
+                .put("optimizer.reorder-windows", "true")
                 .put("optimizer.optimize-mixed-distinct-aggregations", "true")
                 .put("optimizer.push-table-write-through-union", "false")
                 .put("optimizer.processing-optimization", "columnar_dictionary")
@@ -97,6 +102,7 @@ public class TestFeaturesConfig
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
                 .put("experimental.iterative-optimizer-enabled", "true")
+                .put("experimental.iterative-optimizer-timeout", "10s")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-order-by", "true")
                 .put("deprecated.legacy-map-subscript", "true")
@@ -108,7 +114,7 @@ public class TestFeaturesConfig
                 .put("optimizer.optimize-metadata-queries", "true")
                 .put("optimizer.optimize-hash-generation", "false")
                 .put("optimizer.optimize-single-distinct", "false")
-                .put("optimizer.reorder-windows", "false")
+                .put("optimizer.reorder-windows", "true")
                 .put("optimizer.optimize-mixed-distinct-aggregations", "true")
                 .put("optimizer.push-table-write-through-union", "false")
                 .put("optimizer.processing-optimization", "columnar_dictionary")
@@ -126,6 +132,7 @@ public class TestFeaturesConfig
         FeaturesConfig expected = new FeaturesConfig()
                 .setResourceGroupsEnabled(true)
                 .setIterativeOptimizerEnabled(true)
+                .setIterativeOptimizerTimeout(new Duration(10, SECONDS))
                 .setDistributedIndexJoinsEnabled(true)
                 .setDistributedJoinsEnabled(false)
                 .setColocatedJoinsEnabled(true)
@@ -134,7 +141,7 @@ public class TestFeaturesConfig
                 .setOptimizeMetadataQueries(true)
                 .setOptimizeHashGeneration(false)
                 .setOptimizeSingleDistinct(false)
-                .setReorderWindows(false)
+                .setReorderWindows(true)
                 .setOptimizeMixedDistinctAggregations(true)
                 .setPushTableWriteThroughUnion(false)
                 .setProcessingOptimization(COLUMNAR_DICTIONARY)

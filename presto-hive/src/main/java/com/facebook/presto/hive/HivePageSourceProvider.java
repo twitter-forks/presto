@@ -46,7 +46,6 @@ import java.util.Set;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HivePageSourceProvider.ColumnMapping.extractRegularColumnHandles;
 import static com.facebook.presto.hive.HiveUtil.getPrefilledColumnValue;
-import static com.facebook.presto.hive.util.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Maps.uniqueIndex;
@@ -101,10 +100,10 @@ public class HivePageSourceProvider
     private ConnectorPageSource doCreatePageSource(ConnectorSession session, ConnectorSplit split, List<ColumnHandle> columns)
     {
         List<HiveColumnHandle> hiveColumns = columns.stream()
-                .map(HiveColumnHandle::toHiveColumnHandle)
+                .map(HiveColumnHandle.class::cast)
                 .collect(toList());
 
-        HiveSplit hiveSplit = checkType(split, HiveSplit.class, "split");
+        HiveSplit hiveSplit = (HiveSplit) split;
         Path path = new Path(hiveSplit.getPath());
 
         Optional<ConnectorPageSource> pageSource = createHivePageSource(
