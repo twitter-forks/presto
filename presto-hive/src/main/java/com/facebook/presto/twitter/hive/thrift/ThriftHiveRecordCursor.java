@@ -54,7 +54,6 @@ import static com.facebook.presto.hive.HiveUtil.isArrayType;
 import static com.facebook.presto.hive.HiveUtil.isMapType;
 import static com.facebook.presto.hive.HiveUtil.isRowType;
 import static com.facebook.presto.hive.HiveUtil.isStructuralType;
-import static com.facebook.presto.hive.util.Types.checkType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.Chars.isCharType;
@@ -699,7 +698,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
         else if (type instanceof DecimalType) {
             HiveDecimal decimal = (HiveDecimal) object;
-            DecimalType decimalType = checkType(type, DecimalType.class, "type");
+            DecimalType decimalType = (DecimalType) type;
             BigInteger unscaledDecimal = rescale(decimal.unscaledValue(), decimal.scale(), decimalType.getScale());
             if (decimalType.isShort()) {
                 decimalType.writeLong(builder, unscaledDecimal.longValue());
