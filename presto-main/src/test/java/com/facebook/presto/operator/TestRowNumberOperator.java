@@ -18,6 +18,7 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
 import com.google.common.collect.ImmutableList;
@@ -53,6 +54,7 @@ import static org.testng.Assert.assertTrue;
 public class TestRowNumberOperator
 {
     private ExecutorService executor;
+    private JoinCompiler joinCompiler = new JoinCompiler();
 
     @BeforeClass
     public void setUp()
@@ -75,7 +77,7 @@ public class TestRowNumberOperator
     private DriverContext getDriverContext()
     {
         return createTaskContext(executor, TEST_SESSION)
-                .addPipelineContext(true, true)
+                .addPipelineContext(0, true, true)
                 .addDriverContext();
     }
 
@@ -108,7 +110,8 @@ public class TestRowNumberOperator
                 ImmutableList.of(),
                 Optional.empty(),
                 Optional.empty(),
-                10);
+                10,
+                joinCompiler);
 
         MaterializedResult expectedResult = resultBuilder(driverContext.getSession(), DOUBLE, BIGINT)
                 .row(0.3, 1L)
@@ -162,7 +165,8 @@ public class TestRowNumberOperator
                 ImmutableList.of(BIGINT),
                 Optional.of(10),
                 rowPagesBuilder.getHashChannel(),
-                10);
+                10,
+                joinCompiler);
 
         MaterializedResult expectedPartition1 = resultBuilder(driverContext.getSession(), DOUBLE, BIGINT)
                 .row(0.3, 1L)
@@ -228,7 +232,8 @@ public class TestRowNumberOperator
                 ImmutableList.of(BIGINT),
                 Optional.of(3),
                 Optional.empty(),
-                10);
+                10,
+                joinCompiler);
 
         MaterializedResult expectedPartition1 = resultBuilder(driverContext.getSession(), DOUBLE, BIGINT)
                 .row(0.3, 1L)
@@ -297,7 +302,8 @@ public class TestRowNumberOperator
                 ImmutableList.of(),
                 Optional.of(3),
                 Optional.empty(),
-                10);
+                10,
+                joinCompiler);
 
         MaterializedResult expectedRows = resultBuilder(driverContext.getSession(), DOUBLE, BIGINT, BIGINT)
                 .row(0.3, 1L)

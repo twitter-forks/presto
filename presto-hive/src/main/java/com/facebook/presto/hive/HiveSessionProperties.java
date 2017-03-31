@@ -39,6 +39,8 @@ public final class HiveSessionProperties
     private static final String MAX_SPLIT_SIZE = "max_split_size";
     private static final String MAX_INITIAL_SPLIT_SIZE = "max_initial_split_size";
     private static final String RCFILE_OPTIMIZED_READER_ENABLED = "rcfile_optimized_reader_enabled";
+    private static final String RCFILE_OPTIMIZED_WRITER_ENABLED = "rcfile_optimized_writer_enabled";
+    private static final String RCFILE_OPTIMIZED_WRITER_VALIDATE = "rcfile_optimized_writer_validate";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -105,6 +107,16 @@ public final class HiveSessionProperties
                         RCFILE_OPTIMIZED_READER_ENABLED,
                         "Experimental: RCFile: Enable optimized reader",
                         config.isRcfileOptimizedReaderEnabled(),
+                        false),
+                booleanSessionProperty(
+                        RCFILE_OPTIMIZED_WRITER_ENABLED,
+                        "Experimental: RCFile: Enable optimized writer",
+                        config.isRcfileOptimizedWriterEnabled(),
+                        false),
+                booleanSessionProperty(
+                        RCFILE_OPTIMIZED_WRITER_VALIDATE,
+                        "Experimental: RCFile: Validate writer files",
+                        true,
                         false));
     }
 
@@ -171,6 +183,16 @@ public final class HiveSessionProperties
     public static boolean isRcfileOptimizedReaderEnabled(ConnectorSession session)
     {
         return session.getProperty(RCFILE_OPTIMIZED_READER_ENABLED, Boolean.class);
+    }
+
+    public static boolean isRcfileOptimizedWriterEnabled(ConnectorSession session)
+    {
+        return session.getProperty(RCFILE_OPTIMIZED_WRITER_ENABLED, Boolean.class);
+    }
+
+    public static boolean isRcfileOptimizedWriterValidate(ConnectorSession session)
+    {
+        return session.getProperty(RCFILE_OPTIMIZED_WRITER_VALIDATE, Boolean.class);
     }
 
     public static PropertyMetadata<DataSize> dataSizeSessionProperty(String name, String description, DataSize defaultValue, boolean hidden)

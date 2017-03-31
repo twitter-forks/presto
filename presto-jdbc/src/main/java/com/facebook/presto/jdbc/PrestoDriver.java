@@ -24,21 +24,21 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.Properties;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.common.base.Strings.nullToEmpty;
+import static java.lang.Integer.parseInt;
 import static java.lang.String.format;
 
 public class PrestoDriver
         implements Driver, Closeable
 {
-    static final int VERSION_MAJOR = 1;
-    static final int VERSION_MINOR = 0;
-
-    static final int JDBC_VERSION_MAJOR = 4;
-    static final int JDBC_VERSION_MINOR = 1;
-
     static final String DRIVER_NAME = "Presto JDBC Driver";
-    static final String DRIVER_VERSION = VERSION_MAJOR + "." + VERSION_MINOR;
+    static final String DRIVER_VERSION;
+    static final int DRIVER_VERSION_MAJOR;
+    static final int DRIVER_VERSION_MINOR;
 
     private static final DriverPropertyInfo[] DRIVER_PROPERTY_INFOS = {};
 
@@ -49,6 +49,19 @@ public class PrestoDriver
     private final QueryExecutor queryExecutor;
 
     static {
+        String version = nullToEmpty(PrestoDriver.class.getPackage().getImplementationVersion());
+        Matcher matcher = Pattern.compile("^(\\d+)\\.(\\d+)($|[.-])").matcher(version);
+        if (!matcher.find()) {
+            DRIVER_VERSION = "unknown";
+            DRIVER_VERSION_MAJOR = 0;
+            DRIVER_VERSION_MINOR = 0;
+        }
+        else {
+            DRIVER_VERSION = version;
+            DRIVER_VERSION_MAJOR = parseInt(matcher.group(1));
+            DRIVER_VERSION_MINOR = parseInt(matcher.group(2));
+        }
+
         try {
             DriverManager.registerDriver(new PrestoDriver());
         }
@@ -101,13 +114,13 @@ public class PrestoDriver
     @Override
     public int getMajorVersion()
     {
-        return VERSION_MAJOR;
+        return DRIVER_VERSION_MAJOR;
     }
 
     @Override
     public int getMinorVersion()
     {
-        return VERSION_MINOR;
+        return DRIVER_VERSION_MINOR;
     }
 
     @Override

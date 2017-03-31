@@ -82,7 +82,7 @@ public class VariableWidthBlock
     }
 
     @Override
-    public int getLength(int position)
+    public int getSliceLength(int position)
     {
         checkReadablePosition(position);
         return getPositionOffset(position + 1) - getPositionOffset(position);
@@ -107,6 +107,12 @@ public class VariableWidthBlock
     }
 
     @Override
+    public int getRegionSizeInBytes(int position, int length)
+    {
+        return intSaturatedCast(offsets[arrayOffset + position + length] - offsets[arrayOffset + position] + ((Integer.BYTES + Byte.BYTES) * (long) length));
+    }
+
+    @Override
     public int getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;
@@ -117,7 +123,7 @@ public class VariableWidthBlock
     {
         checkValidPositions(positions, positionCount);
 
-        int finalLength = positions.stream().mapToInt(this::getLength).sum();
+        int finalLength = positions.stream().mapToInt(this::getSliceLength).sum();
         SliceOutput newSlice = Slices.allocate(finalLength).getOutput();
         int[] newOffsets = new int[positions.size() + 1];
         boolean[] newValueIsNull = new boolean[positions.size()];
@@ -128,7 +134,7 @@ public class VariableWidthBlock
                 newValueIsNull[i] = true;
             }
             else {
-                newSlice.appendBytes(slice.getBytes(getPositionOffset(position), getLength(position)));
+                newSlice.appendBytes(slice.getBytes(getPositionOffset(position), getSliceLength(position)));
             }
             newOffsets[i + 1] = newSlice.size();
         }

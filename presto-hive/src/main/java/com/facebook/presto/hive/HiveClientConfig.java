@@ -83,6 +83,7 @@ public class HiveClientConfig
     private boolean respectTableFormat = true;
     private boolean immutablePartitions;
     private int maxPartitionsPerWriter = 100;
+    private int writeValidationThreads = 16;
 
     private List<String> resourceConfigFiles;
 
@@ -98,7 +99,8 @@ public class HiveClientConfig
     private DataSize orcMaxBufferSize = new DataSize(8, MEGABYTE);
     private DataSize orcStreamBufferSize = new DataSize(8, MEGABYTE);
 
-    private boolean rcfileOptimizedReaderEnabled;
+    private boolean rcfileOptimizedReaderEnabled = true;
+    private boolean rcfileOptimizedWriterEnabled;
 
     private HiveMetastoreAuthenticationType hiveMetastoreAuthenticationType = HiveMetastoreAuthenticationType.NONE;
     private String hiveMetastoreServicePrincipal;
@@ -549,6 +551,19 @@ public class HiveClientConfig
         return this;
     }
 
+    public int getWriteValidationThreads()
+    {
+        return writeValidationThreads;
+    }
+
+    @Config("hive.write-validation-threads")
+    @ConfigDescription("Number of threads used for verifying data after a write")
+    public HiveClientConfig setWriteValidationThreads(int writeValidationThreads)
+    {
+        this.writeValidationThreads = writeValidationThreads;
+        return this;
+    }
+
     public String getDomainSocketPath()
     {
         return domainSocketPath;
@@ -677,6 +692,20 @@ public class HiveClientConfig
     public HiveClientConfig setRcfileOptimizedReaderEnabled(boolean rcfileOptimizedReaderEnabled)
     {
         this.rcfileOptimizedReaderEnabled = rcfileOptimizedReaderEnabled;
+        return this;
+    }
+
+    @Deprecated
+    public boolean isRcfileOptimizedWriterEnabled()
+    {
+        return rcfileOptimizedWriterEnabled;
+    }
+
+    @Deprecated
+    @Config("hive.rcfile-optimized-writer.enabled")
+    public HiveClientConfig setRcfileOptimizedWriterEnabled(boolean rcfileOptimizedWriterEnabled)
+    {
+        this.rcfileOptimizedWriterEnabled = rcfileOptimizedWriterEnabled;
         return this;
     }
 

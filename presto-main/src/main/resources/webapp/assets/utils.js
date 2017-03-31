@@ -21,13 +21,13 @@ var GLYPHICON_HIGHLIGHT = {color: '#999999'};
 var STATE_COLOR_MAP = {
     QUEUED: '#1b8f72',
     RUNNING: '#19874e',
-    PLANNING: '#824b98',
+    PLANNING: '#674f98',
     FINISHED: '#1a4629',
-    BLOCKED: '#685b72',
-    USER_ERROR: '#a67559',
+    BLOCKED: '#61003b',
+    USER_ERROR: '#9a7d66',
     USER_CANCELED: '#858959',
     INSUFFICIENT_RESOURCES: '#7f5b72',
-    EXTERNAL_ERROR: '#caa55c',
+    EXTERNAL_ERROR: '#ca7640',
     UNKNOWN_ERROR: '#943524'
 };
 
@@ -39,8 +39,11 @@ function getQueryStateColor(query)
         case "PLANNING":
             return STATE_COLOR_MAP.PLANNING;
         case "STARTING":
-        case "RUNNING":
         case "FINISHING":
+        case "RUNNING":
+            if (query.queryStats && query.queryStats.fullyBlocked) {
+                return STATE_COLOR_MAP.BLOCKED;
+            }
             return STATE_COLOR_MAP.RUNNING;
         case "FAILED":
             switch (query.errorType) {
@@ -61,11 +64,11 @@ function getQueryStateColor(query)
         default:
             return STATE_COLOR_MAP.QUEUED;
     }
-};
+}
 
-function getStageStateColor(state)
+function getStageStateColor(stage)
 {
-    switch (state) {
+    switch (stage.state) {
         case "PLANNED":
             return STATE_COLOR_MAP.QUEUED;
         case "SCHEDULING":
@@ -73,13 +76,16 @@ function getStageStateColor(state)
         case "SCHEDULED":
             return STATE_COLOR_MAP.PLANNING;
         case "RUNNING":
+            if (stage.stageStats && stage.stageStats.fullyBlocked) {
+                return STATE_COLOR_MAP.BLOCKED;
+            }
             return STATE_COLOR_MAP.RUNNING;
         case "FINISHED":
             return STATE_COLOR_MAP.FINISHED;
         case "CANCELED":
         case "ABORTED":
         case "FAILED":
-            return STATE_COLOR_MAP.UNKNOWN_ERROR
+            return STATE_COLOR_MAP.UNKNOWN_ERROR;
         default:
             return "#b5b5b5"
     }
@@ -90,16 +96,22 @@ function getStageStateColor(state)
 function getHumanReadableState(query)
 {
     if (query.state == "RUNNING") {
+        let title = "RUNNING";
+
         if (query.scheduled && query.queryStats.totalDrivers > 0 && query.queryStats.runningDrivers >= 0) {
-            return "RUNNING";
-        }
+            if (query.queryStats.fullyBlocked) {
+                title = "BLOCKED";
 
-        if (query.queryStats.fullyBlocked) {
-            return "BLOCKED (" + query.queryStats.blockedReasons.join(", ") + ")";
-        }
+                if (query.queryStats.blockedReasons && query.queryStats.blockedReasons.length > 0) {
+                    title += " (" + query.queryStats.blockedReasons.join(", ") + ")";
+                }
+            }
 
-        if (query.memoryPool === "reserved") {
-            return "RUNNING (RESERVED)";
+            if (query.memoryPool === "reserved") {
+                title += " (RESERVED)"
+            }
+
+            return title;
         }
     }
 
@@ -146,6 +158,11 @@ function getProgressBarTitle(query)
     return getHumanReadableState(query)
 }
 
+function isQueryComplete(query)
+{
+    return ["FINISHED", "FAILED", "CANCELED"].indexOf(query.state) > -1;
+}
+
 // Sparkline-related functions
 // ===========================
 
@@ -156,14 +173,14 @@ var MOVING_AVERAGE_ALPHA = 0.2;
 
 function addToHistory (value, valuesArray) {
     if (valuesArray.length == 0) {
-        return valuesArray.concat([value]);;
+        return valuesArray.concat([value]);
     }
     return valuesArray.concat([value]).slice(Math.max(valuesArray.length - MAX_HISTORY, 0));
 }
 
 function addExponentiallyWeightedToHistory (value, valuesArray) {
     if (valuesArray.length == 0) {
-        return valuesArray.concat([value]);;
+        return valuesArray.concat([value]);
     }
 
     var movingAverage = (value * MOVING_AVERAGE_ALPHA) + (valuesArray[valuesArray.length - 1] * (1 - MOVING_AVERAGE_ALPHA));
@@ -172,6 +189,79 @@ function addExponentiallyWeightedToHistory (value, valuesArray) {
     }
 
     return valuesArray.concat([movingAverage]).slice(Math.max(valuesArray.length - MAX_HISTORY, 0));
+}
+
+// DagreD3 Graph-related functions
+// ===============================
+
+function initializeGraph()
+{
+    return new dagreD3.graphlib.Graph({compound: true})
+        .setGraph({rankdir: 'BT'})
+        .setDefaultEdgeLabel(function () { return {}; });
+}
+
+function initializeSvg(selector)
+{
+    const svg = d3.select(selector);
+    svg.append("g");
+
+    return svg;
+}
+
+function computeSources(nodeInfo)
+{
+    let sources = [];
+    let remoteSources = []; // TODO: put remoteSources in node-specific section
+    switch (nodeInfo['@type']) {
+        case 'output':
+        case 'explainAnalyze':
+        case 'project':
+        case 'filter':
+        case 'aggregation':
+        case 'sort':
+        case 'markDistinct':
+        case 'window':
+        case 'rowNumber':
+        case 'topnRowNumber':
+        case 'limit':
+        case 'distinctlimit':
+        case 'topn':
+        case 'sample':
+        case 'tablewriter':
+        case 'delete':
+        case 'metadatadelete':
+        case 'tablecommit':
+        case 'groupid':
+        case 'unnest':
+        case 'scalar':
+            sources = [nodeInfo.source];
+            break;
+        case 'join':
+            sources = [nodeInfo.left, nodeInfo.right];
+            break;
+        case 'semijoin':
+            sources = [nodeInfo.source, nodeInfo.filteringSource];
+            break;
+        case 'indexjoin':
+            sources = [nodeInfo.probeSource, nodeInfo.filterSource];
+            break;
+        case 'union':
+        case 'exchange':
+            sources = nodeInfo.sources;
+            break;
+        case 'remoteSource':
+            remoteSources = nodeInfo.sourceFragmentIds;
+            break;
+        case 'tablescan':
+        case 'values':
+        case 'indexsource':
+            break;
+        default:
+            console.log("NOTE: Unhandled PlanNode: " + nodeInfo['@type']);
+    }
+
+    return [sources, remoteSources];
 }
 
 // Utility functions
@@ -305,23 +395,23 @@ function formatDataSizeMinUnit(size, minUnit) {
     }
     if (size >= 1024) {
         size /= 1024;
-        unit = "K";
+        unit = "K" + minUnit;
     }
     if (size >= 1024) {
         size /= 1024;
-        unit = "M";
+        unit = "M" + minUnit;
     }
     if (size >= 1024) {
         size /= 1024;
-        unit = "G";
+        unit = "G" + minUnit;
     }
     if (size >= 1024) {
         size /= 1024;
-        unit = "T";
+        unit = "T" + minUnit;
     }
     if (size >= 1024) {
         size /= 1024;
-        unit = "P";
+        unit = "P" + minUnit;
     }
     return precisionRound(size) + unit;
 }

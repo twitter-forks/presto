@@ -5,7 +5,7 @@
     <parent>
         <artifactId>presto-root</artifactId>
         <groupId>com.facebook.presto</groupId>
-        <version>0.166-tw-0.31</version>
+        <version>0.170-tw-0.32</version>
     </parent>
 
     <artifactId>presto-product-tests</artifactId>
@@ -28,6 +28,10 @@
         <dependency>
             <groupId>com.teradata.tempto</groupId>
             <artifactId>tempto-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.teradata.tempto</groupId>
+            <artifactId>tempto-ldap</artifactId>
         </dependency>
         <dependency>
             <groupId>com.teradata.tempto</groupId>
@@ -97,10 +101,8 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
-            <groupId>com.datastax.cassandra</groupId>
-            <artifactId>cassandra-driver-core</artifactId>
-            <scope>compile</scope>
-            <version>3.0.0</version>
+            <groupId>com.facebook.presto.cassandra</groupId>
+            <artifactId>cassandra-driver</artifactId>
         </dependency>
     </dependencies>
 

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
+import com.facebook.presto.Session;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
@@ -48,7 +49,7 @@ public class SingleMarkDistinctToGroupBy
         implements Rule
 {
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator)
+    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
     {
         if (!(node instanceof AggregationNode)) {
             return Optional.empty();
@@ -92,23 +93,27 @@ public class SingleMarkDistinctToGroupBy
                                 idAllocator.getNextId(),
                                 child.getSource(),
                                 Collections.emptyMap(),
-                                Collections.emptyMap(),
-                                Collections.emptyMap(),
                                 ImmutableList.of(child.getDistinctSymbols()),
                                 SINGLE,
                                 child.getHashSymbol(),
                                 Optional.empty()),
                         // remove DISTINCT flag from function calls
-                        parent.getAggregations()
+                        parent.getAssignments()
                                 .entrySet().stream()
                                 .collect(Collectors.toMap(
                                         Map.Entry::getKey,
-                                        e -> new FunctionCall(e.getValue().getName(), e.getValue().getWindow(), false, e.getValue().getArguments()))),
-                        parent.getFunctions(),
-                        Collections.emptyMap(),
+                                        e -> removeDistinct(e.getValue()))),
                         parent.getGroupingSets(),
                         parent.getStep(),
                         parent.getHashSymbol(),
                         parent.getGroupIdSymbol()));
+    }
+
+    private static AggregationNode.Aggregation removeDistinct(AggregationNode.Aggregation aggregation)
+    {
+        FunctionCall call = aggregation.getCall();
+        return new AggregationNode.Aggregation(
+                new FunctionCall(call.getName(), call.getWindow(), false, call.getArguments()),
+                aggregation.getSignature());
     }
 }

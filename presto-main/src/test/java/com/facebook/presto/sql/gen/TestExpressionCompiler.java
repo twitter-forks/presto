@@ -81,7 +81,7 @@ import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.type.JsonType.JSON;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
 import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
-import static com.google.common.util.concurrent.MoreExecutors.sameThreadExecutor;
+import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.Math.cos;
@@ -155,7 +155,7 @@ public class TestExpressionCompiler
             executor = listeningDecorator(newFixedThreadPool(getRuntime().availableProcessors() * 2, daemonThreadsNamed("completer-%s")));
         }
         else {
-            executor = listeningDecorator(sameThreadExecutor());
+            executor = newDirectExecutorService();
         }
         functionAssertions = new FunctionAssertions();
     }
@@ -1111,13 +1111,13 @@ public class TestExpressionCompiler
         assertExecute("bound_double in (12.34, " + doubleValues + ")", BOOLEAN, true);
         assertExecute("bound_double in (" + doubleValues + ")", BOOLEAN, false);
 
-        String stringValues = range(2000, 7000).asLongStream()
+        String stringValues = range(2000, 7000)
                 .mapToObj(i -> format("'%s'", i))
                 .collect(joining(", "));
         assertExecute("bound_string in ('hello', " + stringValues + ")", BOOLEAN, true);
         assertExecute("bound_string in (" + stringValues + ")", BOOLEAN, false);
 
-        String timestampValues = range(0, 2_000).asLongStream()
+        String timestampValues = range(0, 2_000)
                 .mapToObj(i -> format("TIMESTAMP '1970-01-01 01:01:0%s.%s+01:00'", i / 1000, i % 1000))
                 .collect(joining(", "));
         assertExecute("bound_timestamp_with_timezone in (" + timestampValues + ")", BOOLEAN, true);

@@ -19,6 +19,8 @@ import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.Privilege;
 
+import java.util.Set;
+
 import static com.facebook.presto.spi.security.AccessDeniedException.denyAddColumn;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyCreateTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyCreateView;
@@ -34,6 +36,17 @@ import static com.facebook.presto.spi.security.AccessDeniedException.denyRevokeT
 public class ReadOnlyAccessControl
         implements ConnectorAccessControl
 {
+    @Override
+    public void checkCanShowSchemas(ConnectorTransactionHandle transactionHandle, Identity identity)
+    {
+    }
+
+    @Override
+    public Set<String> filterSchemas(ConnectorTransactionHandle transactionHandle, Identity identity, Set<String> schemaNames)
+    {
+        return schemaNames;
+    }
+
     @Override
     public void checkCanAddColumn(ConnectorTransactionHandle transaction, Identity identity, SchemaTableName tableName)
     {
@@ -56,6 +69,17 @@ public class ReadOnlyAccessControl
     public void checkCanRenameTable(ConnectorTransactionHandle transaction, Identity identity, SchemaTableName tableName, SchemaTableName newTableName)
     {
         denyRenameTable(tableName.toString(), newTableName.toString());
+    }
+
+    @Override
+    public void checkCanShowTables(ConnectorTransactionHandle transactionHandle, Identity identity, String schemaName)
+    {
+    }
+
+    @Override
+    public Set<SchemaTableName> filterTables(ConnectorTransactionHandle transactionHandle, Identity identity, Set<SchemaTableName> tableNames)
+    {
+        return tableNames;
     }
 
     @Override
