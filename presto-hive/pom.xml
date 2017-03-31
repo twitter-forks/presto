@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.166-tw-0.31</version>
+        <version>0.170-tw-0.32</version>
     </parent>
 
     <artifactId>presto-hive</artifactId>
@@ -25,11 +25,6 @@
         <dependency>
             <groupId>com.facebook.hive</groupId>
             <artifactId>hive-dwrf</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>com.facebook.hive</groupId>
-            <artifactId>hive-dwrf-shims</artifactId>
         </dependency>
 
         <dependency>

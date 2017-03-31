@@ -16,7 +16,9 @@ package com.facebook.presto.hive;
 import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
 import com.facebook.presto.hive.orc.DwrfPageSourceFactory;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
+import com.facebook.presto.hive.parquet.ParquetPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetRecordCursorProvider;
+import com.facebook.presto.hive.rcfile.RcFilePageSourceFactory;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.type.Type;
@@ -45,8 +47,10 @@ public final class HiveTestUtils
     {
         HdfsEnvironment testHdfsEnvironment = createTestHdfsEnvironment(hiveClientConfig);
         return ImmutableSet.<HivePageSourceFactory>builder()
+                .add(new RcFilePageSourceFactory(TYPE_MANAGER, testHdfsEnvironment))
                 .add(new OrcPageSourceFactory(TYPE_MANAGER, hiveClientConfig, testHdfsEnvironment))
                 .add(new DwrfPageSourceFactory(TYPE_MANAGER, testHdfsEnvironment))
+                .add(new ParquetPageSourceFactory(TYPE_MANAGER, hiveClientConfig, testHdfsEnvironment))
                 .build();
     }
 
@@ -58,6 +62,14 @@ public final class HiveTestUtils
                 .add(new ColumnarTextHiveRecordCursorProvider(testHdfsEnvironment))
                 .add(new ColumnarBinaryHiveRecordCursorProvider(testHdfsEnvironment))
                 .add(new GenericHiveRecordCursorProvider(testHdfsEnvironment))
+                .build();
+    }
+
+    public static Set<HiveFileWriterFactory> getDefaultHiveFileWriterFactories(HiveClientConfig hiveClientConfig)
+    {
+        HdfsEnvironment testHdfsEnvironment = createTestHdfsEnvironment(hiveClientConfig);
+        return ImmutableSet.<HiveFileWriterFactory>builder()
+                .add(new RcFileFileWriterFactory(testHdfsEnvironment, TYPE_MANAGER, new NodeVersion("test_version"), hiveClientConfig))
                 .build();
     }
 

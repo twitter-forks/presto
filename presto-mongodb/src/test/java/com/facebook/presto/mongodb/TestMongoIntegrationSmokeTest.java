@@ -18,6 +18,7 @@ import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
 import org.joda.time.DateTime;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.sql.Timestamp;
@@ -35,18 +36,25 @@ import static org.testng.Assert.assertNotNull;
 public class TestMongoIntegrationSmokeTest
         extends AbstractTestIntegrationSmokeTest
 {
-    private final MongoQueryRunner runner;
+    private MongoQueryRunner mongoQueryRunner;
 
     public TestMongoIntegrationSmokeTest()
-            throws Exception
     {
-        this(createMongoQueryRunner(ORDERS));
+        super(() -> createMongoQueryRunner(ORDERS));
     }
 
-    public TestMongoIntegrationSmokeTest(MongoQueryRunner runner)
+    @BeforeClass
+    public void setUp()
+            throws Exception
     {
-        super(runner);
-        this.runner = runner;
+        mongoQueryRunner = (MongoQueryRunner) getQueryRunner();
+    }
+
+    @AfterClass(alwaysRun = true)
+    public final void destroy()
+    {
+        mongoQueryRunner.shutdown();
+        mongoQueryRunner = null;
     }
 
     @Test
@@ -66,7 +74,7 @@ public class TestMongoIntegrationSmokeTest
 
         assertUpdate(query, 1);
 
-        MaterializedResult results = queryRunner.execute(getSession(), "SELECT * FROM test_types_table").toJdbcTypes();
+        MaterializedResult results = getQueryRunner().execute(getSession(), "SELECT * FROM test_types_table").toJdbcTypes();
         assertEquals(results.getRowCount(), 1);
         MaterializedRow row = results.getMaterializedRows().get(0);
         assertEquals(row.getField(0), "foo");
@@ -78,7 +86,7 @@ public class TestMongoIntegrationSmokeTest
         assertEquals(row.getField(6), new Timestamp(new DateTime(1980, 5, 7, 11, 22, 33, 456, UTC).getMillis()));
         assertUpdate("DROP TABLE test_types_table");
 
-        assertFalse(queryRunner.tableExists(getSession(), "test_types_table"));
+        assertFalse(getQueryRunner().tableExists(getSession(), "test_types_table"));
     }
 
     @Test
@@ -146,15 +154,9 @@ public class TestMongoIntegrationSmokeTest
 
     private void assertOneNotNullResult(String query)
     {
-        MaterializedResult results = queryRunner.execute(getSession(), query).toJdbcTypes();
+        MaterializedResult results = getQueryRunner().execute(getSession(), query).toJdbcTypes();
         assertEquals(results.getRowCount(), 1);
         assertEquals(results.getMaterializedRows().get(0).getFieldCount(), 1);
         assertNotNull(results.getMaterializedRows().get(0).getField(0));
-    }
-
-    @AfterClass(alwaysRun = true)
-    public final void destroy()
-    {
-        runner.shutdown();
     }
 }

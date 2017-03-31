@@ -19,7 +19,6 @@ import com.google.common.primitives.Ints;
 import io.airlift.slice.Slice;
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
 import java.util.List;
 
 import static io.airlift.slice.SizeOf.SIZE_OF_INT;
@@ -36,12 +35,7 @@ public class TestDictionaryBlock
     {
         Slice[] expectedValues = createExpectedValues(10);
         DictionaryBlock dictionaryBlock = createDictionaryBlock(expectedValues, 100);
-
-        int sizeInBytes = 0;
-        for (Slice expectedValue : expectedValues) {
-            sizeInBytes += expectedValue.length();
-        }
-        assertEquals(dictionaryBlock.getSizeInBytes(), sizeInBytes + (100 * SIZE_OF_INT));
+        assertEquals(dictionaryBlock.getSizeInBytes(), dictionaryBlock.getDictionary().getSizeInBytes() + (100 * SIZE_OF_INT));
     }
 
     @Test
@@ -60,6 +54,7 @@ public class TestDictionaryBlock
             throws Exception
     {
         Slice[] expectedValues = createExpectedValues(10);
+        Slice firstExpectedValue = expectedValues[0];
         DictionaryBlock dictionaryBlock = createDictionaryBlock(expectedValues, 100);
 
         List<Integer> positionsToCopy = Ints.asList(0, 10, 20, 30, 40);
@@ -67,7 +62,8 @@ public class TestDictionaryBlock
 
         assertEquals(copiedBlock.getDictionary().getPositionCount(), 1);
         assertEquals(copiedBlock.getPositionCount(), positionsToCopy.size());
-        assertBlock(copiedBlock.getDictionary(), Arrays.copyOfRange(expectedValues, 0, 1));
+        assertBlock(copiedBlock.getDictionary(), new Slice[]{firstExpectedValue});
+        assertBlock(copiedBlock, new Slice[]{firstExpectedValue, firstExpectedValue, firstExpectedValue, firstExpectedValue, firstExpectedValue});
     }
 
     @Test

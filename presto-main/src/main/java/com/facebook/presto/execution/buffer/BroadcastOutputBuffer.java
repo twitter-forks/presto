@@ -18,7 +18,6 @@ import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.SystemMemoryUsageListener;
-import com.facebook.presto.execution.buffer.ClientBuffer.SerializedPageReference;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Sets.SetView;
@@ -32,7 +31,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
@@ -135,6 +133,7 @@ public class BroadcastOutputBuffer
     @Override
     public void setOutputBuffers(OutputBuffers newOutputBuffers)
     {
+        checkState(!Thread.holdsLock(this), "Can not set output buffers while holding a lock on this");
         requireNonNull(newOutputBuffers, "newOutputBuffers is null");
 
         synchronized (this) {
@@ -176,6 +175,7 @@ public class BroadcastOutputBuffer
     @Override
     public ListenableFuture<?> enqueue(List<SerializedPage> pages)
     {
+        checkState(!Thread.holdsLock(this), "Can not enqueue pages while holding a lock on this");
         requireNonNull(pages, "pages is null");
 
         // ignore pages after "no more pages" is set
@@ -206,7 +206,7 @@ public class BroadcastOutputBuffer
         Collection<ClientBuffer> buffers;
         synchronized (this) {
             if (state.get().canAddBuffers()) {
-                serializedPageReferences.stream().forEach(SerializedPageReference::addReference);
+                serializedPageReferences.forEach(SerializedPageReference::addReference);
                 initialPagesForNewBuffers.addAll(serializedPageReferences);
             }
 
@@ -231,8 +231,9 @@ public class BroadcastOutputBuffer
     }
 
     @Override
-    public CompletableFuture<BufferResult> get(OutputBufferId outputBufferId, long startingSequenceId, DataSize maxSize)
+    public ListenableFuture<BufferResult> get(OutputBufferId outputBufferId, long startingSequenceId, DataSize maxSize)
     {
+        checkState(!Thread.holdsLock(this), "Can not get pages while holding a lock on this");
         requireNonNull(outputBufferId, "outputBufferId is null");
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
@@ -242,6 +243,7 @@ public class BroadcastOutputBuffer
     @Override
     public void abort(OutputBufferId bufferId)
     {
+        checkState(!Thread.holdsLock(this), "Can not abort while holding a lock on this");
         requireNonNull(bufferId, "bufferId is null");
 
         getBuffer(bufferId).destroy();
@@ -252,6 +254,7 @@ public class BroadcastOutputBuffer
     @Override
     public void setNoMorePages()
     {
+        checkState(!Thread.holdsLock(this), "Can not set no more pages while holding a lock on this");
         state.compareAndSet(OPEN, NO_MORE_PAGES);
         state.compareAndSet(NO_MORE_BUFFERS, FLUSHING);
         memoryManager.setNoBlockOnFull();
@@ -264,6 +267,8 @@ public class BroadcastOutputBuffer
     @Override
     public void destroy()
     {
+        checkState(!Thread.holdsLock(this), "Can not destroy while holding a lock on this");
+
         // ignore destroy if the buffer already in a terminal state.
         if (state.setIf(FINISHED, oldState -> !oldState.isTerminal())) {
             noMoreBuffers();
@@ -291,7 +296,10 @@ public class BroadcastOutputBuffer
             return buffer;
         }
 
-        checkState(state.get().canAddBuffers(), "No more buffers already set");
+        // NOTE: buffers are allowed to be created in the FINISHED state because destroy() can move to the finished state
+        // without a clean "no-more-buffers" message from the scheduler.  This happens with limit queries and is ok because
+        // the buffer will be immediately destroyed.
+        checkState(state.get().canAddBuffers() || !outputBuffers.isNoMoreBufferIds(), "No more buffers already set");
 
         // NOTE: buffers are allowed to be created before they are explicitly declared by setOutputBuffers
         // When no-more-buffers is set, we verify that all created buffers have been declared
@@ -327,13 +335,15 @@ public class BroadcastOutputBuffer
             pages = ImmutableList.copyOf(initialPagesForNewBuffers);
             initialPagesForNewBuffers.clear();
 
-            // verify all created buffers have been declared
-            SetView<OutputBufferId> undeclaredCreatedBuffers = Sets.difference(buffers.keySet(), outputBuffers.getBuffers().keySet());
-            checkState(undeclaredCreatedBuffers.isEmpty(), "Final output buffers does not contain all created buffer ids: %s", undeclaredCreatedBuffers);
+            if (outputBuffers.isNoMoreBufferIds()) {
+                // verify all created buffers have been declared
+                SetView<OutputBufferId> undeclaredCreatedBuffers = Sets.difference(buffers.keySet(), outputBuffers.getBuffers().keySet());
+                checkState(undeclaredCreatedBuffers.isEmpty(), "Final output buffers does not contain all created buffer ids: %s", undeclaredCreatedBuffers);
+            }
         }
 
         // dereference outside of synchronized to avoid making a callback while holding a lock
-        pages.stream().forEach(SerializedPageReference::dereferencePage);
+        pages.forEach(SerializedPageReference::dereferencePage);
     }
 
     private void checkFlushComplete()
@@ -342,11 +352,8 @@ public class BroadcastOutputBuffer
             return;
         }
 
-        for (ClientBuffer buffer : safeGetBuffersSnapshot()) {
-            if (!buffer.isDestroyed()) {
-                return;
-            }
+        if (safeGetBuffersSnapshot().stream().allMatch(ClientBuffer::isDestroyed)) {
+            destroy();
         }
-        destroy();
     }
 }

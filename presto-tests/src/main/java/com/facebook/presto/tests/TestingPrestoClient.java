@@ -71,7 +71,6 @@ import static com.facebook.presto.util.DateTimeUtils.parseTimestampWithoutTimeZo
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.transform;
-import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
 public class TestingPrestoClient
@@ -111,7 +110,7 @@ public class TestingPrestoClient
         @Override
         public void setUpdateType(String type)
         {
-            updateType.set(Optional.of(requireNonNull("update type is null")));
+            updateType.set(Optional.of(type));
         }
 
         @Override

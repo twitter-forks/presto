@@ -49,6 +49,7 @@ import com.facebook.presto.sql.tree.FrameBound;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Node;
+import com.facebook.presto.sql.tree.OrderBy;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
 import com.facebook.presto.sql.tree.SortItem;
@@ -57,6 +58,7 @@ import com.facebook.presto.sql.tree.SortItem.Ordering;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.facebook.presto.sql.tree.Window;
 import com.facebook.presto.sql.tree.WindowFrame;
+import com.facebook.presto.util.maps.IdentityLinkedHashMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -65,7 +67,6 @@ import com.google.common.collect.Iterables;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -77,6 +78,7 @@ import java.util.stream.Collectors;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.sql.NodeUtils.getSortItemsFromOrderBy;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -88,7 +90,7 @@ class QueryPlanner
     private final Analysis analysis;
     private final SymbolAllocator symbolAllocator;
     private final PlanNodeIdAllocator idAllocator;
-    private final IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap;
+    private final IdentityLinkedHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap;
     private final Metadata metadata;
     private final Session session;
     private final SubqueryPlanner subqueryPlanner;
@@ -97,7 +99,7 @@ class QueryPlanner
             Analysis analysis,
             SymbolAllocator symbolAllocator,
             PlanNodeIdAllocator idAllocator,
-            IdentityHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap,
+            IdentityLinkedHashMap<LambdaArgumentDeclaration, Symbol> lambdaDeclarationToSymbolMap,
             Metadata metadata,
             Session session)
     {
@@ -413,7 +415,7 @@ class QueryPlanner
                 argumentTranslations.put(parametersReplaced, output);
             }
         }
-        Map<Symbol, Symbol> argumentMappings  = argumentMappingBuilder.build();
+        Map<Symbol, Symbol> argumentMappings = argumentMappingBuilder.build();
 
         // 2.b. Rewrite grouping columns
         TranslationMap groupingTranslations = new TranslationMap(subPlan.getRelationPlan(), analysis, lambdaDeclarationToSymbolMap);
@@ -587,7 +589,7 @@ class QueryPlanner
             ImmutableList.Builder<Expression> inputs = ImmutableList.<Expression>builder()
                     .addAll(windowFunction.getArguments())
                     .addAll(window.getPartitionBy())
-                    .addAll(Iterables.transform(window.getOrderBy(), SortItem::getSortKey));
+                    .addAll(Iterables.transform(getSortItemsFromOrderBy(window.getOrderBy()), SortItem::getSortKey));
 
             if (frameStart != null) {
                 inputs.add(frameStart);
@@ -606,7 +608,7 @@ class QueryPlanner
 
             // Rewrite ORDER BY in terms of pre-projected inputs
             Map<Symbol, SortOrder> orderings = new LinkedHashMap<>();
-            for (SortItem item : window.getOrderBy()) {
+            for (SortItem item : getSortItemsFromOrderBy(window.getOrderBy())) {
                 Symbol symbol = subPlan.translate(item.getSortKey());
                 orderings.put(symbol, toSortOrder(item));
             }
@@ -721,13 +723,13 @@ class QueryPlanner
         return sort(subPlan, node.getOrderBy(), node.getLimit(), analysis.getOrderByExpressions(node));
     }
 
-    private PlanBuilder sort(PlanBuilder subPlan, List<SortItem> orderBy, Optional<String> limit, List<Expression> orderByExpressions)
+    private PlanBuilder sort(PlanBuilder subPlan, Optional<OrderBy> orderBy, Optional<String> limit, List<Expression> orderByExpressions)
     {
-        if (orderBy.isEmpty()) {
+        if (!orderBy.isPresent()) {
             return subPlan;
         }
 
-        Iterator<SortItem> sortItems = orderBy.iterator();
+        Iterator<SortItem> sortItems = orderBy.get().getSortItems().iterator();
 
         ImmutableList.Builder<Symbol> orderBySymbols = ImmutableList.builder();
         Map<Symbol, SortOrder> orderings = new HashMap<>();
@@ -762,9 +764,9 @@ class QueryPlanner
         return limit(subPlan, node.getOrderBy(), node.getLimit());
     }
 
-    private PlanBuilder limit(PlanBuilder subPlan, List<SortItem> orderBy, Optional<String> limit)
+    private PlanBuilder limit(PlanBuilder subPlan, Optional<OrderBy> orderBy, Optional<String> limit)
     {
-        if (orderBy.isEmpty() && limit.isPresent()) {
+        if (!orderBy.isPresent() && limit.isPresent()) {
             if (!limit.get().equalsIgnoreCase("all")) {
                 long limitValue = Long.parseLong(limit.get());
                 subPlan = subPlan.withNewRoot(new LimitNode(idAllocator.getNextId(), subPlan.getRoot(), limitValue, false));

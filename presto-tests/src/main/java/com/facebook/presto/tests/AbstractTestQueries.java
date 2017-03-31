@@ -23,7 +23,6 @@ import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.testing.Arguments;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
-import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.type.SqlIntervalDayTime;
 import com.facebook.presto.type.SqlIntervalYearMonth;
 import com.facebook.presto.util.DateTimeZoneIndex;
@@ -141,9 +140,9 @@ public abstract class AbstractTestQueries
                     99.0,
                     false));
 
-    protected AbstractTestQueries(QueryRunner queryRunner)
+    protected AbstractTestQueries(QueryRunnerSupplier supplier)
     {
-        super(queryRunner);
+        super(supplier);
     }
 
     @Test
@@ -895,6 +894,8 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT max(orderstatus), COUNT(distinct shippriority), sum(DISTINCT orderkey) FROM orders");
 
         assertQuery("SELECT COUNT(tan(shippriority)), sum(DISTINCT orderkey) FROM orders");
+
+        assertQuery("SELECT count(DISTINCT a), max(b) FROM (VALUES (row(1, 2), 3)) t(a, b)", "VALUES (1, 3)");
     }
 
     @Test
@@ -2052,6 +2053,52 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testJoinWithConstantFalseExpressionWithCoercion()
+    {
+        // Covers #7520
+
+        // Cannot use assertQuery because H2 behaves differently than Presto in CHAR(x) = CHAR(y) comparison, when x != y
+        // assertQuery("select (cast ('a' as char(1)) = cast ('a' as char(2)))") would fail
+        MaterializedResult actual = computeActual("select count(*) > 0 from nation join region on (cast('a' as char(1)) = cast('a' as char(2)))");
+
+        MaterializedResult expected = resultBuilder(getSession(), BOOLEAN)
+                .row(false)
+                .build();
+
+        assertEquals(actual, expected);
+    }
+
+    @Test
+    public void testJoinWithConstantTrueExpressionWithCoercion()
+    {
+        // Covers #7520
+        assertQuery("select count(*) > 0 from nation join region on (cast(1.2 as real) = cast(1.2 as decimal(2,1)))");
+    }
+
+    @Test
+    public void testJoinWithCanonicalizedConstantFalseExpressionWithCoercion()
+    {
+        // Covers #7520
+
+        // Cannot use assertQuery because H2 behaves differently than Presto in CHAR(x) = CHAR(y) comparison, when x != y
+        // assertQuery("select (cast ('a' as char(1)) = cast ('a' as char(2)))") would fail
+        MaterializedResult actual = computeActual("select count(*) > 0 from nation join region ON CAST((CASE WHEN (TRUE IS NOT NULL) THEN 'a' ELSE 'a' END) as char(1)) = CAST('a' as char(2))");
+
+        MaterializedResult expected = resultBuilder(getSession(), BOOLEAN)
+                .row(false)
+                .build();
+
+        assertEquals(actual, expected);
+    }
+
+    @Test
+    public void testJoinWithCanonicalizedConstantTrueExpressionWithCoercion()
+    {
+        // Covers #7520
+        assertQuery("select count(*) > 0 from nation join region ON CAST((CASE WHEN (TRUE IS NOT NULL) THEN '1.2' ELSE '1.2' END) as real) = CAST(1.2 as decimal(2,1))");
+    }
+
+    @Test
     public void testJoinWithConstantPredicatePushDown()
     {
         assertQuery("" +
@@ -2165,6 +2212,16 @@ public abstract class AbstractTestQueries
                 "SELECT SUM(custkey) FROM lineitem JOIN orders ON lineitem.orderkey = orders.orderkey "
                 // H2 takes a million years because it can't join efficiently on a non-indexed field/expression
         );
+    }
+
+    @Test
+    public void testJoinWithNormalization()
+    {
+        assertQuery("select COUNT(*) from nation a join nation b on not ((a.nationkey + b.nationkey) <> b.nationkey)");
+        assertQuery("select COUNT(*) from nation a join nation b on not (a.nationkey <> b.nationkey)");
+        assertQuery("select COUNT(*) from nation a join nation b on not (a.nationkey = b.nationkey)");
+        assertQuery("select COUNT(*) from nation a join nation b on not (not cast(a.nationkey as boolean))");
+        assertQuery("select COUNT(*) from nation a join nation b on not not not (a.nationkey = b.nationkey)");
     }
 
     @Test
@@ -3691,26 +3748,44 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult actual = computeActual("SELECT " +
-                "sum(discount) OVER(PARTITION BY suppkey ORDER BY receiptdate)," +
-                "lag(quantity, 1) OVER(PARTITION BY suppkey ORDER BY orderkey)" +
-                "FROM lineitem " +
+                "sum(size) OVER(PARTITION BY type ORDER BY brand)," +
+                "lag(partkey, 1) OVER(PARTITION BY type ORDER BY name)" +
+                "FROM part " +
                 "ORDER BY 1, 2 " +
                 "LIMIT 10");
 
-        MaterializedResult expected = resultBuilder(getSession(), DOUBLE, DOUBLE)
-                .row(0.0, 8.0)
-                .row(0.0, 13.0)
-                .row(0.0, 17.0)
-                .row(0.0, 33.0)
-                .row(0.0, 33.0)
-                .row(0.0, 40.0)
-                .row(0.0, 42.0)
-                .row(0.01, 6.0)
-                .row(0.01, 8.0)
-                .row(0.01, 18.0)
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT, BIGINT)
+                .row(1L, 315L)
+                .row(1L, 881L)
+                .row(1L, 1009L)
+                .row(3L, 1087L)
+                .row(3L, 1187L)
+                .row(3L, 1529L)
+                .row(4L, 969L)
+                .row(5L, 151L)
+                .row(5L, 505L)
+                .row(5L, 872L)
                 .build();
 
         assertEquals(actual, expected);
+    }
+
+    @Test
+    public void testDependentWindows()
+            throws Exception
+    {
+        // For such query as below generated plan has two adjacent window nodes where second depends on output of first.
+
+        String sql = "WITH " +
+                "t1 AS (" +
+                "SELECT extendedprice FROM lineitem ORDER BY orderkey, partkey LIMIT 2)," +
+                "t2 AS (" +
+                "SELECT extendedprice, sum(extendedprice) OVER() AS x FROM t1)," +
+                "t3 AS (" +
+                "SELECT max(x) OVER() FROM t2) " +
+                "SELECT * FROM t3";
+
+        assertQuery(sql, "VALUES 59645.36, 59645.36");
     }
 
     @Test
@@ -4825,13 +4900,13 @@ public abstract class AbstractTestQueries
     @Test
     public void testLargeIn()
     {
-        String longValues = range(0, 5000).asLongStream()
-                .mapToObj(Long::toString)
+        String longValues = range(0, 5000)
+                .mapToObj(Integer::toString)
                 .collect(joining(", "));
         assertQuery("SELECT orderkey FROM orders WHERE orderkey IN (" + longValues + ")");
         assertQuery("SELECT orderkey FROM orders WHERE orderkey NOT IN (" + longValues + ")");
 
-        String arrayValues = range(0, 5000).asLongStream()
+        String arrayValues = range(0, 5000)
                 .mapToObj(i -> format("ARRAY[%s, %s, %s]", i, i + 1, i + 2))
                 .collect(joining(", "));
         assertQuery("SELECT ARRAY[0, 0, 0] in (ARRAY[0, 0, 0], " + arrayValues + ")", "values true");
@@ -5345,7 +5420,7 @@ public abstract class AbstractTestQueries
                         .put("connector_string", "bar string")
                         .put("connector_long", "11")
                         .build()),
-                queryRunner.getMetadata().getSessionPropertyManager(),
+                getQueryRunner().getMetadata().getSessionPropertyManager(),
                 getSession().getPreparedStatements());
         MaterializedResult result = computeActual(session, "SHOW SESSION");
 

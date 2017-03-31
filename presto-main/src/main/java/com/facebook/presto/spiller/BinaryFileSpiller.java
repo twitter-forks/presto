@@ -18,11 +18,10 @@ import com.facebook.presto.execution.buffer.PagesSerdeUtil;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
-import io.airlift.concurrent.MoreFutures;
 import io.airlift.slice.InputStreamSliceInput;
 import io.airlift.slice.OutputStreamSliceOutput;
-import io.airlift.slice.RuntimeIOException;
 import io.airlift.slice.SliceOutput;
 
 import javax.annotation.concurrent.NotThreadSafe;
@@ -33,12 +32,12 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -46,6 +45,7 @@ import java.util.stream.Stream;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 
@@ -56,22 +56,22 @@ public class BinaryFileSpiller
     private final Path targetDirectory;
     private final Closer closer = Closer.create();
     private final PagesSerde serde;
-    private final AtomicLong spilledDataSize;
+    private final AtomicLong totalSpilledDataSize;
 
     private final ListeningExecutorService executor;
 
     private int spillsCount;
-    private CompletableFuture<?> previousSpill = CompletableFuture.completedFuture(null);
+    private ListenableFuture<?> previousSpill = immediateFuture(null);
 
     public BinaryFileSpiller(
             PagesSerde serde,
             ListeningExecutorService executor,
             Path spillPath,
-            AtomicLong spilledDataSize)
+            AtomicLong totalSpilledDataSize)
     {
         this.serde = requireNonNull(serde, "serde is null");
         this.executor = requireNonNull(executor, "executor is null");
-        this.spilledDataSize = requireNonNull(spilledDataSize, "spilledDataSize is null");
+        this.totalSpilledDataSize = requireNonNull(totalSpilledDataSize, "totalSpilledDataSize is null");
         try {
             this.targetDirectory = Files.createTempDirectory(spillPath, "presto-spill");
         }
@@ -81,22 +81,21 @@ public class BinaryFileSpiller
     }
 
     @Override
-    public CompletableFuture<?> spill(Iterator<Page> pageIterator)
+    public ListenableFuture<?> spill(Iterator<Page> pageIterator)
     {
         checkState(previousSpill.isDone());
         Path spillPath = getPath(spillsCount++);
 
-        previousSpill = MoreFutures.toCompletableFuture(executor.submit(
-                () -> writePages(pageIterator, spillPath)));
+        previousSpill = executor.submit(() -> writePages(pageIterator, spillPath));
         return previousSpill;
     }
 
     private void writePages(Iterator<Page> pageIterator, Path spillPath)
     {
         try (SliceOutput output = new OutputStreamSliceOutput(new BufferedOutputStream(new FileOutputStream(spillPath.toFile())))) {
-            spilledDataSize.addAndGet(PagesSerdeUtil.writePages(serde, output, pageIterator));
+            totalSpilledDataSize.addAndGet(PagesSerdeUtil.writePages(serde, output, pageIterator));
         }
-        catch (RuntimeIOException | IOException e) {
+        catch (UncheckedIOException | IOException e) {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Failed to spill pages", e);
         }
     }

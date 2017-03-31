@@ -17,6 +17,7 @@ import com.facebook.presto.RowPagesBuilder;
 import com.facebook.presto.operator.HashBuilderOperator.HashBuilderOperatorFactory;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.gen.JoinProbeCompiler;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.TestingTaskContext;
 import com.google.common.collect.ImmutableList;
@@ -48,7 +49,6 @@ import static com.facebook.presto.RowPagesBuilder.rowPagesBuilder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
-import static com.facebook.presto.util.Threads.checkNotSameThreadExecutor;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static java.lang.String.format;
@@ -69,6 +69,7 @@ public class BenchmarkHashBuildAndJoinOperators
     private static final int HASH_BUILD_OPERATOR_ID = 1;
     private static final int HASH_JOIN_OPERATOR_ID = 2;
     private static final PlanNodeId TEST_PLAN_NODE_ID = new PlanNodeId("test");
+    private static final LookupJoinOperators LOOKUP_JOIN_OPERATORS = new LookupJoinOperators(new JoinProbeCompiler());
 
     @State(Thread)
     public static class BuildContext
@@ -111,10 +112,7 @@ public class BenchmarkHashBuildAndJoinOperators
 
         public TaskContext createTaskContext()
         {
-            return TestingTaskContext.createTaskContext(
-                    checkNotSameThreadExecutor(executor, "executor is null"),
-                    TEST_SESSION,
-                    new DataSize(2, GIGABYTE));
+            return TestingTaskContext.createTaskContext(executor, TEST_SESSION, new DataSize(2, GIGABYTE));
         }
 
         public Optional<Integer> getHashChannel()
@@ -267,7 +265,7 @@ public class BenchmarkHashBuildAndJoinOperators
 
     private LookupSourceFactory benchmarkBuildHash(BuildContext buildContext, List<Integer> outputChannels)
     {
-        DriverContext driverContext = buildContext.createTaskContext().addPipelineContext(true, true).addDriverContext();
+        DriverContext driverContext = buildContext.createTaskContext().addPipelineContext(0, true, true).addDriverContext();
 
         HashBuilderOperatorFactory hashBuilderOperatorFactory = new HashBuilderOperatorFactory(
                 HASH_BUILD_OPERATOR_ID,
@@ -280,7 +278,8 @@ public class BenchmarkHashBuildAndJoinOperators
                 false,
                 Optional.empty(),
                 10_000,
-                1);
+                1,
+                new PagesIndex.TestingFactory());
 
         Operator operator = hashBuilderOperatorFactory.createOperator(driverContext);
         for (Page page : buildContext.getBuildPages()) {
@@ -300,7 +299,7 @@ public class BenchmarkHashBuildAndJoinOperators
     {
         LookupSourceFactory lookupSourceFactory = joinContext.getLookupSourceFactory();
 
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.innerJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.innerJoin(
                 HASH_JOIN_OPERATOR_ID,
                 TEST_PLAN_NODE_ID,
                 lookupSourceFactory,
@@ -309,7 +308,7 @@ public class BenchmarkHashBuildAndJoinOperators
                 joinContext.getHashChannel(),
                 Optional.of(joinContext.getOutputChannels()));
 
-        DriverContext driverContext = joinContext.createTaskContext().addPipelineContext(true, true).addDriverContext();
+        DriverContext driverContext = joinContext.createTaskContext().addPipelineContext(0, true, true).addDriverContext();
         Operator joinOperator = joinOperatorFactory.createOperator(driverContext);
 
         Iterator<Page> input = joinContext.getProbePages().iterator();

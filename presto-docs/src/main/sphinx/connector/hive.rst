@@ -40,22 +40,17 @@ The following file types are supported for the Hive connector:
 Configuration
 -------------
 
-Presto includes Hive connectors for multiple versions of Hadoop:
-
-* ``hive-hadoop1``: Apache Hadoop 1.x
-* ``hive-hadoop2``: Apache Hadoop 2.x
-* ``hive-cdh4``: Cloudera CDH 4
-* ``hive-cdh5``: Cloudera CDH 5
+The Hive connector supports Apache Hadoop 2.x and derivative distributions
+including Cloudera CDH 5 and Hortonworks Data Platform (HDP).
 
 Create ``etc/catalog/hive.properties`` with the following contents
-to mount the ``hive-cdh4`` connector as the ``hive`` catalog,
-replacing ``hive-cdh4`` with the proper connector for your version
-of Hadoop and ``example.net:9083`` with the correct host and port
+to mount the ``hive-hadoop2`` connector as the ``hive`` catalog,
+replacing ``example.net:9083`` with the correct host and port
 for your Hive metastore Thrift service:
 
 .. code-block:: none
 
-    connector.name=hive-cdh4
+    connector.name=hive-hadoop2
     hive.metastore.uri=thrift://example.net:9083
 
 Multiple Hive Clusters
@@ -105,14 +100,8 @@ appropriate username:
 Accessing Hadoop clusters protected with Kerberos authentication
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Kerberos authentication is currently supported for both HDFS and the Hive
-metastore.
-
-However there are still a few limitations:
-
-* Kerberos authentication is only supported for the ``hive-hadoop2`` and
-  ``hive-cdh5`` connectors.
-* Kerberos authentication by ticket cache is not yet supported.
+Kerberos authentication is supported for both HDFS and the Hive metastore.
+However, Kerberos authentication by ticket cache is not yet supported.
 
 The properties that apply to Hive connector security are listed in the
 `Hive Configuration Properties`_ table. Please see the
@@ -188,9 +177,7 @@ This is accomplished by having a table or database location that
 uses an S3 prefix rather than an HDFS prefix.
 
 Presto uses its own S3 filesystem for the URI prefixes
-``s3://``, ``s3n://`` and  ``s3a://``. It also uses the ``s3bfs://``
-prefix for the legacy S3 block file system (not supported for
-``hive-hadoop2`` or ``hive-cdh5``).
+``s3://``, ``s3n://`` and  ``s3a://``.
 
 S3 Configuration Properties
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -224,6 +211,13 @@ Property Name                                Description
 ``hive.s3.ssl.enabled``                      Use HTTPS to communicate with the S3 API (defaults to ``true``).
 
 ``hive.s3.sse.enabled``                      Use S3 server-side encryption (defaults to ``false``).
+
+``hive.s3.sse.type``                         The type of key management for S3 server-side encryption.
+                                             Use ``S3`` for S3 managed or ``KMS`` for KMS-managed keys
+                                             (defaults to ``S3``).
+
+``hive.s3.sse.kms-key-id``                   The KMS Key ID to use for S3 server-side encryption with
+                                             KMS-managed keys. If not set, the default key is used.
 
 ``hive.s3.kms-key-id``                       If set, use S3 client-side encryption and use the AWS
                                              KMS to store encryption keys and use the value of

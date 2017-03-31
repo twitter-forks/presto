@@ -4,6 +4,11 @@ Cassandra Connector
 
 The Cassandra connector allows querying data stored in Cassandra.
 
+Compatibility
+-------------
+
+Connector is compatible with all Cassandra versions starting from 2.1.5.
+
 Configuration
 -------------
 
@@ -44,14 +49,6 @@ Property Name                                      Description
 ``cassandra.native-protocol-port``                 The Cassandra server port running the native client protocol
                                                    (defaults to ``9042``).
 
-``cassandra.thrift-port``                          The Cassandra server port running the Thrift client protocol
-                                                   (defaults to ``9160``).
-
-``cassandra.limit-for-partition-key-select``       Limit of rows to read for finding all partition keys. If a
-                                                   Cassandra table has more rows than this value, splits based on
-                                                   token ranges are used instead. Note that for larger values you
-                                                   may need to adjust read timeout for Cassandra.
-
 ``cassandra.max-schema-refresh-threads``           Maximum number of schema cache refresh threads. This property
                                                    corresponds to the maximum number of parallel requests.
 
@@ -82,6 +79,11 @@ Property Name                                      Description
                                                    of the user who is connected to Presto.
 ================================================== ======================================================================
 
+.. note::
+
+        If authorization is enabled, ``cassandra.username`` must have enough permissions to perform ``SELECT`` queries on
+        the ``system.size_estimates`` table.
+
 .. _Cassandra consistency: http://www.datastax.com/documentation/cassandra/2.0/cassandra/dml/dml_config_consistency_c.html
 
 The following advanced configuration properties are available:
@@ -91,24 +93,10 @@ Property Name                                                 Description
 ============================================================= ======================================================================
 ``cassandra.fetch-size``                                      Number of rows fetched at a time in a Cassandra query.
 
-``cassandra.fetch-size-for-partition-key-select``             Number of rows fetched at a time in a Cassandra query that
-                                                              selects partition keys.
-
 ``cassandra.partition-size-for-batch-select``                 Number of partitions batched together into a single select for a
                                                               single partion key column table.
 
 ``cassandra.split-size``                                      Number of keys per split when querying Cassandra.
-
-``cassandra.partitioner``                                     Partitioner to use for hashing and data distribution. This
-                                                              property defaults to ``Murmur3Partitioner``. The other supported
-                                                              values are ``RandomPartitioner`` and ``ByteOrderedPartitioner``.
-
-``cassandra.thrift-connection-factory-class``                 Allows for the specification of a custom implementation of
-                                                              ``org.apache.cassandra.thrift.ITransportFactory`` to be used to
-                                                              connect to Cassandra using the Thrift protocol.
-
-``cassandra.transport-factory-options``                       Allows for the specification of arbitrary options to be passed to
-                                                              the Thrift connection factory.
 
 ``cassandra.client.read-timeout``                             Maximum time the Cassandra driver will wait for an
                                                               answer to a query from one Cassandra node. Note that the underlying
@@ -153,7 +141,7 @@ Property Name                                                 Description
 
 ``cassandra.load-policy.white-list.addresses``                Comma-separated list of hosts for ``WhiteListPolicy``.
 
-``cassandra.no-host-available-retry-count``                   Retry count for ``NoHostAvailableException`` (defaults to ``1``).
+``cassandra.no-host-available-retry-timeout``                 Retry timeout for ``NoHostAvailableException`` (defaults to ``1m``).
 
 ``cassandra.speculative-execution.limit``                     The number of speculative executions (defaults to ``1``).
 

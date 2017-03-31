@@ -154,11 +154,18 @@
                 STAR, STAR_ASSIGN, TYPE_EXTENSION_AND" />
         </module>
 
+        <module name="IllegalToken">
+            <property name="tokens" value="LITERAL_ASSERT" />
+        </module>
+
         <module name="IllegalImport">
             <property name="illegalPkgs" value="
                 com.facebook.presto.hadoop.shaded,
                 com.facebook.presto.hadoop.$internal,
                 com.facebook.presto.hive.$internal,
+                com.facebook.hive.orc.$internal,
+                com.datastax.driver.$internal,
+                org.apache.cassandra.$internal,
                 org.weakref.jmx.internal,
                 jersey.repackaged,
                 jdk.nashorn.internal,

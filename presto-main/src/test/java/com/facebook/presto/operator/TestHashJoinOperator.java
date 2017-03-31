@@ -25,6 +25,7 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
+import com.facebook.presto.sql.gen.JoinProbeCompiler;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.TestingTaskContext;
@@ -60,6 +61,7 @@ import static java.util.concurrent.Executors.newCachedThreadPool;
 public class TestHashJoinOperator
 {
     private static final int PARTITION_COUNT = 4;
+    private static final LookupJoinOperators LOOKUP_JOIN_OPERATORS = new LookupJoinOperators(new JoinProbeCompiler());
 
     private ExecutorService executor;
 
@@ -105,7 +107,7 @@ public class TestHashJoinOperator
         List<Page> probeInput = probePages
                 .addSequencePage(1000, 0, 1000, 2000)
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.innerJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.innerJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -129,7 +131,7 @@ public class TestHashJoinOperator
                 .row("29", 1029L, 2029L, "29", 39L, 49L)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -156,7 +158,7 @@ public class TestHashJoinOperator
                 .row("a")
                 .row("b")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.innerJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.innerJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -173,7 +175,7 @@ public class TestHashJoinOperator
                 .row("b", "b")
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -200,7 +202,7 @@ public class TestHashJoinOperator
                 .row("b")
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.innerJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.innerJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -217,7 +219,7 @@ public class TestHashJoinOperator
                 .row("b", "b")
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -245,7 +247,7 @@ public class TestHashJoinOperator
                 .row((String) null)
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.innerJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.innerJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -262,7 +264,7 @@ public class TestHashJoinOperator
                 .row("b", "b")
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -283,7 +285,7 @@ public class TestHashJoinOperator
         List<Page> probeInput = probePages
                 .addSequencePage(15, 20, 1020, 2020)
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -312,7 +314,7 @@ public class TestHashJoinOperator
                 .row("34", 1034L, 2034L, null, null, null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -336,7 +338,7 @@ public class TestHashJoinOperator
         List<Page> probeInput = probePages
                 .addSequencePage(15, 20, 1020, 2020)
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -364,7 +366,7 @@ public class TestHashJoinOperator
                 .row("34", 1034L, 2034L, null, null, null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -391,7 +393,7 @@ public class TestHashJoinOperator
                 .row("a")
                 .row("b")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -409,7 +411,7 @@ public class TestHashJoinOperator
                 .row("b", "b")
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -439,7 +441,7 @@ public class TestHashJoinOperator
                 .row("a")
                 .row("b")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -457,7 +459,7 @@ public class TestHashJoinOperator
                 .row("b", null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -484,7 +486,7 @@ public class TestHashJoinOperator
                 .row("b")
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -501,7 +503,7 @@ public class TestHashJoinOperator
                 .row("c", null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -532,7 +534,7 @@ public class TestHashJoinOperator
                 .row("b")
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -549,7 +551,7 @@ public class TestHashJoinOperator
                 .row("c", null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -576,7 +578,7 @@ public class TestHashJoinOperator
                 .row((String) null)
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -594,7 +596,7 @@ public class TestHashJoinOperator
                 .row("c", null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(dataProvider = "hashEnabledValues")
@@ -625,7 +627,7 @@ public class TestHashJoinOperator
                 .row((String) null)
                 .row("c")
                 .build();
-        OperatorFactory joinOperatorFactory = LookupJoinOperators.probeOuterJoin(
+        OperatorFactory joinOperatorFactory = LOOKUP_JOIN_OPERATORS.probeOuterJoin(
                 0,
                 new PlanNodeId("test"),
                 lookupSourceFactory,
@@ -643,7 +645,7 @@ public class TestHashJoinOperator
                 .row("c", null)
                 .build();
 
-        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
+        assertOperatorEquals(joinOperatorFactory, taskContext.addPipelineContext(0, true, true).addDriverContext(), probeInput, expected, true, getHashChannels(probePages, buildPages));
     }
 
     @Test(expectedExceptions = ExceededMemoryLimitException.class, expectedExceptionsMessageRegExp = "Query exceeded local memory limit of.*", dataProvider = "hashEnabledValues")
@@ -685,7 +687,7 @@ public class TestHashJoinOperator
         sinkFactory.noMoreSinkFactories();
 
         // collect input data into the partitioned exchange
-        DriverContext collectDriverContext = taskContext.addPipelineContext(true, true).addDriverContext();
+        DriverContext collectDriverContext = taskContext.addPipelineContext(0, true, true).addDriverContext();
         ValuesOperatorFactory valuesOperatorFactory = new ValuesOperatorFactory(0, new PlanNodeId("values"), buildPages.getTypes(), buildPages.build());
         LocalExchangeSinkOperatorFactory sinkOperatorFactory = new LocalExchangeSinkOperatorFactory(1, new PlanNodeId("sink"), sinkFactory, Function.identity());
         Driver driver = new Driver(collectDriverContext,
@@ -711,8 +713,9 @@ public class TestHashJoinOperator
                 false,
                 filterFunctionFactory,
                 100,
-                partitionCount);
-        PipelineContext buildPipeline = taskContext.addPipelineContext(true, true);
+                partitionCount,
+                new PagesIndex.TestingFactory());
+        PipelineContext buildPipeline = taskContext.addPipelineContext(1, true, true);
 
         Driver[] buildDrivers = new Driver[partitionCount];
         for (int i = 0; i < partitionCount; i++) {

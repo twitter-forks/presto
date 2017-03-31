@@ -27,7 +27,7 @@ import static java.util.Objects.requireNonNull;
 public class ShortArrayBlockBuilder
         implements BlockBuilder
 {
-    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ShortArrayBlockBuilder.class).instanceSize();
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(ShortArrayBlockBuilder.class).instanceSize() + BlockBuilderStatus.INSTANCE_SIZE;
 
     private BlockBuilderStatus blockBuilderStatus;
 
@@ -123,6 +123,12 @@ public class ShortArrayBlockBuilder
     }
 
     @Override
+    public int getRegionSizeInBytes(int position, int length)
+    {
+        return intSaturatedCast((Short.BYTES + Byte.BYTES) * (long) length);
+    }
+
+    @Override
     public int getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;
@@ -132,12 +138,6 @@ public class ShortArrayBlockBuilder
     public int getPositionCount()
     {
         return positionCount;
-    }
-
-    @Override
-    public int getLength(int position)
-    {
-        return Short.BYTES;
     }
 
     @Override

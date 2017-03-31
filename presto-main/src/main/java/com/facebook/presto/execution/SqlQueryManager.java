@@ -18,12 +18,15 @@ import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.event.query.QueryMonitor;
 import com.facebook.presto.execution.QueryExecution.QueryExecutionFactory;
 import com.facebook.presto.execution.SqlQueryExecution.SqlQueryExecutionFactory;
+import com.facebook.presto.execution.resourceGroups.QueryQueueFullException;
 import com.facebook.presto.memory.ClusterMemoryManager;
+import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.server.SessionSupplier;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.parser.SqlParser;
@@ -107,6 +110,7 @@ public class SqlQueryManager
     private final QueryMonitor queryMonitor;
     private final LocationFactory locationFactory;
 
+    private final Metadata metadata;
     private final TransactionManager transactionManager;
 
     private final AccessControl accessControl;
@@ -131,7 +135,8 @@ public class SqlQueryManager
             AccessControl accessControl,
             QueryIdGenerator queryIdGenerator,
             SessionPropertyManager sessionPropertyManager,
-            Map<Class<? extends Statement>, QueryExecutionFactory<?>> executionFactories)
+            Map<Class<? extends Statement>, QueryExecutionFactory<?>> executionFactories,
+            Metadata metadata)
     {
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
 
@@ -148,6 +153,7 @@ public class SqlQueryManager
         this.locationFactory = requireNonNull(locationFactory, "locationFactory is null");
 
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
+        this.metadata = requireNonNull(metadata, "transactionManager is null");
 
         this.accessControl = requireNonNull(accessControl, "accessControl is null");
 
@@ -275,6 +281,19 @@ public class SqlQueryManager
     }
 
     @Override
+    public Optional<ResourceGroupId> getQueryResourceGroup(QueryId queryId)
+    {
+        requireNonNull(queryId, "queryId is null");
+
+        QueryExecution query = queries.get(queryId);
+        if (query != null) {
+            return query.getResourceGroup();
+        }
+
+        return Optional.empty();
+    }
+
+    @Override
     public Optional<QueryState> getQueryState(QueryId queryId)
     {
         requireNonNull(queryId, "queryId is null");
@@ -344,7 +363,11 @@ public class SqlQueryManager
                         .setIdentity(sessionSupplier.getIdentity())
                         .build();
             }
-            QueryExecution execution = new FailedQueryExecution(queryId, query, session, self, transactionManager, queryExecutor, e);
+            Optional<ResourceGroupId> resourceGroup = Optional.empty();
+            if (e instanceof QueryQueueFullException) {
+                resourceGroup = Optional.of(((QueryQueueFullException) e).getResourceGroup());
+            }
+            QueryExecution execution = new FailedQueryExecution(queryId, query, resourceGroup, session, self, transactionManager, queryExecutor, metadata, e);
 
             QueryInfo queryInfo = null;
             try {

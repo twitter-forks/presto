@@ -31,7 +31,6 @@ import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
@@ -42,6 +41,7 @@ import static com.facebook.presto.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.execution.buffer.BufferResult.emptyResults;
 import static com.facebook.presto.execution.buffer.BufferState.OPEN;
 import static com.facebook.presto.execution.buffer.BufferState.TERMINAL_BUFFER_STATES;
+import static com.facebook.presto.execution.buffer.TestingPagesSerdeFactory.testingPagesSerde;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
@@ -57,7 +57,7 @@ import static org.testng.Assert.fail;
 
 public class TestBroadcastOutputBuffer
 {
-    private static final PagesSerde PAGES_SERDE = new TestingPagesSerdeFactory().createPagesSerde();
+    private static final PagesSerde PAGES_SERDE = testingPagesSerde();
 
     private static final Duration NO_WAIT = new Duration(0, MILLISECONDS);
     private static final Duration MAX_WAIT = new Duration(1, SECONDS);
@@ -394,7 +394,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // get a page from a buffer that doesn't exist yet
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, (long) 0, sizeOfPages(1));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, (long) 0, sizeOfPages(1));
         assertFalse(future.isDone());
 
         // add a page and verify the future is complete
@@ -404,14 +404,14 @@ public class TestBroadcastOutputBuffer
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*does not contain.*\\[0\\]")
-    public void testFinishWithoutDeclaringBuffer()
+    public void testSetFinalBuffersWihtoutDeclaringUsedBuffer()
             throws Exception
     {
         BroadcastOutputBuffer buffer = createBroadcastBuffer(createInitialEmptyOutputBuffers(BROADCAST), sizeOfPages(10));
         assertFalse(buffer.isFinished());
 
         // get a page from a buffer that doesn't exist yet
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, (long) 0, sizeOfPages(1));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, (long) 0, sizeOfPages(1));
         assertFalse(future.isDone());
 
         // add a page and set no more pages
@@ -426,8 +426,23 @@ public class TestBroadcastOutputBuffer
         assertBufferResultEquals(TYPES, getBufferResult(buffer, FIRST, 1, sizeOfPages(10), NO_WAIT), emptyResults(TASK_INSTANCE_ID, 1, true));
         buffer.abort(FIRST);
 
-        // destroy without declaring the buffer, which will fail
-        buffer.destroy();
+        // set final buffers to a set that does not contain the buffer, which will fail
+        buffer.setOutputBuffers(createInitialEmptyOutputBuffers(BROADCAST).withNoMoreBufferIds());
+    }
+
+    @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "No more buffers already set")
+    public void testUseUndeclaredBufferAfterFinalBuffersSet()
+            throws Exception
+    {
+        BroadcastOutputBuffer buffer = createBroadcastBuffer(
+                createInitialEmptyOutputBuffers(BROADCAST)
+                        .withBuffer(FIRST, BROADCAST_PARTITION_ID)
+                        .withNoMoreBufferIds(),
+                sizeOfPages(10));
+        assertFalse(buffer.isFinished());
+
+        // get a page from a buffer that was not declared, which will fail
+        buffer.get(SECOND, (long) 0, sizeOfPages(1));
     }
 
     @Test
@@ -438,7 +453,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // get a page from a buffer that doesn't exist yet
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(1));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(1));
         assertFalse(future.isDone());
 
         // abort that buffer, and verify the future is complete and buffer is finished
@@ -568,7 +583,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // attempt to get a page
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
 
         // verify we are waiting for a page
         assertFalse(future.isDone());
@@ -607,7 +622,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // attempt to get a page
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
 
         // verify we are waiting for a page
         assertFalse(future.isDone());
@@ -689,7 +704,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // attempt to get a page
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
 
         // verify we are waiting for a page
         assertFalse(future.isDone());
@@ -761,7 +776,7 @@ public class TestBroadcastOutputBuffer
         assertFalse(buffer.isFinished());
 
         // attempt to get a page
-        CompletableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
+        ListenableFuture<BufferResult> future = buffer.get(FIRST, 0, sizeOfPages(10));
 
         // verify we are waiting for a page
         assertFalse(future.isDone());
@@ -864,23 +879,23 @@ public class TestBroadcastOutputBuffer
 
     public static BufferResult getBufferResult(BroadcastOutputBuffer buffer, OutputBufferId bufferId, long sequenceId, DataSize maxSize, Duration maxWait)
     {
-        CompletableFuture<BufferResult> future = buffer.get(bufferId, sequenceId, maxSize);
+        ListenableFuture<BufferResult> future = buffer.get(bufferId, sequenceId, maxSize);
         return getFuture(future, maxWait);
     }
 
-    public static BufferResult getFuture(CompletableFuture<BufferResult> future, Duration maxWait)
+    public static BufferResult getFuture(ListenableFuture<BufferResult> future, Duration maxWait)
     {
         return tryGetFutureValue(future, (int) maxWait.toMillis(), MILLISECONDS).get();
     }
 
-    private static synchronized ListenableFuture<?> enqueuePage(BroadcastOutputBuffer buffer, Page page)
+    private static ListenableFuture<?> enqueuePage(BroadcastOutputBuffer buffer, Page page)
     {
         ListenableFuture<?> future = buffer.enqueue(ImmutableList.of(PAGES_SERDE.serialize(page)));
         assertFalse(future.isDone());
         return future;
     }
 
-    private static synchronized void addPage(BroadcastOutputBuffer buffer, Page page)
+    private static void addPage(BroadcastOutputBuffer buffer, Page page)
     {
         assertTrue(buffer.enqueue(ImmutableList.of(PAGES_SERDE.serialize(page))).isDone(), "Expected add page to not block");
     }
@@ -947,7 +962,7 @@ public class TestBroadcastOutputBuffer
         }
     }
 
-    private static synchronized void assertBufferResultEquals(List<? extends Type> types, BufferResult actual, BufferResult expected)
+    private static void assertBufferResultEquals(List<? extends Type> types, BufferResult actual, BufferResult expected)
     {
         assertEquals(actual.getSerializedPages().size(), expected.getSerializedPages().size());
         assertEquals(actual.getToken(), expected.getToken());
@@ -972,7 +987,7 @@ public class TestBroadcastOutputBuffer
         return bufferResult(token, pages);
     }
 
-    public static synchronized BufferResult bufferResult(long token, List<Page> pages)
+    public static BufferResult bufferResult(long token, List<Page> pages)
     {
         checkArgument(!pages.isEmpty(), "pages is empty");
         return new BufferResult(

@@ -19,6 +19,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
+import io.airlift.configuration.DefunctConfig;
 import io.airlift.units.Duration;
 import io.airlift.units.MaxDuration;
 import io.airlift.units.MinDuration;
@@ -28,33 +29,27 @@ import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
-import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.MINUTES;
 
+@DefunctConfig({"cassandra.thrift-port", "cassandra.partitioner", "cassandra.thrift-connection-factory-class", "cassandra.transport-factory-options",
+                "cassandra.no-host-available-retry-count"})
 public class CassandraClientConfig
 {
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
     private Duration schemaCacheTtl = new Duration(1, TimeUnit.HOURS);
     private Duration schemaRefreshInterval = new Duration(2, TimeUnit.MINUTES);
-    private int maxSchemaRefreshThreads = 10;
-    private int limitForPartitionKeySelect = 200;
-    private int fetchSizeForPartitionKeySelect = 20_000;
+    private int maxSchemaRefreshThreads = 1;
     private ConsistencyLevel consistencyLevel = ConsistencyLevel.ONE;
     private int fetchSize = 5_000;
     private List<String> contactPoints = ImmutableList.of();
     private int nativeProtocolPort = 9042;
     private int partitionSizeForBatchSelect = 100;
     private int splitSize = 1_024;
-    private String partitioner = "Murmur3Partitioner";
-    private int thriftPort = 9160;
-    private String thriftConnectionFactoryClassName = "org.apache.cassandra.thrift.TFramedTransportFactory";
-    private Map<String, String> transportFactoryOptions = new HashMap<>();
     private boolean allowDropTable;
     private String username;
     private String password;
@@ -70,22 +65,9 @@ public class CassandraClientConfig
     private boolean tokenAwareShuffleReplicas;
     private boolean useWhiteList;
     private List<String> whiteListAddresses = ImmutableList.of();
-    private int noHostAvailableRetryCount = 1;
+    private Duration noHostAvailableRetryTimeout = new Duration(1, MINUTES);
     private int speculativeExecutionLimit = 1;
     private Duration speculativeExecutionDelay = new Duration(500, MILLISECONDS);
-
-    @Min(0)
-    public int getLimitForPartitionKeySelect()
-    {
-        return limitForPartitionKeySelect;
-    }
-
-    @Config("cassandra.limit-for-partition-key-select")
-    public CassandraClientConfig setLimitForPartitionKeySelect(int limitForPartitionKeySelect)
-    {
-        this.limitForPartitionKeySelect = limitForPartitionKeySelect;
-        return this;
-    }
 
     @Min(1)
     public int getMaxSchemaRefreshThreads()
@@ -186,19 +168,6 @@ public class CassandraClientConfig
     }
 
     @Min(1)
-    public int getFetchSizeForPartitionKeySelect()
-    {
-        return fetchSizeForPartitionKeySelect;
-    }
-
-    @Config("cassandra.fetch-size-for-partition-key-select")
-    public CassandraClientConfig setFetchSizeForPartitionKeySelect(int fetchSizeForPartitionKeySelect)
-    {
-        this.fetchSizeForPartitionKeySelect = fetchSizeForPartitionKeySelect;
-        return this;
-    }
-
-    @Min(1)
     public int getPartitionSizeForBatchSelect()
     {
         return partitionSizeForBatchSelect;
@@ -208,18 +177,6 @@ public class CassandraClientConfig
     public CassandraClientConfig setPartitionSizeForBatchSelect(int partitionSizeForBatchSelect)
     {
         this.partitionSizeForBatchSelect = partitionSizeForBatchSelect;
-        return this;
-    }
-
-    public int getThriftPort()
-    {
-        return thriftPort;
-    }
-
-    @Config(("cassandra.thrift-port"))
-    public CassandraClientConfig setThriftPort(int thriftPort)
-    {
-        this.thriftPort = thriftPort;
         return this;
     }
 
@@ -233,43 +190,6 @@ public class CassandraClientConfig
     public CassandraClientConfig setSplitSize(int splitSize)
     {
         this.splitSize = splitSize;
-        return this;
-    }
-
-    public String getPartitioner()
-    {
-        return partitioner;
-    }
-
-    @Config("cassandra.partitioner")
-    public CassandraClientConfig setPartitioner(String partitioner)
-    {
-        this.partitioner = partitioner;
-        return this;
-    }
-
-    public String getThriftConnectionFactoryClassName()
-    {
-        return thriftConnectionFactoryClassName;
-    }
-
-    @Config("cassandra.thrift-connection-factory-class")
-    public CassandraClientConfig setThriftConnectionFactoryClassName(String thriftConnectionFactoryClassName)
-    {
-        this.thriftConnectionFactoryClassName = thriftConnectionFactoryClassName;
-        return this;
-    }
-
-    public Map<String, String> getTransportFactoryOptions()
-    {
-        return transportFactoryOptions;
-    }
-
-    @Config("cassandra.transport-factory-options")
-    public CassandraClientConfig setTransportFactoryOptions(String transportFactoryOptions)
-    {
-        requireNonNull(transportFactoryOptions, "transportFactoryOptions is null");
-        this.transportFactoryOptions = Splitter.on(',').omitEmptyStrings().trimResults().withKeyValueSeparator("=").split(transportFactoryOptions);
         return this;
     }
 
@@ -461,16 +381,16 @@ public class CassandraClientConfig
         return this;
     }
 
-    @Min(1)
-    public int getNoHostAvailableRetryCount()
+    @NotNull
+    public Duration getNoHostAvailableRetryTimeout()
     {
-        return noHostAvailableRetryCount;
+        return noHostAvailableRetryTimeout;
     }
 
-    @Config("cassandra.no-host-available-retry-count")
-    public CassandraClientConfig setNoHostAvailableRetryCount(int noHostAvailableRetryCount)
+    @Config("cassandra.no-host-available-retry-timeout")
+    public CassandraClientConfig setNoHostAvailableRetryTimeout(Duration noHostAvailableRetryTimeout)
     {
-        this.noHostAvailableRetryCount = noHostAvailableRetryCount;
+        this.noHostAvailableRetryTimeout = noHostAvailableRetryTimeout;
         return this;
     }
 
