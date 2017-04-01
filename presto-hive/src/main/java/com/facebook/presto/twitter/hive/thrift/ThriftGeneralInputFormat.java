@@ -130,7 +130,7 @@ public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<L
             }
             long chunkEnd = index.alignSliceEndToIndex(chunkOffset + targetChunkSize, file.getLen());
 
-            splits.add(new FileSplit(file.getPath(), chunkOffset, chunkEnd, job));
+            splits.add(new FileSplit(file.getPath(), chunkOffset, chunkEnd - chunkOffset, job));
             chunkOffset = chunkEnd;
         }
 
