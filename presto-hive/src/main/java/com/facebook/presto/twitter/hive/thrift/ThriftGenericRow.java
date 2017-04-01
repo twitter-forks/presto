@@ -14,9 +14,11 @@
 package com.facebook.presto.twitter.hive.thrift;
 
 import io.airlift.log.Logger;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TFieldIdEnum;
+import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TField;
 import org.apache.thrift.protocol.TList;
 import org.apache.thrift.protocol.TMap;
@@ -24,16 +26,24 @@ import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolUtil;
 import org.apache.thrift.protocol.TSet;
 import org.apache.thrift.protocol.TType;
+import org.apache.thrift.transport.TMemoryInputTransport;
+import org.apache.thrift.transport.TTransport;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
 {
     private static final Logger log = Logger.get(ThriftGenericRow.class);
     private final Map<Short, Object> values = new HashMap<>();
+    private byte[] buf = null;
+    private int off = 0;
+    private int len = 0;
 
     public ThriftGenericRow() {}
 
@@ -66,6 +76,23 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
 
     public void read(TProtocol iprot) throws TException
     {
+        TTransport trans = iprot.getTransport();
+        buf = trans.getBuffer();
+        off = trans.getBufferPosition();
+        TProtocolUtil.skip(iprot, TType.STRUCT);
+        len = trans.getBufferPosition() - off;
+    }
+
+    public void parse() throws TException
+    {
+        parse(null);
+    }
+
+    public void parse(short[] thriftIds) throws TException
+    {
+        Set<Short> idSet = thriftIds == null ? null : new HashSet(Arrays.asList(ArrayUtils.toObject(thriftIds)));
+        TMemoryInputTransport trans = new TMemoryInputTransport(buf, off, len);
+        TBinaryProtocol iprot = new TBinaryProtocol(trans);
         TField field;
         iprot.readStructBegin();
         while (true) {
@@ -73,7 +100,12 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
             if (field.type == TType.STOP) {
                 break;
             }
-            values.put(field.id, readElem(iprot, field.type));
+            if (idSet != null && !idSet.remove(Short.valueOf(field.id))) {
+                TProtocolUtil.skip(iprot, field.type);
+            }
+            else {
+                values.put(field.id, readElem(iprot, field.type));
+            }
             iprot.readFieldEnd();
         }
         iprot.readStructEnd();
@@ -115,6 +147,7 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
     {
         ThriftGenericRow elem = new ThriftGenericRow();
         elem.read(iprot);
+        elem.parse();
         return elem;
     }
 

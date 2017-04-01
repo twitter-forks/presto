@@ -246,6 +246,12 @@
         </dependency>
 
         <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.4</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.anarres.lzo</groupId>
             <artifactId>lzo-hadoop</artifactId>
         </dependency>

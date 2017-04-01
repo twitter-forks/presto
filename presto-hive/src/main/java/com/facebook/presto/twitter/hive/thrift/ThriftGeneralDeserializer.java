@@ -16,6 +16,7 @@ package com.facebook.presto.twitter.hive.thrift;
 import com.twitter.elephantbird.mapreduce.io.ThriftWritable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Writable;
+import org.apache.thrift.TException;
 
 import java.util.Properties;
 
@@ -36,9 +37,16 @@ public class ThriftGeneralDeserializer
         return;
     }
 
-    public ThriftGenericRow deserialize(Writable writable)
+    public ThriftGenericRow deserialize(Writable writable, short[] thriftIds)
     {
         checkCondition(writable instanceof ThriftWritable, HIVE_UNKNOWN_ERROR, "Not an instance of ThriftWritable: " + writable);
-        return (ThriftGenericRow) ((ThriftWritable) writable).get();
+        ThriftGenericRow row = (ThriftGenericRow) ((ThriftWritable) writable).get();
+        try {
+            row.parse(thriftIds);
+        }
+        catch (TException e) {
+            throw new IllegalStateException("Generic row failed to parse values", e);
+        }
+        return row;
     }
 }

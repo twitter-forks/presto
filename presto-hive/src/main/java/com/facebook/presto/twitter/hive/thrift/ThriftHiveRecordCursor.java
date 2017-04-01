@@ -211,7 +211,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             Arrays.fill(loaded, false);
 
             // decode value
-            rowData = deserializer.deserialize(value);
+            rowData = deserializer.deserialize(value, thriftIds);
 
             return true;
         }
