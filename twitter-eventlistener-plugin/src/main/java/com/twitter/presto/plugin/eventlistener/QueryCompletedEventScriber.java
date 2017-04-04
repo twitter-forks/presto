@@ -25,6 +25,10 @@ import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TException;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Class that scribes query completion events
  */
@@ -69,6 +73,9 @@ public class QueryCompletedEventScriber
     thriftEvent.environment = eventContext.getEnvironment();
     thriftEvent.catalog = eventContext.getCatalog().orElse(DASH);
     thriftEvent.schema = eventContext.getSchema().orElse(DASH);
+    Map<String, List<String>> queriedColumns = new HashMap<String, List<String>>();
+    event.getIoMetadata().getInputs().forEach(input -> queriedColumns.put(input.getTable(), input.getColumns()));
+    thriftEvent.queried_columns = queriedColumns;
     thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(DASH);
     thriftEvent.user_agent = eventContext.getUserAgent().orElse(DASH);
     thriftEvent.query_state = QueryState.valueOf(eventMetadata.getQueryState());
