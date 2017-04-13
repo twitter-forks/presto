@@ -19,6 +19,8 @@ import io.airlift.log.Logger;
 
 import java.util.Properties;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
+
 public class HiveThriftFieldIdResolver
         implements ThriftFieldIdResolver
 {
@@ -74,6 +76,8 @@ public class HiveThriftFieldIdResolver
     @Override
     public String toString()
     {
-        return "HiveThriftFieldIdResolver with root:" + root;
+        return toStringHelper(this)
+                .add("root", root)
+                .toString();
     }
 }

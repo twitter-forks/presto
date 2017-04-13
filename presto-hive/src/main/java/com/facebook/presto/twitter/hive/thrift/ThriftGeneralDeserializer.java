@@ -34,7 +34,6 @@ public class ThriftGeneralDeserializer
         String thriftClassName = properties.getProperty(SERIALIZATION_CLASS, null);
         checkCondition(thriftClassName != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive deserializer property: %s", SERIALIZATION_CLASS);
         checkCondition(thriftClassName.equals(REQUIRED_SERIALIZATION_CLASS), HIVE_INVALID_METADATA, SERIALIZATION_CLASS + thriftClassName + " cannot match " + REQUIRED_SERIALIZATION_CLASS);
-        return;
     }
 
     public ThriftGenericRow deserialize(Writable writable, short[] thriftIds)
