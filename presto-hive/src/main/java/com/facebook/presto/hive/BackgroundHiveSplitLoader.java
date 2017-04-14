@@ -83,10 +83,14 @@ import static com.facebook.presto.hive.HiveUtil.getInputFormat;
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.getLzoIndexPath;
+import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.getLzoSplits;
+import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.isLzoFile;
 import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static org.apache.hadoop.hive.common.FileUtils.HIDDEN_FILES_PATH_FILTER;
+import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_NAME;
 
 public class BackgroundHiveSplitLoader
         implements HiveSplitLoader
@@ -441,25 +445,25 @@ public class BackgroundHiveSplitLoader
             throws IOException
     {
         if (bucketHandle.isPresent()) {
-            throw new PrestoException(StandardErrorCode.NOT_SUPPORTED, "Bucketed table in ThriftGeneralInputFormat is not yet supported");
+            throw new PrestoException(StandardErrorCode.NOT_SUPPORTED, format("Bucketed table %s in ThriftGeneralInputFormat is not yet supported", schema.getProperty(META_TABLE_NAME)));
         }
         List<Iterator<HiveSplit>> iteratorList = new ArrayList<>();
 
         while (hiveFileIterator.hasNext()) {
             LocatedFileStatus file = hiveFileIterator.next();
-            if (!ThriftGeneralInputFormat.lzoSuffixFilter.accept(file.getPath())) {
+            if (!isLzoFile(file.getPath())) {
                 continue;
             }
 
             Configuration targetConfiguration = hdfsEnvironment.getConfiguration(file.getPath());
             JobConf targetJob = new JobConf(targetConfiguration);
-            FileSystem indexFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), ThriftGeneralInputFormat.getLzoIndexPath(file.getPath()));
-            InputSplit[] targetSplits = ThriftGeneralInputFormat.getLzoSplits(targetJob, file, indexFilesystem, remainingInitialSplits, maxInitialSplitSize, maxSplitSize);
+            FileSystem indexFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), getLzoIndexPath(file.getPath()));
+            InputSplit[] targetSplits = getLzoSplits(targetJob, file, indexFilesystem, remainingInitialSplits, maxInitialSplitSize, maxSplitSize);
             log.debug("For file at %s, get number of splits %s", file.getPath(), targetSplits.length);
+            FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), file.getPath());
+            FileStatus targetFile = targetFilesystem.getFileStatus(file.getPath());
             for (InputSplit inputSplit : targetSplits) {
                 FileSplit split = (FileSplit) inputSplit;
-                FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), split.getPath());
-                FileStatus targetFile = targetFilesystem.getFileStatus(split.getPath());
                 iteratorList.add(createHiveSplitIterator(
                         partitionName,
                         targetFile.getPath().toString(),

@@ -87,6 +87,11 @@ public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<L
         return super.getRecordReader(split, job, reporter);
     }
 
+    public static boolean isLzoFile(Path filePath)
+    {
+        return lzoSuffixFilter.accept(filePath);
+    }
+
     public static Path getLzoIndexPath(Path lzoPath)
     {
         return lzoPath.suffix(LzoIndex.LZO_INDEX_SUFFIX);

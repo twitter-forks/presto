@@ -131,8 +131,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         this.hiveStorageTimeZone = hiveStorageTimeZone;
         this.thriftFieldIdResolver = thriftFieldIdResolver;
 
-        this.deserializer = new ThriftGeneralDeserializer();
-        deserializer.initialize(new Configuration(false), splitSchema);
+        this.deserializer = new ThriftGeneralDeserializer(new Configuration(false), splitSchema);
 
         int size = columns.size();
 

@@ -139,8 +139,8 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
                 return readMap(iprot);
             default:
                 TProtocolUtil.skip(iprot, type);
+                return null;
         }
-        return null;
     }
 
     private Object readStruct(TProtocol iprot) throws TException

@@ -27,9 +27,8 @@ import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 public class ThriftGeneralDeserializer
 {
-    private static final String REQUIRED_SERIALIZATION_CLASS = "com.facebook.presto.twitter.hive.thrift.ThriftGenericRow";
-
-    public void initialize(Configuration conf, Properties properties)
+    private static final String REQUIRED_SERIALIZATION_CLASS = ThriftGenericRow.class.getName();
+    public ThriftGeneralDeserializer(Configuration conf, Properties properties)
     {
         String thriftClassName = properties.getProperty(SERIALIZATION_CLASS, null);
         checkCondition(thriftClassName != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive deserializer property: %s", SERIALIZATION_CLASS);
@@ -44,7 +43,7 @@ public class ThriftGeneralDeserializer
             row.parse(thriftIds);
         }
         catch (TException e) {
-            throw new IllegalStateException("Generic row failed to parse values", e);
+            throw new IllegalStateException("ThriftGenericRow failed to parse values", e);
         }
         return row;
     }
