@@ -13,8 +13,9 @@
  */
 package com.facebook.presto.twitter.hive.thrift;
 
-public interface ThriftFieldIdResolver
+import java.util.Properties;
+
+public interface ThriftFieldIdResolverFactory
 {
-    ThriftFieldIdResolver getNestedResolver(int hiveIndex);
-    short getThriftId(int hiveIndex);
+    ThriftFieldIdResolver createResolver(Properties schema);
 }

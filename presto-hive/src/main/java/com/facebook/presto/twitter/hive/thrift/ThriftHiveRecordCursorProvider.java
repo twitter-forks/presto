@@ -46,13 +46,13 @@ public class ThriftHiveRecordCursorProvider
             .add("com.facebook.presto.twitter.hive.thrift.ThriftGeneralDeserializer")
             .build();
     private final HdfsEnvironment hdfsEnvironment;
-    private final ThriftFieldIdResolver thriftFieldIdResolver;
+    private final ThriftFieldIdResolverFactory thriftFieldIdResolverFactory;
 
     @Inject
-    public ThriftHiveRecordCursorProvider(HdfsEnvironment hdfsEnvironment, ThriftFieldIdResolver thriftFieldIdResolver)
+    public ThriftHiveRecordCursorProvider(HdfsEnvironment hdfsEnvironment, ThriftFieldIdResolverFactory thriftFieldIdResolverFactory)
     {
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
-        this.thriftFieldIdResolver = requireNonNull(thriftFieldIdResolver, "thriftFieldIdResolver is null");
+        this.thriftFieldIdResolverFactory = requireNonNull(thriftFieldIdResolverFactory, "thriftFieldIdResolverFactory is null");
     }
 
     @Override
@@ -83,7 +83,7 @@ public class ThriftHiveRecordCursorProvider
                 columns,
                 hiveStorageTimeZone,
                 typeManager,
-                thriftFieldIdResolver.initialize(schema)));
+                thriftFieldIdResolverFactory.createResolver(schema)));
     }
 
     @SuppressWarnings("unchecked")

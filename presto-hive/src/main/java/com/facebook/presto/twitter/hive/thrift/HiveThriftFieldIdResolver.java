@@ -14,62 +14,62 @@
 package com.facebook.presto.twitter.hive.thrift;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.airlift.log.Logger;
 
-import java.util.Properties;
+import java.util.HashMap;
+import java.util.Map;
 
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.google.common.base.MoreObjects.toStringHelper;
 
 public class HiveThriftFieldIdResolver
         implements ThriftFieldIdResolver
 {
-    private static final Logger log = Logger.get(HiveThriftFieldIdResolver.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper();
-    public static final String THRIFT_FIELD_ID_JSON = "thrift.field.id.json";
     private final JsonNode root;
-
-    public HiveThriftFieldIdResolver()
-    {
-        this.root = null;
-    }
+    private final Map<Integer, ThriftFieldIdResolver> nestedResolvers = new HashMap<>();
+    private final Map<Integer, Short> thriftIds = new HashMap<>();
 
     public HiveThriftFieldIdResolver(JsonNode root)
     {
         this.root = root;
     }
 
-    public ThriftFieldIdResolver initialize(Properties schema)
+    public short getThriftId(int hiveIndex)
     {
-        String jsonData = schema.getProperty(THRIFT_FIELD_ID_JSON);
-        try {
-            return new HiveThriftFieldIdResolver(objectMapper.readTree(jsonData));
+        if (root == null) {
+            return (short) (hiveIndex + 1);
         }
-        catch (Exception e) {
-            log.debug("Got an exception %s in initialize, schema: %s", e.getMessage(), schema);
-            return new HiveThriftFieldIdResolver();
+
+        Short thriftId = thriftIds.get(Integer.valueOf(hiveIndex));
+        if (thriftId != null) {
+            return thriftId.shortValue();
+        }
+        else {
+            JsonNode child = root.get(String.valueOf(hiveIndex));
+            checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
+            checkCondition(child.get("id") != null, HIVE_INVALID_METADATA, "Missed key id for hiveIndex: %s, root: %s", hiveIndex, root);
+            thriftId = Short.valueOf((short) child.get("id").asInt());
+            thriftIds.put(Integer.valueOf(hiveIndex), thriftId);
+            return thriftId;
         }
     }
 
     public ThriftFieldIdResolver getNestedResolver(int hiveIndex)
     {
-        try {
-            return new HiveThriftFieldIdResolver(root.get(String.valueOf(hiveIndex)));
+        ThriftFieldIdResolver nestedResolver = nestedResolvers.get(Integer.valueOf(hiveIndex));
+        if (nestedResolver != null) {
+            return nestedResolver;
         }
-        catch (Exception e) {
-            log.debug("Got an exception %s in getNestedResolver, root: %s, want the hiveIndex: %s", e.getMessage(), root, hiveIndex);
-            return new HiveThriftFieldIdResolver();
-        }
-    }
-
-    public short getThriftId(int hiveIndex)
-    {
-        try {
-            return (short) root.get(String.valueOf(hiveIndex)).get("id").asInt();
-        }
-        catch (Exception e) {
-            log.debug("Got an exception %s in getThriftId, root: %s, want the hiveIndex: %s", e.getMessage(), root, hiveIndex);
-            return (short) (hiveIndex + 1);
+        else {
+            JsonNode child = null;
+            if (root != null) {
+                child = root.get(String.valueOf(hiveIndex));
+            }
+            // what if the child == null?
+            // checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
+            nestedResolver = new HiveThriftFieldIdResolver(child);
+            nestedResolvers.put(Integer.valueOf(hiveIndex), nestedResolver);
+            return nestedResolver;
         }
     }
 
@@ -78,6 +78,7 @@ public class HiveThriftFieldIdResolver
     {
         return toStringHelper(this)
                 .add("root", root)
+                .add("nestedResolvers", nestedResolvers)
                 .toString();
     }
 }
