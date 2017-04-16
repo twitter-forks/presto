@@ -54,8 +54,10 @@ import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import static com.facebook.presto.SystemSessionProperties.LEGACY_ORDER_BY;
 import static com.facebook.presto.connector.informationSchema.InformationSchemaMetadata.INFORMATION_SCHEMA;
 import static com.facebook.presto.operator.scalar.ApplyFunction.APPLY_FUNCTION;
+import static com.facebook.presto.operator.scalar.InvokeFunction.INVOKE_FUNCTION;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DateType.DATE;
@@ -65,6 +67,7 @@ import static com.facebook.presto.spi.type.TimeWithTimeZoneType.TIME_WITH_TIME_Z
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.TimestampWithTimeZoneType.TIMESTAMP_WITH_TIME_ZONE;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARAMETER_USAGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_SCHEMA;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGATE_OR_GROUP_BY;
@@ -78,19 +81,19 @@ import static com.facebook.presto.testing.TestingAccessControlManager.TestingPri
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.privilege;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
+import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 import static com.facebook.presto.tests.QueryAssertions.assertContains;
 import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
 import static com.facebook.presto.tests.QueryTemplate.parameter;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
+import static com.facebook.presto.type.UnknownType.UNKNOWN;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.tpch.TpchTable.ORDERS;
-import static io.airlift.tpch.TpchTable.tableNameGetter;
 import static java.lang.String.format;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.IntStream.range;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -104,7 +107,7 @@ public abstract class AbstractTestQueries
             .window(CustomRank.class)
             .scalars(CustomAdd.class)
             .scalars(CreateHll.class)
-            .function(APPLY_FUNCTION)
+            .functions(APPLY_FUNCTION, INVOKE_FUNCTION)
             .getFunctions();
 
     public static final List<PropertyMetadata<?>> TEST_SYSTEM_PROPERTIES = ImmutableList.of(
@@ -195,11 +198,36 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testLambdaCapture()
+            throws Exception
+    {
+        // Test for lambda expression without capture can be found in TestLambdaExpression
+
+        assertQuery("SELECT apply(c1, x -> x + c2) FROM (VALUES (1, 2), (3, 4), (5, 6)) t(c1, c2)", "VALUES 3, 7, 11");
+        assertQuery("SELECT apply(c1 + 10, x -> apply(x + 100, y -> c1)) FROM (VALUES 1) t(c1)", "VALUES 1");
+
+        // reference lambda variable of the not-immediately-enclosing lambda
+        assertQuery("SELECT apply(1, x -> apply(10, y -> x)) FROM (VALUES 1000) t(x)", "VALUES 1");
+        assertQuery("SELECT apply(1, x -> apply(10, y -> x)) FROM (VALUES 'abc') t(x)", "VALUES 1");
+        assertQuery("SELECT apply(1, x -> apply(10, y -> apply(100, z -> x))) FROM (VALUES 1000) t(x)", "VALUES 1");
+        assertQuery("SELECT apply(1, x -> apply(10, y -> apply(100, z -> x))) FROM (VALUES 'abc') t(x)", "VALUES 1");
+
+        // in join post-filter
+        assertQuery("SELECT * from (VALUES true) t(x) left join (VALUES 1001) t2(y) ON (apply(false, z -> apply(false, y -> x)))", "SELECT true, 1001");
+    }
+
+    @Test
     public void testLambdaInAggregationContext()
     {
         assertQuery("SELECT apply(sum(x), i -> i * i) FROM (VALUES 1, 2, 3, 4, 5) t(x)", "SELECT 225");
         assertQuery("SELECT apply(x, i -> i - 1), sum(y) FROM (VALUES (1, 10), (1, 20), (2, 50)) t(x,y) group by x", "VALUES (0, 30), (1, 50)");
         assertQuery("SELECT x, apply(sum(y), i -> i * 10) FROM (VALUES (1, 10), (1, 20), (2, 50)) t(x,y) group by x", "VALUES (1, 300), (2, 500)");
+        assertQuery("SELECT apply(8, x -> x + 1) FROM (VALUES (1, 2)) t(x,y) GROUP BY y", "SELECT 9");
+
+        assertQuery("SELECT apply(CAST(ROW(1) AS ROW(someField BIGINT)), x -> x.someField) FROM (VALUES (1,2)) t(x,y) GROUP BY y", "SELECT 1");
+        assertQuery("SELECT apply(sum(x), x -> x * x) FROM (VALUES 1, 2, 3, 4, 5) t(x)", "SELECT 225");
+        // nested lambda expression uses the same variable name
+        assertQuery("SELECT apply(sum(x), x -> apply(x, x -> x * x)) FROM (VALUES 1, 2, 3, 4, 5) t(x)", "SELECT 225");
     }
 
     @Test
@@ -207,12 +235,11 @@ public abstract class AbstractTestQueries
     {
         assertQuery("SELECT apply(x, i -> i * i) FROM (SELECT 10 x)", "SELECT 100");
         assertQuery("SELECT apply((SELECT 10), i -> i * i)", "SELECT 100");
-    }
 
-    @Test
-    public void testLambdaWithAggregation()
-    {
-        assertQueryFails("SELECT transform(ARRAY[1], x -> max(x))", ".* Lambda expression cannot contain aggregations or window functions: .*");
+        // with capture
+        assertQuery("SELECT apply(x, i -> i * x) FROM (SELECT 10 x)", "SELECT 100");
+        assertQuery("SELECT apply(x, y -> y * x) FROM (SELECT 10 x, 3 y)", "SELECT 100");
+        assertQuery("SELECT apply(x, z -> y * x) FROM (SELECT 10 x, 3 y)", "SELECT 30");
     }
 
     @Test
@@ -896,6 +923,19 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT COUNT(tan(shippriority)), sum(DISTINCT orderkey) FROM orders");
 
         assertQuery("SELECT count(DISTINCT a), max(b) FROM (VALUES (row(1, 2), 3)) t(a, b)", "VALUES (1, 3)");
+
+        // Test overlap between GroupBy columns and aggregation columns
+        assertQuery("SELECT shippriority, MAX(orderstatus), SUM(DISTINCT shippriority) FROM orders GROUP BY shippriority");
+
+        assertQuery("SELECT shippriority, COUNT(shippriority), SUM(DISTINCT orderkey) FROM orders GROUP BY shippriority");
+
+        assertQuery("SELECT shippriority, COUNT(shippriority), SUM(DISTINCT shippriority) FROM orders GROUP BY shippriority");
+
+        assertQuery("SELECT clerk, shippriority, MAX(orderstatus), SUM(DISTINCT shippriority) FROM orders GROUP BY clerk, shippriority");
+
+        assertQuery("SELECT clerk, shippriority, COUNT(shippriority), SUM(DISTINCT orderkey) FROM orders GROUP BY clerk, shippriority");
+
+        assertQuery("SELECT clerk, shippriority, COUNT(shippriority), SUM(DISTINCT shippriority) FROM orders GROUP BY clerk, shippriority");
     }
 
     @Test
@@ -917,9 +957,11 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT count(*) FILTER (WHERE x > 1), count(DISTINCT y) FROM (VALUES (1, 10), (2, 10), (3, 10), (4, 20)) t (x, y)", "SELECT 3, 2");
 
         assertQuery("" +
-                "SELECT sum(b) FILTER (WHERE true) " +
-                "FROM (SELECT count(*) FILTER (WHERE true) AS b)",
+                        "SELECT sum(b) FILTER (WHERE true) " +
+                        "FROM (SELECT count(*) FILTER (WHERE true) AS b)",
                 "SELECT 1");
+
+        assertQuery("SELECT count(1) FILTER (WHERE orderstatus = 'O') FROM orders", "SELECT count(*) FROM orders WHERE orderstatus = 'O'");
 
         // TODO: enable when DISTINCT is allowed with filtered aggregations
         // assertQuery("SELECT count(distinct x) FILTER (where y = 1) FROM (VALUES (2, 1), (1, 2), (1,1)) t(x, y)", "SELECT 2");
@@ -988,9 +1030,9 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT DISTINCT custkey, orderstatus FROM orders WHERE custkey = 1268 LIMIT 2");
 
         assertQuery("" +
-                "SELECT DISTINCT x " +
-                "FROM (VALUES 1) t(x) JOIN (VALUES 10, 20) u(a) ON t.x < u.a " +
-                "LIMIT 100",
+                        "SELECT DISTINCT x " +
+                        "FROM (VALUES 1) t(x) JOIN (VALUES 10, 20) u(a) ON t.x < u.a " +
+                        "LIMIT 100",
                 "SELECT 1");
     }
 
@@ -1040,7 +1082,80 @@ public abstract class AbstractTestQueries
         assertQueryOrdered("SELECT a as b, a* -2 AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a + b", "VALUES (2, -4), (0, 0), (-1, 2)");
         assertQueryOrdered("SELECT a* -2 AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a + t.a", "VALUES -4, 0, 2");
 
+        // coercions
+        assertQueryOrdered("SELECT 1 x ORDER BY degrees(x)", "VALUES 1");
+        assertQueryOrdered("SELECT a + 1 as b FROM (VALUES 1, 2) t(a) ORDER BY -1.0 * b", "VALUES 3, 2");
+        assertQueryOrdered("SELECT a as b FROM (VALUES 1, 2) t(a) ORDER BY -1.0 * b", "VALUES 2, 1");
+        assertQueryOrdered("SELECT a as a FROM (VALUES 1, 2) t(a) ORDER BY -1.0 * a", "VALUES 2, 1");
+        assertQueryOrdered("SELECT 1 x ORDER BY degrees(x)", "VALUES 1");
+
+        // groups
+        assertQueryOrdered("select max(a+b), min(a+b) as a FROM (values (1,2),(3,2),(1,5)) t(a,b) GROUP BY a ORDER BY max(t.a+t.b)", "VALUES (5, 5), (6, 3)");
+        assertQueryOrdered("select max(a+b), min(a+b) as a FROM (values (1,2),(3,2),(1,5)) t(a,b) GROUP BY a ORDER BY max(t.a+t.b)*-0.1", "VALUES (6, 3), (5, 5)");
+        assertQueryOrdered("SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY max(b*1.0)", "VALUES 2, 1");
+        assertQueryOrdered("SELECT max(a) AS b FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY b", "VALUES 1, 2");
+        assertQueryOrdered("SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY b*1.0", "VALUES 2, 1");
+        assertQueryOrdered("SELECT max(a)*100 AS c FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY max(b) + c", "VALUES 100, 200");
+        assertQueryOrdered("SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY b", "VALUES 2, 1");
+        assertQueryOrdered("SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY t.b ORDER BY t.b*1.0", "VALUES 2, 1");
+        assertQueryOrdered("SELECT -(a+b) as a, -(a+b) as b, a+b from (values (41, 42), (-41, -42)) t(a,b) group by a+b order by a+b", "VALUES (-83, -83, 83), (83, 83, -83)");
+        assertQueryOrdered("SELECT c.a FROM (SELECT CAST(ROW(-a.a) as ROW(a BIGINT)) a FROM (VALUES (2), (1)) a(a) GROUP BY a.a ORDER BY a.a) t(c)", "VALUES -2, -1");
+        assertQueryOrdered("select -a as a FROM (values (1,2),(3,2)) t(a,b) GROUP BY GROUPING SETS ((a), (a, b)) ORDER BY -a", "VALUES -1, -1, -3, -3");
+        assertQueryOrdered("select a as foo FROM (values (1,2),(3,2)) t(a,b) GROUP BY GROUPING SETS ((a), (a, b)) HAVING b IS NOT NULL ORDER BY -a", "VALUES 3, 1");
+        assertQueryOrdered("select max(a) FROM (values (1,2),(3,2)) t(a,b) ORDER BY max(-a)", "VALUES 3");
+        assertQueryFails("SELECT max(a) AS a FROM (values (1,2)) t(a,b) GROUP BY b ORDER BY max(a+b)", ".*Invalid reference to output projection attribute from ORDER BY aggregation");
+
+        // lambdas
+        assertQueryOrdered("SELECT x as y FROM (values (1,2), (2,3)) t(x, y) GROUP BY x ORDER BY apply(x, x -> -x) + 2*x", "VALUES 1, 2");
+        assertQueryOrdered("SELECT -y AS x FROM (values (1,2), (2,3)) t(x, y) GROUP BY y ORDER BY apply(x, x -> -x)", "VALUES -2, -3");
+        assertQueryOrdered("SELECT -y AS x FROM (values (1,2), (2,3)) t(x, y) GROUP BY y ORDER BY sum(apply(-y, x -> x * 1.0))", "VALUES -3, -2");
+
+        // distinct
+        assertQueryOrdered("SELECT DISTINCT -a as b FROM (VALUES 1, 2) t(a) ORDER BY b", "VALUES -2, -1");
+        assertQueryOrdered("SELECT DISTINCT -a as b FROM (VALUES 1, 2) t(a) ORDER BY 1", "VALUES -2, -1");
+        assertQueryOrdered("SELECT DISTINCT max(a) as b FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY b", "VALUES 1, 2");
+        assertQueryFails("SELECT DISTINCT -a as b FROM (VALUES (1, 2), (3, 4)) t(a, c) ORDER BY c", ".*For SELECT DISTINCT, ORDER BY expressions must appear in select list");
+        assertQueryFails("SELECT DISTINCT -a as b FROM (VALUES (1, 2), (3, 4)) t(a, c) ORDER BY 2", ".*ORDER BY position 2 is not in select list");
+
+        // window
+        assertQueryOrdered("SELECT a FROM (VALUES 1, 2) t(a) ORDER BY -row_number() OVER ()", "VALUES 2, 1");
+        assertQueryOrdered("SELECT -a AS a, first_value(-a) OVER (ORDER BY a ROWS 0 PRECEDING) AS b FROM (VALUES 1, 2) t(a) ORDER BY first_value(a) OVER (ORDER BY a ROWS 0 PRECEDING)", "VALUES (-2, -2), (-1, -1)");
+        assertQueryOrdered("SELECT -a AS a FROM (VALUES 1, 2) t(a) ORDER BY first_value(a+t.a*2) OVER (ORDER BY a ROWS 0 PRECEDING)", "VALUES -1, -2");
+
         assertQueryFails("SELECT a, a* -1 AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a", ".*'a' is ambiguous");
+    }
+
+    @Test
+    public void testLegacyOrderByWithOutputColumnReference()
+    {
+        Session session = Session.builder(getSession())
+                .setSystemProperty(LEGACY_ORDER_BY, "true")
+                .build();
+
+        assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a", "VALUES -2, 0, 1");
+        assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY 1.0+a", "VALUES 1, 0, -2");
+        assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY 1", "VALUES -2, 0, 1");
+        assertQueryFails(session, "SELECT -a AS b FROM (VALUES -1, 0, 2) t(a) ORDER BY 1.0+b", ".*Column 'b' cannot be resolved");
+
+        // groups
+        assertQueryOrdered(session, "select max(a+b), min(a+b) as a FROM (values (1,2),(3,2),(1,5)) t(a,b) GROUP BY a ORDER BY max(a+b)", "VALUES (5, 5), (6, 3)");
+        assertQueryOrdered(session, "select max(a+b), min(a+b) as a FROM (values (1,2),(3,2),(1,5)) t(a,b) GROUP BY a ORDER BY 1", "VALUES (5, 5), (6, 3)");
+        assertQueryOrdered(session, "SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY max(b)", "VALUES 2, 1");
+        assertQueryOrdered(session, "SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY b", "VALUES 2, 1");
+        assertQueryOrdered(session, "SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY t.b ORDER BY t.b", "VALUES 2, 1");
+
+        // distinct
+        assertQueryOrdered(session, "SELECT DISTINCT -a as b FROM (VALUES 1, 2) t(a) ORDER BY b", "VALUES -2, -1");
+        assertQueryOrdered(session, "SELECT DISTINCT -a as b FROM (VALUES 1, 2) t(a) ORDER BY 1", "VALUES -2, -1");
+        assertQueryFails(session, "SELECT DISTINCT -a as b FROM (VALUES (1, 2), (3, 4)) t(a, c) ORDER BY c", ".*For SELECT DISTINCT, ORDER BY expressions must appear in select list");
+        assertQueryFails(session, "SELECT DISTINCT -a as b FROM (VALUES (1, 2), (3, 4)) t(a, c) ORDER BY 2", ".*ORDER BY position 2 is not in select list");
+
+        // window
+        assertQueryOrdered(session, "SELECT a FROM (VALUES 1, 2) t(a) ORDER BY -row_number() OVER ()", "VALUES 2, 1");
+        assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES 1, 2) t(a) ORDER BY first_value(a) OVER (ORDER BY a ROWS 0 PRECEDING)", "VALUES -1, -2");
+        assertQueryOrdered(session, "SELECT -a AS a FROM (VALUES 1, 2) t(a) ORDER BY first_value(a+t.a*2) OVER (ORDER BY a ROWS 0 PRECEDING)", "VALUES -1, -2");
+
+        assertQueryFails(session, "SELECT a as a, a* -1 AS a FROM (VALUES -1, 0, 2) t(a) ORDER BY a", ".*'a' in ORDER BY is ambiguous");
     }
 
     @Test
@@ -1048,10 +1163,10 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         assertQuery("" +
-                "SELECT x, sum(cast(x AS double))\n" +
-                "FROM (VALUES '1.0') t(x)\n" +
-                "GROUP BY x\n" +
-                "ORDER BY sum(cast(x AS double))",
+                        "SELECT x, sum(cast(x AS double))\n" +
+                        "FROM (VALUES '1.0') t(x)\n" +
+                        "GROUP BY x\n" +
+                        "ORDER BY sum(cast(t.x AS double))",
                 "VALUES ('1.0', 1.0)");
     }
 
@@ -3616,6 +3731,7 @@ public abstract class AbstractTestQueries
     public void testMinBy()
     {
         assertQuery("SELECT MIN_BY(orderkey, totalprice) FROM orders", "SELECT orderkey FROM orders ORDER BY totalprice ASC LIMIT 1");
+        assertQuery("SELECT MIN_BY(a, ROW(b, c)) FROM (VALUES (1, 2, 3), (2, 2, 1)) AS t(a, b, c)", "SELECT 2");
     }
 
     @Test
@@ -3666,11 +3782,11 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult actual = computeActual("SELECT " +
-                    "sum(quantity) OVER(PARTITION BY suppkey ORDER BY orderkey)," +
-                    "min(tax) OVER(PARTITION BY suppkey ORDER BY shipdate)" +
-                    "FROM lineitem " +
-                    "ORDER BY 1 " +
-                    "LIMIT 10");
+                "sum(quantity) OVER(PARTITION BY suppkey ORDER BY orderkey)," +
+                "min(tax) OVER(PARTITION BY suppkey ORDER BY shipdate)" +
+                "FROM lineitem " +
+                "ORDER BY 1 " +
+                "LIMIT 10");
 
         MaterializedResult expected = resultBuilder(getSession(), DOUBLE, DOUBLE)
                 .row(1.0, 0.0)
@@ -3693,11 +3809,11 @@ public abstract class AbstractTestQueries
             throws Exception
     {
         MaterializedResult actual = computeActual("SELECT " +
-                    "max(tax) OVER(PARTITION BY suppkey, tax ORDER BY receiptdate)," +
-                    "sum(quantity) OVER(PARTITION BY suppkey ORDER BY orderkey)" +
-                    "FROM lineitem " +
-                    "ORDER BY 2, 1 " +
-                    "LIMIT 10");
+                "max(tax) OVER(PARTITION BY suppkey, tax ORDER BY receiptdate)," +
+                "sum(quantity) OVER(PARTITION BY suppkey ORDER BY orderkey)" +
+                "FROM lineitem " +
+                "ORDER BY 2, 1 " +
+                "LIMIT 10");
 
         MaterializedResult expected = resultBuilder(getSession(), DOUBLE, DOUBLE)
                 .row(0.06, 1.0)
@@ -3881,7 +3997,7 @@ public abstract class AbstractTestQueries
                 .row(5L, "F", (5L * 6) + 100)
                 .build();
 
-        assertEquals(actual, expected);
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -3909,7 +4025,7 @@ public abstract class AbstractTestQueries
                 .row("P", "Clerk#000001000", 643679.49, 2L)
                 .build();
 
-        assertEquals(actual, expected);
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -3942,7 +4058,7 @@ public abstract class AbstractTestQueries
                 "ORDER BY 2 DESC\n" +
                 "LIMIT 5");
 
-        MaterializedResult expected = resultBuilder(getSession(), BIGINT, BIGINT)
+        MaterializedResult expected = resultBuilder(getSession(), DOUBLE, BIGINT)
                 .row(12.0, 10L)
                 .row(12.0, 9L)
                 .row(12.0, 8L)
@@ -4373,7 +4489,7 @@ public abstract class AbstractTestQueries
                 "FROM (SELECT 'foo' x)\n" +
                 "GROUP BY 1");
 
-        MaterializedResult expected = resultBuilder(getSession(), VARCHAR, BIGINT)
+        MaterializedResult expected = resultBuilder(getSession(), createVarcharType(3), BIGINT)
                 .row("foo", 1L)
                 .build();
 
@@ -4472,7 +4588,7 @@ public abstract class AbstractTestQueries
                 .row(5L, 445L, "5-LOW", 1L)
                 .build();
 
-        assertEquals(actual, expected);
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -4483,7 +4599,7 @@ public abstract class AbstractTestQueries
                 "FROM (SELECT * FROM orders ORDER BY orderkey, custkey LIMIT 10)\n" +
                 "ORDER BY orderkey LIMIT 5");
 
-        MaterializedResult expected = resultBuilder(getSession(), BIGINT, BIGINT, VARCHAR, BIGINT)
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT, BIGINT, BIGINT)
                 .row(1L, 370L, 1L)
                 .row(2L, 781L, 1L)
                 .row(3L, 1234L, 1L)
@@ -4564,7 +4680,7 @@ public abstract class AbstractTestQueries
                 .row(5L, "F", 1003L, 1005L)
                 .build();
 
-        assertEquals(actual, expected);
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -4586,7 +4702,7 @@ public abstract class AbstractTestQueries
                 .row(5L, "F", 2008L)
                 .build();
 
-        assertEquals(actual, expected);
+        assertEquals(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
 
     @Test
@@ -4596,7 +4712,7 @@ public abstract class AbstractTestQueries
                 "FROM (SELECT * FROM orders LIMIT 10)\n" +
                 "LIMIT 3");
 
-        MaterializedResult expected = resultBuilder(getSession(), BIGINT, VARCHAR, BIGINT)
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
                 .row(1L)
                 .row(1L)
                 .row(1L)
@@ -5225,7 +5341,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testShowTables()
     {
-        Set<String> expectedTables = ImmutableSet.copyOf(transform(TpchTable.getTables(), tableNameGetter()));
+        Set<String> expectedTables = ImmutableSet.copyOf(transform(TpchTable.getTables(), TpchTable::getTableName));
 
         MaterializedResult result = computeActual("SHOW TABLES");
         assertTrue(result.getOnlyColumnAsSet().containsAll(expectedTables));
@@ -5234,7 +5350,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testShowTablesFrom()
     {
-        Set<String> expectedTables = ImmutableSet.copyOf(transform(TpchTable.getTables(), tableNameGetter()));
+        Set<String> expectedTables = ImmutableSet.copyOf(transform(TpchTable.getTables(), TpchTable::getTableName));
 
         String catalog = getSession().getCatalog().get();
         String schema = getSession().getSchema().get();
@@ -5720,6 +5836,18 @@ public abstract class AbstractTestQueries
         assertQuery("SELECT * FROM (VALUES (2, 2)) UNION SELECT * FROM (VALUES (1, 1.0))");
         assertQuery("SELECT * FROM (VALUES (NULL, NULL)) UNION SELECT * FROM (VALUES (1, 1.0))");
         assertQuery("SELECT * FROM (VALUES (NULL, NULL)) UNION ALL SELECT * FROM (VALUES (NULL, 1.0))");
+
+        // Test for https://github.com/prestodb/presto/issues/7496
+        // Cast varchar(1) -> varchar(4) for orderstatus in first source of union was not added. It was not done for type-only coercions.
+        // Then as a result of predicate pushdown orderstatus (without cast) was compared with cast('aaa' as varchar(4)) which trigger checkArgument that
+        // both types of comparison should be equal in DomainTranslator.
+        assertQuery("SELECT a FROM " +
+                "(" +
+                "  (SELECT orderstatus as a FROM orders LIMIT 1) " +
+                "UNION ALL " +
+                "  SELECT 'aaaa' as a" +
+                ") " +
+                "WHERE  a = 'aaa'");
     }
 
     @Test
@@ -5943,6 +6071,15 @@ public abstract class AbstractTestQueries
 
         // test multi level IN subqueries
         assertQuery("SELECT 1 IN (SELECT 1), 2 IN (SELECT 1) WHERE 1 IN (SELECT 1)");
+
+         // test with subqueries on left
+        assertQuery("SELECT (select 1) IN (SELECT 1)");
+        assertQuery("SELECT (select 2) IN (1, (SELECT 2))");
+        assertQuery("SELECT (2 + (select 1)) IN (SELECT 1)");
+        assertQuery("SELECT (1 IN (SELECT 1)) IN (SELECT TRUE)");
+        assertQuery("SELECT ((SELECT 1) IN (SELECT 1)) IN (SELECT TRUE)");
+        assertQuery("SELECT (EXISTS(SELECT 1)) IN (SELECT TRUE)");
+        assertQuery("SELECT (1 = ANY(SELECT 1)) IN (SELECT TRUE)");
 
         // Throw in a bunch of IN subquery predicates
         assertQuery("" +
@@ -7954,7 +8091,7 @@ public abstract class AbstractTestQueries
                 .addPreparedStatement("my_query", "select * from nation")
                 .build();
         MaterializedResult actual = computeActual(session, "DESCRIBE INPUT my_query");
-        MaterializedResult expected = resultBuilder(session, BIGINT, VARCHAR).build();
+        MaterializedResult expected = resultBuilder(session, UNKNOWN, UNKNOWN).build();
         assertEquals(actual, expected);
     }
 

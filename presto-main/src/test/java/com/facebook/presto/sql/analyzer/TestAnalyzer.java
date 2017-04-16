@@ -87,9 +87,11 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGA
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGATION_FUNCTION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NESTED_AGGREGATION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NESTED_WINDOW;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NONDETERMINISTIC_ORDER_BY_EXPRESSION_WITH_SELECT_DISTINCT;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NON_NUMERIC_SAMPLE_PERCENTAGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.ORDER_BY_MUST_BE_IN_SELECT;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.SAMPLE_PERCENTAGE_OUT_OF_RANGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.SCHEMA_NOT_SPECIFIED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.STANDALONE_LAMBDA;
@@ -184,6 +186,17 @@ public class TestAnalyzer
         analyze("SELECT * FROM t1 WHERE (VALUES 1) IN (VALUES 1)");
         analyze("SELECT * FROM t1 WHERE (VALUES 1) IN (2)");
         analyze("SELECT * FROM (SELECT 1) t1(x) WHERE x IN (SELECT 1)");
+    }
+
+    @Test
+    public void testReferenceToOutputColumnFromOrderByAggregation()
+            throws Exception
+    {
+        assertFails(REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION, "SELECT max(a) AS a FROM (values (1,2)) t(a,b) GROUP BY b ORDER BY max(a+b)");
+        assertFails(REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION, "SELECT DISTINCT a AS a, max(a) AS c from (VALUES (1, 2)) t(a, b) GROUP BY a ORDER BY max(a)");
+        assertFails(REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION, "SELECT CAST(ROW(1) AS ROW(someField BIGINT)) AS a FROM (values (1,2)) t(a,b) GROUP BY b ORDER BY MAX(a.someField)");
+        assertFails(REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION, "SELECT 1 AS x FROM (values (1,2)) t(x, y) GROUP BY y ORDER BY sum(apply(1, z -> x))");
+        assertFails(MUST_BE_AGGREGATE_OR_GROUP_BY, "SELECT row_number() over() as a from (values (41, 42), (-41, -42)) t(a,b) group by a+b order by a+b");
     }
 
     @Test
@@ -317,6 +330,15 @@ public class TestAnalyzer
     }
 
     @Test
+    public void testNonDeterministicOrderBy()
+    {
+        analyze("SELECT DISTINCT random() as b FROM t1 ORDER BY b");
+        analyze("SELECT random() FROM t1 ORDER BY random()");
+        analyze("SELECT a FROM t1 ORDER BY random()");
+        assertFails(NONDETERMINISTIC_ORDER_BY_EXPRESSION_WITH_SELECT_DISTINCT, "SELECT DISTINCT random() FROM t1 ORDER BY random()");
+    }
+
+    @Test
     public void testNonBooleanWhereClause()
             throws Exception
     {
@@ -343,6 +365,9 @@ public class TestAnalyzer
     {
         // TODO: analyze output
         analyze("SELECT a x FROM t1 ORDER BY x + 1");
+        analyze("SELECT max(a) FROM (values (1,2), (2,1)) t(a,b) GROUP BY b ORDER BY max(b*1.0)");
+        analyze("SELECT CAST(ROW(1) AS ROW(someField BIGINT)) AS a FROM (values (1,2)) t(a,b) GROUP BY b ORDER BY a.someField");
+        analyze("SELECT 1 AS x FROM (values (1,2)) t(x, y) GROUP BY y ORDER BY sum(apply(1, x -> x))");
     }
 
     @Test
@@ -983,6 +1008,105 @@ public class TestAnalyzer
     }
 
     @Test
+    public void testLambdaCapture()
+            throws Exception
+    {
+        analyze("SELECT apply(c1, x -> x + c2) FROM (VALUES (1, 2), (3, 4), (5, 6)) t(c1, c2)");
+        analyze("SELECT apply(c1 + 10, x -> apply(x + 100, y -> c1)) FROM (VALUES 1) t(c1)");
+
+        // reference lambda variable of the not-immediately-enclosing lambda
+        analyze("SELECT apply(1, x -> apply(10, y -> x)) FROM (VALUES 1000) t(x)");
+        analyze("SELECT apply(1, x -> apply(10, y -> x)) FROM (VALUES 'abc') t(x)");
+        analyze("SELECT apply(1, x -> apply(10, y -> apply(100, z -> x))) FROM (VALUES 1000) t(x)");
+        analyze("SELECT apply(1, x -> apply(10, y -> apply(100, z -> x))) FROM (VALUES 'abc') t(x)");
+    }
+
+    @Test
+    public void testLambdaInAggregationContext()
+    {
+        analyze("SELECT apply(sum(x), i -> i * i) FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        analyze("SELECT apply(x, i -> i - 1), sum(y) FROM (VALUES (1, 10), (1, 20), (2, 50)) t(x,y) group by x");
+        analyze("SELECT x, apply(sum(y), i -> i * 10) FROM (VALUES (1, 10), (1, 20), (2, 50)) t(x,y) group by x");
+        analyze("SELECT apply(8, x -> x + 1) FROM (VALUES (1, 2)) t(x,y) GROUP BY y");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(sum(x), i -> i * x) FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(1, y -> x) FROM (VALUES (1,2)) t(x,y) GROUP BY y");
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(1, y -> x.someField) FROM (VALUES (CAST(ROW(1) AS ROW(someField BIGINT)), 2)) t(x,y) GROUP BY y");
+        analyze("SELECT apply(CAST(ROW(1) AS ROW(someField BIGINT)), x -> x.someField) FROM (VALUES (1,2)) t(x,y) GROUP BY y");
+        analyze("SELECT apply(sum(x), x -> x * x) FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        // nested lambda expression uses the same variable name
+        analyze("SELECT apply(sum(x), x -> apply(x, x -> x * x)) FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        // illegal use of a column whose name is the same as a lambda variable name
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(sum(x), x -> x * x) + x FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(sum(x), x -> apply(x, x -> x * x)) + x FROM (VALUES 1, 2, 3, 4, 5) t(x)");
+        // x + y within lambda should not be treated as group expression
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                ".* must be an aggregate expression or appear in GROUP BY clause",
+                "SELECT apply(1, y -> x + y) FROM (VALUES (1,2)) t(x, y) GROUP BY x+y");
+    }
+
+    @Test
+    public void testLambdaInSubqueryContext()
+    {
+        analyze("SELECT apply(x, i -> i * i) FROM (SELECT 10 x)");
+        analyze("SELECT apply((SELECT 10), i -> i * i)");
+
+        // with capture
+        analyze("SELECT apply(x, i -> i * x) FROM (SELECT 10 x)");
+        analyze("SELECT apply(x, y -> y * x) FROM (SELECT 10 x, 3 y)");
+        analyze("SELECT apply(x, z -> y * x) FROM (SELECT 10 x, 3 y)");
+    }
+
+    @Test
+    public void testLambdaWithAggregation()
+            throws Exception
+    {
+        assertFails(
+                CANNOT_HAVE_AGGREGATIONS_OR_WINDOWS,
+                ".* Lambda expression cannot contain aggregations or window functions: .*",
+                "SELECT transform(ARRAY[1], y -> max(x)) FROM (VALUES 10) t(x)");
+
+        // use of aggregation/window function on lambda variable
+        assertFails(
+                CANNOT_HAVE_AGGREGATIONS_OR_WINDOWS,
+                ".* Lambda expression cannot contain aggregations or window functions: .*",
+                "SELECT apply(1, x -> max(x)) FROM (VALUES (1,2)) t(x,y) GROUP BY y");
+        assertFails(
+                CANNOT_HAVE_AGGREGATIONS_OR_WINDOWS,
+                ".* Lambda expression cannot contain aggregations or window functions: .*",
+                "SELECT apply(CAST(ROW(1) AS ROW(someField BIGINT)), x -> max(x.someField)) FROM (VALUES (1,2)) t(x,y) GROUP BY y");
+    }
+
+    @Test
+    public void testLambdaWithSubquery()
+    {
+        assertFails(
+                NOT_SUPPORTED,
+                ".* Lambda expression cannot contain subqueries",
+                "SELECT apply(1, i -> (SELECT 3)) FROM (VALUES 1) t(x)");
+        assertFails(
+                NOT_SUPPORTED,
+                ".* Lambda expression cannot contain subqueries",
+                "SELECT apply(1, i -> (SELECT i)) FROM (VALUES 1) t(x)");
+    }
+
+    @Test
     public void testInvalidDelete()
             throws Exception
     {
@@ -1292,7 +1416,7 @@ public class TestAnalyzer
                 fail(format("Expected error %s, but found %s: %s", error, e.getCode(), e.getMessage()), e);
             }
 
-            if (!e.getMessage().equals(message)) {
+            if (!e.getMessage().matches(message)) {
                 fail(format("Expected error '%s', but got '%s'", message, e.getMessage()), e);
             }
         }

@@ -15,7 +15,6 @@ package com.facebook.presto.operator;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.TaskId;
-import com.facebook.presto.util.ImmutableCollectors;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -41,6 +40,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
@@ -230,6 +230,11 @@ public class PipelineContext
         return future;
     }
 
+    public synchronized ListenableFuture<?> reserveSpill(long bytes)
+    {
+        return taskContext.reserveSpill(bytes);
+    }
+
     public synchronized boolean tryReserveMemory(long bytes)
     {
         if (taskContext.tryReserveMemory(bytes)) {
@@ -253,6 +258,12 @@ public class PipelineContext
         checkArgument(bytes <= systemMemoryReservation.get(), "tried to free more memory than is reserved");
         taskContext.freeSystemMemory(bytes);
         systemMemoryReservation.getAndAdd(-bytes);
+    }
+
+    public synchronized void freeSpill(long bytes)
+    {
+        checkArgument(bytes >= 0, "bytes is negative");
+        taskContext.freeSpill(bytes);
     }
 
     public void moreMemoryAvailable()
@@ -405,7 +416,7 @@ public class PipelineContext
         ImmutableSet<BlockedReason> blockedReasons = drivers.stream()
                 .filter(driver -> driver.getEndTime() == null && driver.getStartTime() != null)
                 .flatMap(driver -> driver.getBlockedReasons().stream())
-                .collect(ImmutableCollectors.toImmutableSet());
+                .collect(toImmutableSet());
         boolean fullyBlocked = drivers.stream()
                 .filter(driver -> driver.getEndTime() == null && driver.getStartTime() != null)
                 .allMatch(DriverStats::isFullyBlocked);

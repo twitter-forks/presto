@@ -44,6 +44,7 @@ import javax.annotation.Nullable;
 
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -76,9 +77,9 @@ import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.lang.invoke.MethodHandles.permuteArguments;
@@ -144,13 +145,13 @@ public class ScalarImplementation
         }
         MethodHandle methodHandle = this.methodHandle;
         for (ImplementationDependency dependency : dependencies) {
-            methodHandle = methodHandle.bindTo(dependency.resolve(boundVariables, typeManager, functionRegistry));
+            methodHandle = MethodHandles.insertArguments(methodHandle, 0, dependency.resolve(boundVariables, typeManager, functionRegistry));
         }
         MethodHandle constructor = null;
         if (this.constructor.isPresent()) {
             constructor = this.constructor.get();
             for (ImplementationDependency dependency : constructorDependencies) {
-                constructor = constructor.bindTo(dependency.resolve(boundVariables, typeManager, functionRegistry));
+                constructor = MethodHandles.insertArguments(constructor, 0, dependency.resolve(boundVariables, typeManager, functionRegistry));
             }
         }
         return Optional.of(new MethodHandleAndConstructor(methodHandle, Optional.ofNullable(constructor)));

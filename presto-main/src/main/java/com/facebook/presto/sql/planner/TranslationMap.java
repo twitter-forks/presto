@@ -161,7 +161,7 @@ class TranslationMap
         // also update the field mappings if this expression is a field reference
         rewriteBase.getScope().tryResolveField(expression)
                 .filter(ResolvedField::isLocal)
-                .ifPresent(field -> fieldSymbols[rewriteBase.getDescriptor().indexOf(field.getField())] = symbol);
+                .ifPresent(field -> fieldSymbols[field.getHierarchyFieldIndex()] = symbol);
     }
 
     public boolean containsSymbol(Expression expression)
@@ -252,7 +252,7 @@ class TranslationMap
             {
                 return getSymbol(rewriteBase, node)
                         .map(symbol -> coerceIfNecessary(node, symbol.toSymbolReference()))
-                        .orElse(node);
+                        .orElse(coerceIfNecessary(node, node));
             }
 
             @Override
@@ -304,6 +304,6 @@ class TranslationMap
         return plan.getScope()
                 .tryResolveField(expression)
                 .filter(ResolvedField::isLocal)
-                .map(field -> plan.getFieldMappings().get(field.getFieldIndex()));
+                .map(field -> plan.getFieldMappings().get(field.getHierarchyFieldIndex()));
     }
 }

@@ -39,9 +39,11 @@ import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
+import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.Expression;
-import com.facebook.presto.util.ImmutableCollectors;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -54,6 +56,7 @@ import java.util.stream.Stream;
 
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
 
 public class PlanBuilder
@@ -228,6 +231,18 @@ public class PlanBuilder
         return symbol;
     }
 
+    public WindowNode window(WindowNode.Specification specification, Map<Symbol, WindowNode.Function> functions, PlanNode source)
+    {
+        return new WindowNode(
+                idAllocator.getNextId(),
+                source,
+                specification,
+                ImmutableMap.copyOf(functions),
+                Optional.empty(),
+                ImmutableSet.of(),
+                0);
+    }
+
     public static Expression expression(String sql)
     {
         return ExpressionUtils.rewriteIdentifiersToSymbolReferences(new SqlParser().createExpression(sql));
@@ -237,7 +252,7 @@ public class PlanBuilder
     {
         return Stream.of(expressions)
                 .map(PlanBuilder::expression)
-                .collect(ImmutableCollectors.toImmutableList());
+                .collect(toImmutableList());
     }
 
     public Map<Symbol, Type> getSymbols()

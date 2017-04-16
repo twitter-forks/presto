@@ -26,6 +26,7 @@ import com.facebook.presto.sql.tree.InPredicate;
 import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.Node;
+import com.facebook.presto.sql.tree.OrderBy;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.QuerySpecification;
@@ -39,7 +40,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ListMultimap;
 
 import javax.annotation.concurrent.Immutable;
@@ -54,6 +54,7 @@ import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Collections.newSetFromMap;
+import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
 
 public class Analysis
@@ -68,12 +69,14 @@ public class Analysis
     private final Set<Expression> columnReferences = newSetFromMap(new IdentityLinkedHashMap<>());
 
     private final IdentityLinkedHashMap<QuerySpecification, List<FunctionCall>> aggregates = new IdentityLinkedHashMap<>();
+    private final IdentityLinkedHashMap<OrderBy, List<Expression>> orderByAggregates = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<QuerySpecification, List<List<Expression>>> groupByExpressions = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<Node, Expression> where = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<QuerySpecification, Expression> having = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<Node, List<Expression>> orderByExpressions = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<Node, List<Expression>> outputExpressions = new IdentityLinkedHashMap<>();
     private final IdentityLinkedHashMap<QuerySpecification, List<FunctionCall>> windowFunctions = new IdentityLinkedHashMap<>();
+    private final IdentityLinkedHashMap<OrderBy, List<FunctionCall>> orderByWindowFunctions = new IdentityLinkedHashMap<>();
 
     private final IdentityLinkedHashMap<Join, Expression> joins = new IdentityLinkedHashMap<>();
     private final ListMultimap<Node, InPredicate> inPredicatesSubqueries = ArrayListMultimap.create();
@@ -99,6 +102,7 @@ public class Analysis
     private Map<String, Expression> createTableProperties = ImmutableMap.of();
     private boolean createTableAsSelectWithData = true;
     private boolean createTableAsSelectNoOp = false;
+    private Optional<String> createTableComment = Optional.empty();
 
     private Optional<Insert> insert = Optional.empty();
 
@@ -162,6 +166,16 @@ public class Analysis
         return aggregates.get(query);
     }
 
+    public void setOrderByAggregates(OrderBy node, List<Expression> aggregates)
+    {
+        this.orderByAggregates.put(node, ImmutableList.copyOf(aggregates));
+    }
+
+    public List<Expression> getOrderByAggregates(OrderBy query)
+    {
+        return orderByAggregates.get(query);
+    }
+
     public IdentityLinkedHashMap<Expression, Type> getTypes()
     {
         return new IdentityLinkedHashMap<>(types);
@@ -212,7 +226,7 @@ public class Analysis
         return lambdaArgumentReferences.get(identifier);
     }
 
-    public Map<Identifier, LambdaArgumentDeclaration> getLambdaArgumentReferences()
+    public IdentityLinkedHashMap<Identifier, LambdaArgumentDeclaration> getLambdaArgumentReferences()
     {
         return lambdaArgumentReferences;
     }
@@ -322,14 +336,19 @@ public class Analysis
         windowFunctions.put(node, functions);
     }
 
-    public Map<QuerySpecification, List<FunctionCall>> getWindowFunctions()
-    {
-        return windowFunctions;
-    }
-
     public List<FunctionCall> getWindowFunctions(QuerySpecification query)
     {
         return windowFunctions.get(query);
+    }
+
+    public void setOrderByWindowFunctions(OrderBy node, List<FunctionCall> functions)
+    {
+        orderByWindowFunctions.put(node, ImmutableList.copyOf(functions));
+    }
+
+    public List<FunctionCall> getOrderByWindowFunctions(OrderBy query)
+    {
+        return orderByWindowFunctions.get(query);
     }
 
     public void addColumnReferences(Set<Expression> columnReferences)
@@ -398,7 +417,7 @@ public class Analysis
 
     public Set<Expression> getColumnReferences()
     {
-        return ImmutableSet.copyOf(columnReferences);
+        return unmodifiableSet(columnReferences);
     }
 
     public void addTypes(IdentityLinkedHashMap<Expression, Type> types)
@@ -453,6 +472,16 @@ public class Analysis
     public Map<String, Expression> getCreateTableProperties()
     {
         return createTableProperties;
+    }
+
+    public void setCreateTableComment(Optional<String> createTableComment)
+    {
+        this.createTableComment = requireNonNull(createTableComment);
+    }
+
+    public Optional<String> getCreateTableComment()
+    {
+        return createTableComment;
     }
 
     public void setInsert(Insert insert)
