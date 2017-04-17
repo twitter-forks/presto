@@ -32,6 +32,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
 import com.google.common.io.CharStreams;
+import com.hadoop.compression.lzo.LzoIndex;
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import org.apache.hadoop.conf.Configuration;
@@ -80,12 +81,10 @@ import static com.facebook.presto.hive.HiveSessionProperties.getMaxInitialSplitS
 import static com.facebook.presto.hive.HiveSessionProperties.getMaxSplitSize;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.getInputFormat;
+import static com.facebook.presto.hive.HiveUtil.isLzoCompressedFile;
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
-import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.getLzoIndexPath;
-import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.getLzoSplits;
-import static com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat.isLzoFile;
 import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
@@ -451,14 +450,10 @@ public class BackgroundHiveSplitLoader
 
         while (hiveFileIterator.hasNext()) {
             LocatedFileStatus file = hiveFileIterator.next();
-            if (!isLzoFile(file.getPath())) {
+            if (!isLzoCompressedFile(file.getPath())) {
                 continue;
             }
-
-            Configuration targetConfiguration = hdfsEnvironment.getConfiguration(file.getPath());
-            JobConf targetJob = new JobConf(targetConfiguration);
-            FileSystem indexFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), getLzoIndexPath(file.getPath()));
-            InputSplit[] targetSplits = getLzoSplits(targetJob, file, indexFilesystem, remainingInitialSplits, maxInitialSplitSize, maxSplitSize);
+            InputSplit[] targetSplits = createLzoSplits(file);
             log.debug("For file at %s, get number of splits %s", file.getPath(), targetSplits.length);
             FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), file.getPath());
             FileStatus targetFile = targetFilesystem.getFileStatus(file.getPath());
@@ -484,6 +479,40 @@ public class BackgroundHiveSplitLoader
         }
 
         addToHiveSplitSourceRoundRobin(iteratorList);
+    }
+
+    private InputSplit[] createLzoSplits(LocatedFileStatus file)
+            throws IOException
+    {
+        Configuration targetConfiguration = hdfsEnvironment.getConfiguration(file.getPath());
+        JobConf job = new JobConf(targetConfiguration);
+        FileSystem indexFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), getLzoIndexPath(file.getPath()));
+        LzoIndex index = LzoIndex.readIndex(indexFilesystem, file.getPath());
+        if (index.isEmpty()) {
+            InputSplit[] splits = new InputSplit[1];
+            splits[0] = new FileSplit(file.getPath(), 0, file.getLen(), job);
+            return splits;
+        }
+
+        List<InputSplit> splits = new ArrayList<>();
+        long chunkOffset = 0;
+        while (chunkOffset < file.getLen()) {
+            long targetChunkSize;
+            if (remainingInitialSplits.decrementAndGet() >= 0) {
+                targetChunkSize = maxInitialSplitSize.toBytes();
+            }
+            else {
+                long maxBytes = maxSplitSize.toBytes();
+                int chunks = toIntExact((long) Math.ceil((file.getLen() - chunkOffset) * 1.0 / maxBytes));
+                targetChunkSize = (long) Math.ceil((file.getLen() - chunkOffset) * 1.0 / chunks);
+            }
+            long chunkEnd = index.alignSliceEndToIndex(chunkOffset + targetChunkSize, file.getLen());
+
+            splits.add(new FileSplit(file.getPath(), chunkOffset, chunkEnd - chunkOffset, job));
+            chunkOffset = chunkEnd;
+        }
+
+        return splits.toArray(new InputSplit[0]);
     }
 
     private boolean addSplitsToSource(
@@ -741,5 +770,10 @@ public class BackgroundHiveSplitLoader
             return table.getStorage().getLocation();
         }
         return partition.get().getStorage().getLocation();
+    }
+
+    private static Path getLzoIndexPath(Path lzoPath)
+    {
+        return lzoPath.suffix(LzoIndex.LZO_INDEX_SUFFIX);
     }
 }

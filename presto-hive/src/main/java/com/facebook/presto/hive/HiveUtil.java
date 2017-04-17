@@ -37,6 +37,7 @@ import io.airlift.slice.Slices;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat;
 import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
@@ -141,6 +142,14 @@ public final class HiveUtil
     private static final int DECIMAL_SCALE_GROUP = 2;
 
     private static final String BIG_DECIMAL_POSTFIX = "BD";
+
+    private static final PathFilter LZOP_DEFAULT_SUFFIX_FILTER = new PathFilter() {
+        @Override
+        public boolean accept(Path path)
+        {
+            return path.toString().endsWith(".lzo");
+        }
+    };
 
     static {
         DateTimeParser[] timestampWithoutTimeZoneParser = {
@@ -294,6 +303,11 @@ public final class HiveUtil
         catch (InvocationTargetException | IllegalAccessException e) {
             throw Throwables.propagate(e);
         }
+    }
+
+    static boolean isLzoCompressedFile(Path filePath)
+    {
+        return LZOP_DEFAULT_SUFFIX_FILTER.accept(filePath);
     }
 
     public static StructObjectInspector getTableObjectInspector(Properties schema)
