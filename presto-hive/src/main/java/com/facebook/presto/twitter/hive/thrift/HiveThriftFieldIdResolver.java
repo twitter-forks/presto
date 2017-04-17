@@ -40,7 +40,7 @@ public class HiveThriftFieldIdResolver
             return (short) (hiveIndex + 1);
         }
 
-        Short thriftId = thriftIds.get(Integer.valueOf(hiveIndex));
+        Short thriftId = thriftIds.get(hiveIndex);
         if (thriftId != null) {
             return thriftId.shortValue();
         }
@@ -56,7 +56,7 @@ public class HiveThriftFieldIdResolver
 
     public ThriftFieldIdResolver getNestedResolver(int hiveIndex)
     {
-        ThriftFieldIdResolver nestedResolver = nestedResolvers.get(Integer.valueOf(hiveIndex));
+        ThriftFieldIdResolver nestedResolver = nestedResolvers.get(hiveIndex);
         if (nestedResolver != null) {
             return nestedResolver;
         }
@@ -68,7 +68,7 @@ public class HiveThriftFieldIdResolver
             // what if the child == null?
             // checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
             nestedResolver = new HiveThriftFieldIdResolver(child);
-            nestedResolvers.put(Integer.valueOf(hiveIndex), nestedResolver);
+            nestedResolvers.put(hiveIndex, nestedResolver);
             return nestedResolver;
         }
     }
