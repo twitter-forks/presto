@@ -64,9 +64,6 @@ public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<L
             Reporter reporter)
             throws IOException
     {
-        job.setBooleanIfUnset("elephantbird.mapred.input.bad.record.check.only.in.close", false);
-        job.setIfUnset("elephantbird.mapred.input.bad.record.threshold", Float.toString(0.0f));
-
         initialize((FileSplit) split, job);
         return super.getRecordReader(split, job, reporter);
     }

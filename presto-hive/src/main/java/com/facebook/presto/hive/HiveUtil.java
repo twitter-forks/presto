@@ -183,7 +183,7 @@ public final class HiveUtil
 
         // propagate serialization configuration to getRecordReader
         schema.stringPropertyNames().stream()
-                .filter(name -> name.startsWith("serialization."))
+                .filter(name -> name.startsWith("serialization.") || name.startsWith("elephantbird."))
                 .forEach(name -> jobConf.set(name, schema.getProperty(name)));
 
         try {

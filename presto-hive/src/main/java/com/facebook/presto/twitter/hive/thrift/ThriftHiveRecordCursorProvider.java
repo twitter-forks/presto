@@ -83,6 +83,9 @@ public class ThriftHiveRecordCursorProvider
             return Optional.empty();
         }
 
+        setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.check.only.in.close", Boolean.toString(false));
+        setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.threshold", Float.toString(0.0f));
+
         RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
                 () -> createRecordReader(configuration, path, start, length, schema, columns));
 
@@ -100,5 +103,12 @@ public class ThriftHiveRecordCursorProvider
     private static RecordReader<?, ? extends Writable> genericRecordReader(RecordReader<?, ?> recordReader)
     {
         return (RecordReader<?, ? extends Writable>) recordReader;
+    }
+
+    private static void setPropertyIfUnset(Properties schema, String key, String value)
+    {
+        if (schema.getProperty(key) == null) {
+            schema.setProperty(key, value);
+        }
     }
 }
