@@ -16,6 +16,7 @@ package com.facebook.presto.hive;
 import org.apache.hadoop.hive.ql.io.orc.CompressionKind;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.GzipCodec;
+import org.apache.hadoop.io.compress.LzoCodec;
 import org.apache.hadoop.io.compress.SnappyCodec;
 import parquet.hadoop.metadata.CompressionCodecName;
 
@@ -27,7 +28,8 @@ public enum HiveCompressionCodec
 {
     NONE(null, CompressionKind.NONE, CompressionCodecName.UNCOMPRESSED),
     SNAPPY(SnappyCodec.class, CompressionKind.SNAPPY, CompressionCodecName.SNAPPY),
-    GZIP(GzipCodec.class, CompressionKind.ZLIB, CompressionCodecName.GZIP);
+    GZIP(GzipCodec.class, CompressionKind.ZLIB, CompressionCodecName.GZIP),
+    LZO(LzoCodec.class, CompressionKind.LZO, CompressionCodecName.LZO);
 
     private final Optional<Class<? extends CompressionCodec>> codec;
     private final CompressionKind orcCompressionKind;
