@@ -20,12 +20,6 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-hive</artifactId>
-            <exclusions>
-              <exclusion>
-                <groupId>org.apache.zookeeper</groupId>
-                <artifactId>zookeeper</artifactId>
-              </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
@@ -81,12 +75,6 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-hive</artifactId>
-            <exclusions>
-              <exclusion>
-                <groupId>org.apache.zookeeper</groupId>
-                <artifactId>zookeeper</artifactId>
-              </exclusion>
-            </exclusions>
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
