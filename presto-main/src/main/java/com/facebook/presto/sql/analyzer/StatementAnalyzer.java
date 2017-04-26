@@ -75,6 +75,7 @@ import com.facebook.presto.sql.tree.JoinUsing;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.NaturalJoin;
 import com.facebook.presto.sql.tree.Node;
+import com.facebook.presto.sql.tree.OrderBy;
 import com.facebook.presto.sql.tree.Prepare;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
@@ -88,6 +89,7 @@ import com.facebook.presto.sql.tree.Revoke;
 import com.facebook.presto.sql.tree.Rollback;
 import com.facebook.presto.sql.tree.Row;
 import com.facebook.presto.sql.tree.SampledRelation;
+import com.facebook.presto.sql.tree.Select;
 import com.facebook.presto.sql.tree.SelectItem;
 import com.facebook.presto.sql.tree.SetOperation;
 import com.facebook.presto.sql.tree.SetSession;
@@ -104,6 +106,7 @@ import com.facebook.presto.sql.tree.Window;
 import com.facebook.presto.sql.tree.WindowFrame;
 import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
+import com.facebook.presto.sql.util.AstUtils;
 import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.MapType;
 import com.facebook.presto.type.RowType;
@@ -136,8 +139,11 @@ import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.NodeUtils.getSortItemsFromOrderBy;
+import static com.facebook.presto.sql.analyzer.AggregationAnalyzer.verifyOrderByAggregations;
+import static com.facebook.presto.sql.analyzer.AggregationAnalyzer.verifySourceAggregations;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.createConstantAnalyzer;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
+import static com.facebook.presto.sql.analyzer.ScopeReferenceExtractor.hasReferencesToScope;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.AMBIGUOUS_ATTRIBUTE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.COLUMN_NAME_NOT_SPECIFIED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.COLUMN_TYPE_UNKNOWN;
@@ -153,6 +159,7 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_SCHEMA;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_WINDOW_FUNCTION;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NESTED_WINDOW;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NONDETERMINISTIC_ORDER_BY_EXPRESSION_WITH_SELECT_DISTINCT;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NON_NUMERIC_SAMPLE_PERCENTAGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.ORDER_BY_MUST_BE_IN_SELECT;
@@ -164,6 +171,7 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.VIEW_IS_STALE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.VIEW_PARSE_ERROR;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.WILDCARD_WITHOUT_FROM;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypeSignatures;
+import static com.facebook.presto.sql.planner.DeterminismEvaluator.isDeterministic;
 import static com.facebook.presto.sql.planner.ExpressionInterpreter.expressionOptimizer;
 import static com.facebook.presto.sql.tree.ComparisonExpressionType.EQUAL;
 import static com.facebook.presto.sql.tree.ExplainType.Type.DISTRIBUTED;
@@ -174,9 +182,9 @@ import static com.facebook.presto.sql.tree.FrameBound.Type.UNBOUNDED_FOLLOWING;
 import static com.facebook.presto.sql.tree.FrameBound.Type.UNBOUNDED_PRECEDING;
 import static com.facebook.presto.sql.tree.WindowFrame.Type.RANGE;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getLast;
 import static com.google.common.collect.Iterables.transform;
 import static java.lang.Math.toIntExact;
@@ -195,7 +203,8 @@ class StatementAnalyzer
             Analysis analysis,
             Metadata metadata,
             SqlParser sqlParser,
-            AccessControl accessControl, Session session)
+            AccessControl accessControl,
+            Session session)
     {
         this.analysis = requireNonNull(analysis, "analysis is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -204,28 +213,60 @@ class StatementAnalyzer
         this.session = requireNonNull(session, "session is null");
     }
 
-    public Scope analyze(Node node, Scope scope)
+    public Scope analyze(Node node, Scope outerQueryScope)
     {
-        return new Visitor().process(node, scope);
+        return analyze(node, Optional.of(outerQueryScope));
     }
 
-    private void analyzeWhere(Node node, Scope scope, Expression predicate)
+    public Scope analyze(Node node, Optional<Scope> outerQueryScope)
     {
-        Visitor visitor = new Visitor();
-        visitor.analyzeWhere(node, scope, predicate);
+        return new Visitor(outerQueryScope).process(node, Optional.empty());
     }
 
+    private void analyzeWhere(Node node, Scope outerQueryScope, Expression predicate)
+    {
+        Visitor visitor = new Visitor(Optional.of(outerQueryScope));
+        visitor.analyzeWhere(node, outerQueryScope, predicate);
+    }
+
+    /**
+     * Visitor context represents local query scope (if exists). The invariant is
+     * that the local query scopes hierarchy should always have outer query scope
+     * (if provided) as ancestor.
+     */
     private class Visitor
-            extends DefaultTraversalVisitor<Scope, Scope>
+            extends DefaultTraversalVisitor<Scope, Optional<Scope>>
     {
+        private final Optional<Scope> outerQueryScope;
+
+        private Visitor(Optional<Scope> outerQueryScope)
+        {
+            this.outerQueryScope = requireNonNull(outerQueryScope, "outerQueryScope is null");
+        }
+
+        public Scope process(Node node, Optional<Scope> scope)
+        {
+            Scope returnScope = super.process(node, scope);
+            checkState(returnScope.getOuterQueryParent().equals(outerQueryScope), "result scope should have outer query scope equal with parameter outer query scope");
+            if (scope.isPresent()) {
+                checkState(hasScopeAsLocalParent(returnScope, scope.get()), "return scope should have context scope as one of ancestors");
+            }
+            return returnScope;
+        }
+
+        private Scope process(Node node, Scope scope)
+        {
+            return process(node, Optional.of(scope));
+        }
+
         @Override
-        protected Scope visitUse(Use node, Scope scope)
+        protected Scope visitUse(Use node, Optional<Scope> scope)
         {
             throw new SemanticException(NOT_SUPPORTED, node, "USE statement is not supported");
         }
 
         @Override
-        protected Scope visitInsert(Insert insert, Scope scope)
+        protected Scope visitInsert(Insert insert, Optional<Scope> scope)
         {
             QualifiedObjectName targetTable = createQualifiedObjectName(session, insert, insert.getTarget());
             if (metadata.getView(session, targetTable).isPresent()) {
@@ -311,7 +352,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitDelete(Delete node, Scope scope)
+        protected Scope visitDelete(Delete node, Optional<Scope> scope)
         {
             Table table = node.getTable();
             QualifiedObjectName tableName = createQualifiedObjectName(session, table, table.getName());
@@ -339,7 +380,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitCreateTableAsSelect(CreateTableAsSelect node, Scope scope)
+        protected Scope visitCreateTableAsSelect(CreateTableAsSelect node, Optional<Scope> scope)
         {
             analysis.setUpdateType("CREATE TABLE");
 
@@ -359,9 +400,10 @@ class StatementAnalyzer
             for (Expression expression : node.getProperties().values()) {
                 // analyze table property value expressions which must be constant
                 createConstantAnalyzer(metadata, session, analysis.getParameters(), analysis.isDescribe())
-                        .analyze(expression, scope);
+                        .analyze(expression, createScope(scope));
             }
             analysis.setCreateTableProperties(node.getProperties());
+            analysis.setCreateTableComment(node.getComment());
 
             accessControl.checkCanCreateTable(session.getRequiredTransactionId(), session.getIdentity(), targetTable);
 
@@ -376,7 +418,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitCreateView(CreateView node, Scope scope)
+        protected Scope visitCreateView(CreateView node, Optional<Scope> scope)
         {
             analysis.setUpdateType("CREATE VIEW");
 
@@ -396,127 +438,127 @@ class StatementAnalyzer
 
             validateColumns(node, queryScope.getRelationType());
 
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitSetSession(SetSession node, Scope scope)
+        protected Scope visitSetSession(SetSession node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitResetSession(ResetSession node, Scope scope)
+        protected Scope visitResetSession(ResetSession node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitAddColumn(AddColumn node, Scope scope)
+        protected Scope visitAddColumn(AddColumn node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitCreateSchema(CreateSchema node, Scope scope)
+        protected Scope visitCreateSchema(CreateSchema node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitDropSchema(DropSchema node, Scope scope)
+        protected Scope visitDropSchema(DropSchema node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitRenameSchema(RenameSchema node, Scope scope)
+        protected Scope visitRenameSchema(RenameSchema node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitCreateTable(CreateTable node, Scope scope)
+        protected Scope visitCreateTable(CreateTable node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitDropTable(DropTable node, Scope scope)
+        protected Scope visitDropTable(DropTable node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitRenameTable(RenameTable node, Scope scope)
+        protected Scope visitRenameTable(RenameTable node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitRenameColumn(RenameColumn node, Scope scope)
+        protected Scope visitRenameColumn(RenameColumn node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitDropView(DropView node, Scope scope)
+        protected Scope visitDropView(DropView node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitStartTransaction(StartTransaction node, Scope scope)
+        protected Scope visitStartTransaction(StartTransaction node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitCommit(Commit node, Scope scope)
+        protected Scope visitCommit(Commit node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitRollback(Rollback node, Scope scope)
+        protected Scope visitRollback(Rollback node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitPrepare(Prepare node, Scope scope)
+        protected Scope visitPrepare(Prepare node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitDeallocate(Deallocate node, Scope scope)
+        protected Scope visitDeallocate(Deallocate node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitExecute(Execute node, Scope scope)
+        protected Scope visitExecute(Execute node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitGrant(Grant node, Scope scope)
+        protected Scope visitGrant(Grant node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitRevoke(Revoke node, Scope scope)
+        protected Scope visitRevoke(Revoke node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         @Override
-        protected Scope visitCall(Call node, Scope scope)
+        protected Scope visitCall(Call node, Optional<Scope> scope)
         {
-            return createAndAssignScope(node, scope, emptyList());
+            return createAndAssignScope(node, scope);
         }
 
         private void validateColumns(Statement node, RelationType descriptor)
@@ -539,7 +581,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitExplain(Explain node, Scope scope)
+        protected Scope visitExplain(Explain node, Optional<Scope> scope)
                 throws SemanticException
         {
             checkState(node.isAnalyze(), "Non analyze explain should be rewritten to Query");
@@ -552,19 +594,21 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitQuery(Query node, Scope scope)
+        protected Scope visitQuery(Query node, Optional<Scope> scope)
         {
             Scope withScope = analyzeWith(node, scope);
-            Scope queryScope = Scope.builder()
-                    .withParent(withScope)
-                    .build();
-            Scope queryBodyScope = process(node.getQueryBody(), queryScope);
-            analyzeOrderBy(node, queryBodyScope);
+            Scope queryBodyScope = process(node.getQueryBody(), withScope);
+            if (node.getOrderBy().isPresent()) {
+                analyzeOrderBy(node, queryBodyScope);
+            }
+            else {
+                analysis.setOrderByExpressions(node, emptyList());
+            }
 
             // Input fields == Output fields
             analysis.setOutputExpressions(node, descriptorToFields(queryBodyScope));
 
-            queryScope = Scope.builder()
+            Scope queryScope = Scope.builder()
                     .withParent(withScope)
                     .withRelationType(queryBodyScope.getRelationType())
                     .build();
@@ -573,11 +617,11 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitUnnest(Unnest node, Scope scope)
+        protected Scope visitUnnest(Unnest node, Optional<Scope> scope)
         {
             ImmutableList.Builder<Field> outputFields = ImmutableList.builder();
             for (Expression expression : node.getExpressions()) {
-                ExpressionAnalysis expressionAnalysis = analyzeExpression(expression, scope);
+                ExpressionAnalysis expressionAnalysis = analyzeExpression(expression, createScope(scope));
                 Type expressionType = expressionAnalysis.getType(expression);
                 if (expressionType instanceof ArrayType) {
                     outputFields.add(Field.newUnqualified(Optional.empty(), ((ArrayType) expressionType).getElementType()));
@@ -597,13 +641,13 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitTable(Table table, Scope scope)
+        protected Scope visitTable(Table table, Optional<Scope> scope)
         {
             if (!table.getName().getPrefix().isPresent()) {
                 // is this a reference to a WITH query?
                 String name = table.getName().getSuffix();
 
-                Optional<WithQuery> withQuery = scope.getNamedQuery(name);
+                Optional<WithQuery> withQuery = createScope(scope).getNamedQuery(name);
                 if (withQuery.isPresent()) {
                     Query query = withQuery.get().getQuery();
                     analysis.registerNamedQuery(table, query);
@@ -734,7 +778,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitAliasedRelation(AliasedRelation relation, Scope scope)
+        protected Scope visitAliasedRelation(AliasedRelation relation, Optional<Scope> scope)
         {
             Scope relationScope = process(relation.getRelation(), scope);
 
@@ -752,21 +796,21 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitSampledRelation(SampledRelation relation, Scope scope)
+        protected Scope visitSampledRelation(SampledRelation relation, Optional<Scope> scope)
         {
             if (!DependencyExtractor.extractNames(relation.getSamplePercentage(), analysis.getColumnReferences()).isEmpty()) {
                 throw new SemanticException(NON_NUMERIC_SAMPLE_PERCENTAGE, relation.getSamplePercentage(), "Sample percentage cannot contain column references");
             }
 
-        IdentityLinkedHashMap<Expression, Type> expressionTypes = getExpressionTypes(
-                session,
-                metadata,
-                sqlParser,
-                ImmutableMap.of(),
-                relation.getSamplePercentage(),
-                analysis.getParameters(),
-                analysis.isDescribe());
-        ExpressionInterpreter samplePercentageEval = expressionOptimizer(relation.getSamplePercentage(), metadata, session, expressionTypes);
+            IdentityLinkedHashMap<Expression, Type> expressionTypes = getExpressionTypes(
+                    session,
+                    metadata,
+                    sqlParser,
+                    ImmutableMap.of(),
+                    relation.getSamplePercentage(),
+                    analysis.getParameters(),
+                    analysis.isDescribe());
+            ExpressionInterpreter samplePercentageEval = expressionOptimizer(relation.getSamplePercentage(), metadata, session, expressionTypes);
 
             Object samplePercentageObject = samplePercentageEval.optimize(symbol -> {
                 throw new SemanticException(NON_NUMERIC_SAMPLE_PERCENTAGE, relation.getSamplePercentage(), "Sample percentage cannot contain column references");
@@ -791,7 +835,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitTableSubquery(TableSubquery node, Scope scope)
+        protected Scope visitTableSubquery(TableSubquery node, Optional<Scope> scope)
         {
             StatementAnalyzer analyzer = new StatementAnalyzer(analysis, metadata, sqlParser, accessControl, session);
             Scope queryScope = analyzer.analyze(node.getQuery(), scope);
@@ -799,7 +843,55 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitQuerySpecification(QuerySpecification node, Scope scope)
+        protected Scope visitQuerySpecification(QuerySpecification node, Optional<Scope> scope)
+        {
+            if (SystemSessionProperties.isLegacyOrderByEnabled(session)) {
+                return legacyVisitQuerySpecification(node, scope);
+            }
+
+            // TODO: extract candidate names from SELECT, WHERE, HAVING, GROUP BY and ORDER BY expressions
+            // to pass down to analyzeFrom
+
+            Scope sourceScope = analyzeFrom(node, scope);
+
+            node.getWhere().ifPresent(where -> analyzeWhere(node, sourceScope, where));
+
+            List<Expression> outputExpressions = analyzeSelect(node, sourceScope);
+            List<List<Expression>> groupByExpressions = analyzeGroupBy(node, sourceScope, outputExpressions);
+            analyzeHaving(node, sourceScope);
+
+            Scope outputScope = computeAndAssignOutputScope(node, scope, sourceScope);
+
+            List<Expression> orderByExpressions = emptyList();
+            Optional<Scope> orderByScope = Optional.empty();
+            if (node.getOrderBy().isPresent()) {
+                orderByScope = Optional.of(computeAndAssignOrderByScope(node.getOrderBy().get(), sourceScope, outputScope));
+                orderByExpressions = analyzeOrderBy(node, orderByScope.get(), outputExpressions);
+            }
+            else {
+                analysis.setOrderByExpressions(node, emptyList());
+            }
+
+            List<Expression> sourceExpressions = new ArrayList<>();
+            sourceExpressions.addAll(outputExpressions);
+            node.getHaving().ifPresent(sourceExpressions::add);
+
+            List<FunctionCall> aggregations = analyzeAggregations(node, sourceScope, orderByScope, groupByExpressions, analysis.getColumnReferences(), sourceExpressions, orderByExpressions);
+            analyzeWindowFunctions(node, outputExpressions, orderByExpressions);
+
+            if (!groupByExpressions.isEmpty() && node.getOrderBy().isPresent()) {
+                // Create a different scope for ORDER BY expressions when aggregation is present.
+                // This is because planner requires scope in order to resolve names against fields.
+                // Original ORDER BY scope "sees" FROM query fields. However, during planning
+                // and when aggregation is present, ORDER BY expressions should only be resolvable against
+                // output scope, group by expressions and aggregation expressions.
+                computeAndAssignOrderByScopeWithAggregation(node.getOrderBy().get(), outputScope, aggregations, groupByExpressions);
+            }
+
+            return outputScope;
+        }
+
+        private Scope legacyVisitQuerySpecification(QuerySpecification node, Optional<Scope> scope)
         {
             // TODO: extract candidate names from SELECT, WHERE, HAVING, GROUP BY and ORDER BY expressions
             // to pass down to analyzeFrom
@@ -811,9 +903,16 @@ class StatementAnalyzer
             List<Expression> outputExpressions = analyzeSelect(node, sourceScope);
             List<List<Expression>> groupByExpressions = analyzeGroupBy(node, sourceScope, outputExpressions);
 
-            Scope outputScope = computeOutputScope(node, sourceScope);
+            Scope outputScope = computeAndAssignOutputScope(node, scope, sourceScope);
 
-            List<Expression> orderByExpressions = analyzeOrderBy(node, sourceScope, outputScope, outputExpressions);
+            List<Expression> orderByExpressions = emptyList();
+            if (node.getOrderBy().isPresent()) {
+                Scope orderByScope = computeAndAssignOrderByScope(node.getOrderBy().get(), sourceScope, outputScope);
+                orderByExpressions = legacyAnalyzeOrderBy(node, sourceScope, orderByScope, outputExpressions);
+            }
+
+            analysis.setOrderByExpressions(node, orderByExpressions);
+
             analyzeHaving(node, sourceScope);
 
             List<Expression> expressions = new ArrayList<>();
@@ -821,14 +920,14 @@ class StatementAnalyzer
             expressions.addAll(orderByExpressions);
             node.getHaving().ifPresent(expressions::add);
 
-            analyzeAggregations(node, sourceScope, groupByExpressions, analysis.getColumnReferences(), expressions);
-            analyzeWindowFunctions(node, outputExpressions, orderByExpressions);
+            analyzeAggregations(node, sourceScope, Optional.empty(), groupByExpressions, analysis.getColumnReferences(), expressions, emptyList());
+            analysis.setWindowFunctions(node, analyzeWindowFunctions(node, expressions));
 
             return outputScope;
         }
 
         @Override
-        protected Scope visitSetOperation(SetOperation node, Scope scope)
+        protected Scope visitSetOperation(SetOperation node, Optional<Scope> scope)
         {
             checkState(node.getRelations().size() >= 2);
 
@@ -896,7 +995,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitIntersect(Intersect node, Scope scope)
+        protected Scope visitIntersect(Intersect node, Optional<Scope> scope)
         {
             if (!node.isDistinct()) {
                 throw new SemanticException(NOT_SUPPORTED, node, "INTERSECT ALL not yet implemented");
@@ -906,7 +1005,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitExcept(Except node, Scope scope)
+        protected Scope visitExcept(Except node, Optional<Scope> scope)
         {
             if (!node.isDistinct()) {
                 throw new SemanticException(NOT_SUPPORTED, node, "EXCEPT ALL not yet implemented");
@@ -916,7 +1015,7 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitJoin(Join node, Scope scope)
+        protected Scope visitJoin(Join node, Optional<Scope> scope)
         {
             JoinCriteria criteria = node.getCriteria().orElse(null);
             if (criteria instanceof NaturalJoin) {
@@ -924,7 +1023,7 @@ class StatementAnalyzer
             }
 
             Scope left = process(node.getLeft(), scope);
-            Scope right = process(node.getRight(), isUnnestRelation(node.getRight()) ? left : scope);
+            Scope right = process(node.getRight(), isUnnestRelation(node.getRight()) ? Optional.of(left) : scope);
 
             Scope output = createAndAssignScope(node, scope, left.getRelationType().joinWith(right.getRelationType()));
 
@@ -1005,12 +1104,12 @@ class StatementAnalyzer
         }
 
         @Override
-        protected Scope visitValues(Values node, Scope scope)
+        protected Scope visitValues(Values node, Optional<Scope> scope)
         {
             checkState(node.getRows().size() >= 1);
 
             List<List<Type>> rowTypes = node.getRows().stream()
-                    .map(row -> analyzeExpression(row, scope).getType(row))
+                    .map(row -> analyzeExpression(row, createScope(scope)).getType(row))
                     .map(type -> {
                         if (type instanceof RowType) {
                             return type.getTypeParameters();
@@ -1078,9 +1177,17 @@ class StatementAnalyzer
 
         private void analyzeWindowFunctions(QuerySpecification node, List<Expression> outputExpressions, List<Expression> orderByExpressions)
         {
+            analysis.setWindowFunctions(node, analyzeWindowFunctions(node, outputExpressions));
+            if (node.getOrderBy().isPresent()) {
+                analysis.setOrderByWindowFunctions(node.getOrderBy().get(), analyzeWindowFunctions(node, orderByExpressions));
+            }
+        }
+
+        private List<FunctionCall> analyzeWindowFunctions(QuerySpecification node, List<Expression> expressions)
+        {
             WindowFunctionExtractor extractor = new WindowFunctionExtractor();
 
-            for (Expression expression : Iterables.concat(outputExpressions, orderByExpressions)) {
+            for (Expression expression : expressions) {
                 extractor.process(expression, null);
                 new WindowFunctionValidator().process(expression, analysis);
             }
@@ -1115,7 +1222,7 @@ class StatementAnalyzer
                 if (!nestedExtractor.getWindowFunctions().isEmpty()) {
                     throw new SemanticException(NESTED_WINDOW, node, "Cannot nest window functions inside window function '%s': %s",
                             windowFunction,
-                            extractor.getWindowFunctions());
+                            windowFunctions);
                 }
 
                 if (windowFunction.isDistinct()) {
@@ -1134,7 +1241,7 @@ class StatementAnalyzer
                 }
             }
 
-            analysis.setWindowFunctions(node, windowFunctions);
+            return windowFunctions;
         }
 
         private void analyzeWindowFrame(WindowFrame frame)
@@ -1182,76 +1289,11 @@ class StatementAnalyzer
             }
         }
 
-        private List<Expression> analyzeOrderBy(QuerySpecification node, Scope sourceScope, Scope outputScope, List<Expression> outputExpressions)
-        {
-            if (SystemSessionProperties.isLegacyOrderByEnabled(session)) {
-                return legacyAnalyzeOrderBy(node, sourceScope, outputScope, outputExpressions);
-            }
-
-            List<SortItem> items = getSortItemsFromOrderBy(node.getOrderBy());
-
-            ImmutableList.Builder<Expression> orderByExpressionsBuilder = ImmutableList.builder();
-
-            if (!items.isEmpty()) {
-                for (SortItem item : items) {
-                    Expression expression = item.getSortKey();
-
-                    Expression orderByExpression;
-                    if (expression instanceof LongLiteral) {
-                        // this is an ordinal in the output tuple
-
-                        long ordinal = ((LongLiteral) expression).getValue();
-                        if (ordinal < 1 || ordinal > outputExpressions.size()) {
-                            throw new SemanticException(INVALID_ORDINAL, expression, "ORDER BY position %s is not in select list", ordinal);
-                        }
-
-                        int field = toIntExact(ordinal - 1);
-                        Type type = outputScope.getRelationType().getFieldByIndex(field).getType();
-                        if (!type.isOrderable()) {
-                            throw new SemanticException(TYPE_MISMATCH, node, "The type of expression in position %s is not orderable (actual: %s), and therefore cannot be used in ORDER BY", ordinal, type);
-                        }
-
-                        orderByExpression = outputExpressions.get(field);
-                    }
-                    else {
-                        // Analyze the original expression using a synthetic scope (which delegates to the source scope for any missing name)
-                        // to catch any semantic errors (due to type mismatch, etc)
-                        Scope synthetic = Scope.builder()
-                                .withParent(sourceScope)
-                                .withRelationType(outputScope.getRelationType())
-                                .build();
-
-                        analyzeExpression(expression, synthetic);
-
-                        orderByExpression = ExpressionTreeRewriter.rewriteWith(new OrderByExpressionRewriter(extractNamedOutputExpressions(node)), expression);
-
-                        ExpressionAnalysis expressionAnalysis = analyzeExpression(orderByExpression, sourceScope);
-                        analysis.recordSubqueries(node, expressionAnalysis);
-                    }
-
-                    Type type = analysis.getType(orderByExpression);
-                    if (!type.isOrderable()) {
-                        throw new SemanticException(TYPE_MISMATCH, node, "Type %s is not orderable, and therefore cannot be used in ORDER BY: %s", type, expression);
-                    }
-
-                    orderByExpressionsBuilder.add(orderByExpression);
-                }
-            }
-
-            List<Expression> orderByExpressions = orderByExpressionsBuilder.build();
-            analysis.setOrderByExpressions(node, orderByExpressions);
-
-            if (node.getSelect().isDistinct() && !outputExpressions.containsAll(orderByExpressions)) {
-                throw new SemanticException(ORDER_BY_MUST_BE_IN_SELECT, node.getSelect(), "For SELECT DISTINCT, ORDER BY expressions must appear in select list");
-            }
-            return orderByExpressions;
-        }
-
         /**
          * Preserve the old column resolution behavior for ORDER BY while we transition workloads to new semantics
          * TODO: remove this
          */
-        private List<Expression> legacyAnalyzeOrderBy(QuerySpecification node, Scope sourceScope, Scope outputScope, List<Expression> outputExpressions)
+        private List<Expression> legacyAnalyzeOrderBy(QuerySpecification node, Scope sourceScope, Scope orderByScope, List<Expression> outputExpressions)
         {
             List<SortItem> items = getSortItemsFromOrderBy(node.getOrderBy());
 
@@ -1297,7 +1339,7 @@ class StatementAnalyzer
                         }
 
                         int field = toIntExact(ordinal - 1);
-                        Type type = outputScope.getRelationType().getFieldByIndex(field).getType();
+                        Type type = orderByScope.getRelationType().getFieldByIndex(field).getType();
                         if (!type.isOrderable()) {
                             throw new SemanticException(TYPE_MISMATCH, node, "The type of expression in position %s is not orderable (actual: %s), and therefore cannot be used in ORDER BY", ordinal, type);
                         }
@@ -1323,7 +1365,6 @@ class StatementAnalyzer
             }
 
             List<Expression> orderByExpressions = orderByExpressionsBuilder.build();
-            analysis.setOrderByExpressions(node, orderByExpressions);
 
             if (node.getSelect().isDistinct() && !outputExpressions.containsAll(orderByExpressions)) {
                 throw new SemanticException(ORDER_BY_MUST_BE_IN_SELECT, node.getSelect(), "For SELECT DISTINCT, ORDER BY expressions must appear in select list");
@@ -1331,11 +1372,11 @@ class StatementAnalyzer
             return orderByExpressions;
         }
 
-        private Multimap<QualifiedName, Expression> extractNamedOutputExpressions(QuerySpecification node)
+        private Multimap<QualifiedName, Expression> extractNamedOutputExpressions(Select node)
         {
             // Compute aliased output terms so we can resolve order by expressions against them first
             ImmutableMultimap.Builder<QualifiedName, Expression> assignments = ImmutableMultimap.builder();
-            for (SelectItem item : node.getSelect().getSelectItems()) {
+            for (SelectItem item : node.getSelectItems()) {
                 if (item instanceof SingleColumn) {
                     SingleColumn column = (SingleColumn) item;
                     Optional<String> alias = column.getAlias();
@@ -1473,7 +1514,7 @@ class StatementAnalyzer
             return groupingColumnsBuilder.build();
         }
 
-        private Scope computeOutputScope(QuerySpecification node, Scope scope)
+        private Scope computeAndAssignOutputScope(QuerySpecification node, Optional<Scope> scope, Scope sourceScope)
         {
             ImmutableList.Builder<Field> outputFields = ImmutableList.builder();
 
@@ -1482,7 +1523,7 @@ class StatementAnalyzer
                     // expand * and T.*
                     Optional<QualifiedName> starPrefix = ((AllColumns) item).getPrefix();
 
-                    for (Field field : scope.getRelationType().resolveFieldsWithPrefix(starPrefix)) {
+                    for (Field field : sourceScope.getRelationType().resolveFieldsWithPrefix(starPrefix)) {
                         outputFields.add(Field.newUnqualified(field.getName(), field.getType(), field.getOriginTable(), false));
                     }
                 }
@@ -1503,7 +1544,7 @@ class StatementAnalyzer
                     }
 
                     if (name != null) {
-                        List<Field> matchingFields = scope.getRelationType().resolveFields(name);
+                        List<Field> matchingFields = sourceScope.getRelationType().resolveFields(name);
                         if (!matchingFields.isEmpty()) {
                             originTable = matchingFields.get(0).getOriginTable();
                         }
@@ -1523,6 +1564,56 @@ class StatementAnalyzer
             }
 
             return createAndAssignScope(node, scope, outputFields.build());
+        }
+
+        private Scope computeAndAssignOrderByScope(OrderBy node, Scope sourceScope, Scope outputScope)
+        {
+            // ORDER BY should "see" both output and FROM fields during initial analysis and non-aggregation query planning
+            Scope orderByScope = Scope.builder()
+                    .withParent(sourceScope)
+                    .withRelationType(outputScope.getRelationType())
+                    .build();
+            analysis.setScope(node, orderByScope);
+            return orderByScope;
+        }
+
+        private Scope computeAndAssignOrderByScopeWithAggregation(OrderBy node, Scope outputScope, List<FunctionCall> aggregations, List<List<Expression>> groupByExpressions)
+        {
+            // This scope is only used for planning. When aggregation is present then
+            // only output fields, groups and aggregation expressions should be visible from ORDER BY expression
+            ImmutableList.Builder<Expression> orderByAggregationExpressionsBuilder = ImmutableList.builder();
+            groupByExpressions.stream()
+                    .flatMap(List::stream)
+                    .forEach(orderByAggregationExpressionsBuilder::add);
+            orderByAggregationExpressionsBuilder.addAll(aggregations);
+
+            // Don't add aggregate expression that contains references to output column because the names would clash in TranslationMap during planning.
+            List<Expression> orderByExpressionsReferencingOutputScope = AstUtils.preOrder(node)
+                    .filter(Expression.class::isInstance)
+                    .map(Expression.class::cast)
+                    .filter(expression -> hasReferencesToScope(expression, analysis, outputScope))
+                    .collect(toImmutableList());
+            List<Expression> orderByAggregationExpressions = orderByAggregationExpressionsBuilder.build().stream()
+                    .filter(expression -> !orderByExpressionsReferencingOutputScope.contains(expression))
+                    .collect(toImmutableList());
+
+            // generate placeholder fields
+            List<Field> orderByAggregationSourceFields = orderByAggregationExpressions.stream()
+                    .map(analysis::getType)
+                    .map(type -> Field.newUnqualified(Optional.empty(), type))
+                    .collect(toImmutableList());
+
+            Scope orderByAggregationScope = Scope.builder()
+                    .withRelationType(new RelationType(orderByAggregationSourceFields))
+                    .build();
+
+            Scope orderByScope = Scope.builder()
+                    .withParent(orderByAggregationScope)
+                    .withRelationType(outputScope.getRelationType())
+                    .build();
+            analysis.setScope(node, orderByScope);
+            analysis.setOrderByAggregates(node, orderByAggregationExpressions);
+            return orderByScope;
         }
 
         private List<Expression> analyzeSelect(QuerySpecification node, Scope scope)
@@ -1596,24 +1687,28 @@ class StatementAnalyzer
             analysis.setWhere(node, predicate);
         }
 
-        private Scope analyzeFrom(QuerySpecification node, Scope scope)
+        private Scope analyzeFrom(QuerySpecification node, Optional<Scope> scope)
         {
             if (node.getFrom().isPresent()) {
                 return process(node.getFrom().get(), scope);
             }
 
-            return scope;
+            return createScope(scope);
         }
 
-        private void analyzeAggregations(
+        private List<FunctionCall> analyzeAggregations(
                 QuerySpecification node,
-                Scope scope,
+                Scope sourceScope,
+                Optional<Scope> orderByScope,
                 List<List<Expression>> groupingSets,
                 Set<Expression> columnReferences,
-                List<Expression> expressions)
+                List<Expression> outputExpressions,
+                List<Expression> orderByExpressions)
         {
+            checkState(orderByExpressions.isEmpty() || orderByScope.isPresent(), "non-empty orderByExpressions list without orderByScope provided");
+
             AggregateExtractor extractor = new AggregateExtractor(metadata.getFunctionRegistry());
-            for (Expression expression : expressions) {
+            for (Expression expression : Iterables.concat(outputExpressions, orderByExpressions)) {
                 extractor.process(expression);
             }
             analysis.setAggregates(node, extractor.getAggregates());
@@ -1630,10 +1725,16 @@ class StatementAnalyzer
                         .distinct()
                         .collect(toImmutableList());
 
-                for (Expression expression : expressions) {
-                    verifyAggregations(distinctGroupingColumns, scope, expression, columnReferences);
+                for (Expression expression : outputExpressions) {
+                    verifySourceAggregations(distinctGroupingColumns, sourceScope, expression, metadata, analysis);
+                }
+
+                for (Expression expression : orderByExpressions) {
+                    verifyOrderByAggregations(distinctGroupingColumns, sourceScope, orderByScope.get(), expression, metadata, analysis);
                 }
             }
+
+            return extractor.getAggregates();
         }
 
         private boolean hasAggregates(QuerySpecification node)
@@ -1651,16 +1752,6 @@ class StatementAnalyzer
                     .ifPresent(extractor::process);
 
             return !extractor.getAggregates().isEmpty();
-        }
-
-        private void verifyAggregations(
-                List<Expression> groupByExpressions,
-                Scope scope,
-                Expression expression,
-                Set<Expression> columnReferences)
-        {
-            AggregationAnalyzer analyzer = new AggregationAnalyzer(groupByExpressions, metadata, scope, columnReferences, analysis.getParameters(), analysis.isDescribe());
-            analyzer.analyze(expression);
         }
 
         private RelationType analyzeView(Query query, QualifiedObjectName name, Optional<String> catalog, Optional<String> schema, Optional<String> owner, Table node)
@@ -1755,19 +1846,18 @@ class StatementAnalyzer
             return builder.build();
         }
 
-        private Scope analyzeWith(Query node, Scope scope)
+        private Scope analyzeWith(Query node, Optional<Scope> scope)
         {
             // analyze WITH clause
             if (!node.getWith().isPresent()) {
-                return scope;
+                return createScope(scope);
             }
             With with = node.getWith().get();
             if (with.isRecursive()) {
                 throw new SemanticException(NOT_SUPPORTED, with, "Recursive WITH queries are not supported");
             }
 
-            Scope.Builder withScopeBuilder = Scope.builder()
-                    .withParent(scope);
+            Scope.Builder withScopeBuilder = scopeBuilder(scope);
             for (WithQuery withQuery : with.getQueries()) {
                 Query query = withQuery.getQuery();
                 process(query, withScopeBuilder.build());
@@ -1794,18 +1884,60 @@ class StatementAnalyzer
             return withScope;
         }
 
-        private void analyzeOrderBy(Query node, Scope scope)
+        private void analyzeOrderBy(Query node, Scope orderByScope)
+        {
+            checkState(node.getOrderBy().isPresent(), "orderBy is absent");
+
+            List<SortItem> sortItems = getSortItemsFromOrderBy(node.getOrderBy());
+            analyzeOrderBy(node, sortItems, orderByScope);
+        }
+
+        private List<Expression> analyzeOrderBy(QuerySpecification node, Scope orderByScope, List<Expression> outputExpressions)
+        {
+            checkState(node.getOrderBy().isPresent(), "orderBy is absent");
+
+            List<SortItem> sortItems = getSortItemsFromOrderBy(node.getOrderBy());
+
+            if (node.getSelect().isDistinct()) {
+                verifySelectDistinct(node, outputExpressions);
+            }
+
+            return analyzeOrderBy(node, sortItems, orderByScope);
+        }
+
+        private void verifySelectDistinct(QuerySpecification node, List<Expression> outputExpressions)
+        {
+            for (SortItem item : node.getOrderBy().get().getSortItems()) {
+                Expression expression = item.getSortKey();
+
+                if (expression instanceof LongLiteral) {
+                    continue;
+                }
+
+                Expression rewrittenOrderByExpression = ExpressionTreeRewriter.rewriteWith(new OrderByExpressionRewriter(extractNamedOutputExpressions(node.getSelect())), expression);
+                int index = outputExpressions.indexOf(rewrittenOrderByExpression);
+                if (index == -1) {
+                    throw new SemanticException(ORDER_BY_MUST_BE_IN_SELECT, node.getSelect(), "For SELECT DISTINCT, ORDER BY expressions must appear in select list");
+                }
+
+                if (!isDeterministic(expression)) {
+                    throw new SemanticException(NONDETERMINISTIC_ORDER_BY_EXPRESSION_WITH_SELECT_DISTINCT, expression, "Non deterministic ORDER BY expression is not supported with SELECT DISTINCT");
+                }
+            }
+        }
+
+        private List<Expression> analyzeOrderBy(Node node, List<SortItem> sortItems, Scope orderByScope)
         {
             ImmutableList.Builder<Expression> orderByFieldsBuilder = ImmutableList.builder();
 
-            for (SortItem item : getSortItemsFromOrderBy(node.getOrderBy())) {
+            for (SortItem item : sortItems) {
                 Expression expression = item.getSortKey();
 
                 if (expression instanceof LongLiteral) {
                     // this is an ordinal in the output tuple
 
                     long ordinal = ((LongLiteral) expression).getValue();
-                    if (ordinal < 1 || ordinal > scope.getRelationType().getVisibleFieldCount()) {
+                    if (ordinal < 1 || ordinal > orderByScope.getRelationType().getVisibleFieldCount()) {
                         throw new SemanticException(INVALID_ORDINAL, expression, "ORDER BY position %s is not in select list", ordinal);
                     }
 
@@ -1815,35 +1947,81 @@ class StatementAnalyzer
                 ExpressionAnalysis expressionAnalysis = ExpressionAnalyzer.analyzeExpression(session,
                         metadata,
                         accessControl, sqlParser,
-                        scope,
+                        orderByScope,
                         analysis,
                         expression);
                 analysis.recordSubqueries(node, expressionAnalysis);
 
+                Type type = analysis.getType(expression);
+                if (!type.isOrderable()) {
+                    throw new SemanticException(TYPE_MISMATCH, node, "Type %s is not orderable, and therefore cannot be used in ORDER BY: %s", type, expression);
+                }
+
                 orderByFieldsBuilder.add(expression);
             }
 
-            analysis.setOrderByExpressions(node, orderByFieldsBuilder.build());
+            List<Expression> orderByFields = orderByFieldsBuilder.build();
+            analysis.setOrderByExpressions(node, orderByFields);
+            return orderByFields;
         }
 
-        private Scope createAndAssignScope(Node node, Scope parent, Field... fields)
+        private Scope createAndAssignScope(Node node, Optional<Scope> parentScope)
         {
-            return createAndAssignScope(node, parent, new RelationType(fields));
+            return createAndAssignScope(node, parentScope, emptyList());
         }
 
-        private Scope createAndAssignScope(Node node, Scope parent, List<Field> fields)
+        private Scope createAndAssignScope(Node node, Optional<Scope> parentScope, Field... fields)
         {
-            return createAndAssignScope(node, parent, new RelationType(fields));
+            return createAndAssignScope(node, parentScope, new RelationType(fields));
         }
 
-        private Scope createAndAssignScope(Node node, Scope parent, RelationType relationType)
+        private Scope createAndAssignScope(Node node, Optional<Scope> parentScope, List<Field> fields)
         {
-            Scope scope = Scope.builder()
-                    .withParent(parent)
+            return createAndAssignScope(node, parentScope, new RelationType(fields));
+        }
+
+        private Scope createAndAssignScope(Node node, Optional<Scope> parentScope, RelationType relationType)
+        {
+            Scope scope = scopeBuilder(parentScope)
                     .withRelationType(relationType)
                     .build();
+
             analysis.setScope(node, scope);
             return scope;
         }
+
+        private Scope createScope(Optional<Scope> parentScope)
+        {
+            return scopeBuilder(parentScope).build();
+        }
+
+        private Scope.Builder scopeBuilder(Optional<Scope> parentScope)
+        {
+            Scope.Builder scopeBuilder = Scope.builder();
+
+            if (parentScope.isPresent()) {
+                // parent scope represents local query scope hierarchy. Local query scope
+                // hierarchy should have outer query scope as ancestor already.
+                scopeBuilder.withParent(parentScope.get());
+            }
+            else if (outerQueryScope.isPresent()) {
+                scopeBuilder.withOuterQueryParent(outerQueryScope.get());
+            }
+
+            return scopeBuilder;
+        }
+    }
+
+    private static boolean hasScopeAsLocalParent(Scope root, Scope parent)
+    {
+        Scope scope = root;
+        while (scope.getLocalParent().isPresent()) {
+            scope = scope.getLocalParent().get();
+            if (scope.equals(parent)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

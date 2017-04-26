@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit;
 import static com.facebook.presto.execution.QueryState.FAILED;
 import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.QueryState.RUNNING;
+import static com.facebook.presto.execution.QueryState.TERMINAL_QUERY_STATES;
 import static com.facebook.presto.spi.StandardErrorCode.QUERY_REJECTED;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -61,11 +62,11 @@ public class TestQueues
         try (DistributedQueryRunner queryRunner = getSimpleQueryRunner()) {
             queryRunner.execute("SELECT COUNT(*), clerk FROM orders GROUP BY clerk");
             while (true) {
-                TimeUnit.SECONDS.sleep(2);
                 ResourceGroupInfo global = queryRunner.getCoordinator().getResourceGroupManager().get().getResourceGroupInfo(new ResourceGroupId(new ResourceGroupId("global"), "bi-user"));
                 if (global.getSoftMemoryLimit().toBytes() > 0) {
                     break;
                 }
+                TimeUnit.SECONDS.sleep(2);
             }
         }
     }
@@ -83,36 +84,36 @@ public class TestQueues
 
             // wait for the first "dashboard" query to start
             waitForQueryState(queryRunner, firstDashboardQuery, RUNNING);
-            assertEquals(queryManager.getStats().getRunningQueries(), 1);
+            waitForRunningQueryCount(queryRunner, 1);
             // submit second "dashboard" query
             QueryId secondDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
             MILLISECONDS.sleep(2000);
             // wait for the second "dashboard" query to be queued ("dashboard.${USER}" queue strategy only allows one "dashboard" query to be accepted for execution)
             waitForQueryState(queryRunner, secondDashboardQuery, QUEUED);
-            assertEquals(queryManager.getStats().getRunningQueries(), 1);
+            waitForRunningQueryCount(queryRunner, 1);
             // Update db to allow for 1 more running query in dashboard resource group
             dao.updateResourceGroup(3, "user-${USER}", "1MB", 3, 4, null, null, null, null, null, 1L);
             dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 2, null, null, null, null, null, 3L);
             waitForQueryState(queryRunner, secondDashboardQuery, RUNNING);
             QueryId thirdDashboardQuery = createQuery(queryRunner, newDashboardSession(), LONG_LASTING_QUERY);
             waitForQueryState(queryRunner, thirdDashboardQuery, QUEUED);
-            assertEquals(queryManager.getStats().getRunningQueries(), 2);
+            waitForRunningQueryCount(queryRunner, 2);
             // submit first non "dashboard" query
             QueryId firstNonDashboardQuery = createQuery(queryRunner, newSession(), LONG_LASTING_QUERY);
             // wait for the first non "dashboard" query to start
             waitForQueryState(queryRunner, firstNonDashboardQuery, RUNNING);
-            assertEquals(queryManager.getStats().getRunningQueries(), 3);
+            waitForRunningQueryCount(queryRunner, 3);
             // submit second non "dashboard" query
             QueryId secondNonDashboardQuery = createQuery(queryRunner, newSession(), LONG_LASTING_QUERY);
             // wait for the second non "dashboard" query to start
             waitForQueryState(queryRunner, secondNonDashboardQuery, RUNNING);
-            assertEquals(queryManager.getStats().getRunningQueries(), 4);
+            waitForRunningQueryCount(queryRunner, 4);
             // cancel first "dashboard" query, the second "dashboard" query and second non "dashboard" query should start running
             cancelQuery(queryRunner, firstDashboardQuery);
             waitForQueryState(queryRunner, firstDashboardQuery, FAILED);
             waitForQueryState(queryRunner, thirdDashboardQuery, RUNNING);
-            assertEquals(queryManager.getStats().getRunningQueries(), 4);
-            assertEquals(queryManager.getStats().getCompletedQueries().getTotalCount(), 1);
+            waitForRunningQueryCount(queryRunner, 4);
+            waitForCompleteQueryCount(queryRunner, 1);
         }
     }
 
@@ -158,10 +159,10 @@ public class TestQueues
             // Lower running queries in dashboard resource groups and wait until groups are reconfigured
             dao.updateResourceGroup(5, "dashboard-${USER}", "1MB", 1, 1, null, null, null, null, null, 3L);
             ResourceGroupManager manager = queryRunner.getCoordinator().getResourceGroupManager().get();
-            do {
+            while (manager.getResourceGroupInfo(
+                    new ResourceGroupId(new ResourceGroupId(new ResourceGroupId("global"), "user-user"), "dashboard-user")).getMaxRunningQueries() != 1) {
                 MILLISECONDS.sleep(500);
-            } while (manager.getResourceGroupInfo(
-                    new ResourceGroupId(new ResourceGroupId(new ResourceGroupId("global"), "user-user"), "dashboard-user")).getMaxRunningQueries() != 1);
+            }
             // Cancel query and verify that third query is still queued
             cancelQuery(queryRunner, firstDashboardQuery);
             waitForQueryState(queryRunner, firstDashboardQuery, FAILED);
@@ -185,17 +186,16 @@ public class TestQueues
             int selectorCount = getSelectors(queryRunner).size();
             dao.insertSelector(4, "user.*", "(?i).*reject.*");
             assertEquals(dao.getSelectors().size(), selectorCount + 1);
-            //MILLISECONDS.sleep(2000);
-            do {
+            while (getSelectors(queryRunner).size() == selectorCount) {
                 MILLISECONDS.sleep(500);
-            } while (getSelectors(queryRunner).size() == selectorCount);
+            }
             // Verify the query can be submitted
             queryId = createQuery(queryRunner, newRejectionSession(), LONG_LASTING_QUERY);
             waitForQueryState(queryRunner, queryId, RUNNING);
             dao.deleteSelector(4, "user.*", "(?i).*reject.*");
-            do {
+            while (getSelectors(queryRunner).size() != selectorCount) {
                 MILLISECONDS.sleep(500);
-            } while (getSelectors(queryRunner).size() != selectorCount);
+            }
             // Verify the query cannot be submitted
             queryId = createQuery(queryRunner, newRejectionSession(), LONG_LASTING_QUERY);
             waitForQueryState(queryRunner, queryId, FAILED);
@@ -239,6 +239,27 @@ public class TestQueues
         queryRunner.getCoordinator().getQueryManager().cancelQuery(queryId);
     }
 
+    private static void waitForCompleteQueryCount(DistributedQueryRunner queryRunner, int expectedCount)
+            throws InterruptedException
+    {
+        waitForQueryCount(queryRunner, TERMINAL_QUERY_STATES, expectedCount);
+    }
+
+    private static void waitForRunningQueryCount(DistributedQueryRunner queryRunner, int expectedCount)
+            throws InterruptedException
+    {
+        waitForQueryCount(queryRunner, ImmutableSet.of(RUNNING), expectedCount);
+    }
+
+    private static void waitForQueryCount(DistributedQueryRunner queryRunner, Set<QueryState> countingStates, int expectedCount)
+            throws InterruptedException
+    {
+        QueryManager queryManager = queryRunner.getCoordinator().getQueryManager();
+        while (queryManager.getAllQueryInfo().stream().filter(q -> countingStates.contains(q.getState())).count() != expectedCount) {
+            MILLISECONDS.sleep(500);
+        }
+    }
+
     private static void waitForQueryState(DistributedQueryRunner queryRunner, QueryId queryId, QueryState expectedQueryState)
             throws InterruptedException
     {
@@ -249,10 +270,9 @@ public class TestQueues
             throws InterruptedException
     {
         QueryManager queryManager = queryRunner.getCoordinator().getQueryManager();
-        do {
+        while (!expectedQueryStates.contains(queryManager.getQueryInfo(queryId).getState())) {
             MILLISECONDS.sleep(500);
         }
-        while (!expectedQueryStates.contains(queryManager.getQueryInfo(queryId).getState()));
     }
 
     private static String getDbConfigUrl()
@@ -325,9 +345,9 @@ public class TestQueues
         dao.insertSelector(4, "user.*", "(?i).*adhoc.*");
         dao.insertSelector(5, "user.*", "(?i).*dashboard.*");
         // Selectors are loaded last
-        do {
+        while (getSelectors(queryRunner).size() != 3) {
             MILLISECONDS.sleep(500);
-        } while (getSelectors(queryRunner).size() != 3);
+        }
     }
 
     private static List<ResourceGroupSelector> getSelectors(DistributedQueryRunner queryRunner)

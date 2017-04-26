@@ -167,6 +167,8 @@ Property Name                                      Description                  
 
 ``security.config-file``                           Path of config file to use when ``hive.security=file``.
                                                    See :ref:`hive-file-based-authorization` for details.
+
+``hive.non-managed-table-writes-enabled``          Enable writes to non-managed (external) Hive tables.         ``false``
 ================================================== ============================================================ ==========
 
 Amazon S3 Configuration
@@ -276,7 +278,7 @@ Property Name                         Description                               
 ===================================== =========================================================== ===============
 ``hive.s3.max-error-retries``         Maximum number of error retries, set on the S3 client.      ``10``
 
-``hive.s3.max-client-retries``        Maximum number of read attempts to retry.                   ``3``
+``hive.s3.max-client-retries``        Maximum number of read attempts to retry.                   ``5``
 
 ``hive.s3.max-backoff-time``          Use exponential backoff starting at 1 second up to          ``10 minutes``
                                       this maximum value when communicating with S3.

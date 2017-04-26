@@ -31,9 +31,9 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 import static com.facebook.presto.server.QueryStateInfo.createQueryStateInfo;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableMap;
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static java.util.Objects.requireNonNull;
 import static java.util.function.Function.identity;
 
@@ -60,6 +60,7 @@ public class QueryStateInfoResource
         }
         List<QueryInfo> userQueries = queryManager.getAllQueryInfo().stream()
                 .filter(queryInfo -> Pattern.matches(user, queryInfo.getSession().getUser()))
+                .filter(queryInfo -> !queryInfo.getState().isDone())
                 .collect(toImmutableList());
 
         Map<ResourceGroupId, ResourceGroupInfo> rootResourceGroupInfos = userQueries.stream()

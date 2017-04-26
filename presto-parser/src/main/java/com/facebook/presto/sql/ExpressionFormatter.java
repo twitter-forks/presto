@@ -21,6 +21,7 @@ import com.facebook.presto.sql.tree.AstVisitor;
 import com.facebook.presto.sql.tree.AtTimeZone;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BinaryLiteral;
+import com.facebook.presto.sql.tree.BindExpression;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CharLiteral;
@@ -363,6 +364,14 @@ public final class ExpressionFormatter
         }
 
         @Override
+        protected String visitBindExpression(BindExpression node, Void context)
+        {
+            return "\"$INTERNAL$BIND\"(" +
+                    process(node.getValue(), context) + ", " +
+                    process(node.getFunction(), context) + ")";
+        }
+
+        @Override
         protected String visitLogicalBinaryExpression(LogicalBinaryExpression node, Void context)
         {
             return formatBinaryExpression(node.getType().toString(), node.getLeft(), node.getRight());
@@ -613,6 +622,7 @@ public final class ExpressionFormatter
         protected String visitQuantifiedComparisonExpression(QuantifiedComparisonExpression node, Void context)
         {
             return new StringBuilder()
+                    .append("(")
                     .append(process(node.getValue(), context))
                     .append(' ')
                     .append(node.getComparisonType().getValue())
@@ -620,6 +630,7 @@ public final class ExpressionFormatter
                     .append(node.getQuantifier().toString())
                     .append(' ')
                     .append(process(node.getSubquery(), context))
+                    .append(")")
                     .toString();
         }
 
