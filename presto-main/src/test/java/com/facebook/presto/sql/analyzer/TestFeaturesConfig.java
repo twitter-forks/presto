@@ -19,7 +19,6 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.testng.annotations.Test;
 
-import java.nio.file.Paths;
 import java.util.Map;
 
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimization.COLUMNAR_DICTIONARY;
@@ -58,11 +57,12 @@ public class TestFeaturesConfig
                 .setRe2JDfaRetries(5)
                 .setSpillEnabled(false)
                 .setOperatorMemoryLimitBeforeSpill(DataSize.valueOf("4MB"))
-                .setSpillerSpillPath(Paths.get(System.getProperty("java.io.tmpdir"), "presto", "spills").toString())
+                .setSpillerSpillPaths("")
                 .setSpillerThreads(4)
+                .setSpillMaxUsedSpaceThreshold(0.9)
                 .setOptimizeMixedDistinctAggregations(false)
                 .setLegacyOrderBy(false)
-                .setIterativeOptimizerEnabled(false)
+                .setIterativeOptimizerEnabled(true)
                 .setIterativeOptimizerTimeout(new Duration(3, MINUTES))
                 .setExchangeCompressionEnabled(false));
     }
@@ -72,7 +72,7 @@ public class TestFeaturesConfig
     {
         Map<String, String> propertiesLegacy = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
-                .put("experimental.iterative-optimizer-enabled", "true")
+                .put("experimental.iterative-optimizer-enabled", "false")
                 .put("experimental.iterative-optimizer-timeout", "10s")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-order-by", "true")
@@ -95,13 +95,14 @@ public class TestFeaturesConfig
                 .put("re2j.dfa-retries", "42")
                 .put("experimental.spill-enabled", "true")
                 .put("experimental.operator-memory-limit-before-spill", "100MB")
-                .put("experimental.spiller-spill-path", "/tmp/custom/spill/path")
+                .put("experimental.spiller-spill-path", "/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .put("experimental.spiller-threads", "42")
+                .put("experimental.spiller-max-used-space-threshold", "0.8")
                 .put("exchange.compression-enabled", "true")
                 .build();
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
-                .put("experimental.iterative-optimizer-enabled", "true")
+                .put("experimental.iterative-optimizer-enabled", "false")
                 .put("experimental.iterative-optimizer-timeout", "10s")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-order-by", "true")
@@ -124,14 +125,15 @@ public class TestFeaturesConfig
                 .put("re2j.dfa-retries", "42")
                 .put("experimental.spill-enabled", "true")
                 .put("experimental.operator-memory-limit-before-spill", "100MB")
-                .put("experimental.spiller-spill-path", "/tmp/custom/spill/path")
+                .put("experimental.spiller-spill-path", "/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .put("experimental.spiller-threads", "42")
+                .put("experimental.spiller-max-used-space-threshold", "0.8")
                 .put("exchange.compression-enabled", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
                 .setResourceGroupsEnabled(true)
-                .setIterativeOptimizerEnabled(true)
+                .setIterativeOptimizerEnabled(false)
                 .setIterativeOptimizerTimeout(new Duration(10, SECONDS))
                 .setDistributedIndexJoinsEnabled(true)
                 .setDistributedJoinsEnabled(false)
@@ -153,8 +155,9 @@ public class TestFeaturesConfig
                 .setRe2JDfaRetries(42)
                 .setSpillEnabled(true)
                 .setOperatorMemoryLimitBeforeSpill(DataSize.valueOf("100MB"))
-                .setSpillerSpillPath("/tmp/custom/spill/path")
+                .setSpillerSpillPaths("/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .setSpillerThreads(42)
+                .setSpillMaxUsedSpaceThreshold(0.8)
                 .setLegacyOrderBy(true)
                 .setExchangeCompressionEnabled(true);
 

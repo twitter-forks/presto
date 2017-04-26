@@ -14,8 +14,10 @@
 package com.facebook.presto.type;
 
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
+import com.facebook.presto.spi.type.SqlTimestamp;
 import org.testng.annotations.Test;
 
+import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
@@ -132,7 +134,7 @@ public class TestJsonOperators
             throws Exception
     {
         assertFunction("cast(cast(null as decimal(5,2)) as JSON)", JSON, null);
-        assertFunction("cast(3.14 as JSON)", JSON, "3.14");
+        assertFunction("cast(DECIMAL '3.14' as JSON)", JSON, "3.14");
         assertFunction("cast(DECIMAL '12345678901234567890.123456789012345678' as JSON)", JSON, "12345678901234567890.123456789012345678");
     }
 
@@ -196,5 +198,17 @@ public class TestJsonOperators
         assertFunction("cast(cast (null as varchar) as JSON)", JSON, null);
         assertFunction("cast('abc' as JSON)", JSON, "\"abc\"");
         assertFunction("cast('\"a\":2' as JSON)", JSON, "\"\\\"a\\\":2\"");
+    }
+
+    @Test
+    public void testCastFromTimestamp()
+    {
+        assertFunction("cast(cast (null as timestamp) as JSON)", JSON, null);
+        assertFunction("CAST(from_unixtime(1) AS JSON)", JSON, "\"" + sqlTimestamp(1000).toString() + "\"");
+    }
+
+    private static SqlTimestamp sqlTimestamp(long millisUtc)
+    {
+        return new SqlTimestamp(millisUtc, TEST_SESSION.getTimeZoneKey());
     }
 }

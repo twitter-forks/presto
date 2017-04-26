@@ -23,6 +23,7 @@ import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
 import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.log.Logger;
+import io.airlift.stats.CounterStat;
 import io.airlift.stats.CpuTimer;
 import io.airlift.stats.TimeDistribution;
 import io.airlift.stats.TimeStat;
@@ -52,6 +53,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -65,9 +67,11 @@ import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Sets.newConcurrentHashSet;
+import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.concurrent.Threads.threadsNamed;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newCachedThreadPool;
+import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
@@ -82,6 +86,9 @@ public class TaskExecutor
     // each time we run a split, run it for this length before returning to the pool
     private static final Duration SPLIT_RUN_QUANTA = new Duration(1, TimeUnit.SECONDS);
 
+    // print out split call stack if it has been running for a certain amount of time
+    private static final Duration LONG_SPLIT_WARNING_THRESHOLD = new Duration(1000, TimeUnit.SECONDS);
+
     private static final AtomicLong NEXT_RUNNER_ID = new AtomicLong();
     private static final AtomicLong NEXT_WORKER_ID = new AtomicLong();
 
@@ -93,6 +100,8 @@ public class TaskExecutor
 
     private final Ticker ticker;
 
+    private final ScheduledExecutorService splitMonitorExecutor = newSingleThreadScheduledExecutor(daemonThreadsNamed("TaskExecutor"));
+    private String currentMaxActiveSplit = null;
     private final SortedSet<RunningSplitInfo> runningSplitInfos = new ConcurrentSkipListSet<>();
 
     @GuardedBy("this")
@@ -135,8 +144,8 @@ public class TaskExecutor
     private final TimeDistribution forcedSplitWallTime = new TimeDistribution(MICROSECONDS);
 
     // shared between SplitRunners
-    private final TimeStat scheduledTime = new TimeStat(MICROSECONDS);
-    private final TimeStat cpuTime = new TimeStat(MICROSECONDS);
+    private final CounterStat scheduledTimeMicros = new CounterStat();
+    private final CounterStat cpuTimeMicros = new CounterStat();
 
     private final TimeStat overallQuantaWallTime = new TimeStat(MICROSECONDS);
     private final TimeStat blockedQuantaWallTime = new TimeStat(MICROSECONDS);
@@ -183,6 +192,7 @@ public class TaskExecutor
         for (int i = 0; i < runnerThreads; i++) {
             addRunnerThread();
         }
+        splitMonitorExecutor.scheduleWithFixedDelay(this::monitorActiveSplits, 1, 1, TimeUnit.MINUTES);
     }
 
     @PreDestroy
@@ -190,6 +200,7 @@ public class TaskExecutor
     {
         closed = true;
         executor.shutdownNow();
+        splitMonitorExecutor.shutdownNow();
     }
 
     @Override
@@ -261,8 +272,8 @@ public class TaskExecutor
                         taskHandle,
                         taskSplit,
                         ticker,
-                        cpuTime,
-                        scheduledTime,
+                        cpuTimeMicros,
+                        scheduledTimeMicros,
                         overallQuantaWallTime,
                         blockedQuantaWallTime,
                         unblockedQuantaWallTime);
@@ -387,6 +398,25 @@ public class TaskExecutor
             }
         }
         return null;
+    }
+
+    private void monitorActiveSplits()
+    {
+        for (RunningSplitInfo splitInfo : runningSplitInfos) {
+            Duration duration = Duration.succinctNanos(ticker.read() - splitInfo.getStartTime());
+            if (duration.compareTo(LONG_SPLIT_WARNING_THRESHOLD) < 0) {
+                return;
+            }
+            if (splitInfo.isPrinted()) {
+                continue;
+            }
+            splitInfo.setPrinted();
+
+            currentMaxActiveSplit = splitInfo.getThreadId();
+            Exception exception = new Exception("Long running split");
+            exception.setStackTrace(splitInfo.getThread().getStackTrace());
+            log.warn(exception, "Split thread %s has been running longer than %s", currentMaxActiveSplit, duration);
+        }
     }
 
     @ThreadSafe
@@ -543,8 +573,8 @@ public class TaskExecutor
         private final AtomicLong cpuTimeNanos = new AtomicLong();
         private final AtomicLong processCalls = new AtomicLong();
 
-        private final TimeStat cpuTime;
-        private final TimeStat scheduledTime;
+        private final CounterStat cpuTimeMicros;
+        private final CounterStat scheduledTimeMicros;
 
         private final TimeStat overallQuantaWallTime;
         private final TimeStat blockedQuantaWallTime;
@@ -554,8 +584,8 @@ public class TaskExecutor
                 TaskHandle taskHandle,
                 SplitRunner split,
                 Ticker ticker,
-                TimeStat cpuTime,
-                TimeStat scheduledTime,
+                CounterStat cpuTimeMicros,
+                CounterStat scheduledTimeMicros,
                 TimeStat overallQuantaWallTime,
                 TimeStat blockedQuantaWallTime,
                 TimeStat unblockedQuantaWallTime)
@@ -565,8 +595,8 @@ public class TaskExecutor
             this.split = split;
             this.ticker = ticker;
             this.workerId = NEXT_WORKER_ID.getAndIncrement();
-            this.cpuTime = cpuTime;
-            this.scheduledTime = scheduledTime;
+            this.cpuTimeMicros = cpuTimeMicros;
+            this.scheduledTimeMicros = scheduledTimeMicros;
             this.overallQuantaWallTime = overallQuantaWallTime;
             this.blockedQuantaWallTime = blockedQuantaWallTime;
             this.unblockedQuantaWallTime = unblockedQuantaWallTime;
@@ -646,9 +676,11 @@ public class TaskExecutor
                 // record last run for prioritization within a level
                 lastRun.set(ticker.read());
 
-                cpuTimeNanos.addAndGet(elapsed.getCpu().roundTo(NANOSECONDS));
-                cpuTime.add(elapsed.getCpu());
-                scheduledTime.add(elapsed.getWall());
+                long cpuNanos = elapsed.getCpu().roundTo(NANOSECONDS);
+                cpuTimeNanos.addAndGet(cpuNanos);
+
+                cpuTimeMicros.update(cpuNanos / 1000);
+                scheduledTimeMicros.update(quantaWallNanos / 1000);
 
                 return blocked;
             }
@@ -767,7 +799,7 @@ public class TaskExecutor
 
                     String threadId = split.getTaskHandle().getTaskId() + "-" + split.getSplitId();
                     try (SetThreadName splitName = new SetThreadName(threadId)) {
-                        RunningSplitInfo splitInfo = new RunningSplitInfo(ticker.read(), threadId);
+                        RunningSplitInfo splitInfo = new RunningSplitInfo(ticker.read(), threadId, Thread.currentThread());
                         runningSplitInfos.add(splitInfo);
                         runningSplits.add(split);
 
@@ -832,11 +864,15 @@ public class TaskExecutor
     {
         private final long startTime;
         private final String threadId;
+        private final Thread thread;
+        private boolean printed;
 
-        public RunningSplitInfo(long startTime, String threadId)
+        public RunningSplitInfo(long startTime, String threadId, Thread thread)
         {
             this.startTime = startTime;
             this.threadId = threadId;
+            this.thread = thread;
+            this.printed = false;
         }
 
         public long getStartTime()
@@ -847,6 +883,21 @@ public class TaskExecutor
         public String getThreadId()
         {
             return threadId;
+        }
+
+        public Thread getThread()
+        {
+            return thread;
+        }
+
+        public boolean isPrinted()
+        {
+            return printed;
+        }
+
+        public void setPrinted()
+        {
+            printed = true;
         }
 
         @Override
@@ -1076,16 +1127,16 @@ public class TaskExecutor
 
     @Managed
     @Nested
-    public TimeStat getScheduledTime()
+    public CounterStat getScheduledTimeMicros()
     {
-        return scheduledTime;
+        return scheduledTimeMicros;
     }
 
     @Managed
     @Nested
-    public TimeStat getCpuTime()
+    public CounterStat getCpuTimeMicros()
     {
-        return cpuTime;
+        return cpuTimeMicros;
     }
 
     private synchronized int calculateRunningTasksForLevel(int level)

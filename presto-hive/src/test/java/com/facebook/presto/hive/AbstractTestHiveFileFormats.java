@@ -33,14 +33,12 @@ import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.SqlVarbinary;
 import com.facebook.presto.spi.type.TimestampType;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.tests.StructuralTestUtil;
 import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.MapType;
 import com.facebook.presto.type.RowType;
-import com.facebook.presto.type.TypeRegistry;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -92,6 +90,7 @@ import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.PARTITION_KEY
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HivePartitionKey.HIVE_DEFAULT_DYNAMIC_PARTITION;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
+import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveUtil.isStructuralType;
 import static com.facebook.presto.hive.util.SerDeUtils.serializeObject;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -105,6 +104,7 @@ import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.spi.type.Varchars.isVarcharType;
 import static com.facebook.presto.testing.MaterializedResult.materializeSourceDataStream;
 import static com.facebook.presto.tests.StructuralTestUtil.arrayBlockOf;
@@ -147,7 +147,6 @@ import static org.testng.Assert.assertTrue;
 public abstract class AbstractTestHiveFileFormats
 {
     private static final double EPSILON = 0.001;
-    private static final TypeManager TYPE_MANAGER = new TypeRegistry();
 
     private static final long DATE_MILLIS_UTC = new DateTime(2011, 5, 6, 0, 0, UTC).getMillis();
     private static final long DATE_DAYS = TimeUnit.MILLISECONDS.toDays(DATE_MILLIS_UTC);
@@ -290,7 +289,7 @@ public abstract class AbstractTestHiveFileFormats
             .add(new TestColumn("t_map_varchar",
                     getStandardMapObjectInspector(javaHiveVarcharObjectInspector, javaHiveVarcharObjectInspector),
                     ImmutableMap.of(new HiveVarchar("test", HiveVarchar.MAX_VARCHAR_LENGTH), new HiveVarchar("test", HiveVarchar.MAX_VARCHAR_LENGTH)),
-                    mapBlockOf(createUnboundedVarcharType(), createUnboundedVarcharType(), "test", "test")))
+                    mapBlockOf(createVarcharType(HiveVarchar.MAX_VARCHAR_LENGTH), createVarcharType(HiveVarchar.MAX_VARCHAR_LENGTH), "test", "test")))
             .add(new TestColumn("t_map_char",
                     getStandardMapObjectInspector(CHAR_INSPECTOR_LENGTH_10, CHAR_INSPECTOR_LENGTH_10),
                     ImmutableMap.of(new HiveChar("test", 10), new HiveChar("test", 10)),
@@ -360,7 +359,7 @@ public abstract class AbstractTestHiveFileFormats
                     "t_array_varchar",
                     getStandardListObjectInspector(javaHiveVarcharObjectInspector),
                     ImmutableList.of(new HiveVarchar("test", HiveVarchar.MAX_VARCHAR_LENGTH)),
-                    arrayBlockOf(createUnboundedVarcharType(), "test")))
+                    arrayBlockOf(createVarcharType(HiveVarchar.MAX_VARCHAR_LENGTH), "test")))
             .add(new TestColumn(
                     "t_array_char",
                     getStandardListObjectInspector(CHAR_INSPECTOR_LENGTH_10),
@@ -804,7 +803,7 @@ public abstract class AbstractTestHiveFileFormats
     {
         // This function is strictly for testing use only
         SliceOutput sliceOutput = new DynamicSliceOutput(1000);
-        BlockSerdeUtil.writeBlock(sliceOutput, block.copyRegion(0, block.getPositionCount()));
+        BlockSerdeUtil.writeBlock(sliceOutput, block);
         return sliceOutput.slice();
     }
 

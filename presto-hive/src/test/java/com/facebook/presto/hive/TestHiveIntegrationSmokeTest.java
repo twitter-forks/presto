@@ -23,13 +23,11 @@ import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.tests.AbstractTestIntegrationSmokeTest;
 import com.facebook.presto.tests.DistributedQueryRunner;
-import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.Files;
@@ -58,6 +56,7 @@ import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
+import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveUtil.columnExtraInfo;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.CharType.createCharType;
@@ -65,9 +64,11 @@ import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
+import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.testing.MaterializedResult.resultBuilder;
+import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
 import static com.facebook.presto.transaction.TransactionBuilder.transaction;
 import static com.google.common.collect.Iterables.getOnlyElement;
@@ -79,7 +80,6 @@ import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.joda.time.DateTimeZone.UTC;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -92,7 +92,6 @@ public class TestHiveIntegrationSmokeTest
 {
     private final String catalog;
     private final Session bucketedSession;
-    private final TypeManager typeManager;
     private final TypeTranslator typeTranslator;
 
     @SuppressWarnings("unused")
@@ -107,8 +106,6 @@ public class TestHiveIntegrationSmokeTest
         this.catalog = requireNonNull(catalog, "catalog is null");
         this.bucketedSession = requireNonNull(bucketedSession, "bucketSession is null");
         this.typeTranslator = requireNonNull(typeTranslator, "typeTranslator is null");
-
-        this.typeManager = new TypeRegistry();
     }
 
     protected List<?> getPartitions(HiveTableLayoutHandle tableLayoutHandle)
@@ -1315,7 +1312,8 @@ public class TestHiveIntegrationSmokeTest
                 "WITH (partitioned_by = ARRAY['apple', 'pineapple'])");
 
         MaterializedResult actual = computeActual("SHOW COLUMNS FROM test_show_columns_partition_key");
-        MaterializedResult expected = resultBuilder(getSession(), canonicalizeType(createUnboundedVarcharType()), canonicalizeType(createUnboundedVarcharType()), canonicalizeType(createUnboundedVarcharType()))
+        Type unboundedVarchar = canonicalizeType(VARCHAR);
+        MaterializedResult expected = resultBuilder(getSession(), unboundedVarchar, unboundedVarchar, unboundedVarchar, unboundedVarchar)
                 .row("grape", canonicalizeTypeName("bigint"), "", "")
                 .row("orange", canonicalizeTypeName("bigint"), "", "")
                 .row("pear", canonicalizeTypeName("varchar(65535)"), "", "")
@@ -1506,6 +1504,7 @@ public class TestHiveIntegrationSmokeTest
                         "   \"c'3\" array(bigint),\n" +
                         "   c4 map(bigint, varchar) COMMENT 'comment test4',\n" +
                         "   c5 double COMMENT 'comment test5'\n)\n" +
+                        "COMMENT 'test'\n" +
                         "WITH (\n" +
                         "   format = 'ORC',\n" +
                         "   partitioned_by = ARRAY['c4','c5']\n" +
@@ -1823,13 +1822,13 @@ public class TestHiveIntegrationSmokeTest
     private Type canonicalizeType(Type type)
     {
         HiveType hiveType = HiveType.toHiveType(typeTranslator, type);
-        return typeManager.getType(hiveType.getTypeSignature());
+        return TYPE_MANAGER.getType(hiveType.getTypeSignature());
     }
 
     private String canonicalizeTypeName(String type)
     {
         TypeSignature typeSignature = TypeSignature.parseTypeSignature(type);
-        return canonicalizeType(typeManager.getType(typeSignature)).toString();
+        return canonicalizeType(TYPE_MANAGER.getType(typeSignature)).toString();
     }
 
     private void assertColumnType(TableMetadata tableMetadata, String columnName, Type expectedType)

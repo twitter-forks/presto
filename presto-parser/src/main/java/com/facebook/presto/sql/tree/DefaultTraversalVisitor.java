@@ -174,6 +174,10 @@ public abstract class DefaultTraversalVisitor<R, C>
             process(node.getWindow().get(), context);
         }
 
+        if (node.getFilter().isPresent()) {
+            process(node.getFilter().get(), context);
+        }
+
         return null;
     }
 
@@ -272,6 +276,15 @@ public abstract class DefaultTraversalVisitor<R, C>
     protected R visitTryExpression(TryExpression node, C context)
     {
         process(node.getInnerExpression(), context);
+        return null;
+    }
+
+    @Override
+    protected R visitBindExpression(BindExpression node, C context)
+    {
+        process(node.getValue(), context);
+        process(node.getFunction(), context);
+
         return null;
     }
 

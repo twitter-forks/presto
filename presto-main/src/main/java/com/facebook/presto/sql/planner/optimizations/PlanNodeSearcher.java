@@ -11,7 +11,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.facebook.presto.sql.planner.optimizations;
 
 import com.facebook.presto.sql.planner.plan.PlanNode;
@@ -23,8 +22,8 @@ import java.util.function.Predicate;
 
 import static com.facebook.presto.sql.planner.optimizations.Predicates.alwaysTrue;
 import static com.facebook.presto.sql.planner.plan.ChildReplacer.replaceChildren;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Objects.requireNonNull;
 
 public class PlanNodeSearcher
@@ -184,5 +183,15 @@ public class PlanNodeSearcher
         else {
             throw new IllegalArgumentException("Unable to replace first node when a node has multiple children, use replaceAll instead");
         }
+    }
+
+    public boolean matches()
+    {
+        return findFirst().isPresent();
+    }
+
+    public int count()
+    {
+        return findAll().size();
     }
 }

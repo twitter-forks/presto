@@ -11,7 +11,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.facebook.presto.server;
 
 import com.facebook.presto.execution.QueryInfo;
@@ -71,6 +70,7 @@ public class TestBasicQueryInfo
                                 20.0,
                                 DataSize.valueOf("21GB"),
                                 DataSize.valueOf("22GB"),
+                                true,
                                 Duration.valueOf("23m"),
                                 Duration.valueOf("24m"),
                                 Duration.valueOf("25m"),

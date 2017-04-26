@@ -11,7 +11,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package com.facebook.presto.plugin.memory;
 
 import com.facebook.presto.Session;
@@ -27,8 +26,8 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static com.facebook.presto.plugin.memory.MemoryQueryRunner.createQueryRunner;
+import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 import static java.lang.String.format;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
