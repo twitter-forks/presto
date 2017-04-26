@@ -135,6 +135,7 @@
         <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
+            <!-- TODO specifically specifying version shouldn't be needed when guava conflicts are resolved from zookeeper -->
             <version>21.0</version>
         </dependency>
 
