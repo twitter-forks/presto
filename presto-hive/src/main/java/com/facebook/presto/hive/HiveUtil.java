@@ -107,6 +107,7 @@ import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.filter;
 import static com.google.common.collect.Lists.transform;
+import static com.hadoop.compression.lzo.LzoIndex.LZO_INDEX_SUFFIX;
 import static java.lang.Byte.parseByte;
 import static java.lang.Double.parseDouble;
 import static java.lang.Float.floatToRawIntBits;
@@ -148,6 +149,14 @@ public final class HiveUtil
         public boolean accept(Path path)
         {
             return path.toString().endsWith(".lzo");
+        }
+    };
+
+    private static final PathFilter LZOP_INDEX_DEFAULT_SUFFIX_FILTER = new PathFilter() {
+        @Override
+        public boolean accept(Path path)
+        {
+            return path.toString().endsWith(".lzo.index");
         }
     };
 
@@ -278,10 +287,6 @@ public final class HiveUtil
             return true;
         }
 
-        if (inputFormat.getClass().getSimpleName().equals("ThriftGeneralInputFormat")) {
-            return false;
-        }
-
         // use reflection to get isSplittable method on FileInputFormat
         Method method = null;
         for (Class<?> clazz = inputFormat.getClass(); clazz != null; clazz = clazz.getSuperclass()) {
@@ -305,9 +310,19 @@ public final class HiveUtil
         }
     }
 
-    static boolean isLzoCompressedFile(Path filePath)
+    public static boolean isLzoCompressedFile(Path filePath)
     {
         return LZOP_DEFAULT_SUFFIX_FILTER.accept(filePath);
+    }
+
+    public static boolean isLzoIndexFile(Path filePath)
+    {
+        return LZOP_INDEX_DEFAULT_SUFFIX_FILTER.accept(filePath);
+    }
+
+    public static Path getLzoIndexPath(Path lzoPath)
+    {
+        return lzoPath.suffix(LZO_INDEX_SUFFIX);
     }
 
     public static StructObjectInspector getTableObjectInspector(Properties schema)
