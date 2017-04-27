@@ -687,6 +687,10 @@ public class TestHiveFileFormats
         if (storageFormat.equals(THRIFTBINARY)) {
             splitProperties.setProperty(SERIALIZATION_CLASS, ThriftGenericRow.class.getName());
         }
+        Configuration configuration = new Configuration();
+        if (storageFormat.equals(THRIFTBINARY)) {
+            configuration.set("io.compression.codecs", "com.hadoop.compression.lzo.LzoCodec,com.hadoop.compression.lzo.LzopCodec");
+        }
 
         List<HivePartitionKey> partitionKeys = testColumns.stream()
                 .filter(TestColumn::isPartitionKey)
@@ -697,7 +701,7 @@ public class TestHiveFileFormats
                 ImmutableSet.of(cursorProvider),
                 ImmutableSet.of(),
                 "test",
-                new Configuration(),
+                configuration,
                 SESSION,
                 split.getPath(),
                 OptionalInt.empty(),
