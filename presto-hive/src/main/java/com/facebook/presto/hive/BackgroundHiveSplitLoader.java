@@ -80,9 +80,9 @@ import static com.facebook.presto.hive.HiveSessionProperties.getMaxInitialSplitS
 import static com.facebook.presto.hive.HiveSessionProperties.getMaxSplitSize;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.getInputFormat;
-import static com.facebook.presto.hive.HiveUtil.getLzoIndexPath;
-import static com.facebook.presto.hive.HiveUtil.isLzoCompressedFile;
-import static com.facebook.presto.hive.HiveUtil.isLzoIndexFile;
+import static com.facebook.presto.hive.HiveUtil.getLzopIndexPath;
+import static com.facebook.presto.hive.HiveUtil.isLzopCompressedFile;
+import static com.facebook.presto.hive.HiveUtil.isLzopIndexFile;
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -543,7 +543,7 @@ public class BackgroundHiveSplitLoader
     {
         Path filePath = new Path(path);
         // filter the index files
-        if (isLzoIndexFile(filePath)) {
+        if (isLzopIndexFile(filePath)) {
             return Collections.<HiveSplit>emptyIterator();
         }
         boolean forceLocalScheduling = HiveSessionProperties.isForceLocalScheduling(session);
@@ -553,8 +553,8 @@ public class BackgroundHiveSplitLoader
 
             return new AbstractIterator<HiveSplit>() {
                 private long chunkOffset = 0;
-                private LzoIndex index = isLzoCompressedFile(filePath) ?
-                    LzoIndex.readIndex(hdfsEnvironment.getFileSystem(session.getUser(), getLzoIndexPath(filePath)), filePath) :
+                private LzoIndex index = isLzopCompressedFile(filePath) ?
+                    LzoIndex.readIndex(hdfsEnvironment.getFileSystem(session.getUser(), getLzopIndexPath(filePath)), filePath) :
                     null;
 
                 @Override
@@ -587,7 +587,7 @@ public class BackgroundHiveSplitLoader
                     long chunkLength = Math.min(targetChunkSize, blockLocation.getLength() - chunkOffset);
 
                     // align the end point to the indexed point for lzo compressed file
-                    if (isLzoCompressedFile(filePath)) {
+                    if (isLzopCompressedFile(filePath)) {
                         long offset = blockLocation.getOffset() + chunkOffset;
                         if (index.isEmpty()) {
                             chunkLength = length - offset;
@@ -617,7 +617,7 @@ public class BackgroundHiveSplitLoader
 
                     while (chunkOffset >= blockLocation.getLength()) {
                         // allow overrun for lzo compressed file for intermediate blocks
-                        if (!isLzoCompressedFile(filePath) || blockLocation.getOffset() + blockLocation.getLength() >= length) {
+                        if (!isLzopCompressedFile(filePath) || blockLocation.getOffset() + blockLocation.getLength() >= length) {
                             checkState(chunkOffset == blockLocation.getLength(), "Error splitting blocks");
                         }
                         blockLocationIterator.next();
