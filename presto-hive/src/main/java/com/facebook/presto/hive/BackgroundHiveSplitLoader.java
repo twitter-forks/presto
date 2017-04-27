@@ -32,7 +32,6 @@ import com.google.common.collect.Iterators;
 import com.google.common.collect.PeekingIterator;
 import com.google.common.io.CharStreams;
 import com.hadoop.compression.lzo.LzoIndex;
-import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.BlockLocation;
@@ -96,7 +95,6 @@ public class BackgroundHiveSplitLoader
         implements HiveSplitLoader
 {
     private static final String CORRUPT_BUCKETING = "Hive table is corrupt. It is declared as being bucketed, but the files do not match the bucketing declaration.";
-    private static final Logger log = Logger.get(BackgroundHiveSplitLoader.class);
 
     public static final CompletableFuture<?> COMPLETED_FUTURE = CompletableFuture.completedFuture(null);
 
@@ -597,7 +595,6 @@ public class BackgroundHiveSplitLoader
                         else {
                             chunkLength = index.alignSliceEndToIndex(offset + chunkLength, length) - offset;
                         }
-                        log.debug("lzo split: %s (%s:%s)", path, offset, offset + chunkLength);
                     }
 
                     HiveSplit result = new HiveSplit(
