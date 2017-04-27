@@ -222,58 +222,56 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         oprot.writeStructBegin(new TStruct("dummy"));
         values.entrySet().stream()
                          .filter(v -> v.getValue() != null)
-                         .forEach(v -> writeField(v, oprot));
+                         .forEach(v -> writeField(v.getKey(), v.getValue(), oprot));
         oprot.writeFieldStop();
         oprot.writeStructEnd();
     }
 
-    private void writeField(Map.Entry<Short, Object> field, TProtocol oprot)
+    private void writeField(short thriftId, Object value, TProtocol oprot)
     {
-        Object value = field.getValue();
-        short thriftId = field.getKey();
         try {
             if (value instanceof Boolean) {
-                oprot.writeFieldBegin(new TField("dummy", TType.BOOL, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.BOOL, thriftId));
                 oprot.writeBool((Boolean) value);
             }
             else if (value instanceof Byte) {
-                oprot.writeFieldBegin(new TField("dummy", TType.BYTE, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.BYTE, thriftId));
                 oprot.writeByte((Byte) value);
             }
             else if (value instanceof Short) {
-                oprot.writeFieldBegin(new TField("dummy", TType.I16, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.I16, thriftId));
                 oprot.writeI16((Short) value);
             }
             else if (value instanceof Integer) {
-                oprot.writeFieldBegin(new TField("dummy", TType.I32, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.I32, thriftId));
                 oprot.writeI32((Integer) value);
             }
             else if (value instanceof Long) {
-                oprot.writeFieldBegin(new TField("dummy", TType.I64, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.I64, thriftId));
                 oprot.writeI64((Long) value);
             }
             else if (value instanceof Double) {
-                oprot.writeFieldBegin(new TField("dummy", TType.DOUBLE, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.DOUBLE, thriftId));
                 oprot.writeDouble((Double) value);
             }
             else if (value instanceof String) {
-                oprot.writeFieldBegin(new TField("dummy", TType.STRING, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.STRING, thriftId));
                 oprot.writeString((String) value);
             }
             else if (value instanceof ThriftGenericRow) {
-                oprot.writeFieldBegin(new TField("dummy", TType.STRUCT, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.STRUCT, thriftId));
                 ((ThriftGenericRow) value).write(oprot);
             }
             else if (value instanceof List) {
-                oprot.writeFieldBegin(new TField("dummy", TType.LIST, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.LIST, thriftId));
                 writeListField((List) value, oprot);
             }
             else if (value instanceof Set) {
-                oprot.writeFieldBegin(new TField("dummy", TType.SET, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.SET, thriftId));
                 writeSetField((Set) value, oprot);
             }
             else if (value instanceof Map) {
-                oprot.writeFieldBegin(new TField("dummy", TType.MAP, thriftId));
+                oprot.writeFieldBegin(new TField("", TType.MAP, thriftId));
                 writeMapField((Map) value, oprot);
             }
             oprot.writeFieldEnd();
