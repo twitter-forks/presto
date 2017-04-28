@@ -190,6 +190,7 @@ public class QueryMonitor
                                     queryStats.getPeakMemoryReservation().toBytes(),
                                     queryStats.getRawInputDataSize().toBytes(),
                                     queryStats.getRawInputPositions(),
+                                    queryInfo.getTotalDataTransferBytes(),
                                     queryStats.getCompletedDrivers(),
                                     queryInfo.isCompleteInfo(),
                                     objectMapper.writeValueAsString(queryInfo.getQueryStats().getOperatorSummaries())),

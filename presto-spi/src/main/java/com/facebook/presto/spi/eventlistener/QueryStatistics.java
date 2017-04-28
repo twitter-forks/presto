@@ -29,6 +29,7 @@ public class QueryStatistics
     private final long peakMemoryBytes;
     private final long totalBytes;
     private final long totalRows;
+    private final long totalDataTransferBytes;
 
     private final int completedSplits;
     private final boolean complete;
@@ -44,6 +45,7 @@ public class QueryStatistics
             long peakMemoryBytes,
             long totalBytes,
             long totalRows,
+            long totalDataTransferBytes,
             int completedSplits,
             boolean complete,
             String operatorSummaries)
@@ -56,6 +58,7 @@ public class QueryStatistics
         this.peakMemoryBytes = requireNonNull(peakMemoryBytes, "peakMemoryBytes is null");
         this.totalBytes = requireNonNull(totalBytes, "totalBytes is null");
         this.totalRows = requireNonNull(totalRows, "totalRows is null");
+        this.totalDataTransferBytes = requireNonNull(totalDataTransferBytes, "totalDataTransferBytes is null");
         this.completedSplits = requireNonNull(completedSplits, "completedSplits is null");
         this.complete = complete;
         this.operatorSummaries = requireNonNull(operatorSummaries, "operatorSummaries is null");
@@ -99,6 +102,11 @@ public class QueryStatistics
     public long getTotalRows()
     {
         return totalRows;
+    }
+
+    public long getTotalDataTransferBytes()
+    {
+        return totalDataTransferBytes;
     }
 
     public int getCompletedSplits()

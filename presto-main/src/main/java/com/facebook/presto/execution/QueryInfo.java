@@ -267,6 +267,12 @@ public class QueryInfo
     }
 
     @JsonProperty
+    public long getTotalDataTransferBytes()
+    {
+        return getAllStages(outputStage).stream().mapToLong(stage -> stage.getStageStats().getOutputDataSize().toBytes()).sum();
+    }
+
+    @JsonProperty
     public Set<Input> getInputs()
     {
         return inputs;
