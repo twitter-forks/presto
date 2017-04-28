@@ -26,19 +26,23 @@ public class HiveThriftFieldIdResolverFactory
     private static final Logger log = Logger.get(HiveThriftFieldIdResolverFactory.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     public static final String THRIFT_FIELD_ID_JSON = "thrift.field.id.json";
+    public static final ThriftFieldIdResolver PLUSONE = new HiveThriftFieldIdResolver(null);
 
     public ThriftFieldIdResolver createResolver(Properties schema)
     {
-        JsonNode root = null;
         String jsonData = schema.getProperty(THRIFT_FIELD_ID_JSON);
-        if (jsonData != null) {
-            try {
-                root = objectMapper.readTree(jsonData);
-            }
-            catch (IOException e) {
-                log.debug(e, "Failed to createResolver, schema: %s", schema);
-            }
+        if (jsonData == null) {
+            return PLUSONE;
         }
-        return new HiveThriftFieldIdResolver(root);
+
+        try {
+            JsonNode root = objectMapper.readTree(jsonData);
+            return new HiveThriftFieldIdResolver(root);
+        }
+        catch (IOException e) {
+            log.debug(e, "Failed to create an optimized thrift id resolver, json string: %s, schema: %s. Will use a default resolver.", jsonData, schema);
+        }
+
+        return PLUSONE;
     }
 }

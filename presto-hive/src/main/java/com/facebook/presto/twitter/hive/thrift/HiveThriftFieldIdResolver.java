@@ -42,31 +42,36 @@ public class HiveThriftFieldIdResolver
 
         Short thriftId = thriftIds.get(hiveIndex);
         if (thriftId != null) {
-            return thriftId.shortValue();
+            return thriftId;
         }
         else {
             JsonNode child = root.get(String.valueOf(hiveIndex));
             checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
-            checkCondition(child.get("id") != null, HIVE_INVALID_METADATA, "Missed key id for hiveIndex: %s, root: %s", hiveIndex, root);
-            thriftId = Short.valueOf((short) child.get("id").asInt());
-            thriftIds.put(Integer.valueOf(hiveIndex), thriftId);
+            if (child.isNumber()) {
+                thriftId = (short) child.asInt();
+            }
+            else {
+                checkCondition(child.get("id") != null, HIVE_INVALID_METADATA, "Missed id for hiveIndex: %s, root: %s", hiveIndex, root);
+                thriftId = (short) child.get("id").asInt();
+            }
+            thriftIds.put(hiveIndex, thriftId);
             return thriftId;
         }
     }
 
     public ThriftFieldIdResolver getNestedResolver(int hiveIndex)
     {
+        if (root == null) {
+            return this;
+        }
+
         ThriftFieldIdResolver nestedResolver = nestedResolvers.get(hiveIndex);
         if (nestedResolver != null) {
             return nestedResolver;
         }
         else {
-            JsonNode child = null;
-            if (root != null) {
-                child = root.get(String.valueOf(hiveIndex));
-            }
-            // what if the child == null?
-            // checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
+            JsonNode child = root.get(String.valueOf(hiveIndex));
+            checkCondition(child != null, HIVE_INVALID_METADATA, "Missed json value for hiveIndex: %s, root: %s", hiveIndex, root);
             nestedResolver = new HiveThriftFieldIdResolver(child);
             nestedResolvers.put(hiveIndex, nestedResolver);
             return nestedResolver;
@@ -79,6 +84,7 @@ public class HiveThriftFieldIdResolver
         return toStringHelper(this)
                 .add("root", root)
                 .add("nestedResolvers", nestedResolvers)
+                .add("thriftIds", thriftIds)
                 .toString();
     }
 }
