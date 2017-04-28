@@ -93,6 +93,8 @@ public class QueryCompletedEventScriber
       thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
     }
     thriftEvent.total_bytes = eventStat.getTotalBytes();
+    // uncomment after new thrift def is built and uploaded
+    //thriftEvent.total_data_transfer_bytes = eventStat.getTotalDataTransferBytes();
     thriftEvent.total_rows = eventStat.getTotalRows();
     thriftEvent.splits = eventStat.getCompletedSplits();
     if (event.getFailureInfo().isPresent()) {
