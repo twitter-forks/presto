@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.facebook.presto.hive.HiveStorageFormat.THRIFTBINARY;
 import static com.facebook.presto.hive.HiveUtil.createRecordReader;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static com.facebook.presto.hive.HiveUtil.getSerializationClassName;
@@ -42,12 +43,10 @@ import static java.util.Objects.requireNonNull;
 public class ThriftHiveRecordCursorProvider
         implements HiveRecordCursorProvider
 {
-    private static final String LAZY_BINARY_SERDE = "org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe";
     private static final String THRIFT_GENERIC_ROW = ThriftGenericRow.class.getName();
     private static final Set<String> THRIFT_SERDE_CLASS_NAMES = ImmutableSet.<String>builder()
-            .add("com.facebook.presto.twitter.hive.thrift.ThriftGeneralSerDe")
-            .add("com.facebook.presto.twitter.hive.thrift.ThriftGeneralDeserializer")
-            .add(LAZY_BINARY_SERDE)
+            .add(ThriftGeneralDeserializer.class.getName())
+            .add(THRIFTBINARY.getSerDe())
             .build();
     private final HdfsEnvironment hdfsEnvironment;
     private final ThriftFieldIdResolverFactory thriftFieldIdResolverFactory;
@@ -79,7 +78,7 @@ public class ThriftHiveRecordCursorProvider
 
         // We only allow the table which specified its serialization class is compatible to
         // our thrift general row, if the SerDe is LazyBinarySerDe.
-        if (LAZY_BINARY_SERDE.equals(getDeserializerClassName(schema)) && !THRIFT_GENERIC_ROW.equals(getSerializationClassName(schema))) {
+        if (THRIFTBINARY.getSerDe().equals(getDeserializerClassName(schema)) && !THRIFT_GENERIC_ROW.equals(getSerializationClassName(schema))) {
             return Optional.empty();
         }
 
