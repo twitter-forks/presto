@@ -25,6 +25,11 @@ import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TException;
 
+import javax.json.Json;
+import javax.json.JsonObject;
+import javax.json.JsonReader;
+
+import java.io.StringReader;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +58,12 @@ public class QueryCompletedEventScriber
           event.getContext().getCatalog().orElse(DASH),
           event.getContext().getSchema().orElse(DASH)));
     }
+  }
+
+  private static long getTotalDataTransferInBytes(JsonObject stage)
+  {
+    return Long.valueOf(stage.getJsonObject("stageStats").getString("outputDataSize")).longValue() +
+        stage.getJsonArray("subStages").stream().map(val -> (JsonObject) val).mapToLong(subStage -> getTotalDataTransferInBytes(subStage)).sum();
   }
 
   private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
@@ -93,6 +104,13 @@ public class QueryCompletedEventScriber
       thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
     }
     thriftEvent.total_bytes = eventStat.getTotalBytes();
+    if (eventMetadata.getPayload().isPresent()) {
+      JsonReader jsonReader = Json.createReader(new StringReader(eventMetadata.getPayload().get()));
+      long totalDataTransferBytes = getTotalDataTransferInBytes(jsonReader.readObject());
+      // uncomment after new thrift def is built and uploaded
+      //thriftEvent.total_data_transfer_bytes = totalDataTransferBytes;
+      jsonReader.close();
+    }
     thriftEvent.total_rows = eventStat.getTotalRows();
     thriftEvent.splits = eventStat.getCompletedSplits();
     if (event.getFailureInfo().isPresent()) {
