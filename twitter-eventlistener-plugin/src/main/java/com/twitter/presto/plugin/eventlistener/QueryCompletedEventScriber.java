@@ -60,9 +60,20 @@ public class QueryCompletedEventScriber
     }
   }
 
+  private static long getLongOrZero(String strVal)
+  {
+    try {
+      return Long.valueOf(strVal).longValue();
+    }
+    catch (NumberFormatException e) {
+      log.warn(e, "Failed to parse long, returning 0");
+      return 0;
+    }
+  }
+
   private static long getTotalDataTransferInBytes(JsonObject stage)
   {
-    return Long.valueOf(stage.getJsonObject("stageStats").getString("outputDataSize")).longValue() +
+    return getLongOrZero(stage.getJsonObject("stageStats").getString("outputDataSize")) +
         stage.getJsonArray("subStages").stream().map(val -> (JsonObject) val).mapToLong(subStage -> getTotalDataTransferInBytes(subStage)).sum();
   }
 
