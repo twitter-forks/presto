@@ -23,6 +23,7 @@ import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 
 import io.airlift.log.Logger;
+import io.airlift.units.DataSize;
 import org.apache.thrift.TException;
 
 import javax.json.Json;
@@ -63,10 +64,10 @@ public class QueryCompletedEventScriber
   private static long getLongOrZero(String strVal)
   {
     try {
-      return Long.valueOf(strVal).longValue();
+      return DataSize.valueOf(strVal).toBytes();
     }
-    catch (NumberFormatException e) {
-      log.warn(e, "Failed to parse long, returning 0");
+    catch (IllegalArgumentException e) {
+      log.warn(e, "Failed to parse io.airlift.units.DataSize string, returning 0");
       return 0;
     }
   }
