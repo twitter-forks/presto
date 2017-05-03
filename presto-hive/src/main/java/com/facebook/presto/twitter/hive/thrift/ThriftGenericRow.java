@@ -25,7 +25,6 @@ import org.apache.thrift.protocol.TMap;
 import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.protocol.TProtocolUtil;
 import org.apache.thrift.protocol.TSet;
-import org.apache.thrift.protocol.TStruct;
 import org.apache.thrift.protocol.TType;
 import org.apache.thrift.transport.TMemoryInputTransport;
 import org.apache.thrift.transport.TTransport;
@@ -219,81 +218,7 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
 
     public void write(TProtocol oprot) throws TException
     {
-        oprot.writeStructBegin(new TStruct("dummy"));
-        values.entrySet().stream()
-                         .filter(v -> v.getValue() != null)
-                         .forEach(v -> writeField(v.getKey(), v.getValue(), oprot));
-        oprot.writeFieldStop();
-        oprot.writeStructEnd();
-    }
-
-    private void writeField(short thriftId, Object value, TProtocol oprot)
-    {
-        try {
-            if (value instanceof Boolean) {
-                oprot.writeFieldBegin(new TField("", TType.BOOL, thriftId));
-                oprot.writeBool((Boolean) value);
-            }
-            else if (value instanceof Byte) {
-                oprot.writeFieldBegin(new TField("", TType.BYTE, thriftId));
-                oprot.writeByte((Byte) value);
-            }
-            else if (value instanceof Short) {
-                oprot.writeFieldBegin(new TField("", TType.I16, thriftId));
-                oprot.writeI16((Short) value);
-            }
-            else if (value instanceof Integer) {
-                oprot.writeFieldBegin(new TField("", TType.I32, thriftId));
-                oprot.writeI32((Integer) value);
-            }
-            else if (value instanceof Long) {
-                oprot.writeFieldBegin(new TField("", TType.I64, thriftId));
-                oprot.writeI64((Long) value);
-            }
-            else if (value instanceof Double) {
-                oprot.writeFieldBegin(new TField("", TType.DOUBLE, thriftId));
-                oprot.writeDouble((Double) value);
-            }
-            else if (value instanceof String) {
-                oprot.writeFieldBegin(new TField("", TType.STRING, thriftId));
-                oprot.writeString((String) value);
-            }
-            else if (value instanceof ThriftGenericRow) {
-                oprot.writeFieldBegin(new TField("", TType.STRUCT, thriftId));
-                ((ThriftGenericRow) value).write(oprot);
-            }
-            else if (value instanceof List) {
-                oprot.writeFieldBegin(new TField("", TType.LIST, thriftId));
-                writeListField((List) value, oprot);
-            }
-            else if (value instanceof Set) {
-                oprot.writeFieldBegin(new TField("", TType.SET, thriftId));
-                writeSetField((Set) value, oprot);
-            }
-            else if (value instanceof Map) {
-                oprot.writeFieldBegin(new TField("", TType.MAP, thriftId));
-                writeMapField((Map) value, oprot);
-            }
-            oprot.writeFieldEnd();
-        }
-        catch (TException e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    private void writeListField(List listValue, TProtocol oprot) throws TException
-    {
-        throw new UnsupportedOperationException("writeListField is not supported.");
-    }
-
-    private void writeSetField(Set setValue, TProtocol oprot) throws TException
-    {
-        throw new UnsupportedOperationException("writeSetField is not supported.");
-    }
-
-    private void writeMapField(Map setValue, TProtocol oprot) throws TException
-    {
-        throw new UnsupportedOperationException("writeMapField is not supported.");
+        throw new UnsupportedOperationException("ThriftGenericRow.write is not supported.");
     }
 
     public int compareTo(ThriftGenericRow other)
