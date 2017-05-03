@@ -121,7 +121,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hive.common.FileUtils.unescapePathName;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.FILE_INPUT_FORMAT;
-import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 import static org.apache.hadoop.hive.serde.serdeConstants.DECIMAL_TYPE_NAME;
 import static org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_LIB;
 import static org.apache.hadoop.hive.serde2.ColumnProjectionUtils.READ_ALL_COLUMNS;
@@ -246,6 +245,7 @@ public final class HiveUtil
             return MapredParquetInputFormat.class;
         }
 
+        // Remove this after https://github.com/twitter/elephant-bird/pull/481 is included in a release
         if ("com.twitter.elephantbird.mapred.input.HiveMultiInputFormat".equals(inputFormatName)) {
             return ThriftGeneralInputFormat.class;
         }
@@ -259,13 +259,6 @@ public final class HiveUtil
     {
         String name = schema.getProperty(FILE_INPUT_FORMAT);
         checkCondition(name != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive input format property: %s", FILE_INPUT_FORMAT);
-        return name;
-    }
-
-    public static String getSerializationClassName(Properties schema)
-    {
-        String name = schema.getProperty(SERIALIZATION_CLASS);
-        checkCondition(name != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive property: %s", SERIALIZATION_CLASS);
         return name;
     }
 

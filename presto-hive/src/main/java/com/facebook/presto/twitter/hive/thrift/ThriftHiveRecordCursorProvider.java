@@ -34,11 +34,13 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.HiveStorageFormat.THRIFTBINARY;
+import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.createRecordReader;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
-import static com.facebook.presto.hive.HiveUtil.getSerializationClassName;
 import static java.util.Objects.requireNonNull;
+import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 public class ThriftHiveRecordCursorProvider
         implements HiveRecordCursorProvider
@@ -109,5 +111,12 @@ public class ThriftHiveRecordCursorProvider
         if (schema.getProperty(key) == null) {
             schema.setProperty(key, value);
         }
+    }
+
+    private static String getSerializationClassName(Properties schema)
+    {
+        String name = schema.getProperty(SERIALIZATION_CLASS);
+        checkCondition(name != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive property: %s", SERIALIZATION_CLASS);
+        return name;
     }
 }

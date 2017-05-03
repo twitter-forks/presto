@@ -36,6 +36,7 @@ import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
  * Mirror of com.twitter.elephantbird.mapred.input.HiveMultiInputFormat allows to pass the thriftClassName
  * directly as a property of JobConfig.
  * PR for twitter/elephant-bird: https://github.com/twitter/elephant-bird/pull/481
+ * Remove the class once #481 is included in a release
  */
 @SuppressWarnings("deprecation")
 public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<LongWritable, BinaryWritable>
