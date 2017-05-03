@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.twitter.hive.thrift;
 
+import com.facebook.presto.spi.PrestoException;
 import com.twitter.elephantbird.mapred.input.DeprecatedFileInputFormatWrapper;
 import com.twitter.elephantbird.mapreduce.input.MultiInputFormat;
 import com.twitter.elephantbird.mapreduce.io.BinaryWritable;
@@ -28,6 +29,7 @@ import java.io.IOException;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
+import static java.lang.String.format;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 /**
@@ -53,7 +55,7 @@ public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<L
             setInputFormatInstance(new MultiInputFormat(new TypeRef(thriftClass) {}));
         }
         catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed getting class for " + thriftClassName);
+            throw new PrestoException(HIVE_INVALID_METADATA, format("Failed getting class for %s", thriftClassName));
         }
     }
 
