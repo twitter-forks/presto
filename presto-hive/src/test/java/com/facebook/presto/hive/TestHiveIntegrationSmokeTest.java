@@ -1866,6 +1866,9 @@ public class TestHiveIntegrationSmokeTest
         Session session = getSession();
         ImmutableList.Builder<TestingHiveStorageFormat> formats = ImmutableList.builder();
         for (HiveStorageFormat hiveStorageFormat : HiveStorageFormat.values()) {
+            if (hiveStorageFormat.equals(HiveStorageFormat.THRIFTBINARY)) {
+                continue;
+            }
             formats.add(new TestingHiveStorageFormat(session, hiveStorageFormat));
         }
         formats.add(new TestingHiveStorageFormat(
