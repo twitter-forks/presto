@@ -22,6 +22,44 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.google.common.base.MoreObjects.toStringHelper;
 
+/**
+ * Resolve the translation of continuous hive ids to discontinuous thrift ids by using a json property.
+ * Example:
+ * We have the thrift definition:
+ *
+ *     struct Name {
+ *         1: string first,
+ *         2: string last
+ *     }
+ *     struct Person {
+ *         1: Name name,
+ *         3: String phone
+ *     }
+ *
+ * Hive table for Person:
+ *
+ *     +---------+-------------+----------------------------------+-----------------+
+ *     | hive id | column name | type                             | thrift field id |
+ *     +---------+-------------+----------------------------------+-----------------+
+ *     | 0       | name        | struct<first:string,last:string> | 1               |
+ *     +---------+-------------+----------------------------------+-----------------+
+ *     | 1       | phone       | string                           | 3               |
+ *     +---------+-------------+----------------------------------+-----------------+
+ *
+ * The corresponding id mapping object is:
+ *
+ *     x = {
+ *         '0': {
+ *              '0': 1,
+ *              '1': 2,
+ *         },
+ *         '1': 3
+ *     }
+ *
+ * The json property is:
+ *
+ *     {"0":{"0":1,"1":2},"1":3}
+ */
 public class HiveThriftFieldIdResolver
         implements ThriftFieldIdResolver
 {

@@ -25,7 +25,6 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
-import com.google.common.base.Throwables;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -523,7 +522,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             recordReader.close();
         }
         catch (IOException e) {
-            throw Throwables.propagate(e);
+            throw new RuntimeException("Error closing thrift record reader", e);
         }
     }
 
