@@ -27,16 +27,16 @@ import static org.testng.Assert.assertThrows;
 @Test
 public class TestHiveThriftFieldIdResolver
 {
-    private static final Map<String, Object> STRUCT_FIELD_ID_AS_MAP = ImmutableMap.of(
+    private static final Map<String, Short> STRUCT_FIELD_ID_AS_MAP = ImmutableMap.of(
             "0", (short) 1,
             "1", (short) 2,
             "id", (short) 4);
 
     private static final Map<String, Object> LIST_FIELD_ID_AS_MAP = ImmutableMap.of(
-            "0", "{}",
+            "0", STRUCT_FIELD_ID_AS_MAP,
             "id", (short) 5);
 
-    private static final Map<String, Object> VERBOSE_PRIMARY_FIELD_ID_AS_MAP = ImmutableMap.of(
+    private static final Map<String, Short> VERBOSE_PRIMARY_FIELD_ID_AS_MAP = ImmutableMap.of(
             "id", (short) 6);
 
     private static final Map<String, Object> THRIFT_FIELD_ID_JSON_AS_MAP = ImmutableMap.<String, Object>builder()
@@ -54,13 +54,16 @@ public class TestHiveThriftFieldIdResolver
     public void testDefaultResolver()
             throws Exception
     {
-        ThriftFieldIdResolver plusOne = resolverFactory.createResolver(new Properties());
+        ThriftFieldIdResolver defaultResolver = resolverFactory.createResolver(new Properties());
 
-        assertEquals(plusOne.getThriftId(0), 1);
-        assertEquals(plusOne.getThriftId(10), 11);
-        assertEquals(plusOne.getThriftId(5), 6);
-        assertEquals(plusOne.getNestedResolver(2), plusOne);
-        assertEquals(plusOne.getNestedResolver(6), plusOne);
+        for (int i = 0; i <= 5; ++i) {
+            assertEquals(defaultResolver.getThriftId(i), i + 1);
+            assertEquals(defaultResolver.getNestedResolver(i), defaultResolver);
+        }
+        for (int i = 5; i >= 0; --i) {
+            assertEquals(defaultResolver.getThriftId(i), i + 1);
+            assertEquals(defaultResolver.getNestedResolver(i), defaultResolver);
+        }
     }
 
     @Test
@@ -88,6 +91,14 @@ public class TestHiveThriftFieldIdResolver
         nestedResolver = resolver.getNestedResolver(3);
         field = (Map<String, Object>) THRIFT_FIELD_ID_JSON_AS_MAP.get("3");
         assertEquals(resolver.getThriftId(3), field.get("id"));
+
+        // non-primary nested field
+        nestedResolver = resolver.getNestedResolver(3);
+        field = (Map<String, Object>) THRIFT_FIELD_ID_JSON_AS_MAP.get("3");
+        nestedResolver = nestedResolver.getNestedResolver(0);
+        field = (Map<String, Object>) field.get("0");
+        assertEquals(nestedResolver.getThriftId(0), field.get("0"));
+        assertEquals(nestedResolver.getThriftId(1), field.get("1"));
 
         // verbose primary field
         field = (Map<String, Object>) THRIFT_FIELD_ID_JSON_AS_MAP.get("4");
