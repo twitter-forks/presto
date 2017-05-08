@@ -20,6 +20,7 @@ import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
 
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
+import com.twitter.presto.thriftjava.QueryStageInfo;
 import com.twitter.presto.thriftjava.QueryState;
 
 import io.airlift.log.Logger;
@@ -61,23 +62,6 @@ public class QueryCompletedEventScriber
     }
   }
 
-  private static long getLongOrZero(String strVal)
-  {
-    try {
-      return DataSize.valueOf(strVal).toBytes();
-    }
-    catch (IllegalArgumentException e) {
-      log.warn(e, "Failed to parse io.airlift.units.DataSize string, returning 0");
-      return 0;
-    }
-  }
-
-  private static long getTotalDataTransferInBytes(JsonObject stage)
-  {
-    return getLongOrZero(stage.getJsonObject("stageStats").getString("outputDataSize")) +
-        stage.getJsonArray("subStages").stream().map(val -> (JsonObject) val).mapToLong(subStage -> getTotalDataTransferInBytes(subStage)).sum();
-  }
-
   private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
   {
     QueryMetadata eventMetadata = event.getMetadata();
@@ -116,13 +100,8 @@ public class QueryCompletedEventScriber
       thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
     }
     thriftEvent.total_bytes = eventStat.getTotalBytes();
-    if (eventMetadata.getPayload().isPresent()) {
-      JsonReader jsonReader = Json.createReader(new StringReader(eventMetadata.getPayload().get()));
-      long totalDataTransferBytes = getTotalDataTransferInBytes(jsonReader.readObject());
-      // uncomment after new thrift def is built and uploaded
-      //thriftEvent.total_data_transfer_bytes = totalDataTransferBytes;
-      jsonReader.close();
-    }
+    thriftEvent.query_stages = QueryStatsHelper.getQueryStages(eventMetadata);
+    thriftEvent.operator_summaries = QueryStatsHelper.getOperatorSummaries(eventStat);
     thriftEvent.total_rows = eventStat.getTotalRows();
     thriftEvent.splits = eventStat.getCompletedSplits();
     if (event.getFailureInfo().isPresent()) {
