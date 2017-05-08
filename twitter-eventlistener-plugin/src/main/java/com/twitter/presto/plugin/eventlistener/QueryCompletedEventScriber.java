@@ -20,18 +20,11 @@ import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
 
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
-import com.twitter.presto.thriftjava.QueryStageInfo;
 import com.twitter.presto.thriftjava.QueryState;
 
 import io.airlift.log.Logger;
-import io.airlift.units.DataSize;
 import org.apache.thrift.TException;
 
-import javax.json.Json;
-import javax.json.JsonObject;
-import javax.json.JsonReader;
-
-import java.io.StringReader;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
