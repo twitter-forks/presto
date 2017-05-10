@@ -27,15 +27,25 @@
             <artifactId>log</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.airlift</groupId>
+            <artifactId>units</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.json</groupId>
+            <artifactId>javax.json-api</artifactId>
+            <version>1.0</version>
         </dependency>
 
         <!-- twitter deps -->
         <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>presto-thrift-java</artifactId>
-            <version>0.0.2</version>
+            <version>0.0.3</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.twitter</groupId>

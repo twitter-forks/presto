@@ -93,6 +93,8 @@ public class QueryCompletedEventScriber
       thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
     }
     thriftEvent.total_bytes = eventStat.getTotalBytes();
+    thriftEvent.query_stages = QueryStatsHelper.getQueryStages(eventMetadata);
+    thriftEvent.operator_summaries = QueryStatsHelper.getOperatorSummaries(eventStat);
     thriftEvent.total_rows = eventStat.getTotalRows();
     thriftEvent.splits = eventStat.getCompletedSplits();
     if (event.getFailureInfo().isPresent()) {
