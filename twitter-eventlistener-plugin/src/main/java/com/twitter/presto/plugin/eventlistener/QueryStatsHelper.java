@@ -16,6 +16,7 @@ package com.twitter.presto.plugin.eventlistener;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
 
+import com.twitter.presto.thriftjava.OperatorStats;
 import com.twitter.presto.thriftjava.QueryStageInfo;
 
 import io.airlift.log.Logger;
@@ -25,6 +26,7 @@ import io.airlift.units.Duration;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
+import javax.json.JsonValue.ValueType;
 
 import java.io.StringReader;
 import java.util.HashMap;
@@ -32,6 +34,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.stream.Collectors;
 
 public class QueryStatsHelper
 {
@@ -68,8 +71,7 @@ public class QueryStatsHelper
 
   private static QueryStageInfo getQueryStageInfo(int stageId, JsonObject stage)
   {
-    QueryStageInfo stageInfo =
-      new com.twitter.presto.thriftjava.QueryStageInfo();
+    QueryStageInfo stageInfo = new QueryStageInfo();
 
     stageInfo.stage_id = stageId;
     try {
@@ -84,7 +86,8 @@ public class QueryStatsHelper
       stageInfo.total_cpu_time_millis = getMillisOrNegativeOne(stageStats.getString("totalCpuTime"));
       stageInfo.total_user_time_millis = getMillisOrNegativeOne(stageStats.getString("totalUserTime"));
       stageInfo.total_blocked_time_millis = getMillisOrNegativeOne(stageStats.getString("totalBlockedTime"));
-    } catch (Exception e) {
+    }
+    catch (Exception e) {
       log.error(e, String.format("Error retrieving stage stats for stage %d", stageId));
       return null;
     }
@@ -94,8 +97,7 @@ public class QueryStatsHelper
 
   private static OperatorStats getOperatorStat(JsonObject obj)
   {
-    OperatorStats operatorStats =
-      new com.twitter.presto.thriftjava.OperatorStats();
+    OperatorStats operatorStats = new OperatorStats();
 
     try {
       operatorStats.pipeline_id = obj.getInt("pipelineId");
@@ -123,7 +125,8 @@ public class QueryStatsHelper
       operatorStats.finish_user_millis = getMillisOrNegativeOne(obj.getString("finishUser"));
       operatorStats.memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("memoryReservation"));
       operatorStats.system_memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("systemMemoryReservation"));
-    } catch (Exception e) {
+    }
+    catch (Exception e) {
       log.error(e, String.format("Error retrieving operator stats from JsonObject:\n%s\n", obj.toString()));
       return null;
     }
@@ -131,39 +134,49 @@ public class QueryStatsHelper
     return operatorStats;
   }
 
-  public static Map<int, QueryStageInfo> getQueryStages(QueryMetadata eventMetadata)
+  public static Map<Integer, QueryStageInfo> getQueryStages(QueryMetadata eventMetadata)
   {
-    if (!eventMetadata.getPayload().isPresent())
+    if (!eventMetadata.getPayload().isPresent()) {
       return null;
+    }
 
     String payload = eventMetadata.getPayload().get();
     JsonReader jsonReader = Json.createReader(new StringReader(payload));
     Queue<JsonObject> stageJsonObjs = new LinkedList<JsonObject>();
     try {
       stageJsonObjs.add(jsonReader.readObject());
-    } catch (Exception e) {
-      log.warn(e,
+    }
+    catch (Exception e) {
+      log.error(e,
         String.format("getQueryStages - Unable to extract JsonObject out of following blob:\n%s\n", payload));
       return null;
     }
 
-    Map<int, QueryStageInfo> stages = new HashMap<int, QueryStageInfo>();
+    Map<Integer, QueryStageInfo> stages = new HashMap<Integer, QueryStageInfo>();
     while (!stageJsonObjs.isEmpty()) {
       JsonObject cur = stageJsonObjs.poll();
       String stageIdStr = "Unknown";
       try {
         stageIdStr = cur.getString("stageId");
         int stageId = Integer.parseInt(stageIdStr.split(".")[1]);
-        stages.put(stageId, getQueryStageInfo(stageId, cur));
-      } catch (Exception e) {
+        QueryStageInfo curStage = getQueryStageInfo(stageId, cur);
+        if (curStage != null) {
+          stages.put(stageId, getQueryStageInfo(stageId, cur));
+        }
+      }
+      catch (Exception e) {
         log.error(e,
           String.format("Failed to parse QueryStageInfo from JsonObject:\n%s\n", cur.toString()));
-        return null
+        return null;
       }
 
       try {
-        cur.getJsonArray("subStages").stream().map(val -> stageJsonObjs.add((JsonObject) val));
-      } catch (Exception e) {
+        cur.getJsonArray("subStages")
+          .stream()
+          .filter(val -> val.getValueType() == ValueType.OBJECT)
+          .map(val -> stageJsonObjs.add((JsonObject) val));
+      }
+      catch (Exception e) {
         log.error(e,
           String.format("Failed to get subStages for stage %s, treating as no subStages", stageIdStr));
       }
@@ -181,15 +194,20 @@ public class QueryStatsHelper
     }
 
     JsonReader jsonReader = Json.createReader(new StringReader(operatorSummariesJsonStr));
-    List<OperatorStats> operatorSummaries = new List<OperatorStats>();
     try {
-      jsonReader.readArray().stream().map(val -> operatorSummaries.add(getOperatorStat((JsonObject) val)));
-    } catch (Exception e) {
+      return jsonReader
+        .readArray()
+        .stream()
+        .filter(val -> val.getValueType() == ValueType.OBJECT)
+        .map(val -> getOperatorStat((JsonObject) val))
+        .filter(opStat -> opStat != null)
+        .collect(Collectors.toList());
+    }
+    catch (Exception e) {
       log.error(e,
         String.format("Error converting blob to List<OperatorStats>:\n%s\n", operatorSummariesJsonStr));
-      return null
     }
 
-    return operatorSummaries;
+    return null;
   }
 }
