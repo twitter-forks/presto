@@ -74,7 +74,7 @@ public class QueryCompletedEventScriber
     thriftEvent.catalog = eventContext.getCatalog().orElse(DASH);
     thriftEvent.schema = eventContext.getSchema().orElse(DASH);
     Map<String, List<String>> queriedColumnsByTable = new HashMap<String, List<String>>();
-    event.getIoMetadata().getInputs().forEach(input -> queriedColumnsByTable.put(input.getTable(), input.getColumns()));
+    event.getIoMetadata().getInputs().forEach(input -> queriedColumnsByTable.put(String.format("%s.%s", input.getSchema(), input.getTable()), input.getColumns()));
     thriftEvent.queried_columns_by_table = queriedColumnsByTable;
     thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(DASH);
     thriftEvent.user_agent = eventContext.getUserAgent().orElse(DASH);
@@ -93,6 +93,8 @@ public class QueryCompletedEventScriber
       thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
     }
     thriftEvent.total_bytes = eventStat.getTotalBytes();
+    thriftEvent.query_stages = QueryStatsHelper.getQueryStages(eventMetadata);
+    thriftEvent.operator_summaries = QueryStatsHelper.getOperatorSummaries(eventStat);
     thriftEvent.total_rows = eventStat.getTotalRows();
     thriftEvent.splits = eventStat.getCompletedSplits();
     if (event.getFailureInfo().isPresent()) {

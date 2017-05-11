@@ -27,6 +27,7 @@ import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
@@ -36,6 +37,7 @@ import io.airlift.slice.Slices;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat;
 import org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat;
@@ -105,6 +107,7 @@ import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.filter;
 import static com.google.common.collect.Lists.transform;
+import static com.hadoop.compression.lzo.LzoIndex.LZO_INDEX_SUFFIX;
 import static java.lang.Byte.parseByte;
 import static java.lang.Double.parseDouble;
 import static java.lang.Float.floatToRawIntBits;
@@ -140,6 +143,22 @@ public final class HiveUtil
 
     private static final String BIG_DECIMAL_POSTFIX = "BD";
 
+    private static final PathFilter LZOP_DEFAULT_SUFFIX_FILTER = new PathFilter() {
+        @Override
+        public boolean accept(Path path)
+        {
+            return path.toString().endsWith(".lzo");
+        }
+    };
+
+    private static final PathFilter LZOP_INDEX_DEFAULT_SUFFIX_FILTER = new PathFilter() {
+        @Override
+        public boolean accept(Path path)
+        {
+            return path.toString().endsWith(".lzo.index");
+        }
+    };
+
     static {
         DateTimeParser[] timestampWithoutTimeZoneParser = {
                 DateTimeFormat.forPattern("yyyy-M-d").getParser(),
@@ -172,7 +191,7 @@ public final class HiveUtil
 
         // propagate serialization configuration to getRecordReader
         schema.stringPropertyNames().stream()
-                .filter(name -> name.startsWith("serialization."))
+                .filter(name -> name.startsWith("serialization.") || name.startsWith("elephantbird."))
                 .forEach(name -> jobConf.set(name, schema.getProperty(name)));
 
         try {
@@ -226,6 +245,11 @@ public final class HiveUtil
             return MapredParquetInputFormat.class;
         }
 
+        // Remove this after https://github.com/twitter/elephant-bird/pull/481 is included in a release
+        if ("com.twitter.elephantbird.mapred.input.HiveMultiInputFormat".equals(inputFormatName)) {
+            return ThriftGeneralInputFormat.class;
+        }
+
         Class<?> clazz = conf.getClassByName(inputFormatName);
         // TODO: remove redundant cast to Object after IDEA-118533 is fixed
         return (Class<? extends InputFormat<?, ?>>) (Object) clazz.asSubclass(InputFormat.class);
@@ -277,6 +301,21 @@ public final class HiveUtil
         catch (InvocationTargetException | IllegalAccessException e) {
             throw Throwables.propagate(e);
         }
+    }
+
+    public static boolean isLzopCompressedFile(Path filePath)
+    {
+        return LZOP_DEFAULT_SUFFIX_FILTER.accept(filePath);
+    }
+
+    public static boolean isLzopIndexFile(Path filePath)
+    {
+        return LZOP_INDEX_DEFAULT_SUFFIX_FILTER.accept(filePath);
+    }
+
+    public static Path getLzopIndexPath(Path lzoPath)
+    {
+        return lzoPath.suffix(LZO_INDEX_SUFFIX);
     }
 
     public static StructObjectInspector getTableObjectInspector(Properties schema)

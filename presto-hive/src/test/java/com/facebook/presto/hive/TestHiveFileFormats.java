@@ -25,6 +25,9 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordPageSource;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.testing.TestingConnectorSession;
+import com.facebook.presto.twitter.hive.thrift.HiveThriftFieldIdResolverFactory;
+import com.facebook.presto.twitter.hive.thrift.ThriftGenericRow;
+import com.facebook.presto.twitter.hive.thrift.ThriftHiveRecordCursorProvider;
 import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.RowType;
 import com.google.common.base.Joiner;
@@ -67,6 +70,7 @@ import static com.facebook.presto.hive.HiveStorageFormat.RCBINARY;
 import static com.facebook.presto.hive.HiveStorageFormat.RCTEXT;
 import static com.facebook.presto.hive.HiveStorageFormat.SEQUENCEFILE;
 import static com.facebook.presto.hive.HiveStorageFormat.TEXTFILE;
+import static com.facebook.presto.hive.HiveStorageFormat.THRIFTBINARY;
 import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
@@ -83,6 +87,7 @@ import static io.airlift.slice.Slices.utf8Slice;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.FILE_INPUT_FORMAT;
+import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 import static org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_LIB;
 import static org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory.getStandardListObjectInspector;
 import static org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory.getStandardStructObjectInspector;
@@ -492,6 +497,54 @@ public class TestHiveFileFormats
     }
 
     @Test(dataProvider = "rowCount")
+    public void testLZOThrift(int rowCount)
+            throws Exception
+    {
+        RowType nameType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.empty());
+        RowType phoneType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.empty());
+        RowType personType = new RowType(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)), Optional.empty());
+
+        List<TestColumn> testColumns = ImmutableList.of(
+                new TestColumn(
+                        "persons",
+                        getStandardListObjectInspector(
+                                getStandardStructObjectInspector(
+                                        ImmutableList.of("name", "id", "email", "phones"),
+                                        ImmutableList.of(
+                                                getStandardStructObjectInspector(
+                                                        ImmutableList.of("first_name", "last_name"),
+                                                        ImmutableList.of(javaStringObjectInspector, javaStringObjectInspector)
+                                                ),
+                                                javaIntObjectInspector,
+                                                javaStringObjectInspector,
+                                                getStandardListObjectInspector(
+                                                        getStandardStructObjectInspector(
+                                                                ImmutableList.of("number", "type"),
+                                                                ImmutableList.of(javaStringObjectInspector, javaStringObjectInspector)
+                                                        )
+                                                )
+                                        )
+                                )
+                        ),
+                        null,
+                        arrayBlockOf(personType,
+                                rowBlockOf(ImmutableList.of(nameType, INTEGER, createUnboundedVarcharType(), new ArrayType(phoneType)),
+                                        rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "Bob", "Roberts"),
+                                        0,
+                                        "bob.roberts@example.com",
+                                        arrayBlockOf(phoneType, rowBlockOf(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), "1234567890", null))
+                                )
+                        )
+                )
+        );
+
+        File file = new File(this.getClass().getClassLoader().getResource("addressbook.thrift.lzo").getPath());
+        FileSplit split = new FileSplit(new Path(file.getAbsolutePath()), 0, file.length(), new String[0]);
+        HiveRecordCursorProvider cursorProvider = new ThriftHiveRecordCursorProvider(HDFS_ENVIRONMENT, new HiveThriftFieldIdResolverFactory());
+        testCursorProvider(cursorProvider, split, THRIFTBINARY, testColumns, 1);
+    }
+
+    @Test(dataProvider = "rowCount")
     public void testDwrf(int rowCount)
             throws Exception
     {
@@ -631,6 +684,13 @@ public class TestHiveFileFormats
         splitProperties.setProperty(SERIALIZATION_LIB, storageFormat.getSerDe());
         splitProperties.setProperty("columns", Joiner.on(',').join(transform(filter(testColumns, not(TestColumn::isPartitionKey)), TestColumn::getName)));
         splitProperties.setProperty("columns.types", Joiner.on(',').join(transform(filter(testColumns, not(TestColumn::isPartitionKey)), TestColumn::getType)));
+        if (storageFormat.equals(THRIFTBINARY)) {
+            splitProperties.setProperty(SERIALIZATION_CLASS, ThriftGenericRow.class.getName());
+        }
+        Configuration configuration = new Configuration();
+        if (storageFormat.equals(THRIFTBINARY)) {
+            configuration.set("io.compression.codecs", "com.hadoop.compression.lzo.LzoCodec,com.hadoop.compression.lzo.LzopCodec");
+        }
 
         List<HivePartitionKey> partitionKeys = testColumns.stream()
                 .filter(TestColumn::isPartitionKey)
@@ -641,7 +701,7 @@ public class TestHiveFileFormats
                 ImmutableSet.of(cursorProvider),
                 ImmutableSet.of(),
                 "test",
-                new Configuration(),
+                configuration,
                 SESSION,
                 split.getPath(),
                 OptionalInt.empty(),
