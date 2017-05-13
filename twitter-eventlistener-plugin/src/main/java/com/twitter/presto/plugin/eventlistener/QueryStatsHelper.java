@@ -141,9 +141,9 @@ public class QueryStatsHelper
     }
 
     String payload = eventMetadata.getPayload().get();
-    JsonReader jsonReader = Json.createReader(new StringReader(payload));
     Queue<JsonObject> stageJsonObjs = new LinkedList<JsonObject>();
     try {
+      JsonReader jsonReader = Json.createReader(new StringReader(payload));
       stageJsonObjs.add(jsonReader.readObject());
     }
     catch (Exception e) {
@@ -158,7 +158,7 @@ public class QueryStatsHelper
       String stageIdStr = "Unknown";
       try {
         stageIdStr = cur.getString("stageId");
-        int stageId = Integer.parseInt(stageIdStr.split(".")[1]);
+        int stageId = Integer.parseInt(stageIdStr.split("\\.")[1]);
         QueryStageInfo curStage = getQueryStageInfo(stageId, cur);
         if (curStage != null) {
           stages.put(stageId, getQueryStageInfo(stageId, cur));
@@ -193,8 +193,8 @@ public class QueryStatsHelper
       return null;
     }
 
-    JsonReader jsonReader = Json.createReader(new StringReader(operatorSummariesJsonStr));
     try {
+      JsonReader jsonReader = Json.createReader(new StringReader(operatorSummariesJsonStr));
       return jsonReader
         .readArray()
         .stream()
