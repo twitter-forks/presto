@@ -119,6 +119,7 @@ import com.facebook.presto.sql.tree.ShowCatalogs;
 import com.facebook.presto.sql.tree.ShowColumns;
 import com.facebook.presto.sql.tree.ShowCreate;
 import com.facebook.presto.sql.tree.ShowFunctions;
+import com.facebook.presto.sql.tree.ShowGrants;
 import com.facebook.presto.sql.tree.ShowPartitions;
 import com.facebook.presto.sql.tree.ShowSchemas;
 import com.facebook.presto.sql.tree.ShowSession;
@@ -225,14 +226,20 @@ class AstBuilder
     @Override
     public Node visitCreateTableAsSelect(SqlBaseParser.CreateTableAsSelectContext context)
     {
-        Optional<String> comment = Optional.ofNullable(context.STRING()).map(value -> unquote(value.getText()));
+        Optional<String> comment = Optional.empty();
+        if (context.COMMENT() != null) {
+            comment = Optional.of(((StringLiteral) visit(context.string())).getValue());
+        }
         return new CreateTableAsSelect(getLocation(context), getQualifiedName(context.qualifiedName()), (Query) visit(context.query()), context.EXISTS() != null, processTableProperties(context.tableProperties()), context.NO() == null, comment);
     }
 
     @Override
     public Node visitCreateTable(SqlBaseParser.CreateTableContext context)
     {
-        Optional<String> comment = Optional.ofNullable(context.STRING()).map(value -> unquote(value.getText()));
+        Optional<String> comment = Optional.empty();
+        if (context.COMMENT() != null) {
+            comment = Optional.of(((StringLiteral) visit(context.string())).getValue());
+        }
         return new CreateTable(getLocation(context), getQualifiedName(context.qualifiedName()), visit(context.tableElement(), TableElement.class), context.EXISTS() != null, processTableProperties(context.tableProperties()), comment);
     }
 
@@ -756,6 +763,21 @@ class AstBuilder
                 context.grantee.getText());
     }
 
+    @Override
+    public Node visitShowGrants(SqlBaseParser.ShowGrantsContext context)
+    {
+        Optional<QualifiedName> tableName = Optional.empty();
+
+        if (context.qualifiedName() != null) {
+            tableName = Optional.of(getQualifiedName(context.qualifiedName()));
+        }
+
+        return new ShowGrants(
+                getLocation(context),
+                context.TABLE() != null,
+                tableName);
+    }
+
     // ***************** boolean expressions ******************
 
     @Override
@@ -1064,7 +1086,7 @@ class AstBuilder
     @Override
     public Node visitTimeZoneString(SqlBaseParser.TimeZoneStringContext context)
     {
-        return new StringLiteral(getLocation(context), unquote(context.STRING().getText()));
+        return visit(context.string());
     }
 
     // ********************* primary expressions **********************
@@ -1115,7 +1137,7 @@ class AstBuilder
             field = Extract.Field.valueOf(fieldString.toUpperCase());
         }
         catch (IllegalArgumentException e) {
-            throw new ParsingException(format("Invalid EXTRACT field: %s", fieldString), null, context.getStart().getLine(), context.getStart().getCharPositionInLine());
+            throw parseError("Invalid EXTRACT field: " + fieldString, context);
         }
         return new Extract(getLocation(context), (Expression) visit(context.valueExpression()), field);
     }
@@ -1298,7 +1320,7 @@ class AstBuilder
     {
         Optional<String> comment = Optional.empty();
         if (context.COMMENT() != null) {
-            comment = Optional.of(unquote(context.STRING().getText()));
+            comment = Optional.of(((StringLiteral) visit(context.string())).getValue());
         }
         return new ColumnDefinition(getLocation(context), context.identifier().getText(), getType(context.type()), comment);
     }
@@ -1364,9 +1386,15 @@ class AstBuilder
     }
 
     @Override
-    public Node visitStringLiteral(SqlBaseParser.StringLiteralContext context)
+    public Node visitBasicStringLiteral(SqlBaseParser.BasicStringLiteralContext context)
     {
         return new StringLiteral(getLocation(context), unquote(context.STRING().getText()));
+    }
+
+    @Override
+    public Node visitUnicodeStringLiteral(SqlBaseParser.UnicodeStringLiteralContext context)
+    {
+        return new StringLiteral(getLocation(context), decodeUnicodeLiteral(context));
     }
 
     @Override
@@ -1379,7 +1407,7 @@ class AstBuilder
     @Override
     public Node visitTypeConstructor(SqlBaseParser.TypeConstructorContext context)
     {
-        String value = unquote(context.STRING().getText());
+        String value = ((StringLiteral) visit(context.string())).getValue();
 
         if (context.DOUBLE_PRECISION() != null) {
             // TODO: Temporary hack that should be removed with new planner.
@@ -1426,7 +1454,7 @@ class AstBuilder
     {
         return new IntervalLiteral(
                 getLocation(context),
-                unquote(context.STRING().getText()),
+                ((StringLiteral) visit(context.string())).getValue(),
                 Optional.ofNullable(context.sign)
                         .map(AstBuilder::getIntervalSign)
                         .orElse(IntervalLiteral.Sign.POSITIVE),
@@ -1481,6 +1509,93 @@ class AstBuilder
         throw new UnsupportedOperationException("not yet implemented");
     }
 
+    private enum UnicodeDecodeState
+    {
+        EMPTY,
+        ESCAPED,
+        UNICODE_SEQUENCE
+    }
+
+    private static String decodeUnicodeLiteral(SqlBaseParser.UnicodeStringLiteralContext context)
+    {
+        char escape;
+        if (context.UESCAPE() != null) {
+            String escapeString = unquote(context.STRING().getText());
+            check(!escapeString.isEmpty(), "Empty Unicode escape character", context);
+            check(escapeString.length() == 1, "Invalid Unicode escape character: " + escapeString, context);
+            escape = escapeString.charAt(0);
+            check(isValidUnicodeEscape(escape), "Invalid Unicode escape character: " + escapeString, context);
+        }
+        else {
+            escape = '\\';
+        }
+
+        String rawContent = unquote(context.UNICODE_STRING().getText().substring(2));
+        StringBuilder unicodeStringBuilder = new StringBuilder();
+        StringBuilder escapedCharacterBuilder = new StringBuilder();
+        int charactersNeeded = 0;
+        UnicodeDecodeState state = UnicodeDecodeState.EMPTY;
+        for (int i = 0; i < rawContent.length(); i++) {
+            char ch = rawContent.charAt(i);
+            switch (state) {
+                case EMPTY:
+                    if (ch == escape) {
+                        state = UnicodeDecodeState.ESCAPED;
+                    }
+                    else {
+                        unicodeStringBuilder.append(ch);
+                    }
+                    break;
+                case ESCAPED:
+                    if (ch == escape) {
+                        unicodeStringBuilder.append(escape);
+                        state = UnicodeDecodeState.EMPTY;
+                    }
+                    else if (ch == '+') {
+                        state = UnicodeDecodeState.UNICODE_SEQUENCE;
+                        charactersNeeded = 6;
+                    }
+                    else if (isHexDigit(ch)) {
+                        state = UnicodeDecodeState.UNICODE_SEQUENCE;
+                        charactersNeeded = 4;
+                        escapedCharacterBuilder.append(ch);
+                    }
+                    else {
+                        throw parseError("Invalid hexadecimal digit: " + ch, context);
+                    }
+                    break;
+                case UNICODE_SEQUENCE:
+                    check(isHexDigit(ch), "Incomplete escape sequence: " + escapedCharacterBuilder.toString(), context);
+                    escapedCharacterBuilder.append(ch);
+                    if (charactersNeeded == escapedCharacterBuilder.length()) {
+                        String currentEscapedCode = escapedCharacterBuilder.toString();
+                        escapedCharacterBuilder.setLength(0);
+                        int codePoint = Integer.parseInt(currentEscapedCode, 16);
+                        check(Character.isValidCodePoint(codePoint), "Invalid escaped character: " + currentEscapedCode, context);
+                        if (Character.isSupplementaryCodePoint(codePoint)) {
+                            unicodeStringBuilder.appendCodePoint(codePoint);
+                        }
+                        else {
+                            char currentCodePoint = (char) codePoint;
+                            check(!Character.isSurrogate(currentCodePoint), format("Invalid escaped character: %s. Escaped character is a surrogate. Use '\\+123456' instead.", currentEscapedCode), context);
+                            unicodeStringBuilder.append(currentCodePoint);
+                        }
+                        state = UnicodeDecodeState.EMPTY;
+                        charactersNeeded = -1;
+                    }
+                    else {
+                        check(charactersNeeded > escapedCharacterBuilder.length(), "Unexpected escape sequence length: " + escapedCharacterBuilder.length(), context);
+                    }
+                    break;
+                default:
+                    throw new UnsupportedOperationException();
+            }
+        }
+
+        check(state == UnicodeDecodeState.EMPTY, "Incomplete escape sequence: " + escapedCharacterBuilder.toString(), context);
+        return unicodeStringBuilder.toString();
+    }
+
     private <T> Optional<T> visitIfPresent(ParserRuleContext context, Class<T> clazz)
     {
         return Optional.ofNullable(context)
@@ -1526,6 +1641,18 @@ class AstBuilder
     private static boolean isDistinct(SqlBaseParser.SetQuantifierContext setQuantifier)
     {
         return setQuantifier != null && setQuantifier.DISTINCT() != null;
+    }
+
+    private static boolean isHexDigit(char c)
+    {
+        return ((c >= '0') && (c <= '9')) ||
+                ((c >= 'A') && (c <= 'F')) ||
+                ((c >= 'a') && (c <= 'f'));
+    }
+
+    private static boolean isValidUnicodeEscape(char c)
+    {
+        return c < 0x7F && c > 0x20 && !isHexDigit(c) && c != '"' && c != '+' && c != '\'';
     }
 
     private static Optional<String> getTextIfPresent(ParserRuleContext context)
@@ -1796,7 +1923,7 @@ class AstBuilder
     private static void check(boolean condition, String message, ParserRuleContext context)
     {
         if (!condition) {
-            throw new ParsingException(message, null, context.getStart().getLine(), context.getStart().getCharPositionInLine());
+            throw parseError(message, context);
         }
     }
 
@@ -1816,5 +1943,10 @@ class AstBuilder
     {
         requireNonNull(token, "token is null");
         return new NodeLocation(token.getLine(), token.getCharPositionInLine());
+    }
+
+    private static ParsingException parseError(String message, ParserRuleContext context)
+    {
+        return new ParsingException(message, null, context.getStart().getLine(), context.getStart().getCharPositionInLine());
     }
 }

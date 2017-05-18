@@ -91,6 +91,8 @@ import com.facebook.presto.sql.tree.Rollup;
 import com.facebook.presto.sql.tree.Row;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.ShowCatalogs;
+import com.facebook.presto.sql.tree.ShowColumns;
+import com.facebook.presto.sql.tree.ShowGrants;
 import com.facebook.presto.sql.tree.ShowPartitions;
 import com.facebook.presto.sql.tree.ShowSchemas;
 import com.facebook.presto.sql.tree.ShowSession;
@@ -109,6 +111,7 @@ import com.facebook.presto.sql.tree.TimestampLiteral;
 import com.facebook.presto.sql.tree.TransactionAccessMode;
 import com.facebook.presto.sql.tree.Union;
 import com.facebook.presto.sql.tree.Unnest;
+import com.facebook.presto.sql.tree.Values;
 import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
 import com.google.common.base.Joiner;
@@ -805,13 +808,26 @@ public class TestSqlParser
     {
         assertStatement("SHOW TABLES", new ShowTables(Optional.empty(), Optional.empty()));
         assertStatement("SHOW TABLES FROM a", new ShowTables(Optional.of(QualifiedName.of("a")), Optional.empty()));
+        assertStatement("SHOW TABLES FROM \"awesome schema\"", new ShowTables(Optional.of(QualifiedName.of("awesome schema")), Optional.empty()));
         assertStatement("SHOW TABLES IN a LIKE '%'", new ShowTables(Optional.of(QualifiedName.of("a")), Optional.of("%")));
+    }
+
+    @Test
+    public void testShowColumns()
+            throws Exception
+    {
+        assertStatement("SHOW COLUMNS FROM a", new ShowColumns(QualifiedName.of("a")));
+        assertStatement("SHOW COLUMNS FROM a.b", new ShowColumns(QualifiedName.of("a", "b")));
+        assertStatement("SHOW COLUMNS FROM \"awesome table\"", new ShowColumns(QualifiedName.of("awesome table")));
+        assertStatement("SHOW COLUMNS FROM \"awesome schema\".\"awesome table\"", new ShowColumns(QualifiedName.of("awesome schema", "awesome table")));
     }
 
     @Test
     public void testShowPartitions()
     {
         assertStatement("SHOW PARTITIONS FROM t", new ShowPartitions(QualifiedName.of("t"), Optional.empty(), ImmutableList.of(), Optional.empty()));
+        assertStatement("SHOW PARTITIONS FROM \"awesome table\"",
+                new ShowPartitions(QualifiedName.of("awesome table"), Optional.empty(), ImmutableList.of(), Optional.empty()));
 
         assertStatement("SHOW PARTITIONS FROM t WHERE x = 1",
                 new ShowPartitions(
@@ -1107,6 +1123,9 @@ public class TestSqlParser
                         ImmutableMap.of(
                                 "a", new StringLiteral("apple"),
                                 "b", new LongLiteral("123"))));
+
+        assertStatement("CREATE SCHEMA \"some name that contains space\"",
+                new CreateSchema(QualifiedName.of("some name that contains space"), false, ImmutableMap.of()));
     }
 
     @Test
@@ -1123,6 +1142,9 @@ public class TestSqlParser
 
         assertStatement("DROP SCHEMA IF EXISTS test RESTRICT",
                 new DropSchema(QualifiedName.of("test"), true, false));
+
+        assertStatement("DROP SCHEMA \"some schema that contains space\"",
+                new DropSchema(QualifiedName.of("some schema that contains space"), false, false));
     }
 
     @Test
@@ -1133,6 +1155,44 @@ public class TestSqlParser
 
         assertStatement("ALTER SCHEMA foo.bar RENAME TO baz",
                 new RenameSchema(QualifiedName.of("foo", "bar"), "baz"));
+
+        assertStatement("ALTER SCHEMA \"awesome schema\".\"awesome table\" RENAME TO \"even more awesome table\"",
+                new RenameSchema(QualifiedName.of("awesome schema", "awesome table"), "even more awesome table"));
+    }
+
+    @Test
+    public void testUnicodeString()
+            throws Exception
+    {
+        assertExpression("U&''", new StringLiteral(""));
+        assertExpression("U&'' UESCAPE ')'", new StringLiteral(""));
+        assertExpression("U&'hello\\6d4B\\8Bd5\\+10FFFFworld\\7F16\\7801'", new StringLiteral("hello\u6d4B\u8Bd5\uDBFF\uDFFFworld\u7F16\u7801"));
+        assertExpression("U&'\u6d4B\u8Bd5ABC\\6d4B\\8Bd5'", new StringLiteral("\u6d4B\u8Bd5ABC\u6d4B\u8Bd5"));
+        assertExpression("u&'\u6d4B\u8Bd5ABC\\6d4B\\8Bd5'", new StringLiteral("\u6d4B\u8Bd5ABC\u6d4B\u8Bd5"));
+        assertExpression("u&'\u6d4B\u8Bd5ABC\\\\'", new StringLiteral("\u6d4B\u8Bd5ABC\\"));
+        assertExpression("u&'\u6d4B\u8Bd5ABC###8Bd5' UESCAPE '#'", new StringLiteral("\u6d4B\u8Bd5ABC#\u8Bd5"));
+        assertExpression("u&'\u6d4B\u8Bd5''A''B''C##''''#8Bd5' UESCAPE '#'", new StringLiteral("\u6d4B\u8Bd5\'A\'B\'C#\'\'\u8Bd5"));
+        assertInvalidExpression("U&  '\u6d4B\u8Bd5ABC\\\\'", ".*mismatched input.*");
+        assertInvalidExpression("u&'\u6d4B\u8Bd5ABC\\'", "Incomplete escape sequence: ");
+        assertInvalidExpression("u&'\u6d4B\u8Bd5ABC\\+'", "Incomplete escape sequence: ");
+        assertInvalidExpression("U&'hello\\6dB\\8Bd5'", "Incomplete escape sequence: 6dB.*");
+        assertInvalidExpression("U&'hello\\6D4B\\8Bd'", "Incomplete escape sequence: 8Bd");
+        assertInvalidExpression("U&'hello\\K6B\\8Bd5'", "Invalid hexadecimal digit: K");
+        assertInvalidExpression("U&'hello\\+FFFFFD\\8Bd5'", "Invalid escaped character: FFFFFD");
+        assertInvalidExpression("U&'hello\\DBFF'", "Invalid escaped character: DBFF\\. Escaped character is a surrogate\\. Use \'\\\\\\+123456\' instead\\.");
+        assertInvalidExpression("U&'hello\\+00DBFF'", "Invalid escaped character: 00DBFF\\. Escaped character is a surrogate\\. Use \'\\\\\\+123456\' instead\\.");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE '%%'", "Invalid Unicode escape character: %%");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE '\uDBFF'", "Invalid Unicode escape character: \uDBFF");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE '\n'", "Invalid Unicode escape character: \n");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE ''''", "Invalid Unicode escape character: \'");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE ' '", "Invalid Unicode escape character:  ");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE ''", "Empty Unicode escape character");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE '1'", "Invalid Unicode escape character: 1");
+        assertInvalidExpression("U&'hello\\8Bd5' UESCAPE '+'", "Invalid Unicode escape character: \\+");
+        assertExpression("U&'hello!6d4B!8Bd5!+10FFFFworld!7F16!7801' UESCAPE '!'", new StringLiteral("hello\u6d4B\u8Bd5\uDBFF\uDFFFworld\u7F16\u7801"));
+        assertExpression("U&'\u6d4B\u8Bd5ABC!6d4B!8Bd5' UESCAPE '!'", new StringLiteral("\u6d4B\u8Bd5ABC\u6d4B\u8Bd5"));
+        assertExpression("U&'hello\\6d4B\\8Bd5\\+10FFFFworld\\7F16\\7801' UESCAPE '!'",
+                new StringLiteral("hello\\6d4B\\8Bd5\\+10FFFFworld\\7F16\\7801"));
     }
 
     @Test
@@ -1257,6 +1317,35 @@ public class TestSqlParser
     }
 
     @Test
+    public void testCreateTableAsWith()
+            throws Exception
+    {
+        String queryParenthesizedWith = "CREATE TABLE foo " +
+                "AS " +
+                "( WITH t(x) AS (VALUES 1) " +
+                "TABLE t ) " +
+                "WITH NO DATA";
+        String queryUnparenthesizedWith = "CREATE TABLE foo " +
+                "AS " +
+                "WITH t(x) AS (VALUES 1) " +
+                "TABLE t " +
+                "WITH NO DATA";
+
+        QualifiedName table = QualifiedName.of("foo");
+        ImmutableMap<String, Expression> properties = ImmutableMap.<String, Expression>builder().build();
+
+        Query query = new Query(Optional.of(new With(false, ImmutableList.of(
+                new WithQuery("t",
+                        query(new Values(ImmutableList.of(new LongLiteral("1")))),
+                        Optional.of(ImmutableList.of("x")))))),
+                new Table(QualifiedName.of("t")),
+                Optional.empty(),
+                Optional.empty());
+        assertStatement(queryParenthesizedWith, new CreateTableAsSelect(table, query, false, properties, false, Optional.empty()));
+        assertStatement(queryUnparenthesizedWith, new CreateTableAsSelect(table, query, false, properties, false, Optional.empty()));
+    }
+
+    @Test
     public void testDropTable()
             throws Exception
     {
@@ -1300,6 +1389,7 @@ public class TestSqlParser
     public void testDelete()
     {
         assertStatement("DELETE FROM t", new Delete(table(QualifiedName.of("t")), Optional.empty()));
+        assertStatement("DELETE FROM \"awesome table\"", new Delete(table(QualifiedName.of("awesome table")), Optional.empty()));
 
         assertStatement("DELETE FROM t WHERE a = b", new Delete(table(QualifiedName.of("t")), Optional.of(
                 new ComparisonExpression(ComparisonExpressionType.EQUAL,
@@ -1332,15 +1422,14 @@ public class TestSqlParser
     public void testCreateView()
             throws Exception
     {
-        assertStatement("CREATE VIEW a AS SELECT * FROM t", new CreateView(
-                QualifiedName.of("a"),
-                simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))),
-                false));
+        Query query = simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t")));
 
-        assertStatement("CREATE OR REPLACE VIEW a AS SELECT * FROM t", new CreateView(
-                QualifiedName.of("a"),
-                simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))),
-                true));
+        assertStatement("CREATE VIEW a AS SELECT * FROM t", new CreateView(QualifiedName.of("a"), query, false));
+        assertStatement("CREATE OR REPLACE VIEW a AS SELECT * FROM t", new CreateView(QualifiedName.of("a"), query, true));
+
+        assertStatement("CREATE VIEW bar.foo AS SELECT * FROM t", new CreateView(QualifiedName.of("bar", "foo"), query, false));
+        assertStatement("CREATE VIEW \"awesome view\" AS SELECT * FROM t", new CreateView(QualifiedName.of("awesome view"), query, false));
+        assertStatement("CREATE VIEW \"awesome schema\".\"awesome view\" AS SELECT * FROM t", new CreateView(QualifiedName.of("awesome schema", "awesome view"), query, false));
     }
 
     @Test
@@ -1369,6 +1458,18 @@ public class TestSqlParser
                 new Revoke(false, Optional.empty(), true, QualifiedName.of("t"), "u"));
         assertStatement("REVOKE taco ON TABLE t FROM u",
                 new Revoke(false, Optional.of(ImmutableList.of("taco")), true, QualifiedName.of("t"), "u"));
+    }
+
+    @Test
+    public void testShowGrants()
+        throws Exception
+    {
+        assertStatement("SHOW GRANTS ON TABLE t",
+                new ShowGrants(true, Optional.of(QualifiedName.of("t"))));
+        assertStatement("SHOW GRANTS ON t",
+                new ShowGrants(false, Optional.of(QualifiedName.of("t"))));
+        assertStatement("SHOW GRANTS",
+                new ShowGrants(false, Optional.empty()));
     }
 
     @Test

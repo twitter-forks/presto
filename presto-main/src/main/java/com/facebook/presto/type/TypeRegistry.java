@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.type;
 
+import com.facebook.presto.metadata.FunctionRegistry;
+import com.facebook.presto.spi.function.OperatorType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.ParametricType;
@@ -29,6 +31,7 @@ import com.google.common.collect.ImmutableSet;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
 
+import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -82,6 +85,8 @@ public final class TypeRegistry
     private final ConcurrentMap<TypeSignature, Type> types = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, ParametricType> parametricTypes = new ConcurrentHashMap<>();
 
+    private FunctionRegistry functionRegistry;
+
     public TypeRegistry()
     {
         this(ImmutableSet.of());
@@ -133,6 +138,12 @@ public final class TypeRegistry
         }
     }
 
+    public void setFunctionRegistry(FunctionRegistry functionRegistry)
+    {
+        checkState(this.functionRegistry == null, "TypeRegistry can only be associated with a single FunctionRegistry");
+        this.functionRegistry = requireNonNull(functionRegistry, "functionRegistry is null");
+    }
+
     @Override
     public Type getType(TypeSignature signature)
     {
@@ -167,7 +178,7 @@ public final class TypeRegistry
         }
 
         try {
-            Type instantiatedType = parametricType.createType(parameters);
+            Type instantiatedType = parametricType.createType(this, parameters);
 
             // TODO: reimplement this check? Currently "varchar(Integer.MAX_VALUE)" fails with "varchar"
             //checkState(instantiatedType.equalsSignature(signature), "Instantiated parametric type name (%s) does not match expected name (%s)", instantiatedType, signature);
@@ -537,5 +548,12 @@ public final class TypeRegistry
     public static boolean isCovariantTypeBase(String typeBase)
     {
         return typeBase.equals(StandardTypes.ARRAY) || typeBase.equals(StandardTypes.MAP);
+    }
+
+    @Override
+    public MethodHandle resolveOperator(OperatorType operatorType, List<? extends Type> argumentTypes)
+    {
+        requireNonNull(functionRegistry, "functionRegistry is null");
+        return functionRegistry.getScalarFunctionImplementation(functionRegistry.resolveOperator(operatorType, argumentTypes)).getMethodHandle();
     }
 }

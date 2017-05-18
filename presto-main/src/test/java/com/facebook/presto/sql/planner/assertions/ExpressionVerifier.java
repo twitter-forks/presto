@@ -15,6 +15,7 @@ package com.facebook.presto.sql.planner.assertions;
 
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.AstVisitor;
+import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CoalesceExpression;
@@ -30,6 +31,7 @@ import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SymbolReference;
+import com.facebook.presto.sql.tree.TryExpression;
 
 import java.util.List;
 
@@ -75,6 +77,16 @@ final class ExpressionVerifier
     protected Boolean visitNode(Node node, Expression context)
     {
         throw new IllegalStateException(format("Node %s is not supported", node));
+    }
+
+    @Override
+    protected Boolean visitTryExpression(TryExpression actual, Expression expected)
+    {
+        if (!(expected instanceof TryExpression)) {
+            return false;
+        }
+
+        return process(actual.getInnerExpression(), ((TryExpression) expected).getInnerExpression());
     }
 
     @Override
@@ -153,13 +165,21 @@ final class ExpressionVerifier
 
     protected Boolean visitGenericLiteral(GenericLiteral actual, Expression expected)
     {
-        return getValueFromLiteral(actual).equals(getValueFromLiteral(expected));
+        if (expected instanceof GenericLiteral) {
+            return getValueFromLiteral(actual).equals(getValueFromLiteral(expected));
+        }
+
+        return false;
     }
 
     @Override
     protected Boolean visitLongLiteral(LongLiteral actual, Expression expected)
     {
-        return getValueFromLiteral(actual).equals(getValueFromLiteral(expected));
+        if (expected instanceof LongLiteral) {
+            return getValueFromLiteral(actual).equals(getValueFromLiteral(expected));
+        }
+
+        return false;
     }
 
     @Override
@@ -219,6 +239,17 @@ final class ExpressionVerifier
                 return process(actual.getLeft(), expected.getLeft()) && process(actual.getRight(), expected.getRight());
             }
         }
+        return false;
+    }
+
+    @Override
+    protected Boolean visitBetweenPredicate(BetweenPredicate actual, Expression expectedExpression)
+    {
+        if (expectedExpression instanceof BetweenPredicate) {
+            BetweenPredicate expected = (BetweenPredicate) expectedExpression;
+            return process(actual.getValue(), expected.getValue()) && process(actual.getMin(), expected.getMin()) && process(actual.getMax(), expected.getMax());
+        }
+
         return false;
     }
 

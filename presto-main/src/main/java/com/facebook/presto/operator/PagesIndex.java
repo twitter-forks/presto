@@ -24,6 +24,7 @@ import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler.LookupSourceSupplierFactory;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
 import com.facebook.presto.sql.gen.OrderingCompiler;
+import com.facebook.presto.sql.planner.SortExpressionExtractor.SortExpression;
 import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -31,6 +32,7 @@ import io.airlift.units.DataSize;
 import it.unimi.dsi.fastutil.Swapper;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.openjdk.jol.info.ClassLayout;
 
 import javax.inject.Inject;
 
@@ -60,6 +62,7 @@ import static java.util.Objects.requireNonNull;
 public class PagesIndex
         implements Swapper
 {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(PagesIndex.class).instanceSize();
     private static final Logger log = Logger.get(PagesIndex.class);
 
     private final OrderingCompiler orderingCompiler;
@@ -211,7 +214,7 @@ public class PagesIndex
         long elementsSize = (channels.length > 0) ? sizeOf(channels[0].elements()) : 0;
         long channelsArraySize = elementsSize * channels.length;
         long addressesArraySize = sizeOf(valueAddresses.elements());
-        return pagesMemorySize + channelsArraySize + addressesArraySize;
+        return INSTANCE_SIZE + pagesMemorySize + channelsArraySize + addressesArraySize;
     }
 
     public Type getType(int channel)
@@ -305,6 +308,24 @@ public class PagesIndex
         return types.get(channel).getSlice(block, blockPosition);
     }
 
+    public Object getObject(int channel, int position)
+    {
+        long pageAddress = valueAddresses.getLong(position);
+
+        Block block = channels[channel].get(decodeSliceIndex(pageAddress));
+        int blockPosition = decodePosition(pageAddress);
+        return types.get(channel).getObject(block, blockPosition);
+    }
+
+    public Block getSingleValueBlock(int channel, int position)
+    {
+        long pageAddress = valueAddresses.getLong(position);
+
+        Block block = channels[channel].get(decodeSliceIndex(pageAddress));
+        int blockPosition = decodePosition(pageAddress);
+        return block.getSingleValueBlock(blockPosition);
+    }
+
     public void sort(List<Integer> sortChannels, List<SortOrder> sortOrders)
     {
         sort(sortChannels, sortOrders, 0, getPositionCount());
@@ -366,7 +387,13 @@ public class PagesIndex
         }
 
         // if compilation fails, use interpreter
-        return new SimplePagesHashStrategy(types, outputChannels.orElse(rangeList(types.size())), ImmutableList.copyOf(channels), joinChannels, hashChannel);
+        return new SimplePagesHashStrategy(
+                types,
+                outputChannels.orElse(rangeList(types.size())),
+                ImmutableList.copyOf(channels),
+                joinChannels,
+                hashChannel,
+                Optional.empty());
     }
 
     public LookupSourceSupplier createLookupSourceSupplier(
@@ -392,9 +419,13 @@ public class PagesIndex
             //        OUTER joins into NestedLoopsJoin and remove "type == INNER" condition in LocalExecutionPlanner.visitJoin()
 
             try {
-                LookupSourceSupplierFactory lookupSourceFactory = joinCompiler.compileLookupSourceFactory(types, joinChannels, outputChannels);
+                Optional<SortExpression> sortChannel = Optional.empty();
+                if (filterFunctionFactory.isPresent()) {
+                    sortChannel = filterFunctionFactory.get().getSortChannel();
+                }
+                LookupSourceSupplierFactory lookupSourceFactory = joinCompiler.compileLookupSourceFactory(types, joinChannels, sortChannel, outputChannels);
                 return lookupSourceFactory.createLookupSourceSupplier(
-                        session.toConnectorSession(),
+                        session,
                         valueAddresses,
                         channels,
                         hashChannel,
@@ -411,10 +442,11 @@ public class PagesIndex
                 outputChannels.orElse(rangeList(types.size())),
                 channels,
                 joinChannels,
-                hashChannel);
+                hashChannel,
+                filterFunctionFactory.map(JoinFilterFunctionFactory::getSortChannel).orElse(Optional.empty()));
 
         return new JoinHashSupplier(
-                session.toConnectorSession(),
+                session,
                 hashStrategy,
                 valueAddresses,
                 channels,

@@ -25,6 +25,7 @@ import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
 import com.facebook.presto.type.ArrayType;
+import com.facebook.presto.type.MapType;
 import com.facebook.presto.type.SqlIntervalDayTime;
 import com.facebook.presto.type.SqlIntervalYearMonth;
 import com.google.common.base.Function;
@@ -44,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
@@ -227,8 +229,17 @@ public class TestingPrestoClient
                     .map(element -> convertToRowValue(((ArrayType) type).getElementType(), element, timeZoneKey))
                     .collect(toList());
         }
+        else if (type instanceof MapType) {
+            return ((Map<Object, Object>) value).entrySet().stream()
+                    .collect(Collectors.toMap(
+                            e -> convertToRowValue(((MapType) type).getKeyType(), e.getKey(), timeZoneKey),
+                            e -> convertToRowValue(((MapType) type).getValueType(), e.getValue(), timeZoneKey)));
+        }
         else if (type instanceof DecimalType) {
             return new BigDecimal((String) value);
+        }
+        else if (type.getTypeSignature().getBase().equals("ObjectId")) {
+            return value;
         }
         else {
             throw new AssertionError("unhandled type: " + type);

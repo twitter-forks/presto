@@ -43,8 +43,10 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.FINAL;
 import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.PARTIAL;
+import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.SINGLE;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Type.GATHER;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Type.REPARTITION;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static java.util.Objects.requireNonNull;
 
@@ -87,6 +89,21 @@ public class PartialAggregationPushDown
                 return context.defaultRewrite(node);
             }
 
+            boolean decomposable = node.isDecomposable(functionRegistry);
+
+            if (node.getStep().equals(SINGLE) &&
+                    node.hasEmptyGroupingSet() &&
+                    node.hasNonEmptyGroupingSet()) {
+                checkState(
+                        decomposable,
+                        "Distributed aggregation with empty grouping set requires partial but functions are not decomposable");
+                return context.rewrite(split(node));
+            }
+
+            if (!decomposable) {
+                return context.defaultRewrite(node);
+            }
+
             // partial aggregation can only be pushed through exchange that doesn't change
             // the cardinality of the stream (i.e., gather or repartition)
             ExchangeNode exchange = (ExchangeNode) child;
@@ -113,14 +130,6 @@ public class PartialAggregationPushDown
 
             // currently, we only support plans that don't use pre-computed hash functions
             if (node.getHashSymbol().isPresent() || exchange.getPartitioningScheme().getHashColumn().isPresent()) {
-                return context.defaultRewrite(node);
-            }
-
-            boolean decomposable = node.getFunctions().values().stream()
-                    .map(functionRegistry::getAggregateFunctionImplementation)
-                    .allMatch(InternalAggregationFunction::isDecomposable);
-
-            if (!decomposable) {
                 return context.defaultRewrite(node);
             }
 

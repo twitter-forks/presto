@@ -89,11 +89,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -103,6 +103,7 @@ import static com.facebook.presto.sql.ExpressionUtils.extractConjuncts;
 import static com.facebook.presto.sql.ExpressionUtils.stripDeterministicConjuncts;
 import static com.facebook.presto.sql.ExpressionUtils.stripNonDeterministicConjuncts;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
+import static com.facebook.presto.sql.planner.FragmentTableScanCounter.countSources;
 import static com.facebook.presto.sql.planner.FragmentTableScanCounter.hasMultipleSources;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
@@ -112,6 +113,7 @@ import static com.facebook.presto.sql.planner.optimizations.ActualProperties.Glo
 import static com.facebook.presto.sql.planner.optimizations.LocalProperties.grouped;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Scope.REMOTE;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Type.GATHER;
+import static com.facebook.presto.sql.planner.plan.ExchangeNode.Type.REPARTITION;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.gatheringExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.partitionedExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.replicatedExchange;
@@ -217,7 +219,7 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitOutput(OutputNode node, Context context)
         {
-            PlanWithProperties child = planChild(node, context.withPreferredProperties(PreferredProperties.any()));
+            PlanWithProperties child = planChild(node, context.withPreferredProperties(PreferredProperties.undistributed()));
 
             if (!child.getProperties().isSingleNode()) {
                 child = withDerivedProperties(
@@ -245,12 +247,13 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitAggregation(AggregationNode node, Context context)
         {
-            HashSet<Symbol> partitioningRequirement = new HashSet<>(node.getGroupingSets().get(0));
-            for (int i = 1; i < node.getGroupingSets().size(); i++) {
-                partitioningRequirement.retainAll(node.getGroupingSets().get(i));
-            }
+            Set<Symbol> partitioningRequirement = ImmutableSet.copyOf(node.getGroupingKeys());
 
-            PreferredProperties preferredProperties = PreferredProperties.any();
+            boolean preferSingleNode = (node.hasEmptyGroupingSet() && !node.hasNonEmptyGroupingSet()) ||
+                    (node.hasDefaultOutput() && !node.isDecomposable(metadata.getFunctionRegistry()));
+
+            PreferredProperties preferredProperties = preferSingleNode ? PreferredProperties.undistributed() : PreferredProperties.any();
+
             if (!node.getGroupingKeys().isEmpty()) {
                 preferredProperties = PreferredProperties.partitionedWithLocal(partitioningRequirement, grouped(node.getGroupingKeys()))
                         .mergeWithParent(context.getPreferredProperties());
@@ -263,9 +266,15 @@ public class AddExchanges
                 return rebaseAndDeriveProperties(node, child);
             }
 
-            // aggregations would benefit from the finals being hash partitioned on groupId, however, we need to gather because the final HashAggregationOperator
-            // needs to know whether input was received at the query level.
-            if (node.getGroupingSets().stream().anyMatch(List::isEmpty)) {
+            if (preferSingleNode) {
+                // For queries with only empty grouping sets like
+                //
+                // SELECT count(*) FROM lineitem;
+                //
+                // there is no need for distributed aggregation. Single node FINAL aggregation will suffice,
+                // since all input have to be aggregated into one line output.
+                //
+                // If aggregation must produce default output and it is not decomposable, we can not distribute it
                 child = withDerivedProperties(
                         gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
                         child.getProperties());
@@ -795,7 +804,6 @@ public class AddExchanges
             }
             else {
                 // Broadcast Join
-
                 left = node.getLeft().accept(this, context.withPreferredProperties(PreferredProperties.any()));
                 right = node.getRight().accept(this, context.withPreferredProperties(PreferredProperties.any()));
 
@@ -1090,9 +1098,11 @@ public class AddExchanges
             List<PlanNode> partitionedChildren = new ArrayList<>();
             List<List<Symbol>> partitionedOutputLayouts = new ArrayList<>();
 
-            List<PlanNode> sources = node.getSources();
-            for (int i = 0; i < sources.size(); i++) {
-                PlanWithProperties child = sources.get(i).accept(this, context.withPreferredProperties(PreferredProperties.any()));
+            List<PlanWithProperties> plannedChildren = new ArrayList<>();
+
+            for (int i = 0; i < node.getSources().size(); i++) {
+                PlanWithProperties child = node.getSources().get(i).accept(this, context.withPreferredProperties(PreferredProperties.any()));
+                plannedChildren.add(child);
                 if (child.getProperties().isSingleNode()) {
                     unpartitionedChildren.add(child.getNode());
                     unpartitionedOutputLayouts.add(node.sourceOutputLayout(i));
@@ -1106,6 +1116,13 @@ public class AddExchanges
 
             PlanNode result;
             if (!partitionedChildren.isEmpty() && unpartitionedChildren.isEmpty()) {
+                // parent does not have preference or prefers some partitioning without any explicit partitioning - just use
+                // children partitioning and don't GATHER partitioned inputs
+                // TODO: add FIXED_ARBITRARY_DISTRIBUTION support on non empty unpartitionedChildren
+                if (!parentGlobal.isPresent() || parentGlobal.get().isDistributed()) {
+                    return arbitraryDistributeUnion(node, plannedChildren, partitionedChildren, partitionedOutputLayouts);
+                }
+
                 // add a gathering exchange above partitioned inputs
                 result = new ExchangeNode(
                         idAllocator.getNextId(),
@@ -1157,6 +1174,36 @@ public class AddExchanges
                             .build());
         }
 
+        private PlanWithProperties arbitraryDistributeUnion(
+                UnionNode node,
+                List<PlanWithProperties> plannedChildren,
+                List<PlanNode> partitionedChildren,
+                List<List<Symbol>> partitionedOutputLayouts)
+        {
+            // TODO: can we insert LOCAL exchange for one child SOURCE distributed and another HASH distributed?
+            if (countSources(partitionedChildren) == 0) {
+                // No source distributed child, we can use insert LOCAL exchange
+                // TODO: if all children have the same partitioning, pass this partitioning to the parent
+                // instead of "arbitraryPartition".
+                return new PlanWithProperties(node.replaceChildren(
+                        plannedChildren.stream()
+                                .map(PlanWithProperties::getNode)
+                                .collect(toList())));
+            }
+            else {
+                // Presto currently can not execute stage that has multiple table scans, so in that case
+                // we have to insert REMOTE exchange with FIXED_ARBITRARY_DISTRIBUTION instead of local exchange
+                return new PlanWithProperties(
+                        new ExchangeNode(
+                                idAllocator.getNextId(),
+                                REPARTITION,
+                                REMOTE,
+                                new PartitioningScheme(Partitioning.create(FIXED_ARBITRARY_DISTRIBUTION, ImmutableList.of()), node.getOutputSymbols()),
+                                partitionedChildren,
+                                partitionedOutputLayouts));
+            }
+        }
+
         @Override
         public PlanWithProperties visitApply(ApplyNode node, Context context)
         {
@@ -1186,7 +1233,10 @@ public class AddExchanges
 
         private PlanWithProperties rebaseAndDeriveProperties(PlanNode node, List<PlanWithProperties> children)
         {
-            PlanNode result = ChildReplacer.replaceChildren(node, children.stream().map(PlanWithProperties::getNode).collect(toList()));
+            PlanNode result = node.replaceChildren(
+                    children.stream()
+                            .map(PlanWithProperties::getNode)
+                            .collect(toList()));
             return new PlanWithProperties(result, deriveProperties(result, children.stream().map(PlanWithProperties::getProperties).collect(toList())));
         }
 
@@ -1297,6 +1347,11 @@ public class AddExchanges
     {
         private final PlanNode node;
         private final ActualProperties properties;
+
+        public PlanWithProperties(PlanNode node)
+        {
+            this(node, ActualProperties.builder().build());
+        }
 
         public PlanWithProperties(PlanNode node, ActualProperties properties)
         {

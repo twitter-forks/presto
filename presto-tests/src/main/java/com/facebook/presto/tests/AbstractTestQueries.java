@@ -19,6 +19,7 @@ import com.facebook.presto.metadata.SqlFunction;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.TimeZoneKey;
+import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.testing.Arguments;
 import com.facebook.presto.testing.MaterializedResult;
@@ -86,6 +87,7 @@ import static com.facebook.presto.tests.QueryAssertions.assertContains;
 import static com.facebook.presto.tests.QueryAssertions.assertEqualsIgnoreOrder;
 import static com.facebook.presto.tests.QueryTemplate.parameter;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
+import static com.facebook.presto.tests.StructuralTestUtil.mapType;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.Iterables.transform;
@@ -296,11 +298,11 @@ public abstract class AbstractTestQueries
     public void testRowFieldAccessor()
     {
         //Dereference only
-        assertQuery("SELECT a.col0 FROM (VALUES ROW (CAST(ROW(1, 2) AS ROW(col0 integer, col1 integer)))) AS t (a)", "SELECT 1");
+        assertQuery("SELECT a.col0 FROM (VALUES ROW (CAST(ROW(1, 2) AS ROW(col0 integer, col1 int)))) AS t (a)", "SELECT 1");
         assertQuery("SELECT a.col0 FROM (VALUES ROW (CAST(ROW(1.0, 2.0) AS ROW(col0 integer, col1 integer)))) AS t (a)", "SELECT 1.0");
         assertQuery("SELECT a.col0 FROM (VALUES ROW (CAST(ROW(TRUE, FALSE) AS ROW(col0 boolean, col1 boolean)))) AS t (a)", "SELECT TRUE");
         assertQuery("SELECT a.col1 FROM (VALUES ROW (CAST(ROW(1.0, 'kittens') AS ROW(col0 varchar, col1 varchar)))) AS t (a)", "SELECT 'kittens'");
-        assertQuery("SELECT a.col2.col1 FROM (VALUES ROW(CAST(ROW(1.0, ARRAY[2], row(3, 4.0)) AS ROW(col0 double, col1 array(integer), col2 row(col0 integer, col1 double))))) t(a)", "SELECT 4.0");
+        assertQuery("SELECT a.col2.col1 FROM (VALUES ROW(CAST(ROW(1.0, ARRAY[2], row(3, 4.0)) AS ROW(col0 double, col1 array(int), col2 row(col0 integer, col1 double))))) t(a)", "SELECT 4.0");
 
         // mixture of row field reference and table field reference
         assertQuery("SELECT cast(row(1, t.x) as row(col0 bigint, col1 bigint)).col1 FROM (VALUES 1, 2, 3) t(x)", "SELECT * FROM (VALUES 1, 2, 3)");
@@ -1829,6 +1831,14 @@ public abstract class AbstractTestQueries
                         "('O', 439774330),\n" +
                         "('F', 438500670),\n" +
                         "(NULL, 899745000)");
+
+        assertQuery(
+                "SELECT regionkey, count(*) FROM (" +
+                        "   SELECT regionkey FROM nation " +
+                        "   UNION ALL " +
+                        "   SELECT * FROM (VALUES 2, 100) t(regionkey)) " +
+                        "GROUP BY ROLLUP (regionkey)",
+                "SELECT * FROM (VALUES  (0, 5), (1, 5), (2, 6), (3, 5), (4, 5), (100, 1), (NULL, 27))");
     }
 
     @Test
@@ -2103,6 +2113,31 @@ public abstract class AbstractTestQueries
     public void testHistogram()
     {
         assertQuery("SELECT lines, COUNT(*) FROM (SELECT orderkey, COUNT(*) lines FROM lineitem GROUP BY orderkey) U GROUP BY lines");
+    }
+
+    @Test
+    public void testJoinWithLessThanInJoinClause()
+            throws Exception
+    {
+        assertQuery("SELECT n.nationkey, r.regionkey FROM region r JOIN nation n ON n.regionkey = r.regionkey AND n.name < r.name");
+        assertQuery("SELECT l.suppkey, n.nationkey, l.partkey, n.regionkey FROM nation n JOIN lineitem l ON l.suppkey = n.nationkey AND l.partkey < n.regionkey");
+    }
+
+    @Test
+    public void testJoinWithGreaterThanInJoinClause()
+            throws Exception
+    {
+        assertQuery("SELECT n.nationkey, r.regionkey FROM region r JOIN nation n ON n.regionkey = r.regionkey AND n.name > r.name AND r.regionkey = 0");
+        assertQuery("SELECT l.suppkey, n.nationkey, l.partkey, n.regionkey FROM nation n JOIN lineitem l ON l.suppkey = n.nationkey AND l.partkey > n.regionkey");
+    }
+
+    @Test
+    public void testJoinWithLessThanOnDatesInJoinClause()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT o.orderkey, o.orderdate, l.shipdate FROM orders o JOIN lineitem l ON l.orderkey = o.orderkey AND l.shipdate < o.orderdate + INTERVAL '10' DAY",
+                "SELECT o.orderkey, o.orderdate, l.shipdate FROM orders o JOIN lineitem l ON l.orderkey = o.orderkey AND l.shipdate < DATEADD('DAY', 10, o.orderdate)");
     }
 
     @Test
@@ -3905,6 +3940,36 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testWindowFunctionWithoutParameters()
+    {
+        MaterializedResult actual = computeActual("SELECT count() over(partition by custkey) from orders where custkey < 3 order by custkey");
+
+        MaterializedResult expected = resultBuilder(getSession(), BIGINT)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(9L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .row(10L)
+                .build();
+
+        assertEquals(actual, expected);
+    }
+
+    @Test
     public void testHaving()
     {
         assertQuery("SELECT orderstatus, sum(totalprice) FROM orders GROUP BY orderstatus HAVING orderstatus = 'O'");
@@ -4298,6 +4363,22 @@ public abstract class AbstractTestQueries
                 .row(32L, "O", 21L)
                 .row(33L, "F", 10L)
                 .row(34L, "O", 21L)
+                .build();
+        assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
+    }
+
+    @Test
+    public void testWindowMapAgg()
+    {
+        MaterializedResult actual = computeActual("" +
+                "SELECT map_agg(orderkey, orderpriority) OVER(PARTITION BY orderstatus) FROM\n" +
+                "(SELECT * FROM orders ORDER BY orderkey LIMIT 5) t");
+        MaterializedResult expected = resultBuilder(getSession(), mapType(BIGINT, VarcharType.createVarcharType(1)))
+                .row(ImmutableMap.of(1L, "5-LOW", 2L, "1-URGENT", 4L, "5-LOW"))
+                .row(ImmutableMap.of(1L, "5-LOW", 2L, "1-URGENT", 4L, "5-LOW"))
+                .row(ImmutableMap.of(1L, "5-LOW", 2L, "1-URGENT", 4L, "5-LOW"))
+                .row(ImmutableMap.of(3L, "5-LOW", 5L, "5-LOW"))
+                .row(ImmutableMap.of(3L, "5-LOW", 5L, "5-LOW"))
                 .build();
         assertEqualsIgnoreOrder(actual.getMaterializedRows(), expected.getMaterializedRows());
     }
@@ -5451,7 +5532,7 @@ public abstract class AbstractTestQueries
         });
 
         assertTrue(functions.containsKey("avg"), "Expected function names " + functions + " to contain 'avg'");
-        assertEquals(functions.get("avg").asList().size(), 4);
+        assertEquals(functions.get("avg").asList().size(), 6);
         assertEquals(functions.get("avg").asList().get(0).getField(1), "decimal(p,s)");
         assertEquals(functions.get("avg").asList().get(0).getField(2), "decimal(p,s)");
         assertEquals(functions.get("avg").asList().get(0).getField(3), "aggregate");
@@ -5461,9 +5542,15 @@ public abstract class AbstractTestQueries
         assertEquals(functions.get("avg").asList().get(2).getField(1), "double");
         assertEquals(functions.get("avg").asList().get(2).getField(2), "double");
         assertEquals(functions.get("avg").asList().get(2).getField(3), "aggregate");
-        assertEquals(functions.get("avg").asList().get(3).getField(1), "real");
-        assertEquals(functions.get("avg").asList().get(3).getField(2), "real");
+        assertEquals(functions.get("avg").asList().get(3).getField(1), "interval day to second");
+        assertEquals(functions.get("avg").asList().get(3).getField(2), "interval day to second");
         assertEquals(functions.get("avg").asList().get(3).getField(3), "aggregate");
+        assertEquals(functions.get("avg").asList().get(4).getField(1), "interval year to month");
+        assertEquals(functions.get("avg").asList().get(4).getField(2), "interval year to month");
+        assertEquals(functions.get("avg").asList().get(4).getField(3), "aggregate");
+        assertEquals(functions.get("avg").asList().get(5).getField(1), "real");
+        assertEquals(functions.get("avg").asList().get(5).getField(2), "real");
+        assertEquals(functions.get("avg").asList().get(5).getField(3), "aggregate");
 
         assertTrue(functions.containsKey("abs"), "Expected function names " + functions + " to contain 'abs'");
         assertEquals(functions.get("abs").asList().get(0).getField(3), "scalar");
@@ -5708,6 +5795,14 @@ public abstract class AbstractTestQueries
     public void testUnionWithAggregation()
     {
         assertQuery(
+                "SELECT regionkey, count(*) FROM (" +
+                        "   SELECT regionkey FROM nation " +
+                        "   UNION ALL " +
+                        "   SELECT * FROM (VALUES 2, 100) t(regionkey)) " +
+                        "GROUP BY regionkey",
+                "SELECT * FROM (VALUES  (0, 5), (1, 5), (2, 6), (3, 5), (4, 5), (100, 1))");
+
+        assertQuery(
                 "SELECT ds, count(*) FROM (" +
                         "   SELECT orderdate ds, orderkey FROM orders " +
                         "   UNION ALL " +
@@ -5768,6 +5863,47 @@ public abstract class AbstractTestQueries
                         "        SELECT custkey, orderkey, orderkey+1, orderstatus from orders where orderkey<>0) \n" +
                         "    GROUP BY orderkey)"
         );
+    }
+
+    @Test
+    public void testUnionWithUnionAndAggregation()
+    {
+        assertQuery(
+                "SELECT count(*) FROM (" +
+                        "SELECT 1 FROM nation GROUP BY regionkey " +
+                        "UNION ALL " +
+                        "SELECT 1 FROM (" +
+                        "   SELECT 1 FROM nation " +
+                        "   UNION ALL " +
+                        "   SELECT 1 FROM nation))");
+        assertQuery(
+                "SELECT count(*) FROM (" +
+                        "SELECT 1 FROM (" +
+                        "   SELECT 1 FROM nation " +
+                        "   UNION ALL " +
+                        "   SELECT 1 FROM nation)" +
+                        "UNION ALL " +
+                        "SELECT 1 FROM nation GROUP BY regionkey)");
+    }
+
+    @Test
+    public void testUnionWithAggregationAndTableScan()
+    {
+        assertQuery(
+                "SELECT orderkey, 1 FROM orders " +
+                        "UNION ALL " +
+                        "SELECT orderkey, count(*) FROM orders GROUP BY 1",
+                "SELECT orderkey, 1 FROM orders " +
+                        "UNION ALL " +
+                        "SELECT orderkey, count(*) FROM orders GROUP BY orderkey");
+
+        assertQuery(
+                "SELECT orderkey, count(*) FROM orders GROUP BY 1 " +
+                        "UNION ALL " +
+                        "SELECT orderkey, 1 FROM orders",
+                "SELECT orderkey, count(*) FROM orders GROUP BY orderkey " +
+                        "UNION ALL " +
+                        "SELECT orderkey, 1 FROM orders");
     }
 
     @Test
@@ -6623,6 +6759,9 @@ public abstract class AbstractTestQueries
 
         // two level of nesting
         assertQueryFails("SELECT * FROM lineitem l WHERE 1 = (SELECT (SELECT 2 * l.orderkey))", errorMsg);
+
+        // explicit limit in subquery
+        assertQueryFails("SELECT (SELECT count(*) FROM (SELECT * FROM (values (7,1)) t(orderkey, value) WHERE orderkey = corr_key LIMIT 1)) FROM (values 7) t(corr_key)", errorMsg);
     }
 
     @Test

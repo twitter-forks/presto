@@ -610,7 +610,7 @@ class StatementAnalyzer
 
             Scope queryScope = Scope.builder()
                     .withParent(withScope)
-                    .withRelationType(queryBodyScope.getRelationType())
+                    .withRelationType(RelationId.of(node), queryBodyScope.getRelationType())
                     .build();
             analysis.setScope(node, queryScope);
             return queryScope;
@@ -876,7 +876,7 @@ class StatementAnalyzer
             sourceExpressions.addAll(outputExpressions);
             node.getHaving().ifPresent(sourceExpressions::add);
 
-            List<FunctionCall> aggregations = analyzeAggregations(node, sourceScope, orderByScope, groupByExpressions, analysis.getColumnReferences(), sourceExpressions, orderByExpressions);
+            List<FunctionCall> aggregations = analyzeAggregations(node, sourceScope, orderByScope, groupByExpressions, sourceExpressions, orderByExpressions);
             analyzeWindowFunctions(node, outputExpressions, orderByExpressions);
 
             if (!groupByExpressions.isEmpty() && node.getOrderBy().isPresent()) {
@@ -920,7 +920,7 @@ class StatementAnalyzer
             expressions.addAll(orderByExpressions);
             node.getHaving().ifPresent(expressions::add);
 
-            analyzeAggregations(node, sourceScope, Optional.empty(), groupByExpressions, analysis.getColumnReferences(), expressions, emptyList());
+            analyzeAggregations(node, sourceScope, Optional.empty(), groupByExpressions, expressions, emptyList());
             analysis.setWindowFunctions(node, analyzeWindowFunctions(node, expressions));
 
             return outputScope;
@@ -1571,7 +1571,7 @@ class StatementAnalyzer
             // ORDER BY should "see" both output and FROM fields during initial analysis and non-aggregation query planning
             Scope orderByScope = Scope.builder()
                     .withParent(sourceScope)
-                    .withRelationType(outputScope.getRelationType())
+                    .withRelationType(outputScope.getRelationId(), outputScope.getRelationType())
                     .build();
             analysis.setScope(node, orderByScope);
             return orderByScope;
@@ -1604,12 +1604,12 @@ class StatementAnalyzer
                     .collect(toImmutableList());
 
             Scope orderByAggregationScope = Scope.builder()
-                    .withRelationType(new RelationType(orderByAggregationSourceFields))
+                    .withRelationType(RelationId.anonymous(), new RelationType(orderByAggregationSourceFields))
                     .build();
 
             Scope orderByScope = Scope.builder()
                     .withParent(orderByAggregationScope)
-                    .withRelationType(outputScope.getRelationType())
+                    .withRelationType(outputScope.getRelationId(), outputScope.getRelationType())
                     .build();
             analysis.setScope(node, orderByScope);
             analysis.setOrderByAggregates(node, orderByAggregationExpressions);
@@ -1701,7 +1701,6 @@ class StatementAnalyzer
                 Scope sourceScope,
                 Optional<Scope> orderByScope,
                 List<List<Expression>> groupingSets,
-                Set<Expression> columnReferences,
                 List<Expression> outputExpressions,
                 List<Expression> orderByExpressions)
         {
@@ -1983,7 +1982,7 @@ class StatementAnalyzer
         private Scope createAndAssignScope(Node node, Optional<Scope> parentScope, RelationType relationType)
         {
             Scope scope = scopeBuilder(parentScope)
-                    .withRelationType(relationType)
+                    .withRelationType(RelationId.of(node), relationType)
                     .build();
 
             analysis.setScope(node, scope);

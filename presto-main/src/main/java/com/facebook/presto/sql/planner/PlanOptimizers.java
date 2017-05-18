@@ -18,10 +18,12 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
 import com.facebook.presto.sql.planner.iterative.Rule;
+import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregations;
 import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroLimit;
 import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroSample;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementBernoulliSampleAsFilter;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementFilteredAggregations;
+import com.facebook.presto.sql.planner.iterative.rule.InlineProjections;
 import com.facebook.presto.sql.planner.iterative.rule.MergeFilters;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
@@ -114,6 +116,13 @@ public class PlanOptimizers
         Set<Rule> predicatePushDownRules = ImmutableSet.of(
                 new MergeFilters());
 
+        IterativeOptimizer inlineProjections = new IterativeOptimizer(
+                stats,
+                ImmutableList.of(new MergeProjections()),
+                ImmutableSet.of(
+                        new InlineProjections(),
+                        new RemoveRedundantIdentityProjections()));
+
         builder.add(
                 new DesugaringOptimizer(metadata, sqlParser), // Clean up all the sugar in expressions, e.g. AtTimeZone, must be run before all the other optimizers
                 new CanonicalizeExpressions(),
@@ -153,7 +162,7 @@ public class PlanOptimizers
                 new ImplementIntersectAndExceptAsUnion(),
                 new LimitPushDown(), // Run the LimitPushDown after flattening set operators to make it easier to do the set flattening
                 new PruneUnreferencedOutputs(),
-                new MergeProjections(),
+                inlineProjections,
                 new IterativeOptimizer(
                         stats,
                         ImmutableSet.of(new TransformExistsApplyToScalarApply(metadata.getFunctionRegistry()))),
@@ -163,7 +172,7 @@ public class PlanOptimizers
                 new TransformUncorrelatedScalarToJoin(),
                 new TransformCorrelatedScalarAggregationToJoin(metadata),
                 new PredicatePushDown(metadata, sqlParser),
-                new MergeProjections(),
+                inlineProjections,
                 new SimplifyExpressions(metadata, sqlParser), // Re-run the SimplifyExpressions to simplify any recomposed expressions from other optimizations
                 new ProjectionPushDown(),
                 new UnaliasSymbolReferences(), // Run again because predicate pushdown and projection pushdown might add more projections
@@ -180,7 +189,7 @@ public class PlanOptimizers
                                 // add UnaliasSymbolReferences when it's ported
                                 new RemoveRedundantIdentityProjections(),
                                 new SwapAdjacentWindowsByPartitionsOrder())),
-                new MergeProjections(),
+                inlineProjections,
                 new PruneUnreferencedOutputs(), // Make sure to run this at the end to help clean the plan for logging/execution and not remove info that other optimizers might need at an earlier point
                 new IterativeOptimizer(
                         stats,
@@ -217,7 +226,7 @@ public class PlanOptimizers
 
         builder.add(new PredicatePushDown(metadata, sqlParser)); // Run predicate push down one more time in case we can leverage new information from layouts' effective predicate
         builder.add(new ProjectionPushDown());
-        builder.add(new MergeProjections());
+        builder.add(inlineProjections);
         builder.add(new UnaliasSymbolReferences()); // Run unalias after merging projections to simplify projections more efficiently
         builder.add(new PruneUnreferencedOutputs());
         builder.add(new IterativeOptimizer(
@@ -232,7 +241,9 @@ public class PlanOptimizers
         builder.add(new PartialAggregationPushDown(metadata.getFunctionRegistry()));
         builder.add(new IterativeOptimizer(
                 stats,
-                ImmutableSet.of(new RemoveRedundantIdentityProjections())));
+                ImmutableSet.of(
+                        new AddIntermediateAggregations(),
+                        new RemoveRedundantIdentityProjections())));
 
         // DO NOT add optimizers that change the plan shape (computations) after this point
 
