@@ -92,6 +92,8 @@ public class ThriftHiveRecordCursorProvider
 
         return Optional.of(new ThriftHiveRecordCursor<>(
                 genericRecordReader(recordReader),
+                path,
+                start,
                 length,
                 schema,
                 columns,
