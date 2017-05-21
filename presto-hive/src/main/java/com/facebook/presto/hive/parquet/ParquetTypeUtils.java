@@ -167,7 +167,7 @@ public final class ParquetTypeUtils
     private static parquet.schema.Type findParquetTypeByName(HiveColumnHandle column, MessageType messageType)
     {
         String name = column.getName();
-        Type type = getParquetTypeByName(name, messageType);
+        parquet.schema.Type type = getParquetTypeByName(name, messageType);
 
         // when a parquet field is a hive keyword we append an _ to it in hive. When doing
         // a name-based lookup, we need to strip it off again if we didn't get a direct match.
