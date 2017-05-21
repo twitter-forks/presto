@@ -28,11 +28,11 @@ import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.function.GroupedAccumulatorState;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.MapType;
 import com.facebook.presto.type.RowType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.Slice;
+import org.openjdk.jol.info.ClassLayout;
 import org.testng.annotations.Test;
 
 import java.util.Map;
@@ -45,12 +45,15 @@ import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.slice.Slices.wrappedDoubleArray;
 import static org.testng.Assert.assertEquals;
 
 public class TestStateCompiler
 {
+    private static final int SLICE_INSTANCE_SIZE = ClassLayout.parseClass(Slice.class).instanceSize();
+
     @Test
     public void testPrimitiveNullableLongSerialization()
     {
@@ -190,7 +193,7 @@ public class TestStateCompiler
     public void testComplexSerialization()
     {
         Type arrayType = new ArrayType(BIGINT);
-        Type mapType = new MapType(BIGINT, VARCHAR);
+        Type mapType = mapType(BIGINT, VARCHAR);
         Map<String, Type> fieldMap = ImmutableMap.of("Block", arrayType, "AnotherBlock", mapType);
         AccumulatorStateFactory<TestComplexState> factory = StateCompiler.generateStateFactory(TestComplexState.class, fieldMap, new DynamicClassLoader(TestComplexState.class.getClassLoader()));
         AccumulatorStateSerializer<TestComplexState> serializer = StateCompiler.generateStateSerializer(TestComplexState.class, fieldMap, new DynamicClassLoader(TestComplexState.class.getClassLoader()));
@@ -232,50 +235,70 @@ public class TestStateCompiler
         assertEquals(deserializedState.getAnotherBlock().getSlice(1, 0, 9), singleState.getAnotherBlock().getSlice(1, 0, 9));
     }
 
+    //see SliceBigArray::getSize
+    private long getSize(Slice slice)
+    {
+        return slice.length() + SLICE_INSTANCE_SIZE;
+    }
+
     @Test
     public void testComplexStateEstimatedSize()
     {
-        Map<String, Type> fieldMap = ImmutableMap.of("Block", new ArrayType(BIGINT), "AnotherBlock", new MapType(BIGINT, VARCHAR));
+        Map<String, Type> fieldMap = ImmutableMap.of("Block", new ArrayType(BIGINT), "AnotherBlock", mapType(BIGINT, VARCHAR));
         AccumulatorStateFactory<TestComplexState> factory = StateCompiler.generateStateFactory(TestComplexState.class, fieldMap, new DynamicClassLoader(TestComplexState.class.getClassLoader()));
 
         TestComplexState groupedState = factory.createGroupedState();
         assertEquals(groupedState.getEstimatedSize(), 76064);
         for (int i = 0; i < 1000; i++) {
+            long retainedSize = 0;
             ((GroupedAccumulatorState) groupedState).setGroupId(i);
             groupedState.setBoolean(true);
             groupedState.setLong(1);
             groupedState.setDouble(2.0);
             groupedState.setByte((byte) 3);
-            groupedState.setSlice(utf8Slice("test"));
-            groupedState.setAnotherSlice(wrappedDoubleArray(1.0, 2.0, 3.0));
+            Slice slice = utf8Slice("test");
+            retainedSize += getSize(slice);
+            groupedState.setSlice(slice);
+            slice = wrappedDoubleArray(1.0, 2.0, 3.0);
+            retainedSize += getSize(slice);
+            groupedState.setAnotherSlice(slice);
             groupedState.setYetAnotherSlice(null);
             Block array = createLongsBlock(45);
+            retainedSize += array.getRetainedSizeInBytes();
             groupedState.setBlock(array);
             BlockBuilder mapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(BIGINT, VARCHAR), new BlockBuilderStatus(), 1);
             BIGINT.writeLong(mapBlockBuilder, 123L);
             VARCHAR.writeSlice(mapBlockBuilder, utf8Slice("testBlock"));
             Block map = mapBlockBuilder.build();
+            retainedSize += map.getRetainedSizeInBytes();
             groupedState.setAnotherBlock(map);
-            assertEquals(groupedState.getEstimatedSize(), 76064 + 1274 * (i + 1));
+            assertEquals(groupedState.getEstimatedSize(), 76064 + retainedSize * (i + 1));
         }
 
         for (int i = 0; i < 1000; i++) {
+            long retainedSize = 0;
             ((GroupedAccumulatorState) groupedState).setGroupId(i);
             groupedState.setBoolean(true);
             groupedState.setLong(1);
             groupedState.setDouble(2.0);
             groupedState.setByte((byte) 3);
-            groupedState.setSlice(utf8Slice("test"));
-            groupedState.setAnotherSlice(wrappedDoubleArray(1.0, 2.0, 3.0));
+            Slice slice = utf8Slice("test");
+            retainedSize += getSize(slice);
+            groupedState.setSlice(slice);
+            slice = wrappedDoubleArray(1.0, 2.0, 3.0);
+            retainedSize += getSize(slice);
+            groupedState.setAnotherSlice(slice);
             groupedState.setYetAnotherSlice(null);
             Block array = createLongsBlock(45);
+            retainedSize += array.getRetainedSizeInBytes();
             groupedState.setBlock(array);
             BlockBuilder mapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(BIGINT, VARCHAR), new BlockBuilderStatus(), 1);
             BIGINT.writeLong(mapBlockBuilder, 123L);
             VARCHAR.writeSlice(mapBlockBuilder, utf8Slice("testBlock"));
             Block map = mapBlockBuilder.build();
+            retainedSize += map.getRetainedSizeInBytes();
             groupedState.setAnotherBlock(map);
-            assertEquals(groupedState.getEstimatedSize(), 76064 + 1274 * 1000);
+            assertEquals(groupedState.getEstimatedSize(), 76064 + retainedSize * 1000);
         }
     }
 

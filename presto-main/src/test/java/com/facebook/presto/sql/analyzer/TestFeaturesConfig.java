@@ -21,8 +21,6 @@ import org.testng.annotations.Test;
 
 import java.util.Map;
 
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimization.COLUMNAR_DICTIONARY;
-import static com.facebook.presto.sql.analyzer.FeaturesConfig.ProcessingOptimization.DISABLED;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.RE2J;
 import static io.airlift.configuration.testing.ConfigAssertions.assertDeprecatedEquivalence;
@@ -40,15 +38,14 @@ public class TestFeaturesConfig
                 .setResourceGroupsEnabled(false)
                 .setDistributedIndexJoinsEnabled(false)
                 .setDistributedJoinsEnabled(true)
+                .setFastInequalityJoins(true)
                 .setColocatedJoinsEnabled(false)
-                .setJoinReorderingEnabled(false)
+                .setJoinReorderingEnabled(true)
                 .setRedistributeWrites(true)
                 .setOptimizeMetadataQueries(false)
                 .setOptimizeHashGeneration(true)
                 .setOptimizeSingleDistinct(true)
-                .setReorderWindows(false)
                 .setPushTableWriteThroughUnion(true)
-                .setProcessingOptimization(DISABLED)
                 .setDictionaryAggregation(false)
                 .setLegacyArrayAgg(false)
                 .setLegacyMapSubscript(false)
@@ -64,7 +61,8 @@ public class TestFeaturesConfig
                 .setLegacyOrderBy(false)
                 .setIterativeOptimizerEnabled(true)
                 .setIterativeOptimizerTimeout(new Duration(3, MINUTES))
-                .setExchangeCompressionEnabled(false));
+                .setExchangeCompressionEnabled(false)
+                .setEnableIntermediateAggregations(false));
     }
 
     @Test
@@ -79,16 +77,15 @@ public class TestFeaturesConfig
                 .put("deprecated.legacy-map-subscript", "true")
                 .put("distributed-index-joins-enabled", "true")
                 .put("distributed-joins-enabled", "false")
+                .put("fast-inequality-joins", "false")
                 .put("colocated-joins-enabled", "true")
-                .put("reorder-joins", "true")
+                .put("reorder-joins", "false")
                 .put("redistribute-writes", "false")
                 .put("optimizer.optimize-metadata-queries", "true")
                 .put("optimizer.optimize-hash-generation", "false")
                 .put("optimizer.optimize-single-distinct", "false")
-                .put("optimizer.reorder-windows", "true")
                 .put("optimizer.optimize-mixed-distinct-aggregations", "true")
                 .put("optimizer.push-table-write-through-union", "false")
-                .put("optimizer.processing-optimization", "columnar_dictionary")
                 .put("optimizer.dictionary-aggregation", "true")
                 .put("regex-library", "RE2J")
                 .put("re2j.dfa-states-limit", "42")
@@ -99,6 +96,7 @@ public class TestFeaturesConfig
                 .put("experimental.spiller-threads", "42")
                 .put("experimental.spiller-max-used-space-threshold", "0.8")
                 .put("exchange.compression-enabled", "true")
+                .put("optimizer.enable-intermediate-aggregations", "true")
                 .build();
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
@@ -109,16 +107,15 @@ public class TestFeaturesConfig
                 .put("deprecated.legacy-map-subscript", "true")
                 .put("distributed-index-joins-enabled", "true")
                 .put("distributed-joins-enabled", "false")
+                .put("fast-inequality-joins", "false")
                 .put("colocated-joins-enabled", "true")
-                .put("reorder-joins", "true")
+                .put("reorder-joins", "false")
                 .put("redistribute-writes", "false")
                 .put("optimizer.optimize-metadata-queries", "true")
                 .put("optimizer.optimize-hash-generation", "false")
                 .put("optimizer.optimize-single-distinct", "false")
-                .put("optimizer.reorder-windows", "true")
                 .put("optimizer.optimize-mixed-distinct-aggregations", "true")
                 .put("optimizer.push-table-write-through-union", "false")
-                .put("optimizer.processing-optimization", "columnar_dictionary")
                 .put("optimizer.dictionary-aggregation", "true")
                 .put("regex-library", "RE2J")
                 .put("re2j.dfa-states-limit", "42")
@@ -129,6 +126,7 @@ public class TestFeaturesConfig
                 .put("experimental.spiller-threads", "42")
                 .put("experimental.spiller-max-used-space-threshold", "0.8")
                 .put("exchange.compression-enabled", "true")
+                .put("optimizer.enable-intermediate-aggregations", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -137,16 +135,15 @@ public class TestFeaturesConfig
                 .setIterativeOptimizerTimeout(new Duration(10, SECONDS))
                 .setDistributedIndexJoinsEnabled(true)
                 .setDistributedJoinsEnabled(false)
+                .setFastInequalityJoins(false)
                 .setColocatedJoinsEnabled(true)
-                .setJoinReorderingEnabled(true)
+                .setJoinReorderingEnabled(false)
                 .setRedistributeWrites(false)
                 .setOptimizeMetadataQueries(true)
                 .setOptimizeHashGeneration(false)
                 .setOptimizeSingleDistinct(false)
-                .setReorderWindows(true)
                 .setOptimizeMixedDistinctAggregations(true)
                 .setPushTableWriteThroughUnion(false)
-                .setProcessingOptimization(COLUMNAR_DICTIONARY)
                 .setDictionaryAggregation(true)
                 .setLegacyArrayAgg(true)
                 .setLegacyMapSubscript(true)
@@ -159,7 +156,8 @@ public class TestFeaturesConfig
                 .setSpillerThreads(42)
                 .setSpillMaxUsedSpaceThreshold(0.8)
                 .setLegacyOrderBy(true)
-                .setExchangeCompressionEnabled(true);
+                .setExchangeCompressionEnabled(true)
+                .setEnableIntermediateAggregations(true);
 
         assertFullMapping(properties, expected);
         assertDeprecatedEquivalence(FeaturesConfig.class, properties, propertiesLegacy);

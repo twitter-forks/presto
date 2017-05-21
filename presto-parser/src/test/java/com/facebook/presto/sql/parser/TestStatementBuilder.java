@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.parser;
 
 import com.facebook.presto.sql.SqlFormatter;
+import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Statement;
 import com.google.common.io.Resources;
 import org.testng.annotations.Test;
@@ -26,6 +27,7 @@ import static com.google.common.base.Strings.repeat;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 public class TestStatementBuilder
 {
@@ -139,6 +141,13 @@ public class TestStatementBuilder
         printStatement("create table foo with (a = 'apple', b = 'banana') as select * from abc");
         printStatement("create table foo comment 'test' with (a = 'apple') as select * from abc");
         printStatement("create table foo as select * from abc WITH NO DATA");
+
+        printStatement("create table foo as (with t(x) as (values 1) select x from t)");
+        printStatement("create table if not exists foo as (with t(x) as (values 1) select x from t)");
+        printStatement("create table foo as (with t(x) as (values 1) select x from t) WITH DATA");
+        printStatement("create table if not exists foo as (with t(x) as (values 1) select x from t) WITH DATA");
+        printStatement("create table foo as (with t(x) as (values 1) select x from t) WITH NO DATA");
+        printStatement("create table if not exists foo as (with t(x) as (values 1) select x from t) WITH NO DATA");
         printStatement("drop table foo");
 
         printStatement("insert into foo select * from abc");
@@ -228,6 +237,9 @@ public class TestStatementBuilder
         printStatement("revoke grant option for select on foo from alice");
         printStatement("revoke all privileges on foo from alice");
         printStatement("revoke insert, delete on foo from public"); //check support for public
+        printStatement("show grants on table t");
+        printStatement("show grants on t");
+        printStatement("show grants");
 
         printStatement("prepare p from select * from (select * from T) \"A B\"");
 
@@ -235,6 +247,18 @@ public class TestStatementBuilder
         printStatement("SELECT * FROM table1 WHERE a <> ANY (SELECT 2, 3, 4)");
         printStatement("SELECT * FROM table1 WHERE a = SOME (SELECT id FROM table2)");
     }
+
+    @Test
+    public void testStringFormatter()
+            throws Exception
+    {
+        assertSqlFormatter("U&'hello\\6d4B\\8Bd5\\+10FFFFworld\\7F16\\7801'",
+                "U&'hello\\6D4B\\8BD5\\+10FFFFworld\\7F16\\7801'");
+        assertSqlFormatter("'hello world'", "'hello world'");
+        assertSqlFormatter("U&'!+10FFFF!6d4B!8Bd5ABC!6d4B!8Bd5' UESCAPE '!'", "U&'\\+10FFFF\\6D4B\\8BD5ABC\\6D4B\\8BD5'");
+        assertSqlFormatter("U&'\\+10FFFF\\6D4B\\8BD5\\0041\\0042\\0043\\6D4B\\8BD5'", "U&'\\+10FFFF\\6D4B\\8BD5ABC\\6D4B\\8BD5'");
+        assertSqlFormatter("U&'\\\\abc\\6D4B'''", "U&'\\\\abc\\6D4B'''");
+   }
 
     @Test
     public void testStatementBuilderTpch()
@@ -286,6 +310,13 @@ public class TestStatementBuilder
 
         println(repeat("=", 60));
         println("");
+    }
+
+    private static void assertSqlFormatter(String expression, String formatted)
+    {
+        Expression originalExpression = SQL_PARSER.createExpression(expression);
+        String real = SqlFormatter.formatSql(originalExpression, Optional.empty());
+        assertTrue(real.equals(formatted));
     }
 
     private static void println(String s)

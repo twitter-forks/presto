@@ -16,24 +16,23 @@ package com.facebook.presto.hive;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.metadata.Split;
+import com.facebook.presto.operator.CursorProcessor;
 import com.facebook.presto.operator.DriverContext;
-import com.facebook.presto.operator.FilterFunctions;
-import com.facebook.presto.operator.GenericCursorProcessor;
-import com.facebook.presto.operator.GenericPageProcessor;
-import com.facebook.presto.operator.ProjectionFunction;
 import com.facebook.presto.operator.ScanFilterAndProjectOperator.ScanFilterAndProjectOperatorFactory;
 import com.facebook.presto.operator.SourceOperator;
 import com.facebook.presto.operator.SourceOperatorFactory;
 import com.facebook.presto.operator.TableScanOperator.TableScanOperatorFactory;
+import com.facebook.presto.operator.project.PageProcessor;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
+import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.testing.TestingSplit;
 import com.facebook.presto.testing.TestingTransactionHandle;
 import com.google.common.base.Joiner;
@@ -89,8 +88,9 @@ import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveTestUtils.HDFS_ENVIRONMENT;
 import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
-import static com.facebook.presto.operator.ProjectionFunctions.singleColumn;
+import static com.facebook.presto.metadata.MetadataManager.createTestMetadataManager;
 import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.sql.relational.Expressions.field;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
 import static com.google.common.base.Predicates.not;
@@ -121,6 +121,7 @@ public class TestOrcPageSourceMemoryTracking
     private static final Configuration CONFIGURATION = new Configuration();
     private static final int NUM_ROWS = 50000;
     private static final int STRIPE_ROWS = 20000;
+    private static final ExpressionCompiler EXPRESSION_COMPILER = new ExpressionCompiler(createTestMetadataManager());
 
     private final Random random = new Random();
     private final List<TestColumn> testColumns = ImmutableList.<TestColumn>builder()
@@ -297,37 +298,16 @@ public class TestOrcPageSourceMemoryTracking
 
         assertEquals(driverContext.getSystemMemoryUsage(), 0);
 
-        for (int i = 0; i < 52; i++) {
+        for (int i = 0; i < 50; i++) {
             assertFalse(operator.isFinished());
-            operator.getOutput();
-            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 550000L, 639999L);
+            assertNotNull(operator.getOutput());
+            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 90_000L, 499_999L);
         }
 
-        for (int i = 52; i < 65; i++) {
-            assertFalse(operator.isFinished());
-            operator.getOutput();
-            assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 450000L, 539999L);
-        }
-
-        // Page source is over, but data still exist in buffer of ScanFilterProjectOperator
-        assertFalse(operator.isFinished());
+        // done... in the current implementation finish is not set until output returns a null page
         assertNull(operator.getOutput());
-        assertBetweenInclusive(driverContext.getSystemMemoryUsage(), 100000L, 109999L);
-        assertFalse(operator.isFinished());
-        Page lastPage = operator.getOutput();
-        assertNotNull(lastPage);
-
-        // No data is left
         assertTrue(operator.isFinished());
-        // an empty page builder of two variable width block builders is left in ScanFilterAndProjectOperator
-        PageBuilder pageBuilder = new PageBuilder(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()));
-        for (int i = 0; i < lastPage.getPositionCount(); i++) {
-            pageBuilder.declarePosition();
-            createUnboundedVarcharType().appendTo(lastPage.getBlock(0), i, pageBuilder.getBlockBuilder(0));
-            createUnboundedVarcharType().appendTo(lastPage.getBlock(1), i, pageBuilder.getBlockBuilder(1));
-        }
-        pageBuilder.reset();
-        assertEquals(driverContext.getSystemMemoryUsage(), pageBuilder.getRetainedSizeInBytes());
+        assertEquals(driverContext.getSystemMemoryUsage(), 0);
     }
 
     private class TestPreparer
@@ -382,7 +362,7 @@ public class TestOrcPageSourceMemoryTracking
 
         public ConnectorPageSource newPageSource()
         {
-            OrcPageSourceFactory orcPageSourceFactory = new OrcPageSourceFactory(TYPE_MANAGER, false, HDFS_ENVIRONMENT);
+            OrcPageSourceFactory orcPageSourceFactory = new OrcPageSourceFactory(TYPE_MANAGER, false, HDFS_ENVIRONMENT, new FileFormatDataSourceStats());
             return HivePageSourceProvider.createHivePageSource(
                     ImmutableSet.of(),
                     ImmutableSet.of(orcPageSourceFactory),
@@ -421,18 +401,19 @@ public class TestOrcPageSourceMemoryTracking
         public SourceOperator newScanFilterAndProjectOperator(DriverContext driverContext)
         {
             ConnectorPageSource pageSource = newPageSource();
-            ImmutableList.Builder<ProjectionFunction> projectionsBuilder = ImmutableList.builder();
+            ImmutableList.Builder<RowExpression> projectionsBuilder = ImmutableList.builder();
             for (int i = 0; i < types.size(); i++) {
-                projectionsBuilder.add(singleColumn(types.get(i), i));
+                projectionsBuilder.add(field(i, types.get(i)));
             }
-            ImmutableList<ProjectionFunction> projections = projectionsBuilder.build();
+            Supplier<CursorProcessor> cursorProcessor = EXPRESSION_COMPILER.compileCursorProcessor(Optional.empty(), projectionsBuilder.build(), "key");
+            Supplier<PageProcessor> pageProcessor = EXPRESSION_COMPILER.compilePageProcessor(Optional.empty(), projectionsBuilder.build());
             SourceOperatorFactory sourceOperatorFactory = new ScanFilterAndProjectOperatorFactory(
                     0,
                     new PlanNodeId("test"),
                     new PlanNodeId("0"),
                     (session, split, columnHandles) -> pageSource,
-                    () -> new GenericCursorProcessor(FilterFunctions.TRUE_FUNCTION, projections),
-                    () -> new GenericPageProcessor(FilterFunctions.TRUE_FUNCTION, projections),
+                    cursorProcessor,
+                    pageProcessor,
                     columns.stream().map(columnHandle -> (ColumnHandle) columnHandle).collect(toList()),
                     types
             );
