@@ -29,6 +29,7 @@ import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.type.HiveChar;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveVarchar;
@@ -73,6 +74,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static java.lang.Float.floatToRawIntBits;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 class ThriftHiveRecordCursor<K, V extends Writable>
@@ -98,6 +100,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final Object[] objects;
     private final boolean[] nulls;
 
+    private final Path path;
+    private final long start;
     private final long totalBytes;
     private final DateTimeZone hiveStorageTimeZone;
 
@@ -109,6 +113,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
 
     public ThriftHiveRecordCursor(
             RecordReader<K, V> recordReader,
+            Path path,
+            long start,
             long totalBytes,
             Properties splitSchema,
             List<HiveColumnHandle> columns,
@@ -117,6 +123,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             ThriftFieldIdResolver thriftFieldIdResolver)
     {
         requireNonNull(recordReader, "recordReader is null");
+        requireNonNull(path, "path is null");
+        checkArgument(start >= 0, "start is negative");
         checkArgument(totalBytes >= 0, "totalBytes is negative");
         requireNonNull(splitSchema, "splitSchema is null");
         requireNonNull(columns, "columns is null");
@@ -124,6 +132,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         requireNonNull(thriftFieldIdResolver, "thriftFieldIdResolver is null");
 
         this.recordReader = recordReader;
+        this.path = path;
+        this.start = start;
         this.totalBytes = totalBytes;
         this.key = recordReader.createKey();
         this.value = recordReader.createValue();
@@ -215,7 +225,10 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
         catch (IOException | RuntimeException e) {
             closeWithSuppression(this, e);
-            throw new PrestoException(HIVE_CURSOR_ERROR, e);
+            throw new PrestoException(HIVE_CURSOR_ERROR,
+                format("Failed to read split: %s %s:%s, total bytes: %s, completed bytes: %s",
+                    path, start, start + totalBytes, totalBytes, completedBytes),
+                e);
         }
     }
 
