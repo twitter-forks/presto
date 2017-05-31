@@ -13,7 +13,8 @@
  */
 package com.facebook.presto.execution;
 
-import com.facebook.presto.execution.TaskExecutor.TaskHandle;
+import com.facebook.presto.execution.executor.TaskExecutor;
+import com.facebook.presto.execution.executor.TaskHandle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -144,11 +145,11 @@ public class TestTaskExecutor
 
             // force enqueue a split
             taskExecutor.enqueueSplits(taskHandle, true, ImmutableList.of(driver1));
-            assertEquals(taskHandle.getRunningSplits(), 0);
+            assertEquals(taskHandle.getRunningLeafSplits(), 0);
 
             // normal enqueue a split
             taskExecutor.enqueueSplits(taskHandle, false, ImmutableList.of(driver2));
-            assertEquals(taskHandle.getRunningSplits(), 1);
+            assertEquals(taskHandle.getRunningLeafSplits(), 1);
 
             // let the split continue to run
             beginPhase.arriveAndDeregister();

@@ -35,12 +35,12 @@ statement
     | DROP SCHEMA (IF EXISTS)? qualifiedName (CASCADE | RESTRICT)?     #dropSchema
     | ALTER SCHEMA qualifiedName RENAME TO identifier                  #renameSchema
     | CREATE TABLE (IF NOT EXISTS)? qualifiedName
-        (COMMENT STRING)?
-        (WITH tableProperties)? AS query
+        (COMMENT string)?
+        (WITH tableProperties)? AS (query | '('query')')
         (WITH (NO)? DATA)?                                             #createTableAsSelect
     | CREATE TABLE (IF NOT EXISTS)? qualifiedName
         '(' tableElement (',' tableElement)* ')'
-         (COMMENT STRING)?
+         (COMMENT string)?
          (WITH tableProperties)?                                       #createTable
     | DROP TABLE (IF EXISTS)? qualifiedName                            #dropTable
     | INSERT INTO qualifiedName columnAliases? query                   #insertInto
@@ -61,13 +61,15 @@ statement
         (GRANT OPTION FOR)?
         (privilege (',' privilege)* | ALL PRIVILEGES)
         ON TABLE? qualifiedName FROM grantee=identifier                #revoke
+    | SHOW GRANTS
+        (ON TABLE? qualifiedName)?                                     #showGrants
     | EXPLAIN ANALYZE?
         ('(' explainOption (',' explainOption)* ')')? statement        #explain
     | SHOW CREATE TABLE qualifiedName                                  #showCreateTable
     | SHOW CREATE VIEW qualifiedName                                   #showCreateView
-    | SHOW TABLES ((FROM | IN) qualifiedName)? (LIKE pattern=STRING)?  #showTables
-    | SHOW SCHEMAS ((FROM | IN) identifier)? (LIKE pattern=STRING)?    #showSchemas
-    | SHOW CATALOGS (LIKE pattern=STRING)?                             #showCatalogs
+    | SHOW TABLES ((FROM | IN) qualifiedName)? (LIKE pattern=string)?  #showTables
+    | SHOW SCHEMAS ((FROM | IN) identifier)? (LIKE pattern=string)?    #showSchemas
+    | SHOW CATALOGS (LIKE pattern=string)?                             #showCatalogs
     | SHOW COLUMNS (FROM | IN) qualifiedName                           #showColumns
     | DESCRIBE qualifiedName                                           #showColumns
     | DESC qualifiedName                                               #showColumns
@@ -103,7 +105,7 @@ tableElement
     ;
 
 columnDefinition
-    : identifier type (COMMENT STRING)?
+    : identifier type (COMMENT string)?
     ;
 
 likeClause
@@ -274,11 +276,11 @@ valueExpression
 primaryExpression
     : NULL                                                                                #nullLiteral
     | interval                                                                            #intervalLiteral
-    | identifier STRING                                                                   #typeConstructor
-    | DOUBLE_PRECISION STRING                                                             #typeConstructor
+    | identifier string                                                                   #typeConstructor
+    | DOUBLE_PRECISION string                                                             #typeConstructor
     | number                                                                              #numericLiteral
     | booleanValue                                                                        #booleanLiteral
-    | STRING                                                                              #stringLiteral
+    | string                                                                              #stringLiteral
     | BINARY_LITERAL                                                                      #binaryLiteral
     | '?'                                                                                 #parameter
     | POSITION '(' valueExpression IN valueExpression ')'                                 #position
@@ -310,9 +312,14 @@ primaryExpression
     | '(' expression ')'                                                                  #parenthesizedExpression
     ;
 
+string
+    : STRING                                #basicStringLiteral
+    | UNICODE_STRING (UESCAPE STRING)?      #unicodeStringLiteral
+    ;
+
 timeZoneSpecifier
     : TIME ZONE interval  #timeZoneInterval
-    | TIME ZONE STRING    #timeZoneString
+    | TIME ZONE string    #timeZoneString
     ;
 
 comparisonOperator
@@ -328,7 +335,7 @@ booleanValue
     ;
 
 interval
-    : INTERVAL sign=(PLUS | MINUS)? STRING from=intervalField (TO to=intervalField)?
+    : INTERVAL sign=(PLUS | MINUS)? string from=intervalField (TO to=intervalField)?
     ;
 
 intervalField
@@ -452,7 +459,7 @@ nonReserved
     | SERIALIZABLE | REPEATABLE | COMMITTED | UNCOMMITTED | READ | WRITE | ONLY
     | COMMENT
     | CALL
-    | GRANT | REVOKE | PRIVILEGES | PUBLIC | OPTION
+    | GRANT | REVOKE | PRIVILEGES | PUBLIC | OPTION | GRANTS
     | SUBSTRING
     | SCHEMA | CASCADE | RESTRICT
     | INPUT | OUTPUT
@@ -568,6 +575,7 @@ REVOKE: 'REVOKE';
 PRIVILEGES: 'PRIVILEGES';
 PUBLIC: 'PUBLIC';
 OPTION: 'OPTION';
+GRANTS: 'GRANTS';
 EXPLAIN: 'EXPLAIN';
 ANALYZE: 'ANALYZE';
 FORMAT: 'FORMAT';
@@ -632,6 +640,7 @@ RESTRICT: 'RESTRICT';
 INCLUDING: 'INCLUDING';
 EXCLUDING: 'EXCLUDING';
 PROPERTIES: 'PROPERTIES';
+UESCAPE: 'UESCAPE';
 
 NORMALIZE: 'NORMALIZE';
 NFD : 'NFD';
@@ -659,6 +668,10 @@ CONCAT: '||';
 
 STRING
     : '\'' ( ~'\'' | '\'\'' )* '\''
+    ;
+
+UNICODE_STRING
+    : 'U&\'' ( ~'\'' | '\'\'' )* '\''
     ;
 
 // Note: we allow any character inside the binary literal and validate

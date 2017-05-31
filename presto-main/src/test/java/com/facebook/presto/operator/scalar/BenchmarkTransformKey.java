@@ -17,18 +17,14 @@ package com.facebook.presto.operator.scalar;
 import com.facebook.presto.metadata.FunctionKind;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.metadata.Signature;
-import com.facebook.presto.operator.PageProcessor;
+import com.facebook.presto.operator.project.PageProcessor;
 import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
-import com.facebook.presto.sql.relational.CallExpression;
-import com.facebook.presto.sql.relational.ConstantExpression;
-import com.facebook.presto.sql.relational.InputReferenceExpression;
 import com.facebook.presto.sql.relational.LambdaDefinitionExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.sql.relational.VariableReferenceExpression;
@@ -52,19 +48,20 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 import org.openjdk.jmh.runner.options.VerboseMode;
 import org.openjdk.jmh.runner.options.WarmupMode;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.function.OperatorType.ADD;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
+import static com.facebook.presto.sql.relational.Expressions.call;
+import static com.facebook.presto.sql.relational.Expressions.constant;
+import static com.facebook.presto.sql.relational.Expressions.field;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
+import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static java.lang.String.format;
 
 @SuppressWarnings("MethodMayBeStatic")
@@ -84,14 +81,7 @@ public class BenchmarkTransformKey
     public Object benchmark(BenchmarkData data)
             throws Throwable
     {
-        int position = 0;
-        List<Page> pages = new ArrayList<>();
-        while (position < data.getPage().getPositionCount()) {
-            position = data.getPageProcessor().process(SESSION, data.getPage(), position, data.getPage().getPositionCount(), data.getPageBuilder());
-            pages.add(data.getPageBuilder().build());
-            data.getPageBuilder().reset();
-        }
-        return pages;
+        return data.getPageProcessor().process(SESSION, data.getPage());
     }
 
     @SuppressWarnings("FieldMayBeFinal")
@@ -102,7 +92,6 @@ public class BenchmarkTransformKey
         private String type = "DOUBLE";
 
         private String name = "transform_keys";
-        private PageBuilder pageBuilder;
         private Page page;
         private PageProcessor pageProcessor;
 
@@ -126,7 +115,7 @@ public class BenchmarkTransformKey
                 default:
                     throw new UnsupportedOperationException();
             }
-            MapType mapType = new MapType(elementType, elementType);
+            MapType mapType = mapType(elementType, elementType);
             Signature signature = new Signature(
                     name,
                     FunctionKind.SCALAR,
@@ -134,19 +123,18 @@ public class BenchmarkTransformKey
                     mapType.getTypeSignature(),
                     parseTypeSignature(format("function(%s, %s, %s)", type, type, type)));
             Signature add = new Signature("$operator$" + ADD.name(), FunctionKind.SCALAR, elementType.getTypeSignature(), elementType.getTypeSignature(), elementType.getTypeSignature());
-            projectionsBuilder.add(new CallExpression(signature, mapType, ImmutableList.of(
-                    new InputReferenceExpression(0, mapType),
+            projectionsBuilder.add(call(signature, mapType, ImmutableList.of(
+                    field(0, mapType),
                     new LambdaDefinitionExpression(
                             ImmutableList.of(elementType, elementType),
                             ImmutableList.of("x", "y"),
-                            new CallExpression(add, elementType, ImmutableList.of(
+                            call(add, elementType, ImmutableList.of(
                                     new VariableReferenceExpression("x", elementType),
-                                    new ConstantExpression(increment, elementType)))))));
+                                    constant(increment, elementType)))))));
             Block block = createChannel(POSITIONS, mapType, elementType);
 
             ImmutableList<RowExpression> projections = projectionsBuilder.build();
-            pageProcessor = compiler.compilePageProcessor(new ConstantExpression(true, BOOLEAN), projections).get();
-            pageBuilder = new PageBuilder(projections.stream().map(RowExpression::getType).collect(Collectors.toList()));
+            pageProcessor = compiler.compilePageProcessor(Optional.empty(), projections).get();
             page = new Page(block);
         }
 
@@ -181,11 +169,6 @@ public class BenchmarkTransformKey
         public Page getPage()
         {
             return page;
-        }
-
-        public PageBuilder getPageBuilder()
-        {
-            return pageBuilder;
         }
     }
 

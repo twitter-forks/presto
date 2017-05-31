@@ -32,11 +32,11 @@ import com.facebook.presto.execution.QueryPerformanceFetcher;
 import com.facebook.presto.execution.QueryPerformanceFetcherProvider;
 import com.facebook.presto.execution.SqlTaskManager;
 import com.facebook.presto.execution.StageInfo;
-import com.facebook.presto.execution.TaskExecutor;
 import com.facebook.presto.execution.TaskInfo;
 import com.facebook.presto.execution.TaskManager;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.TaskStatus;
+import com.facebook.presto.execution.executor.TaskExecutor;
 import com.facebook.presto.execution.resourceGroups.NoOpResourceGroupManager;
 import com.facebook.presto.execution.resourceGroups.ResourceGroupManager;
 import com.facebook.presto.execution.scheduler.FlatNetworkTopology;
@@ -78,6 +78,7 @@ import com.facebook.presto.operator.PagesIndex;
 import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.server.remotetask.HttpLocationFactory;
 import com.facebook.presto.spi.ConnectorSplit;
+import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PageIndexerFactory;
 import com.facebook.presto.spi.PageSorter;
 import com.facebook.presto.spi.block.Block;
@@ -120,6 +121,7 @@ import com.facebook.presto.transaction.TransactionManagerConfig;
 import com.facebook.presto.type.TypeDeserializer;
 import com.facebook.presto.type.TypeRegistry;
 import com.facebook.presto.util.FinalizerService;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
@@ -134,8 +136,11 @@ import io.airlift.stats.PauseMeter;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 
+import javax.annotation.PreDestroy;
+import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -427,6 +432,9 @@ public class ServerMainModule
         newExporter(binder).export(SpillerFactory.class).withGeneratedName();
         binder.bind(LocalSpillManager.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(NodeSpillConfig.class);
+
+        // cleanup
+        binder.bind(ExecutorCleanup.class).in(Scopes.SINGLETON);
     }
 
     @Provides
@@ -510,7 +518,41 @@ public class ServerMainModule
                 {
                     return ImmutableSet.of();
                 }
+
+                @Override
+                public State getState(HostAddress hostAddress)
+                {
+                    // failure detector is not available on workers
+                    return State.UNKNOWN;
+                }
             });
+        }
+    }
+
+    public static class ExecutorCleanup
+    {
+        private final List<ExecutorService> executors;
+
+        @Inject
+        public ExecutorCleanup(
+                @ForExchange ScheduledExecutorService exchangeExecutor,
+                @ForAsyncHttp ExecutorService httpResponseExecutor,
+                @ForAsyncHttp ScheduledExecutorService httpTimeoutExecutor,
+                @ForTransactionManager ExecutorService transactionFinishingExecutor,
+                @ForTransactionManager ScheduledExecutorService transactionIdleExecutor)
+        {
+            executors = ImmutableList.of(
+                    exchangeExecutor,
+                    httpResponseExecutor,
+                    httpTimeoutExecutor,
+                    transactionFinishingExecutor,
+                    transactionIdleExecutor);
+        }
+
+        @PreDestroy
+        public void shutdown()
+        {
+            executors.forEach(ExecutorService::shutdownNow);
         }
     }
 }

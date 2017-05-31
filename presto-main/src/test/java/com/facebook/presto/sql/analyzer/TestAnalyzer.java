@@ -230,6 +230,87 @@ public class TestAnalyzer
     }
 
     @Test
+    public void testGroupByWithSubquerySelectExpression()
+            throws Exception
+    {
+        analyze("SELECT (SELECT t1.a) FROM t1 GROUP BY a");
+        analyze("SELECT (SELECT a) FROM t1 GROUP BY t1.a");
+
+        // u.a is not GROUP-ed BY and it is used in select Subquery expression
+        analyze("SELECT (SELECT u.a FROM (values 1) u(a)) " +
+                "FROM t1 u GROUP BY b");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:16: Subquery uses '\"u\".\"a\"' which must appear in GROUP BY clause",
+                "SELECT (SELECT u.a from (values 1) x(a)) FROM t1 u GROUP BY b");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:16: Subquery uses '\"a\"' which must appear in GROUP BY clause",
+                "SELECT (SELECT a+2) FROM t1 GROUP BY a+1");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:36: Subquery uses '\"u\".\"a\"' which must appear in GROUP BY clause",
+                "SELECT (SELECT 1 FROM t1 WHERE a = u.a) FROM t1 u GROUP BY b");
+
+        // (t1.)a is not part of GROUP BY
+        assertFails(MUST_BE_AGGREGATE_OR_GROUP_BY, "SELECT (SELECT a as a) FROM t1 GROUP BY b");
+
+        // u.a is not GROUP-ed BY but select Subquery expression is using a different (shadowing) u.a
+        analyze("SELECT (SELECT 1 FROM t1 u WHERE a = u.a) FROM t1 u GROUP BY b");
+    }
+
+    @Test
+    public void testGroupByWithExistsSelectExpression()
+            throws Exception
+    {
+        analyze("SELECT EXISTS(SELECT t1.a) FROM t1 GROUP BY a");
+        analyze("SELECT EXISTS(SELECT a) FROM t1 GROUP BY t1.a");
+
+        // u.a is not GROUP-ed BY and it is used in select Subquery expression
+        analyze("SELECT EXISTS(SELECT u.a FROM (values 1) u(a)) " +
+                "FROM t1 u GROUP BY b");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:22: Subquery uses '\"u\".\"a\"' which must appear in GROUP BY clause",
+                "SELECT EXISTS(SELECT u.a from (values 1) x(a)) FROM t1 u GROUP BY b");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:22: Subquery uses '\"a\"' which must appear in GROUP BY clause",
+                "SELECT EXISTS(SELECT a+2) FROM t1 GROUP BY a+1");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:42: Subquery uses '\"u\".\"a\"' which must appear in GROUP BY clause",
+                "SELECT EXISTS(SELECT 1 FROM t1 WHERE a = u.a) FROM t1 u GROUP BY b");
+
+        // (t1.)a is not part of GROUP BY
+        assertFails(MUST_BE_AGGREGATE_OR_GROUP_BY, "SELECT EXISTS(SELECT a as a) FROM t1 GROUP BY b");
+
+        // u.a is not GROUP-ed BY but select Subquery expression is using a different (shadowing) u.a
+        analyze("SELECT EXISTS(SELECT 1 FROM t1 u WHERE a = u.a) FROM t1 u GROUP BY b");
+    }
+
+    @Test
+    public void testGroupByWithSubquerySelectExpressionWithDereferenceExpression()
+    {
+        analyze("SELECT (SELECT t.a.someField) " +
+                "FROM (VALUES ROW(CAST(ROW(1) AS ROW(someField BIGINT)), 2)) t(a, b) " +
+                "GROUP BY a");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:16: Subquery uses '\"t\".\"a\"' which must appear in GROUP BY clause",
+                "SELECT (SELECT t.a.someField) " +
+                        "FROM (VALUES ROW(CAST(ROW(1) AS ROW(someField BIGINT)), 2)) t(a, b) " +
+                        "GROUP BY b");
+    }
+
+    @Test
     public void testOrderByInvalidOrdinal()
             throws Exception
     {
@@ -389,6 +470,41 @@ public class TestAnalyzer
     {
         // TODO: validate output
         analyze("SELECT t1.* FROM t1 ORDER BY a");
+    }
+
+    @Test
+    public void testOrderByWithGroupByAndSubquerySelectExpression()
+            throws Exception
+    {
+        analyze("SELECT a FROM t1 GROUP BY a ORDER BY (SELECT a)");
+
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:46: Subquery uses '\"b\"' which must appear in GROUP BY clause",
+                "SELECT a FROM t1 GROUP BY a ORDER BY (SELECT b)");
+
+        analyze("SELECT a AS b FROM t1 GROUP BY t1.a ORDER BY (SELECT b)");
+
+        assertFails(
+                REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION,
+                "line 2:22: Invalid reference to output projection attribute from ORDER BY aggregation",
+                "SELECT a AS b FROM t1 GROUP BY t1.a \n" +
+                        "ORDER BY MAX((SELECT b))");
+
+        analyze("SELECT a FROM t1 GROUP BY a ORDER BY MAX((SELECT x FROM (VALUES 4) t(x)))");
+
+        analyze("SELECT CAST(ROW(1) AS ROW(someField BIGINT)) AS x\n" +
+                "FROM (VALUES (1, 2)) t(a, b)\n" +
+                "GROUP BY b\n" +
+                "ORDER BY (SELECT x.someField)");
+
+        assertFails(
+                REFERENCE_TO_OUTPUT_ATTRIBUTE_WITHIN_ORDER_BY_AGGREGATION,
+                "line 4:22: Invalid reference to output projection attribute from ORDER BY aggregation",
+                "SELECT CAST(ROW(1) AS ROW(someField BIGINT)) AS x\n" +
+                        "FROM (VALUES (1, 2)) t(a, b)\n" +
+                        "GROUP BY b\n" +
+                        "ORDER BY MAX((SELECT x.someField))");
     }
 
     @Test
@@ -1104,6 +1220,40 @@ public class TestAnalyzer
                 NOT_SUPPORTED,
                 ".* Lambda expression cannot contain subqueries",
                 "SELECT apply(1, i -> (SELECT i)) FROM (VALUES 1) t(x)");
+
+        // GROUP BY column captured in lambda
+        analyze(
+                "SELECT (SELECT apply(0, x -> x + b) FROM (VALUES 1) x(a)) FROM t1 u GROUP BY b");
+
+        // non-GROUP BY column captured in lambda
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:34: Subquery uses '\"a\"' which must appear in GROUP BY clause",
+                "SELECT (SELECT apply(0, x -> x + a) FROM (VALUES 1) x(c)) " +
+                        "FROM t1 u GROUP BY b");
+        // TODO #7784
+//        assertFails(
+//                MUST_BE_AGGREGATE_OR_GROUP_BY,
+//                "line 1:34: Subquery uses '\"u.a\"' which must appear in GROUP BY clause",
+//                "SELECT (SELECT apply(0, x -> x + u.a) from (values 1) x(a)) " +
+//                        "FROM t1 u GROUP BY b");
+
+        // name shadowing
+        analyze("SELECT (SELECT apply(0, x -> x + a) FROM (VALUES 1) x(a)) FROM t1 u GROUP BY b");
+        analyze("SELECT (SELECT apply(0, a -> a + a)) FROM t1 u GROUP BY b");
+    }
+
+    @Test
+    public void testLambdaWithSubqueryInOrderBy()
+    {
+        analyze("SELECT a FROM t1 ORDER BY (SELECT apply(0, x -> x + a))");
+        analyze("SELECT a AS output_column FROM t1 ORDER BY (SELECT apply(0, x -> x + output_column))");
+        analyze("SELECT count(*) FROM t1 GROUP BY a ORDER BY (SELECT apply(0, x -> x + a))");
+        analyze("SELECT count(*) AS output_column FROM t1 GROUP BY a ORDER BY (SELECT apply(0, x -> x + output_column))");
+        assertFails(
+                MUST_BE_AGGREGATE_OR_GROUP_BY,
+                "line 1:71: Subquery uses '\"b\"' which must appear in GROUP BY clause",
+                "SELECT count(*) FROM t1 GROUP BY a ORDER BY (SELECT apply(0, x -> x + b))");
     }
 
     @Test

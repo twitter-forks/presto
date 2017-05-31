@@ -63,8 +63,8 @@ public class HiveClientConfig
 
     private boolean readAsQueryUser = false;
 
-    private Duration metastoreCacheTtl = new Duration(1, TimeUnit.HOURS);
-    private Duration metastoreRefreshInterval = new Duration(1, TimeUnit.SECONDS);
+    private Duration metastoreCacheTtl = new Duration(0, TimeUnit.SECONDS);
+    private Duration metastoreRefreshInterval = new Duration(0, TimeUnit.SECONDS);
     private long metastoreCacheMaximumSize = 10000;
     private long perTransactionMetastoreCacheMaximumSize = 1000;
     private int maxMetastoreRefreshThreads = 100;

@@ -20,6 +20,7 @@ import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
+import com.facebook.presto.sql.planner.plan.AggregationNode.Step;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.ExceptNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
@@ -148,9 +149,10 @@ public final class PlanMatchPattern
             Map<Optional<String>, ExpectedValueProvider<FunctionCall>> aggregations,
             Map<Symbol, Symbol> masks,
             Optional<Symbol> groupId,
+            Step step,
             PlanMatchPattern source)
     {
-        PlanMatchPattern result = node(AggregationNode.class, source).with(new AggregationMatcher(groupingSets, masks, groupId));
+        PlanMatchPattern result = node(AggregationNode.class, source).with(new AggregationMatcher(groupingSets, masks, groupId, step));
         aggregations.entrySet().forEach(
                 aggregation -> result.withAlias(aggregation.getKey(), new AggregationFunctionMatcher(aggregation.getValue())));
         return result;
@@ -246,6 +248,12 @@ public final class PlanMatchPattern
     public static PlanMatchPattern exchange(PlanMatchPattern... sources)
     {
         return node(ExchangeNode.class, sources);
+    }
+
+    public static PlanMatchPattern exchange(ExchangeNode.Scope scope, ExchangeNode.Type type, PlanMatchPattern... sources)
+    {
+        return node(ExchangeNode.class, sources)
+                .with(new ExchangeMatcher(scope, type));
     }
 
     public static PlanMatchPattern union(PlanMatchPattern... sources)
@@ -499,7 +507,7 @@ public final class PlanMatchPattern
     {
         checkState(matchers.stream().filter(PlanNodeMatcher.class::isInstance).count() <= 1);
 
-        builder.append(indentString(indent));
+        builder.append(indentString(indent)).append("- ");
         if (anyTree) {
             builder.append("anyTree");
         }
@@ -516,15 +524,11 @@ public final class PlanMatchPattern
             builder.append("(").append(planNodeMatcher.get().getNodeClass().getSimpleName()).append(")");
         }
 
+        builder.append("\n");
+
         List<Matcher> matchersToPrint = matchers.stream()
                 .filter(matcher -> !(matcher instanceof PlanNodeMatcher))
                 .collect(toImmutableList());
-
-        builder.append("\n");
-
-        if (matchersToPrint.size() + sourcePatterns.size() == 0) {
-            return;
-        }
 
         for (Matcher matcher : matchersToPrint) {
             builder.append(indentString(indent + 1)).append(matcher.toString()).append("\n");

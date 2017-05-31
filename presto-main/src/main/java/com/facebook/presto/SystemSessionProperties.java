@@ -54,7 +54,6 @@ public final class SystemSessionProperties
     public static final String REDISTRIBUTE_WRITES = "redistribute_writes";
     public static final String PUSH_TABLE_WRITE_THROUGH_UNION = "push_table_write_through_union";
     public static final String EXECUTION_POLICY = "execution_policy";
-    public static final String PROCESSING_OPTIMIZATION = "processing_optimization";
     public static final String DICTIONARY_AGGREGATION = "dictionary_aggregation";
     public static final String PLAN_WITH_TABLE_NODE_PARTITIONING = "plan_with_table_node_partitioning";
     public static final String COLOCATED_JOIN = "colocated_join";
@@ -62,15 +61,16 @@ public final class SystemSessionProperties
     public static final String INITIAL_SPLITS_PER_NODE = "initial_splits_per_node";
     public static final String SPLIT_CONCURRENCY_ADJUSTMENT_INTERVAL = "split_concurrency_adjustment_interval";
     public static final String OPTIMIZE_METADATA_QUERIES = "optimize_metadata_queries";
+    public static final String FAST_INEQUALITY_JOIN = "fast_inequality_join";
     public static final String QUERY_PRIORITY = "query_priority";
     public static final String SPILL_ENABLED = "spill_enabled";
     public static final String OPERATOR_MEMORY_LIMIT_BEFORE_SPILL = "operator_memory_limit_before_spill";
     public static final String OPTIMIZE_DISTINCT_AGGREGATIONS = "optimize_mixed_distinct_aggregations";
     public static final String LEGACY_ORDER_BY = "legacy_order_by";
-    public static final String REORDER_WINDOWS = "reorder_windows";
     public static final String ITERATIVE_OPTIMIZER = "iterative_optimizer_enabled";
     public static final String ITERATIVE_OPTIMIZER_TIMEOUT = "iterative_optimizer_timeout";
     public static final String EXCHANGE_COMPRESSION = "exchange_compression";
+    public static final String ENABLE_INTERMEDIATE_AGGREGATIONS = "enable_intermediate_aggregations";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -198,11 +198,6 @@ public final class SystemSessionProperties
                         "Use resources which are not guaranteed to be available to the query",
                         false,
                         false),
-                stringSessionProperty(
-                        PROCESSING_OPTIMIZATION,
-                        "Type of optimization for query processing",
-                        featuresConfig.getProcessingOptimization(),
-                        false),
                 booleanSessionProperty(
                         DICTIONARY_AGGREGATION,
                         "Enable optimization for aggregations on dictionaries",
@@ -241,6 +236,11 @@ public final class SystemSessionProperties
                         REORDER_JOINS,
                         "Experimental: Reorder joins to optimize plan",
                         featuresConfig.isJoinReorderingEnabled(),
+                        false),
+                booleanSessionProperty(
+                        FAST_INEQUALITY_JOIN,
+                        "Experimental: Use faster handling of inequality join if it is possible",
+                        featuresConfig.isFastInequalityJoins(),
                         false),
                 booleanSessionProperty(
                         COLOCATED_JOIN,
@@ -284,11 +284,6 @@ public final class SystemSessionProperties
                         featuresConfig.isLegacyOrderBy(),
                         false),
                 booleanSessionProperty(
-                        REORDER_WINDOWS,
-                        "Allow reordering window functions in query",
-                        featuresConfig.isReorderWindows(),
-                        false),
-                booleanSessionProperty(
                         ITERATIVE_OPTIMIZER,
                         "Experimental: enable iterative optimizer",
                         featuresConfig.isIterativeOptimizerEnabled(),
@@ -306,6 +301,11 @@ public final class SystemSessionProperties
                         EXCHANGE_COMPRESSION,
                         "Enable compression in exchanges",
                         featuresConfig.isExchangeCompressionEnabled(),
+                        false),
+                booleanSessionProperty(
+                        ENABLE_INTERMEDIATE_AGGREGATIONS,
+                        "Enable the use of intermediate aggregations",
+                        featuresConfig.isEnableIntermediateAggregations(),
                         false));
     }
 
@@ -369,11 +369,6 @@ public final class SystemSessionProperties
         return session.getSystemProperty(TASK_SHARE_INDEX_LOADING, Boolean.class);
     }
 
-    public static String getProcessingOptimization(Session session)
-    {
-        return session.getSystemProperty(PROCESSING_OPTIMIZATION, String.class);
-    }
-
     public static boolean isDictionaryAggregationEnabled(Session session)
     {
         return session.getSystemProperty(DICTIONARY_AGGREGATION, Boolean.class);
@@ -404,6 +399,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(PLAN_WITH_TABLE_NODE_PARTITIONING, Boolean.class);
     }
 
+    public static boolean isFastInequalityJoin(Session session)
+    {
+        return session.getSystemProperty(FAST_INEQUALITY_JOIN, Boolean.class);
+    }
+
     public static boolean isJoinReorderingEnabled(Session session)
     {
         return session.getSystemProperty(REORDER_JOINS, Boolean.class);
@@ -424,11 +424,6 @@ public final class SystemSessionProperties
         Integer priority = session.getSystemProperty(QUERY_PRIORITY, Integer.class);
         checkArgument(priority > 0, "Query priority must be positive");
         return priority;
-    }
-
-    public static boolean isReorderWindowsEnabled(Session session)
-    {
-        return session.getSystemProperty(REORDER_WINDOWS, Boolean.class);
     }
 
     public static Duration getSplitConcurrencyAdjustmentInterval(Session session)
@@ -476,5 +471,10 @@ public final class SystemSessionProperties
     public static boolean isExchangeCompressionEnabled(Session session)
     {
         return session.getSystemProperty(EXCHANGE_COMPRESSION, Boolean.class);
+    }
+
+    public static boolean isEnableIntermediateAggregations(Session session)
+    {
+        return session.getSystemProperty(ENABLE_INTERMEDIATE_AGGREGATIONS, Boolean.class);
     }
 }

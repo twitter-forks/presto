@@ -34,28 +34,21 @@ import static java.util.concurrent.TimeUnit.MINUTES;
 @DefunctConfig({
         "resource-group-manager",
         "experimental-syntax-enabled",
-        "analyzer.experimental-syntax-enabled"
+        "analyzer.experimental-syntax-enabled",
+        "optimizer.processing-optimization"
 })
 public class FeaturesConfig
 {
-    public static class ProcessingOptimization
-    {
-        public static final String DISABLED = "disabled";
-        public static final String COLUMNAR = "columnar";
-        public static final String COLUMNAR_DICTIONARY = "columnar_dictionary";
-
-        public static final List<String> AVAILABLE_OPTIONS = ImmutableList.of(DISABLED, COLUMNAR, COLUMNAR_DICTIONARY);
-    }
-
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
-    private boolean reorderJoins;
+    private boolean fastInequalityJoins = true;
+    private boolean reorderJoins = true;
     private boolean redistributeWrites = true;
     private boolean optimizeMetadataQueries;
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
-    private boolean optimizerReorderWindows = false;
+    private boolean enableIntermediateAggregations = false;
     private boolean pushTableWriteThroughUnion = true;
     private boolean exchangeCompressionEnabled = false;
     private boolean legacyArrayAgg;
@@ -63,7 +56,6 @@ public class FeaturesConfig
     private boolean legacyMapSubscript;
     private boolean optimizeMixedDistinctAggregations;
 
-    private String processingOptimization = ProcessingOptimization.DISABLED;
     private boolean dictionaryAggregation;
     private boolean resourceGroups;
 
@@ -164,6 +156,19 @@ public class FeaturesConfig
         return this;
     }
 
+    @Config("fast-inequality-joins")
+    @ConfigDescription("Experimental: Use faster handling of inequality joins if it is possible")
+    public FeaturesConfig setFastInequalityJoins(boolean fastInequalityJoins)
+    {
+        this.fastInequalityJoins = fastInequalityJoins;
+        return this;
+    }
+
+    public boolean isFastInequalityJoins()
+    {
+        return fastInequalityJoins;
+    }
+
     public boolean isJoinReorderingEnabled()
     {
         return reorderJoins;
@@ -225,18 +230,6 @@ public class FeaturesConfig
         return this;
     }
 
-    public boolean isReorderWindows()
-    {
-        return optimizerReorderWindows;
-    }
-
-    @Config("optimizer.reorder-windows")
-    public FeaturesConfig setReorderWindows(boolean reorderWindows)
-    {
-        this.optimizerReorderWindows = reorderWindows;
-        return this;
-    }
-
     public boolean isPushTableWriteThroughUnion()
     {
         return pushTableWriteThroughUnion;
@@ -246,21 +239,6 @@ public class FeaturesConfig
     public FeaturesConfig setPushTableWriteThroughUnion(boolean pushTableWriteThroughUnion)
     {
         this.pushTableWriteThroughUnion = pushTableWriteThroughUnion;
-        return this;
-    }
-
-    public String getProcessingOptimization()
-    {
-        return processingOptimization;
-    }
-
-    @Config("optimizer.processing-optimization")
-    public FeaturesConfig setProcessingOptimization(String processingOptimization)
-    {
-        if (!ProcessingOptimization.AVAILABLE_OPTIONS.contains(processingOptimization)) {
-            throw new IllegalStateException(String.format("Value %s is not valid for processingOptimization.", processingOptimization));
-        }
-        this.processingOptimization = processingOptimization;
         return this;
     }
 
@@ -420,6 +398,18 @@ public class FeaturesConfig
     public FeaturesConfig setExchangeCompressionEnabled(boolean exchangeCompressionEnabled)
     {
         this.exchangeCompressionEnabled = exchangeCompressionEnabled;
+        return this;
+    }
+
+    public boolean isEnableIntermediateAggregations()
+    {
+        return enableIntermediateAggregations;
+    }
+
+    @Config("optimizer.enable-intermediate-aggregations")
+    public FeaturesConfig setEnableIntermediateAggregations(boolean enableIntermediateAggregations)
+    {
+        this.enableIntermediateAggregations = enableIntermediateAggregations;
         return this;
     }
 }

@@ -38,6 +38,10 @@ import com.facebook.presto.operator.aggregation.DoubleRegressionAggregation;
 import com.facebook.presto.operator.aggregation.DoubleSumAggregation;
 import com.facebook.presto.operator.aggregation.GeometricMeanAggregations;
 import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
+import com.facebook.presto.operator.aggregation.IntervalDayToSecondAverageAggregation;
+import com.facebook.presto.operator.aggregation.IntervalDayToSecondSumAggregation;
+import com.facebook.presto.operator.aggregation.IntervalYearToMonthAverageAggregation;
+import com.facebook.presto.operator.aggregation.IntervalYearToMonthSumAggregation;
 import com.facebook.presto.operator.aggregation.LongSumAggregation;
 import com.facebook.presto.operator.aggregation.MergeHyperLogLogAggregation;
 import com.facebook.presto.operator.aggregation.RealAverageAggregation;
@@ -146,6 +150,7 @@ import com.facebook.presto.type.TimeWithTimeZoneOperators;
 import com.facebook.presto.type.TimestampOperators;
 import com.facebook.presto.type.TimestampWithTimeZoneOperators;
 import com.facebook.presto.type.TinyintOperators;
+import com.facebook.presto.type.TypeRegistry;
 import com.facebook.presto.type.UnknownOperators;
 import com.facebook.presto.type.VarbinaryOperators;
 import com.facebook.presto.type.VarcharOperators;
@@ -415,8 +420,12 @@ public class FunctionRegistry
                 .aggregate(DoubleSumAggregation.class)
                 .aggregate(RealSumAggregation.class)
                 .aggregate(LongSumAggregation.class)
+                .aggregate(IntervalDayToSecondSumAggregation.class)
+                .aggregate(IntervalYearToMonthSumAggregation.class)
                 .aggregate(AverageAggregations.class)
                 .aggregate(RealAverageAggregation.class)
+                .aggregate(IntervalDayToSecondAverageAggregation.class)
+                .aggregate(IntervalYearToMonthAverageAggregation.class)
                 .aggregate(GeometricMeanAggregations.class)
                 .aggregate(RealGeometricMeanAggregations.class)
                 .aggregate(ApproximateCountDistinctAggregations.class)
@@ -576,6 +585,10 @@ public class FunctionRegistry
         }
 
         addFunctions(builder.getFunctions());
+
+        if (typeManager instanceof TypeRegistry) {
+            ((TypeRegistry) typeManager).setFunctionRegistry(this);
+        }
     }
 
     public final synchronized void addFunctions(List<? extends SqlFunction> functions)

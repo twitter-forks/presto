@@ -18,10 +18,10 @@ import org.openjdk.jol.info.ClassLayout;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.facebook.presto.spi.block.BlockUtil.calculateBlockResetSize;
 import static com.facebook.presto.spi.block.BlockUtil.checkValidRegion;
 import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
 import static io.airlift.slice.SizeOf.sizeOf;
+import static java.lang.Math.max;
 import static java.util.Objects.requireNonNull;
 
 public class ByteArrayBlockBuilder
@@ -30,20 +30,21 @@ public class ByteArrayBlockBuilder
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(ByteArrayBlockBuilder.class).instanceSize() + BlockBuilderStatus.INSTANCE_SIZE;
 
     private BlockBuilderStatus blockBuilderStatus;
+    private boolean initialized;
+    private int initialEntryCount;
 
     private int positionCount;
 
     // it is assumed that these arrays are the same length
-    private boolean[] valueIsNull;
-    private byte[] values;
+    private boolean[] valueIsNull = new boolean[0];
+    private byte[] values = new byte[0];
 
     private int retainedSizeInBytes;
 
     public ByteArrayBlockBuilder(BlockBuilderStatus blockBuilderStatus, int expectedEntries)
     {
         this.blockBuilderStatus = requireNonNull(blockBuilderStatus, "blockBuilderStatus is null");
-        this.values = new byte[expectedEntries];
-        this.valueIsNull = new boolean[expectedEntries];
+        this.initialEntryCount = max(expectedEntries, 1);
 
         updateDataSize();
     }
@@ -89,20 +90,6 @@ public class ByteArrayBlockBuilder
     }
 
     @Override
-    public void reset(BlockBuilderStatus blockBuilderStatus)
-    {
-        this.blockBuilderStatus = requireNonNull(blockBuilderStatus, "blockBuilderStatus is null");
-
-        int newSize = calculateBlockResetSize(positionCount);
-        valueIsNull = new boolean[newSize];
-        values = new byte[newSize];
-
-        positionCount = 0;
-
-        updateDataSize();
-    }
-
-    @Override
     public BlockBuilder newBlockBuilderLike(BlockBuilderStatus blockBuilderStatus)
     {
         return new ByteArrayBlockBuilder(blockBuilderStatus, positionCount);
@@ -110,7 +97,15 @@ public class ByteArrayBlockBuilder
 
     private void growCapacity()
     {
-        int newSize = BlockUtil.calculateNewArraySize(values.length);
+        int newSize;
+        if (initialized) {
+            newSize = BlockUtil.calculateNewArraySize(values.length);
+        }
+        else {
+            newSize = initialEntryCount;
+            initialized = true;
+        }
+
         valueIsNull = Arrays.copyOf(valueIsNull, newSize);
         values = Arrays.copyOf(values, newSize);
         updateDataSize();

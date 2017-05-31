@@ -13,7 +13,9 @@
  */
 package com.facebook.presto.sql.planner.plan;
 
+import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
+import com.facebook.presto.operator.aggregation.InternalAggregationFunction;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -31,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.sql.planner.plan.AggregationNode.Step.SINGLE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
@@ -45,6 +48,16 @@ public class AggregationNode
     private final Optional<Symbol> hashSymbol;
     private final Optional<Symbol> groupIdSymbol;
     private final List<Symbol> outputs;
+
+    public boolean hasEmptyGroupingSet()
+    {
+        return groupingSets.stream().anyMatch(List::isEmpty);
+    }
+
+    public boolean hasNonEmptyGroupingSet()
+    {
+        return groupingSets.stream().anyMatch(symbols -> !symbols.isEmpty());
+    }
 
     public enum Step
     {
@@ -222,6 +235,19 @@ public class AggregationNode
         return groupingSets;
     }
 
+    /**
+     * @return whether this node should produce default output in case of no input pages.
+     * For example for query:
+     *
+     * SELECT count(*) FROM nation WHERE nationkey < 0
+     *
+     * A default output of "0" is expected to be produced by FINAL aggregation operator.
+     */
+    public boolean hasDefaultOutput()
+    {
+        return hasEmptyGroupingSet() && (step.isOutputPartial() || step.equals(SINGLE));
+    }
+
     @JsonProperty("source")
     public PlanNode getSource()
     {
@@ -256,6 +282,13 @@ public class AggregationNode
     public PlanNode replaceChildren(List<PlanNode> newChildren)
     {
         return new AggregationNode(getId(), Iterables.getOnlyElement(newChildren), assignments, groupingSets, step, hashSymbol, groupIdSymbol);
+    }
+
+    public boolean isDecomposable(FunctionRegistry functionRegistry)
+    {
+        return getFunctions().values().stream()
+                .map(functionRegistry::getAggregateFunctionImplementation)
+                .allMatch(InternalAggregationFunction::isDecomposable);
     }
 
     private static Map<Symbol, Aggregation> makeAssignments(

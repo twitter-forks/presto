@@ -43,6 +43,10 @@ broken.
 `hadoop-master`, `mysql`, `postgres`, `cassandra`, `presto-master`.
 They should point to your external IP address (shown by `ifconfig` on your Mac (not inside docker)).
 
+* The default memory setting of 2GB might not be sufficient for some profiles like `singlenode-ldap`.
+You may need 4-8 GB or even more to run certain tests. You can increase Docker memory by going to
+Docker Preferences -> Advanced -> Memory.
+
 ### OS X using Docker Toolbox (macOS 10.8 "Mountain Lion" or newer) [NOT RECOMMENDED]
 
 * [`VirtualBox >= 5.0`](https://www.virtualbox.org/wiki/Downloads)
@@ -159,6 +163,12 @@ where [profile](#profile) is one of either:
  OpenLDAP server, one running with SSL/TLS certificates installed on top of a
  single node Presto installation, and one with a pseudo-distributed Hadoop
  installation.
+- **singlenode-sqlserver** - pseudo-distributed Hadoop installation running on
+ a single Docker container, a single node installation of Presto
+ also running on a single Docker container and one running SQL Server server.
+ While running tests on ``singlenode-sqlserver`` make sure to exclude
+ `mysql_connector` and `postgresql_connector` tests i.e.
+ `-x mysql_connector, postgresql_connector`.
 
 Please keep in mind that if you run tests on Hive of version not greater than 1.0.1, you should exclude test from `post_hive_1_0_1` group by passing the following flag to tempto: `-x post_hive_1_0_1`.
 First version of Hive capable of running tests from `post_hive_1_0_1` group is Hive 1.1.0.
@@ -243,6 +253,9 @@ be any one of the available profiles:
     ```
     presto-product-tests/bin/run_on_docker.sh <profile> -x quarantine,big_query,profile_specific_tests
     ```
+
+Note: SQL Server product-tests use `microsoft/mssql-server-linux` docker container.
+By running SQL Server product tests you accept the license [ACCEPT_EULA](go.microsoft.com/fwlink/?LinkId=746388)
 
 ### Running from IntelliJ
 
