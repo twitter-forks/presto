@@ -174,7 +174,7 @@ public class QueryStatsHelper
         cur.getJsonArray("subStages")
           .stream()
           .filter(val -> val.getValueType() == ValueType.OBJECT)
-          .map(val -> stageJsonObjs.add((JsonObject) val));
+          .forEach(val -> stageJsonObjs.add((JsonObject) val));
       }
       catch (Exception e) {
         log.error(e,
