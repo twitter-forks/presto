@@ -468,7 +468,7 @@ public final class HiveWriteUtils
     public static Path createTemporaryPath(String user, HdfsEnvironment hdfsEnvironment, Path targetPath)
     {
         // use a per-user temporary directory to avoid permission problems
-        String temporaryPrefix = "/user/hive/warehouse/.hive-staging/presto-" + user;
+        String temporaryPrefix = "/user/" + user + "/warehouse/.hive-staging";
 
         // use relative temporary directory on ViewFS
         if (isViewFileSystem(user, hdfsEnvironment, targetPath)) {
