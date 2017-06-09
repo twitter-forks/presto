@@ -66,6 +66,7 @@ public class PooledTTransportFactory
     public boolean validateObject(PooledObject<TTransport> pooledObject)
     {
         try {
+            pooledObject.getObject().flush();
             return (pooledObject.getObject().isOpen() &&
                 ((PooledTTransport) pooledObject.getObject()).isReachable(timeoutMillis));
         }
