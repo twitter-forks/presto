@@ -142,6 +142,11 @@ public abstract class AstVisitor<R, C>
         return visitStatement(node, context);
     }
 
+    protected R visitShowStats(ShowStats node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
     protected R visitShowPartitions(ShowPartitions node, C context)
     {
         return visitStatement(node, context);
@@ -673,6 +678,11 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitBindExpression(BindExpression node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
+    protected R visitGroupingOperation(GroupingOperation node, C context)
     {
         return visitExpression(node, context);
     }

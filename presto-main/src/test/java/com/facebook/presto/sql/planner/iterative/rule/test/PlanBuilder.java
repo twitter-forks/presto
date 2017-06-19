@@ -28,7 +28,6 @@ import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.TestingTableHandle;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Aggregation;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Step;
@@ -37,6 +36,8 @@ import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
+import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
@@ -44,13 +45,16 @@ import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
+import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
+import com.facebook.presto.testing.TestingMetadata.TestingTableHandle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.ListMultimap;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -65,6 +69,7 @@ import java.util.stream.Stream;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
 
@@ -124,8 +129,8 @@ public class PlanBuilder
     {
         private PlanNode source;
         private Map<Symbol, Aggregation> assignments = new HashMap<>();
-        private List<List<Symbol>> groupingSets;
-        private Step step;
+        private List<List<Symbol>> groupingSets = new ArrayList<>();
+        private Step step = Step.SINGLE;
         private Optional<Symbol> hashSymbol = Optional.empty();
         private Optional<Symbol> groupIdSymbol = Optional.empty();
 
@@ -156,7 +161,19 @@ public class PlanBuilder
 
         public AggregationBuilder groupingSets(List<List<Symbol>> groupingSets)
         {
-            this.groupingSets = ImmutableList.copyOf(groupingSets);
+            checkState(this.groupingSets.isEmpty(), "groupingSets already defined");
+            this.groupingSets.addAll(groupingSets);
+            return this;
+        }
+
+        public AggregationBuilder addGroupingSet(Symbol... symbols)
+        {
+            return addGroupingSet(ImmutableList.copyOf(symbols));
+        }
+
+        public AggregationBuilder addGroupingSet(List<Symbol> symbols)
+        {
+            groupingSets.add(ImmutableList.copyOf(symbols));
             return this;
         }
 
@@ -180,6 +197,7 @@ public class PlanBuilder
 
         protected AggregationNode build()
         {
+            checkState(!groupingSets.isEmpty(), "No grouping sets defined; use globalGrouping/addGroupingSet/addEmptyGroupingSet method");
             return new AggregationNode(
                     idAllocator.getNextId(),
                     source,
@@ -196,14 +214,23 @@ public class PlanBuilder
         return new ApplyNode(idAllocator.getNextId(), input, subquery, subqueryAssignments, correlation);
     }
 
+    public LateralJoinNode lateral(List<Symbol> correlation, PlanNode input, PlanNode subquery)
+    {
+        return new LateralJoinNode(idAllocator.getNextId(), input, subquery, correlation, LateralJoinNode.Type.INNER);
+    }
+
     public TableScanNode tableScan(List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments)
+    {
+        TableHandle tableHandle = new TableHandle(new ConnectorId("testConnector"), new TestingTableHandle());
+        return tableScan(tableHandle, symbols, assignments);
+    }
+
+    public TableScanNode tableScan(TableHandle tableHandle, List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments)
     {
         Expression originalConstraint = null;
         return new TableScanNode(
                 idAllocator.getNextId(),
-                new TableHandle(
-                        new ConnectorId("testConnector"),
-                        new TestingTableHandle()),
+                tableHandle,
                 symbols,
                 assignments,
                 Optional.empty(),
@@ -323,11 +350,47 @@ public class PlanBuilder
         }
     }
 
+    public JoinNode join(JoinNode.Type joinType, PlanNode left, PlanNode right, JoinNode.EquiJoinClause... criteria)
+    {
+        return new JoinNode(idAllocator.getNextId(),
+                joinType,
+                left,
+                right,
+                ImmutableList.copyOf(criteria),
+                ImmutableList.<Symbol>builder()
+                        .addAll(left.getOutputSymbols())
+                        .addAll(right.getOutputSymbols())
+                        .build(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty()
+        );
+    }
+
+    public JoinNode join(
+            JoinNode.Type type,
+            PlanNode left,
+            PlanNode right,
+            List<JoinNode.EquiJoinClause> criteria,
+            List<Symbol> outputSymbols,
+            Optional<Expression> filter,
+            Optional<Symbol> leftHashSymbol,
+            Optional<Symbol> rightHashSymbol)
+    {
+        return new JoinNode(idAllocator.getNextId(), type, left, right, criteria, outputSymbols, filter, leftHashSymbol, rightHashSymbol, Optional.empty());
+    }
+
+    public UnionNode union(List<? extends PlanNode> sources, ListMultimap<Symbol, Symbol> outputsToInputs, List<Symbol> outputs)
+    {
+        return new UnionNode(idAllocator.getNextId(), (List<PlanNode>) sources, outputsToInputs, outputs);
+    }
+
     public Symbol symbol(String name, Type type)
     {
         Symbol symbol = new Symbol(name);
 
-        Type old = symbols.get(symbol);
+        Type old = symbols.put(symbol, type);
         if (old != null && !old.equals(type)) {
             throw new IllegalArgumentException(format("Symbol '%s' already registered with type '%s'", name, old));
         }

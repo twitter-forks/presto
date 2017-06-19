@@ -41,11 +41,13 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.SqlTypeBytecodeExpression;
+import com.facebook.presto.sql.gen.lambda.BinaryFunctionInterface;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Primitives;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
+import java.util.Optional;
 
 import static com.facebook.presto.bytecode.Access.FINAL;
 import static com.facebook.presto.bytecode.Access.PRIVATE;
@@ -122,6 +124,8 @@ public final class MapTransformKeyFunction
         return new ScalarFunctionImplementation(
                 false,
                 ImmutableList.of(false, false),
+                ImmutableList.of(false, false),
+                ImmutableList.of(Optional.empty(), Optional.of(BinaryFunctionInterface.class)),
                 generateTransformKey(keyType, transformedKeyType, valueType, resultMapType),
                 isDeterministic());
     }
@@ -141,7 +145,7 @@ public final class MapTransformKeyFunction
 
         Parameter session = arg("session", ConnectorSession.class);
         Parameter block = arg("block", Block.class);
-        Parameter function = arg("function", MethodHandle.class);
+        Parameter function = arg("function", BinaryFunctionInterface.class);
         MethodDefinition method = definition.declareMethod(
                 a(PUBLIC, STATIC),
                 "transform",
@@ -213,7 +217,7 @@ public final class MapTransformKeyFunction
         BytecodeNode throwDuplicatedKeyException;
         if (!transformedKeyType.equals(UNKNOWN)) {
             writeKeyElement = new BytecodeBlock()
-                    .append(transformedKeyElement.set(function.invoke("invokeExact", transformedKeyJavaType, keyElement, valueElement)))
+                    .append(transformedKeyElement.set(function.invoke("apply", Object.class, keyElement.cast(Object.class), valueElement.cast(Object.class)).cast(transformedKeyJavaType)))
                     .append(new IfStatement()
                             .condition(equal(transformedKeyElement, constantNull(transformedKeyJavaType)))
                             .ifTrue(throwNullKeyException)
@@ -257,6 +261,6 @@ public final class MapTransformKeyFunction
         body.append(blockBuilder.invoke("build", Block.class).ret());
 
         Class<?> generatedClass = defineClass(definition, Object.class, binder.getBindings(), MapTransformKeyFunction.class.getClassLoader());
-        return methodHandle(generatedClass, "transform", ConnectorSession.class, Block.class, MethodHandle.class);
+        return methodHandle(generatedClass, "transform", ConnectorSession.class, Block.class, BinaryFunctionInterface.class);
     }
 }
