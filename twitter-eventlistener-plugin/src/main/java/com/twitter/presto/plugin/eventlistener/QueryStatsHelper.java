@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.stream.Collectors;
 
@@ -93,6 +94,19 @@ public class QueryStatsHelper
     }
 
     return stageInfo;
+  }
+
+  private static OperatorStats getOperatorStat(String operatorSummaryStr)
+  {
+    try {
+      JsonReader jsonReader = Json.createReader(new StringReader(operatorSummaryStr));
+      return getOperatorStat(jsonReader.readObject());
+    }
+    catch (Exception e) {
+      log.error(e, String.format("Error retrieving operator stats from string:\n%s\n", operatorSummaryStr));
+    }
+
+    return null;
   }
 
   private static OperatorStats getOperatorStat(JsonObject obj)
@@ -187,25 +201,17 @@ public class QueryStatsHelper
 
   public static List<OperatorStats> getOperatorSummaries(QueryStatistics eventStat)
   {
-    String operatorSummariesJsonStr = eventStat.getOperatorSummaries();
-    if (operatorSummariesJsonStr == null || operatorSummariesJsonStr.isEmpty()) {
-      log.warn("No operator summary is present");
-      return null;
-    }
-
     try {
-      JsonReader jsonReader = Json.createReader(new StringReader(operatorSummariesJsonStr));
-      return jsonReader
-        .readArray()
-        .stream()
-        .filter(val -> val.getValueType() == ValueType.OBJECT)
-        .map(val -> getOperatorStat((JsonObject) val))
-        .filter(opStat -> opStat != null)
-        .collect(Collectors.toList());
+      return eventStat.getOperatorSummaries()
+          .stream()
+          .filter(val -> val != null && !val.isEmpty())
+          .map(QueryStatsHelper::getOperatorStat)
+          .filter(Objects::nonNull)
+          .collect(Collectors.toList());
     }
     catch (Exception e) {
       log.error(e,
-        String.format("Error converting blob to List<OperatorStats>:\n%s\n", operatorSummariesJsonStr));
+        String.format("Error converting List<String> to List<OperatorStats>:\n%s\n", eventStat.getOperatorSummaries().toString()));
     }
 
     return null;

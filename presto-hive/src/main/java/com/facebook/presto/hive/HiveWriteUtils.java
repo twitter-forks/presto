@@ -96,15 +96,14 @@ import java.util.concurrent.TimeUnit;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_DATABASE_LOCATION_ERROR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILESYSTEM_ERROR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_WRITER_DATA_ERROR;
-import static com.facebook.presto.hive.HiveSplitManager.PRESTO_OFFLINE;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.isArrayType;
 import static com.facebook.presto.hive.HiveUtil.isMapType;
 import static com.facebook.presto.hive.HiveUtil.isRowType;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.getProtectMode;
+import static com.facebook.presto.hive.metastore.MetastoreUtil.verifyOnline;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.Chars.isCharType;
-import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.padEnd;
 import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
@@ -367,20 +366,7 @@ public final class HiveWriteUtils
         }
 
         // verify online
-        if (protectMode.offline) {
-            if (partitionName.isPresent()) {
-                throw new PartitionOfflineException(tableName, partitionName.get(), false, null);
-            }
-            throw new TableOfflineException(tableName, false, null);
-        }
-
-        String prestoOffline = parameters.get(PRESTO_OFFLINE);
-        if (!isNullOrEmpty(prestoOffline)) {
-            if (partitionName.isPresent()) {
-                throw new PartitionOfflineException(tableName, partitionName.get(), true, prestoOffline);
-            }
-            throw new TableOfflineException(tableName, true, prestoOffline);
-        }
+        verifyOnline(tableName, partitionName, protectMode, parameters);
 
         // verify not read only
         if (protectMode.readOnly) {
@@ -455,6 +441,17 @@ public final class HiveWriteUtils
         }
     }
 
+    public static boolean isLocalFileSystem(String user, HdfsEnvironment hdfsEnvironment, Path path)
+    {
+        try {
+            return hdfsEnvironment.getFileSystem(user, path)
+                    .getClass().getName().equals("org.apache.hadoop.fs.LocalFileSystem");
+        }
+        catch (IOException e) {
+            throw new PrestoException(HIVE_FILESYSTEM_ERROR, "Failed checking path: " + path, e);
+        }
+    }
+
     private static boolean isDirectory(String user, HdfsEnvironment hdfsEnvironment, Path path)
     {
         try {
@@ -469,6 +466,11 @@ public final class HiveWriteUtils
     {
         // use a per-user temporary directory to avoid permission problems
         String temporaryPrefix = "/user/" + user + "/warehouse/.hive-staging";
+
+        // use a per-user temporary directory in local fs system
+        if (isLocalFileSystem(user, hdfsEnvironment, targetPath)) {
+            temporaryPrefix = "/tmp/presto-" + user;
+        }
 
         // use relative temporary directory on ViewFS
         if (isViewFileSystem(user, hdfsEnvironment, targetPath)) {
