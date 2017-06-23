@@ -1,4 +1,4 @@
-namespace java tweep
+namespace java com.facebook.presto.decoder.thrift.tweep
 
 enum TweetType {
     TWEET,

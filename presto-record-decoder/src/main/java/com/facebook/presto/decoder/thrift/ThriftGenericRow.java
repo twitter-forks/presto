@@ -14,7 +14,7 @@
 package com.facebook.presto.decoder.thrift;
 
 import io.airlift.log.Logger;
-import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TFieldIdEnum;
