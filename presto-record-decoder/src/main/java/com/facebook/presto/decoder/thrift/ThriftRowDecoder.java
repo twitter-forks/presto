@@ -93,6 +93,8 @@ public class ThriftRowDecoder
             String pathElement = it.next();
             Short key = Short.valueOf(pathElement);
             val = currentLevel.get(key);
+
+            //TODO: better handle missing fields if schema is not strict
             if (val == null) {
                 throw new IllegalStateException(String.format("%s not found in this node", key));
             }
