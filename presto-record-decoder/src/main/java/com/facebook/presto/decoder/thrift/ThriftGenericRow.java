@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.twitter.hive.thrift;
+package com.facebook.presto.decoder.thrift;
 
 import io.airlift.log.Logger;
 import org.apache.commons.lang.ArrayUtils;
