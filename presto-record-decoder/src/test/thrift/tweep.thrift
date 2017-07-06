@@ -24,6 +24,7 @@ struct Tweet {
     9: optional i64 fullId;
     10: optional binary pic;
     11: optional map<string,string> attr;
+    12: optional list<string> items;
     16: optional string language = "english";
 }
 

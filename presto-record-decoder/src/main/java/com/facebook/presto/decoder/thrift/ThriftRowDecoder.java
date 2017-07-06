@@ -37,12 +37,9 @@ public class ThriftRowDecoder
 {
     public static final String NAME = "thrift";
 
-    private final TDeserializer deser;
-
     @Inject
     public ThriftRowDecoder()
     {
-        this.deser = new TDeserializer();
     }
 
     @Override
@@ -60,6 +57,7 @@ public class ThriftRowDecoder
     {
         ThriftGenericRow row = new ThriftGenericRow();
         try {
+            TDeserializer deser = new TDeserializer();
             deser.deserialize(row, data);
             row.parse();
         }
@@ -94,9 +92,9 @@ public class ThriftRowDecoder
             Short key = Short.valueOf(pathElement);
             val = currentLevel.get(key);
 
-            //TODO: better handle missing fields if schema is not strict
+            // could be because of optional fields
             if (val == null) {
-                throw new IllegalStateException(String.format("%s not found in this node", key));
+                return null;
             }
 
             if (val instanceof ThriftGenericRow) {
