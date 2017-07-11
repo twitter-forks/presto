@@ -28,6 +28,7 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 import parquet.hadoop.metadata.BlockMetaData;
 import parquet.hadoop.metadata.ColumnChunkMetaData;
@@ -63,6 +64,7 @@ public class ParquetReader
     private static final String ARRAY_TYPE_NAME = "bag";
     private static final String ARRAY_ELEMENT_NAME = "array_element";
 
+    private final Configuration configuration;
     private final MessageType fileSchema;
     private final MessageType requestedSchema;
     private final List<BlockMetaData> blocks;
@@ -85,7 +87,8 @@ public class ParquetReader
             List<BlockMetaData> blocks,
             ParquetDataSource dataSource,
             TypeManager typeManager,
-            AggregatedMemoryContext systemMemoryContext)
+            AggregatedMemoryContext systemMemoryContext,
+            Configuration configuration)
     {
         this.fileSchema = fileSchema;
         this.requestedSchema = requestedSchema;
@@ -94,6 +97,7 @@ public class ParquetReader
         this.typeManager = typeManager;
         this.systemMemoryContext = requireNonNull(systemMemoryContext, "systemMemoryContext is null");
         this.currentRowGroupMemoryContext = systemMemoryContext.newAggregatedMemoryContext();
+        this.configuration = configuration;
         initializeColumnReaders();
     }
 
@@ -289,7 +293,7 @@ public class ParquetReader
         for (PrimitiveColumnIO columnIO : getColumns(fileSchema, requestedSchema)) {
             ColumnDescriptor descriptor = columnIO.getColumnDescriptor();
             RichColumnDescriptor column = new RichColumnDescriptor(descriptor.getPath(), columnIO.getType().asPrimitiveType(), descriptor.getMaxRepetitionLevel(), descriptor.getMaxDefinitionLevel());
-            columnReadersMap.put(column, ParquetColumnReader.createReader(column));
+            columnReadersMap.put(column, ParquetColumnReader.createReader(column, configuration));
         }
     }
 

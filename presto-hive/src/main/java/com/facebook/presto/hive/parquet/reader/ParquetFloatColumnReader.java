@@ -15,6 +15,7 @@ package com.facebook.presto.hive.parquet.reader;
 
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 
 import static java.lang.Float.floatToRawIntBits;
@@ -22,9 +23,9 @@ import static java.lang.Float.floatToRawIntBits;
 public class ParquetFloatColumnReader
         extends ParquetColumnReader
 {
-    public ParquetFloatColumnReader(ColumnDescriptor descriptor)
+    public ParquetFloatColumnReader(ColumnDescriptor descriptor, Configuration configuration)
     {
-        super(descriptor);
+        super(descriptor, configuration);
     }
 
     @Override

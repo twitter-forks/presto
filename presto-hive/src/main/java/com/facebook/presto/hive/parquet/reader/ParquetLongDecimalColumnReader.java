@@ -16,6 +16,7 @@ package com.facebook.presto.hive.parquet.reader;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 import parquet.io.api.Binary;
 
@@ -24,9 +25,9 @@ import java.math.BigInteger;
 public class ParquetLongDecimalColumnReader
         extends ParquetColumnReader
 {
-    ParquetLongDecimalColumnReader(ColumnDescriptor descriptor)
+    ParquetLongDecimalColumnReader(ColumnDescriptor descriptor, Configuration configuration)
     {
-        super(descriptor);
+        super(descriptor, configuration);
     }
 
     @Override

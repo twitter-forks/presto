@@ -375,7 +375,7 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>aircompressor</artifactId>
-                <version>0.6</version>
+                <version>0.8-SNAPSHOT</version>
             </dependency>
 
             <dependency>
@@ -868,6 +868,12 @@
                 <groupId>com.facebook.presto.cassandra</groupId>
                 <artifactId>cassandra-driver</artifactId>
                 <version>3.1.4-1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.hadoop.gplcompression</groupId>
+                <artifactId>hadoop-lzo</artifactId>
+                <version>0.4.16</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

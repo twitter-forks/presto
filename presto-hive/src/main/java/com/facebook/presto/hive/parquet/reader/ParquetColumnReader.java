@@ -28,6 +28,7 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Type;
 import io.airlift.slice.Slice;
 import it.unimi.dsi.fastutil.ints.IntList;
+import org.apache.hadoop.conf.Configuration;
 import parquet.bytes.BytesUtils;
 import parquet.column.ColumnDescriptor;
 import parquet.column.values.ValuesReader;
@@ -55,6 +56,7 @@ public abstract class ParquetColumnReader
     protected ValuesReader valuesReader;
     protected int nextBatchSize;
 
+    private Configuration configuration;
     private ParquetLevelReader repetitionReader;
     private ParquetLevelReader definitionReader;
     private int repetitionLevel;
@@ -70,44 +72,45 @@ public abstract class ParquetColumnReader
 
     protected abstract void skipValue();
 
-    public static ParquetColumnReader createReader(RichColumnDescriptor descriptor)
+    public static ParquetColumnReader createReader(RichColumnDescriptor descriptor, Configuration configuration)
     {
         switch (descriptor.getType()) {
             case BOOLEAN:
-                return new ParquetBooleanColumnReader(descriptor);
+                return new ParquetBooleanColumnReader(descriptor, configuration);
             case INT32:
-                return createDecimalColumnReader(descriptor).orElse(new ParquetIntColumnReader(descriptor));
+                return createDecimalColumnReader(descriptor, configuration).orElse(new ParquetIntColumnReader(descriptor, configuration));
             case INT64:
-                return createDecimalColumnReader(descriptor).orElse(new ParquetLongColumnReader(descriptor));
+                return createDecimalColumnReader(descriptor, configuration).orElse(new ParquetLongColumnReader(descriptor, configuration));
             case INT96:
-                return new ParquetTimestampColumnReader(descriptor);
+                return new ParquetTimestampColumnReader(descriptor, configuration);
             case FLOAT:
-                return new ParquetFloatColumnReader(descriptor);
+                return new ParquetFloatColumnReader(descriptor, configuration);
             case DOUBLE:
-                return new ParquetDoubleColumnReader(descriptor);
+                return new ParquetDoubleColumnReader(descriptor, configuration);
             case BINARY:
-                return createDecimalColumnReader(descriptor).orElse(new ParquetBinaryColumnReader(descriptor));
+                return createDecimalColumnReader(descriptor, configuration).orElse(new ParquetBinaryColumnReader(descriptor, configuration));
             case FIXED_LEN_BYTE_ARRAY:
-                return createDecimalColumnReader(descriptor)
+                return createDecimalColumnReader(descriptor, configuration)
                         .orElseThrow(() -> new PrestoException(NOT_SUPPORTED, "Parquet type FIXED_LEN_BYTE_ARRAY supported as DECIMAL; got " + descriptor.getPrimitiveType().getOriginalType()));
             default:
                 throw new PrestoException(NOT_SUPPORTED, "Unsupported parquet type: " + descriptor.getType());
         }
     }
 
-    private static Optional<ParquetColumnReader> createDecimalColumnReader(RichColumnDescriptor descriptor)
+    private static Optional<ParquetColumnReader> createDecimalColumnReader(RichColumnDescriptor descriptor, Configuration configuration)
     {
         Optional<Type> type = createDecimalType(descriptor);
         if (type.isPresent()) {
             DecimalType decimalType = (DecimalType) type.get();
-            return Optional.of(ParquetDecimalColumnReaderFactory.createReader(descriptor, decimalType.getPrecision(), decimalType.getScale()));
+            return Optional.of(ParquetDecimalColumnReaderFactory.createReader(descriptor, decimalType.getPrecision(), decimalType.getScale(), configuration));
         }
         return Optional.empty();
     }
 
-    public ParquetColumnReader(ColumnDescriptor columnDescriptor)
+    public ParquetColumnReader(ColumnDescriptor columnDescriptor, Configuration configuration)
     {
         this.columnDescriptor = requireNonNull(columnDescriptor, "columnDescriptor");
+        this.configuration = requireNonNull(configuration, "Hadoop Configuration");
         pageReader = null;
     }
 
@@ -119,7 +122,8 @@ public abstract class ParquetColumnReader
     public void setPageReader(ParquetPageReader pageReader)
     {
         this.pageReader = requireNonNull(pageReader, "pageReader");
-        ParquetDictionaryPage dictionaryPage = pageReader.readDictionaryPage();
+        this.pageReader.setConfiguration(configuration);
+        ParquetDictionaryPage dictionaryPage = this.pageReader.readDictionaryPage();
 
         if (dictionaryPage != null) {
             try {
@@ -132,8 +136,8 @@ public abstract class ParquetColumnReader
         else {
             dictionary = null;
         }
-        checkArgument(pageReader.getTotalValueCount() > 0, "page is empty");
-        totalValueCount = pageReader.getTotalValueCount();
+        checkArgument(this.pageReader.getTotalValueCount() > 0, "page is empty");
+        totalValueCount = this.pageReader.getTotalValueCount();
     }
 
     public void prepareNextRead(int batchSize)

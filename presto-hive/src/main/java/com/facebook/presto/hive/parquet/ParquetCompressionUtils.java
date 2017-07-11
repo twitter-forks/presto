@@ -13,11 +13,14 @@
  */
 package com.facebook.presto.hive.parquet;
 
+import com.hadoop.compression.lzo.LzopCodec;
 import io.airlift.compress.Decompressor;
 import io.airlift.compress.lzo.LzoDecompressor;
+//import io.airlift.compress.lzo.LzopCodec;
 import io.airlift.compress.snappy.SnappyDecompressor;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
+import org.apache.hadoop.conf.Configuration;
 import parquet.hadoop.metadata.CompressionCodecName;
 
 import java.io.IOException;
@@ -38,7 +41,7 @@ public final class ParquetCompressionUtils
 
     private ParquetCompressionUtils() {}
 
-    public static Slice decompress(CompressionCodecName codec, Slice input, int uncompressedSize)
+    public static Slice decompress(CompressionCodecName codec, Slice input, int uncompressedSize, Configuration configuration)
             throws IOException
     {
         requireNonNull(input, "input is null");
@@ -55,7 +58,7 @@ public final class ParquetCompressionUtils
             case UNCOMPRESSED:
                 return input;
             case LZO:
-                return decompressLZO(input, uncompressedSize);
+                return decompressLZOP(input, uncompressedSize, configuration);
             default:
                 throw new ParquetCorruptionException("Codec not supported in Parquet: " + codec);
         }
@@ -84,6 +87,21 @@ public final class ParquetCompressionUtils
             }
             return sliceOutput.getUnderlyingSlice();
         }
+    }
+
+    private static Slice decompressLZOP(Slice input, int uncompressedSize, Configuration configuration)
+            throws IOException
+    {
+        // over allocate buffer which makes decompression easier
+        byte[] output = new byte[uncompressedSize + SIZE_OF_LONG];
+
+        LzopCodec lzopCodec = new LzopCodec();
+        lzopCodec.setConf(configuration);
+        int decompressedSize = lzopCodec
+            .createInputStream(new ByteBufferInputStream(input.toByteBuffer()))
+            .read(output, 0, uncompressedSize);
+        checkArgument(decompressedSize == uncompressedSize);
+        return wrappedBuffer(output, 0, uncompressedSize);
     }
 
     private static Slice decompressLZO(Slice input, int uncompressedSize)
