@@ -99,18 +99,11 @@ public class HiveClientConfig
     private DataSize orcMaxBufferSize = new DataSize(8, MEGABYTE);
     private DataSize orcStreamBufferSize = new DataSize(8, MEGABYTE);
 
-    private boolean rcfileOptimizedReaderEnabled = true;
     private boolean rcfileOptimizedWriterEnabled;
 
     private HiveMetastoreAuthenticationType hiveMetastoreAuthenticationType = HiveMetastoreAuthenticationType.NONE;
-    private String hiveMetastoreServicePrincipal;
-    private String hiveMetastoreClientPrincipal;
-    private String hiveMetastoreClientKeytab;
-
     private HdfsAuthenticationType hdfsAuthenticationType = HdfsAuthenticationType.NONE;
     private boolean hdfsImpersonationEnabled;
-    private String hdfsPrestoPrincipal;
-    private String hdfsPrestoKeytab;
 
     private boolean skipDeletionForAlter;
 
@@ -684,20 +677,6 @@ public class HiveClientConfig
     }
 
     @Deprecated
-    public boolean isRcfileOptimizedReaderEnabled()
-    {
-        return rcfileOptimizedReaderEnabled;
-    }
-
-    @Deprecated
-    @Config("hive.rcfile-optimized-reader.enabled")
-    public HiveClientConfig setRcfileOptimizedReaderEnabled(boolean rcfileOptimizedReaderEnabled)
-    {
-        this.rcfileOptimizedReaderEnabled = rcfileOptimizedReaderEnabled;
-        return this;
-    }
-
-    @Deprecated
     public boolean isRcfileOptimizedWriterEnabled()
     {
         return rcfileOptimizedWriterEnabled;
@@ -742,6 +721,7 @@ public class HiveClientConfig
         KERBEROS
     }
 
+    @NotNull
     public HiveMetastoreAuthenticationType getHiveMetastoreAuthenticationType()
     {
         return hiveMetastoreAuthenticationType;
@@ -755,51 +735,13 @@ public class HiveClientConfig
         return this;
     }
 
-    public String getHiveMetastoreServicePrincipal()
-    {
-        return hiveMetastoreServicePrincipal;
-    }
-
-    @Config("hive.metastore.service.principal")
-    @ConfigDescription("Hive Metastore service principal")
-    public HiveClientConfig setHiveMetastoreServicePrincipal(String hiveMetastoreServicePrincipal)
-    {
-        this.hiveMetastoreServicePrincipal = hiveMetastoreServicePrincipal;
-        return this;
-    }
-
-    public String getHiveMetastoreClientPrincipal()
-    {
-        return hiveMetastoreClientPrincipal;
-    }
-
-    @Config("hive.metastore.client.principal")
-    @ConfigDescription("Hive Metastore client principal")
-    public HiveClientConfig setHiveMetastoreClientPrincipal(String hiveMetastoreClientPrincipal)
-    {
-        this.hiveMetastoreClientPrincipal = hiveMetastoreClientPrincipal;
-        return this;
-    }
-
-    public String getHiveMetastoreClientKeytab()
-    {
-        return hiveMetastoreClientKeytab;
-    }
-
-    @Config("hive.metastore.client.keytab")
-    @ConfigDescription("Hive Metastore client keytab location")
-    public HiveClientConfig setHiveMetastoreClientKeytab(String hiveMetastoreClientKeytab)
-    {
-        this.hiveMetastoreClientKeytab = hiveMetastoreClientKeytab;
-        return this;
-    }
-
     public enum HdfsAuthenticationType
     {
         NONE,
         KERBEROS,
     }
 
+    @NotNull
     public HdfsAuthenticationType getHdfsAuthenticationType()
     {
         return hdfsAuthenticationType;
@@ -823,32 +765,6 @@ public class HiveClientConfig
     public HiveClientConfig setHdfsImpersonationEnabled(boolean hdfsImpersonationEnabled)
     {
         this.hdfsImpersonationEnabled = hdfsImpersonationEnabled;
-        return this;
-    }
-
-    public String getHdfsPrestoPrincipal()
-    {
-        return hdfsPrestoPrincipal;
-    }
-
-    @Config("hive.hdfs.presto.principal")
-    @ConfigDescription("Presto principal used to access HDFS")
-    public HiveClientConfig setHdfsPrestoPrincipal(String hdfsPrestoPrincipal)
-    {
-        this.hdfsPrestoPrincipal = hdfsPrestoPrincipal;
-        return this;
-    }
-
-    public String getHdfsPrestoKeytab()
-    {
-        return hdfsPrestoKeytab;
-    }
-
-    @Config("hive.hdfs.presto.keytab")
-    @ConfigDescription("Presto keytab used to access HDFS")
-    public HiveClientConfig setHdfsPrestoKeytab(String hdfsPrestoKeytab)
-    {
-        this.hdfsPrestoKeytab = hdfsPrestoKeytab;
         return this;
     }
 

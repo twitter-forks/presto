@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.spi.block;
 
-import io.airlift.slice.SizeOf;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.openjdk.jol.info.ClassLayout;
@@ -25,14 +24,12 @@ import java.util.Map;
 
 import static com.facebook.presto.spi.block.BlockUtil.checkValidPositions;
 import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
-import static sun.misc.Unsafe.ARRAY_OBJECT_INDEX_SCALE;
+import static io.airlift.slice.SizeOf.sizeOf;
 
 public class SliceArrayBlock
         extends AbstractVariableWidthBlock
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SliceArrayBlock.class).instanceSize();
-    private static final int SLICE_INSTANCE_SIZE = ClassLayout.parseClass(Slice.class).instanceSize();
-
     private final int positionCount;
     private final Slice[] values;
     private final int sizeInBytes;
@@ -52,10 +49,14 @@ public class SliceArrayBlock
         }
         this.values = values;
 
-        sizeInBytes = getSliceArraySizeInBytes(values);
-
-        // if values are distinct, use the already computed value
-        retainedSizeInBytes = INSTANCE_SIZE + (valueSlicesAreDistinct ? sizeInBytes : getSliceArrayRetainedSizeInBytes(values));
+        sizeInBytes = getSliceArraySizeInBytes(values, 0, values.length);
+        // We use IdentityHashMap for reference counting below to do proper memory accounting.
+        // Since IdentityHashMap uses linear probing, depending on the load factor threads going through the
+        // retained size calculation method will make multiple probes in the hash table, which will consume some cycles.
+        // We see that many threads spend cycles probing the hash table when they read the dictionary data and
+        // wrap that in a SliceArrayBlock (in SliceDictionaryStreamReader). Therefore, we avoid going through
+        // the IdentityHashMap for that code path with the valueSlicesAreDistinct flag.
+        retainedSizeInBytes = INSTANCE_SIZE + getSliceArrayRetainedSizeInBytes(values, valueSlicesAreDistinct);
     }
 
     public Slice[] getValues()
@@ -177,10 +178,11 @@ public class SliceArrayBlock
         return sb.toString();
     }
 
-    public static int getSliceArraySizeInBytes(Slice[] values)
+    private static int getSliceArraySizeInBytes(Slice[] values, int offset, int length)
     {
-        long sizeInBytes = values.length * (long) (ARRAY_OBJECT_INDEX_SCALE + SLICE_INSTANCE_SIZE);
-        for (Slice value : values) {
+        long sizeInBytes = 0;
+        for (int i = offset; i < offset + length; i++) {
+            Slice value = values[i];
             if (value != null) {
                 sizeInBytes += value.length();
             }
@@ -201,24 +203,42 @@ public class SliceArrayBlock
             throw new IndexOutOfBoundsException("Invalid position " + positionOffset + " in block with " + positionCount + " positions");
         }
 
-        long sizeInBytes = length * (long) (ARRAY_OBJECT_INDEX_SCALE + SLICE_INSTANCE_SIZE);
-        for (int i = positionOffset; i < positionOffset + length; i++) {
-            Slice value = values[i];
-            if (value != null) {
-                sizeInBytes += value.length();
+        return getSliceArraySizeInBytes(values, positionOffset, length);
+    }
+
+    private static int getSliceArrayRetainedSizeInBytes(Slice[] values, boolean valueSlicesAreDistinct)
+    {
+        if (valueSlicesAreDistinct) {
+            return getDistinctSliceArrayRetainedSize(values);
+        }
+        return getSliceArrayRetainedSizeInBytes(values);
+    }
+
+    // when the slices are not distinct we need to do reference counting to calculate the total retained size
+    private static int getSliceArrayRetainedSizeInBytes(Slice[] values)
+    {
+        long sizeInBytes = sizeOf(values);
+        Map<Object, Boolean> uniqueRetained = new IdentityHashMap<>(values.length);
+        for (Slice value : values) {
+            if (value == null) {
+                continue;
+            }
+            if (value.getBase() != null && uniqueRetained.put(value.getBase(), true) == null) {
+                sizeInBytes += value.getRetainedSize();
             }
         }
         return intSaturatedCast(sizeInBytes);
     }
 
-    static int getSliceArrayRetainedSizeInBytes(Slice[] values)
+    private static int getDistinctSliceArrayRetainedSize(Slice[] values)
     {
-        long sizeInBytes = SizeOf.sizeOf(values);
-        Map<Object, Boolean> uniqueRetained = new IdentityHashMap<>(values.length);
+        long sizeInBytes = sizeOf(values);
         for (Slice value : values) {
-            if (value != null && value.getBase() != null && uniqueRetained.put(value.getBase(), true) == null) {
-                sizeInBytes += value.getRetainedSize();
+            // The check (value.getBase() == null) skips empty slices to be consistent with getSliceArrayRetainedSizeInBytes(values)
+            if (value == null || value.getBase() == null) {
+                continue;
             }
+            sizeInBytes += value.getRetainedSize();
         }
         return intSaturatedCast(sizeInBytes);
     }

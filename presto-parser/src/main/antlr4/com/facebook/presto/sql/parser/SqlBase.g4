@@ -71,6 +71,8 @@ statement
     | SHOW SCHEMAS ((FROM | IN) identifier)? (LIKE pattern=string)?    #showSchemas
     | SHOW CATALOGS (LIKE pattern=string)?                             #showCatalogs
     | SHOW COLUMNS (FROM | IN) qualifiedName                           #showColumns
+    | SHOW STATS (FOR | ON) qualifiedName                              #showStats
+    | SHOW STATS FOR '(' querySpecification ')'                        #showStatsForQuery
     | DESCRIBE qualifiedName                                           #showColumns
     | DESC qualifiedName                                               #showColumns
     | SHOW FUNCTIONS                                                   #showFunctions
@@ -310,6 +312,7 @@ primaryExpression
     | NORMALIZE '(' valueExpression (',' normalForm)? ')'                                 #normalize
     | EXTRACT '(' identifier FROM valueExpression ')'                                     #extract
     | '(' expression ')'                                                                  #parenthesizedExpression
+    | GROUPING '(' (qualifiedName (',' qualifiedName)*)? ')'                              #groupingOperation
     ;
 
 string
@@ -340,6 +343,10 @@ interval
 
 intervalField
     : YEAR | MONTH | DAY | HOUR | MINUTE | SECOND
+    ;
+
+normalForm
+    : NFD | NFC | NFKD | NFKC
     ;
 
 type
@@ -440,7 +447,8 @@ number
     ;
 
 nonReserved
-    : SHOW | TABLES | COLUMNS | COLUMN | PARTITIONS | FUNCTIONS | SCHEMAS | CATALOGS | SESSION
+    // IMPORTANT: this rule must only contain tokens. Nested rules are not supported. See SqlParser.exitNonReserved
+    : SHOW | TABLES | COLUMNS | COLUMN | PARTITIONS | FUNCTIONS | SCHEMAS | CATALOGS | SESSION | STATS
     | ADD
     | FILTER
     | AT
@@ -452,7 +460,7 @@ nonReserved
     | SET | RESET
     | VIEW | REPLACE
     | IF | NULLIF | COALESCE
-    | normalForm
+    | NFD | NFC | NFKD | NFKC
     | POSITION
     | NO | DATA
     | START | TRANSACTION | COMMIT | ROLLBACK | WORK | ISOLATION | LEVEL
@@ -465,10 +473,6 @@ nonReserved
     | INPUT | OUTPUT
     | INCLUDING | EXCLUDING | PROPERTIES
     | ALL | SOME | ANY
-    ;
-
-normalForm
-    : NFD | NFC | NFKD | NFKC
     ;
 
 SELECT: 'SELECT';
@@ -641,6 +645,7 @@ INCLUDING: 'INCLUDING';
 EXCLUDING: 'EXCLUDING';
 PROPERTIES: 'PROPERTIES';
 UESCAPE: 'UESCAPE';
+STATS: 'STATS';
 
 NORMALIZE: 'NORMALIZE';
 NFD : 'NFD';
