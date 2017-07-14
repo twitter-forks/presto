@@ -20,6 +20,7 @@ import com.facebook.presto.decoder.RowDecoder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordSet;
+import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -27,9 +28,11 @@ import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import kafka.api.FetchRequest;
-import kafka.api.FetchRequestBuilder;
-import kafka.javaapi.FetchResponse;
+import kafka.api.OffsetRequest;
+import kafka.common.ErrorMapping;
+import kafka.common.OffsetOutOfRangeException;
 import kafka.javaapi.consumer.SimpleConsumer;
+import kafka.javaapi.message.ByteBufferMessageSet;
 import kafka.message.MessageAndOffset;
 
 import java.nio.ByteBuffer;
@@ -52,11 +55,11 @@ public class KafkaRecordSet
 {
     private static final Logger log = Logger.get(KafkaRecordSet.class);
 
-    private static final int KAFKA_READ_BUFFER_SIZE = 100_000;
     private static final byte [] EMPTY_BYTE_ARRAY = new byte [0];
 
     private final KafkaSplit split;
     private final KafkaSimpleConsumerManager consumerManager;
+    private final int fetchSize;
 
     private final RowDecoder keyDecoder;
     private final RowDecoder messageDecoder;
@@ -74,7 +77,8 @@ public class KafkaRecordSet
             RowDecoder keyDecoder,
             RowDecoder messageDecoder,
             Map<DecoderColumnHandle, FieldDecoder<?>> keyFieldDecoders,
-            Map<DecoderColumnHandle, FieldDecoder<?>> messageFieldDecoders)
+            Map<DecoderColumnHandle, FieldDecoder<?>> messageFieldDecoders,
+            int fetchSize)
     {
         this.split = requireNonNull(split, "split is null");
 
@@ -99,6 +103,7 @@ public class KafkaRecordSet
         }
 
         this.columnTypes = typeBuilder.build();
+        this.fetchSize = fetchSize;
     }
 
     @Override
@@ -110,7 +115,7 @@ public class KafkaRecordSet
     @Override
     public RecordCursor cursor()
     {
-        return new KafkaRecordCursor();
+        return new KafkaRecordCursor(split.getStartTs(), split.getEndTs());
     }
 
     public class KafkaRecordCursor
@@ -120,12 +125,18 @@ public class KafkaRecordSet
         private long totalMessages;
         private long cursorOffset = split.getStart();
         private Iterator<MessageAndOffset> messageAndOffsetIterator;
+        private long fetchedSize = 0L;
         private final AtomicBoolean reported = new AtomicBoolean();
+
+        private final long startTs;
+        private final long endTs;
 
         private FieldValueProvider[] fieldValueProviders;
 
-        KafkaRecordCursor()
+        KafkaRecordCursor(long startTs, long endTs)
         {
+            this.startTs = startTs;
+            this.endTs = endTs;
         }
 
         @Override
@@ -158,32 +169,30 @@ public class KafkaRecordSet
         {
             while (true) {
                 if (cursorOffset >= split.getEnd()) {
-                    return endOfData(); // Split end is exclusive.
+                    return endOfData(1); // Split end is exclusive.
                 }
-                // Create a fetch request
-                openFetchRequest();
 
-                while (messageAndOffsetIterator.hasNext()) {
-                    MessageAndOffset currentMessageAndOffset = messageAndOffsetIterator.next();
-                    long messageOffset = currentMessageAndOffset.offset();
-
-                    if (messageOffset >= split.getEnd()) {
-                        return endOfData(); // Past our split end. Bail.
-                    }
-
-                    if (messageOffset >= cursorOffset) {
+                try {
+                    // Create a fetch request
+                    openFetchRequest();
+                    while (messageAndOffsetIterator.hasNext()) {
+                        MessageAndOffset currentMessageAndOffset = messageAndOffsetIterator.next();
                         return nextRow(currentMessageAndOffset);
                     }
+                }
+                catch (OffsetOutOfRangeException e) {
+                    e.printStackTrace();
+                    return endOfData(4);
                 }
                 messageAndOffsetIterator = null;
             }
         }
 
-        private boolean endOfData()
+        private boolean endOfData(int from)
         {
             if (!reported.getAndSet(true)) {
-                log.debug("Found a total of %d messages with %d bytes (%d messages expected). Last Offset: %d (%d, %d)",
-                        totalMessages, totalBytes, split.getEnd() - split.getStart(),
+                log.info("Found (from %d) a total of %d messages with %d bytes (%d compressed bytes expected). Last Offset: %d (%d, %d)",
+                        from, totalMessages, totalBytes, split.getEnd() - split.getStart(),
                         cursorOffset, split.getStart(), split.getEnd());
             }
             return false;
@@ -191,17 +200,11 @@ public class KafkaRecordSet
 
         private boolean nextRow(MessageAndOffset messageAndOffset)
         {
-            cursorOffset = messageAndOffset.offset() + 1; // Cursor now points to the next message.
             totalBytes += messageAndOffset.message().payloadSize();
             totalMessages++;
 
             byte[] keyData = EMPTY_BYTE_ARRAY;
             byte[] messageData = EMPTY_BYTE_ARRAY;
-            ByteBuffer key = messageAndOffset.message().key();
-            if (key != null) {
-                keyData = new byte[key.remaining()];
-                key.get(keyData);
-            }
 
             ByteBuffer message = messageAndOffset.message().payload();
             if (message != null) {
@@ -220,6 +223,7 @@ public class KafkaRecordSet
             fieldValueProviders.add(KafkaInternalFieldDescription.KEY_LENGTH_FIELD.forLongValue(keyData.length));
             fieldValueProviders.add(KafkaInternalFieldDescription.KEY_CORRUPT_FIELD.forBooleanValue(keyDecoder.decodeRow(keyData, null, fieldValueProviders, columnHandles, keyFieldDecoders)));
             fieldValueProviders.add(KafkaInternalFieldDescription.MESSAGE_CORRUPT_FIELD.forBooleanValue(messageDecoder.decodeRow(messageData, null, fieldValueProviders, columnHandles, messageFieldDecoders)));
+            fieldValueProviders.add(KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.forLongValue(populateOffsetTimestamp(startTs, endTs)));
 
             this.fieldValueProviders = new FieldValueProvider[columnHandles.size()];
 
@@ -237,6 +241,45 @@ public class KafkaRecordSet
             }
 
             return true; // Advanced successfully.
+        }
+
+        private void openFetchRequest()
+        {
+            if (messageAndOffsetIterator == null) {
+                log.info("Fetching %d bytes from partition %d @offset %d (%d - %d) -- %.0f%% done. %d messages read so far",
+                        fetchSize, split.getPartitionId(), cursorOffset, split.getStart(), split.getEnd(),
+                        ((double)(cursorOffset - split.getStart())) / (split.getEnd() - split.getStart()), totalMessages);
+                cursorOffset += fetchedSize;
+                FetchRequest req = new FetchRequest(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize);
+                // TODO - this should look at the actual node this is running on and prefer
+                // that copy if running locally. - look into NodeInfo
+                SimpleConsumer consumer = consumerManager.getConsumer(split.getLeader());
+
+                ByteBufferMessageSet fetch = consumer.fetch(req);
+                log.debug("\t...fetched %s bytes, validBytes=%s, initialOffset=%s", fetch.sizeInBytes(), fetch.validBytes(), fetch.getInitialOffset());
+                int errorCode = fetch.getErrorCode();
+                if (errorCode != ErrorMapping.NoError() && errorCode != ErrorMapping.OffsetOutOfRangeCode())
+                {
+                    log.warn("Fetch response has error: %d", errorCode);
+                    throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
+                }
+
+                fetchedSize = fetch.validBytes();
+                messageAndOffsetIterator = fetch.iterator();
+            }
+        }
+
+        private long populateOffsetTimestamp(long startTs, long endTs)
+        {
+            if(startTs == OffsetRequest.EarliestTime()) {
+                startTs = 0;
+            }
+
+            if (endTs == OffsetRequest.LatestTime()) {
+                endTs = Long.MAX_VALUE;
+            }
+
+            return startTs + (endTs - startTs) / 2;
         }
 
         @SuppressWarnings("SimplifiableConditionalExpression")
@@ -279,7 +322,11 @@ public class KafkaRecordSet
         @Override
         public Object getObject(int field)
         {
-            throw new UnsupportedOperationException();
+            checkArgument(field < columnHandles.size(), "Invalid field index");
+
+            checkFieldType(field, Block.class);
+
+            return isNull(field) ? null : fieldValueProviders[field].getBlock();
         }
 
         @Override
@@ -299,30 +346,6 @@ public class KafkaRecordSet
         @Override
         public void close()
         {
-        }
-
-        private void openFetchRequest()
-        {
-            if (messageAndOffsetIterator == null) {
-                log.debug("Fetching %d bytes from offset %d (%d - %d). %d messages read so far", KAFKA_READ_BUFFER_SIZE, cursorOffset, split.getStart(), split.getEnd(), totalMessages);
-                FetchRequest req = new FetchRequestBuilder()
-                        .clientId("presto-worker-" + Thread.currentThread().getName())
-                        .addFetch(split.getTopicName(), split.getPartitionId(), cursorOffset, KAFKA_READ_BUFFER_SIZE)
-                        .build();
-
-                // TODO - this should look at the actual node this is running on and prefer
-                // that copy if running locally. - look into NodeInfo
-                SimpleConsumer consumer = consumerManager.getConsumer(split.getLeader());
-
-                FetchResponse fetchResponse = consumer.fetch(req);
-                if (fetchResponse.hasError()) {
-                    short errorCode = fetchResponse.errorCode(split.getTopicName(), split.getPartitionId());
-                    log.warn("Fetch response has error: %d", errorCode);
-                    throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
-                }
-
-                messageAndOffsetIterator = fetchResponse.messageSet(split.getTopicName(), split.getPartitionId()).iterator();
-            }
         }
     }
 }

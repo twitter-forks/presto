@@ -42,12 +42,14 @@ public class KafkaRecordSetProvider
 {
     private final KafkaSimpleConsumerManager consumerManager;
     private final DecoderRegistry registry;
+    private final KafkaConnectorConfig config;
 
     @Inject
-    public KafkaRecordSetProvider(DecoderRegistry registry, KafkaSimpleConsumerManager consumerManager)
+    public KafkaRecordSetProvider(DecoderRegistry registry, KafkaSimpleConsumerManager consumerManager, KafkaConnectorConfig config)
     {
         this.registry = requireNonNull(registry, "registry is null");
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -90,6 +92,6 @@ public class KafkaRecordSetProvider
         ImmutableMap<DecoderColumnHandle, FieldDecoder<?>> keyFieldDecoders = keyFieldDecoderBuilder.build();
         ImmutableMap<DecoderColumnHandle, FieldDecoder<?>> messageFieldDecoders = messageFieldDecoderBuilder.build();
 
-        return new KafkaRecordSet(kafkaSplit, consumerManager, handles, keyDecoder, messageDecoder, keyFieldDecoders, messageFieldDecoders);
+        return new KafkaRecordSet(kafkaSplit, consumerManager, handles, keyDecoder, messageDecoder, keyFieldDecoders, messageFieldDecoders, config.getFetchSize());
     }
 }

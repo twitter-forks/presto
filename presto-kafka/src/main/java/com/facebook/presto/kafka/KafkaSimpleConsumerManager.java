@@ -29,7 +29,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
 import static java.lang.Math.toIntExact;
-import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -94,12 +93,11 @@ public class KafkaSimpleConsumerManager
         public SimpleConsumer load(HostAddress host)
                 throws Exception
         {
-            log.info("Creating new Consumer for %s", host);
+            log.debug("Creating new Consumer for %s", host);
             return new SimpleConsumer(host.getHostText(),
                     host.getPort(),
                     connectTimeoutMillis,
-                    bufferSizeBytes,
-                    format("presto-kafka-%s-%s", connectorId, nodeManager.getCurrentNode().getNodeIdentifier()));
+                    bufferSizeBytes);
         }
     }
 }
