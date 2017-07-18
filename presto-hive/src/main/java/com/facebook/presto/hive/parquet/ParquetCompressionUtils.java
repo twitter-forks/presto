@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.hive.parquet;
 
-import com.hadoop.compression.lzo.LzopCodec;
+import com.hadoop.compression.lzo.LzoCodec;
 import io.airlift.compress.Decompressor;
+//import io.airlift.compress.lzo.LzoCodec;
 import io.airlift.compress.lzo.LzoDecompressor;
-//import io.airlift.compress.lzo.LzopCodec;
 import io.airlift.compress.snappy.SnappyDecompressor;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
@@ -95,9 +95,9 @@ public final class ParquetCompressionUtils
         // over allocate buffer which makes decompression easier
         byte[] output = new byte[uncompressedSize + SIZE_OF_LONG];
 
-        LzopCodec lzopCodec = new LzopCodec();
-        lzopCodec.setConf(configuration);
-        int decompressedSize = lzopCodec
+        LzoCodec lzoCodec = new LzoCodec();
+        lzoCodec.setConf(configuration);
+        int decompressedSize = lzoCodec
             .createInputStream(new ByteBufferInputStream(input.toByteBuffer()))
             .read(output, 0, uncompressedSize);
         checkArgument(decompressedSize == uncompressedSize);
