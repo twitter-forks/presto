@@ -175,6 +175,9 @@ public class KafkaRecordSet
                 try {
                     // Create a fetch request
                     openFetchRequest();
+                    if (cursorOffset >= split.getEnd()) {
+                        return endOfData(2); // Split end is exclusive.
+                    }
                     while (messageAndOffsetIterator.hasNext()) {
                         MessageAndOffset currentMessageAndOffset = messageAndOffsetIterator.next();
                         return nextRow(currentMessageAndOffset);
