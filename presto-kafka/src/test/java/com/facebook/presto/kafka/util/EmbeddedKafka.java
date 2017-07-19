@@ -82,8 +82,6 @@ public class EmbeddedKafka
                 .put("log.dir", kafkaDataDir.getAbsolutePath())
                 .put("zookeeper.connect", zookeeper.getConnectString())
                 .put("zk.connect", zookeeper.getConnectString())
-                .put("zk.sessiontimeout.ms", "60000")
-//                .put("zk.connectiontimeout.ms", "1000000")
                 .putAll(Maps.fromProperties(overrideProperties))
                 .build();
 
@@ -118,18 +116,7 @@ public class EmbeddedKafka
 
     public void createTopics(int partitions, int replication, Properties topicProperties, String... topics)
     {
-//        checkState(started.get() && !stopped.get(), "not started!");
-//
-//        ZkClient zkClient = new ZkClient(getZookeeperConnectString(), 30_000, 30_000, ZKStringSerializer$.MODULE$);
-//        try {
-//            for (String topic : topics) {
-//
-//                AdminUtils.createTopic(zkClient, topic, partitions, replication, topicProperties);
-//            }
-//        }
-//        finally {
-//            zkClient.close();
-//        }
+        // noop
     }
 
     public CloseableProducer<Long, Object> createProducer()
@@ -138,7 +125,6 @@ public class EmbeddedKafka
                 .put("broker.list", String.format("0:%s", getConnectString()))
                 .put("serializer.class", JsonEncoder.class.getName())
                 .put("key.serializer.class", NumberEncoder.class.getName())
-//                .put("partitioner.class", NumberPartitioner.class.getName())
                 .put("request.required.acks", "1")
                 .build();
 
@@ -168,7 +154,7 @@ public class EmbeddedKafka
 
     public String getConnectString()
     {
-        return "127.0.0.1:" + Integer.toString(port);
+        return "localhost:" + Integer.toString(port);
     }
 
     public String getZookeeperConnectString()
