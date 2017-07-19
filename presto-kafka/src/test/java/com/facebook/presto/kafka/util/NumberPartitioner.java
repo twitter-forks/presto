@@ -13,25 +13,19 @@
  */
 package com.facebook.presto.kafka.util;
 
+import kafka.cluster.Partition;
 import kafka.producer.Partitioner;
-import kafka.utils.VerifiableProperties;
+import scala.collection.Seq;
 
 import static java.lang.Math.toIntExact;
 
-public class NumberPartitioner
-        implements Partitioner
+public class NumberPartitioner implements Partitioner<Object>
 {
-    @SuppressWarnings("UnusedParameters")
-    public NumberPartitioner(VerifiableProperties properties)
-    {
-        // constructor required by Kafka
-    }
-
     @Override
-    public int partition(Object key, int numPartitions)
+    public int partition(Object key, Seq<Partition> partitions)
     {
         if (key instanceof Number) {
-            return toIntExact(((Number) key).longValue() % numPartitions);
+            return toIntExact(((Number) key).longValue() % partitions.size());
         }
         return 0;
     }

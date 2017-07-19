@@ -32,7 +32,10 @@ public class TestKafkaConnectorConfig
                 .setDefaultSchema("default")
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka/"))
-                .setHideInternalColumns(true));
+                .setHideInternalColumns(true)
+                .setFetchSize(10485760)
+                .setZkEndpoint("")
+        );
     }
 
     @Test
@@ -46,6 +49,8 @@ public class TestKafkaConnectorConfig
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
+                .put("kafka.fetch-size", "10000000")
+                .put("kafka.zk-endpoint", "localhost:2181")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
@@ -55,7 +60,9 @@ public class TestKafkaConnectorConfig
                 .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
                 .setKafkaBufferSize("1MB")
-                .setHideInternalColumns(false);
+                .setHideInternalColumns(false)
+                .setFetchSize(10000000)
+                .setZkEndpoint("localhost:2181");
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

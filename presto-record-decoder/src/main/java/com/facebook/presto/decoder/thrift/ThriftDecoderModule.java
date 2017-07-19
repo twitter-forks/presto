@@ -11,21 +11,22 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.facebook.presto.kafka.util;
 
-import kafka.message.Message;
-import kafka.serializer.Encoder;
+package com.facebook.presto.decoder.thrift;
 
-import java.nio.ByteBuffer;
+import com.google.inject.Binder;
+import com.google.inject.Module;
 
-public class NumberEncoder
-        implements Encoder<Number>
+import static com.facebook.presto.decoder.DecoderModule.bindFieldDecoder;
+import static com.facebook.presto.decoder.DecoderModule.bindRowDecoder;
+
+public class ThriftDecoderModule implements Module
 {
-    @Override
-    public Message toMessage(Number value)
-    {
-        ByteBuffer buf = ByteBuffer.allocate(8);
-        buf.putLong(value == null ? 0L : value.longValue());
-        return new Message(buf.array());
-    }
+  @Override
+  public void configure(Binder binder)
+  {
+    bindRowDecoder(binder, ThriftRowDecoder.class);
+
+    bindFieldDecoder(binder, ThriftFieldDecoder.class);
+  }
 }

@@ -11,12 +11,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.facebook.presto.kafka.util;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Throwables;
+import kafka.message.Message;
 import kafka.serializer.Encoder;
-import kafka.utils.VerifiableProperties;
 
 import java.io.IOException;
 
@@ -25,17 +26,11 @@ public class JsonEncoder
 {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @SuppressWarnings("UnusedParameters")
-    public JsonEncoder(VerifiableProperties properties)
-    {
-        // constructor required by Kafka
-    }
-
     @Override
-    public byte[] toBytes(Object o)
+    public Message toMessage(Object o)
     {
         try {
-            return objectMapper.writeValueAsBytes(o);
+            return new Message(objectMapper.writeValueAsBytes(o));
         }
         catch (IOException e) {
             throw Throwables.propagate(e);
