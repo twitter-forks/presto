@@ -146,7 +146,6 @@ public class ThriftFieldDecoder
             return ((Number) value).longValue();
         }
 
-
         @Override
         public double getDouble()
         {
@@ -304,8 +303,8 @@ public class ThriftFieldDecoder
             }
 
             for (int i = 0; i < typeParameters.size(); i++) {
-                // Assume field ids are ordered and sane
-                Object fieldValue = structData.getFieldValueForThriftId((short) (i+1));
+                // TODO: Handle cases where ids are not consecutive
+                Object fieldValue = structData.getFieldValueForThriftId((short) (i + 1));
                 serializeObject(typeParameters.get(i), currentBuilder, fieldValue);
             }
 

@@ -76,8 +76,7 @@ public class KafkaSplitManager
 
         long estimatedTotalSize = 0L;
 
-        for (Partition part : partitions)
-        {
+        for (Partition part : partitions) {
             log.debug("Adding Partition %s/%s from broker %s", kafkaTableHandle.getTopicName(), part.partId(), part.brokerId());
             Broker leader = cluster.getBroker(part.brokerId()).get();
 
@@ -153,25 +152,6 @@ public class KafkaSplitManager
         }
 
         return offsets;
-
-//        TopicAndPartition topicAndPartition = new TopicAndPartition(topicName, partitionId);
-//
-//        // The API implies that this will always return all of the offsets. So it seems a partition can not have
-//        // more than Integer.MAX_VALUE-1 segments.
-//        //
-//        // This also assumes that the lowest value returned will be the first segment available. So if segments have been dropped off, this value
-//        // should not be 0.
-//        PartitionOffsetRequestInfo partitionOffsetRequestInfo = new PartitionOffsetRequestInfo(kafka.api.OffsetRequest.LatestTime(), Integer.MAX_VALUE);
-//        OffsetRequest offsetRequest = new OffsetRequest(ImmutableMap.of(topicAndPartition, partitionOffsetRequestInfo), kafka.api.OffsetRequest.CurrentVersion(), consumer.clientId());
-//        OffsetResponse offsetResponse = consumer.getOffsetsBefore(offsetRequest);
-//
-//        if (offsetResponse.hasError()) {
-//            short errorCode = offsetResponse.errorCode(topicName, partitionId);
-//            log.warn("Offset response has error: %d", errorCode);
-//            throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
-//        }
-//
-//        return offsetResponse.offsets(topicName, partitionId);
     }
 
     private static <T> T selectRandom(Iterable<T> iterable)

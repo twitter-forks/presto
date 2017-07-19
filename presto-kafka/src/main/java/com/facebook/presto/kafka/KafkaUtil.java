@@ -35,8 +35,8 @@ import java.util.Properties;
  *
  * @author Raghu Angadi
  */
-public final class KafkaUtil {
-
+public final class KafkaUtil
+{
     public static final ConsumerConfig DEFAULT_CONSUMER_CONFIG;
 
     static {
@@ -45,12 +45,15 @@ public final class KafkaUtil {
         DEFAULT_CONSUMER_CONFIG = new ConsumerConfig(properties);
     }
 
-    private KafkaUtil() { }
+    private KafkaUtil()
+    {
+    }
 
     /**
      * create ZkClient with default options.
      */
-    public static ZkClient newZkClient(String zkConnect) {
+    public static ZkClient newZkClient(String zkConnect)
+    {
         // get defaults from ZkConfig.
         ZKConfig config = new ZKConfig(new Properties());
 
@@ -65,7 +68,8 @@ public final class KafkaUtil {
      * found.
      */
     public static List<Partition> getPartitionsForTopic(ZkClient zkClient,
-            String topic) {
+            String topic)
+    {
         // handle scala <-> java conversions.
         scala.collection.Iterator<String> topics =
                 JavaConversions.asScalaIterator(Iterators.forArray(topic));
@@ -80,7 +84,6 @@ public final class KafkaUtil {
             return Lists.newArrayList(
                     Lists.transform(partitions,
                             input -> Partition.parse(input)));
-
         }
 
         return new ArrayList<>();
@@ -94,8 +97,8 @@ public final class KafkaUtil {
     public static long getBeforeOrEarliestOffset(SimpleConsumer consumer,
             String topic,
             int partId,
-            long time) {
-
+            long time)
+    {
         long[] offsets = consumer.getOffsetsBefore(topic, partId, time, 1);
         if (offsets.length == 0) {
             // then the earliest offset
@@ -108,7 +111,8 @@ public final class KafkaUtil {
     /**
      * Returns the topics on given Kafka Server
      */
-    public static List<String> getTopics(ZkClient zkClient) {
+    public static List<String> getTopics(ZkClient zkClient)
+    {
         String topicPath = ZkUtils.BrokerTopicsPath();
         return zkClient.getChildren(topicPath);
     }
@@ -116,11 +120,12 @@ public final class KafkaUtil {
     /**
      * Returns the brokers currently registered
      */
-    public static List<Long> getBrokersIds(ZkClient zkClient) {
+    public static List<Long> getBrokersIds(ZkClient zkClient)
+    {
         String brokerPath = ZkUtils.BrokerIdsPath();
         List<String> brokers = zkClient.getChildren(brokerPath);
         List<Long> brokerIds = new ArrayList<Long>();
-        for (String s: brokers) {
+        for (String s : brokers) {
             Long l = Long.parseLong(s);
             brokerIds.add(l);
         }
@@ -131,22 +136,24 @@ public final class KafkaUtil {
     /**
      * Returns the number of partitions for a given topic and broker.
      */
-    public static Integer getNumPartitions(ZkClient zkClient, String topic, Long broker) {
+    public static Integer getNumPartitions(ZkClient zkClient, String topic, Long broker)
+    {
         String topicPath = ZkUtils.BrokerTopicsPath();
         String partitionPath = topicPath + "/" + topic + "/" + broker.toString();
 
         String numPartitions = zkClient.readData(partitionPath, true);
         if (numPartitions == null) {
             return 0;
-        } else {
+        }
+        else {
             return Integer.parseInt(numPartitions);
         }
     }
 
-    public static SimpleConsumer newSimpleConsumer(Broker broker) {
+    public static SimpleConsumer newSimpleConsumer(Broker broker)
+    {
         return new SimpleConsumer(broker.host(), broker.port(),
                 DEFAULT_CONSUMER_CONFIG.socketTimeoutMs(),
                 DEFAULT_CONSUMER_CONFIG.socketBufferSize());
     }
-
 }

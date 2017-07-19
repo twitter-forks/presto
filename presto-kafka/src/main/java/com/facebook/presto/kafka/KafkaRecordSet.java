@@ -249,9 +249,8 @@ public class KafkaRecordSet
         private void openFetchRequest()
         {
             if (messageAndOffsetIterator == null) {
-                log.info("Fetching %d bytes from partition %d @offset %d (%d - %d) -- %.0f%% done. %d messages read so far",
-                        fetchSize, split.getPartitionId(), cursorOffset, split.getStart(), split.getEnd(),
-                        ((double)(cursorOffset - split.getStart())) / (split.getEnd() - split.getStart()), totalMessages);
+                log.info("Fetching %d bytes from partition %d @offset %d (%d - %d) -- %d messages read so far",
+                        fetchSize, split.getPartitionId(), cursorOffset, split.getStart(), split.getEnd(), totalMessages);
                 cursorOffset += fetchedSize;
                 FetchRequest req = new FetchRequest(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize);
                 // TODO - this should look at the actual node this is running on and prefer
@@ -261,8 +260,7 @@ public class KafkaRecordSet
                 ByteBufferMessageSet fetch = consumer.fetch(req);
                 log.debug("\t...fetched %s bytes, validBytes=%s, initialOffset=%s", fetch.sizeInBytes(), fetch.validBytes(), fetch.getInitialOffset());
                 int errorCode = fetch.getErrorCode();
-                if (errorCode != ErrorMapping.NoError() && errorCode != ErrorMapping.OffsetOutOfRangeCode())
-                {
+                if (errorCode != ErrorMapping.NoError() && errorCode != ErrorMapping.OffsetOutOfRangeCode()) {
                     log.warn("Fetch response has error: %d", errorCode);
                     throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
                 }
@@ -274,7 +272,7 @@ public class KafkaRecordSet
 
         private long populateOffsetTimestamp(long startTs, long endTs)
         {
-            if(startTs == OffsetRequest.EarliestTime()) {
+            if (startTs == OffsetRequest.EarliestTime()) {
                 startTs = 0;
             }
 
