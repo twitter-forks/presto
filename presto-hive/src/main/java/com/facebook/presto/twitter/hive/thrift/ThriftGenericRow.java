@@ -221,11 +221,6 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         throw new UnsupportedOperationException("ThriftGenericRow.write is not supported.");
     }
 
-    public Map<Short, Object> getValues()
-    {
-        return values;
-    }
-
     public int compareTo(ThriftGenericRow other)
     {
         throw new UnsupportedOperationException("ThriftGenericRow.compareTo is not supported.");
