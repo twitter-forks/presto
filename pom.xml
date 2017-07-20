@@ -73,6 +73,7 @@
         <module>presto-jmx</module>
         <module>presto-record-decoder</module>
         <module>presto-kafka</module>
+        <module>presto-kafka07</module>
         <module>presto-redis</module>
         <module>presto-accumulo</module>
         <module>presto-cassandra</module>
