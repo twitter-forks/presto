@@ -53,8 +53,10 @@ public class EmbeddedZookeeper
 
         FileTxnSnapLog ftxn = new FileTxnSnapLog(zkDataDir, zkDataDir);
         zkServer.setTxnLogFactory(ftxn);
+        zkServer.setMinSessionTimeout(60000);
+        zkServer.setMaxSessionTimeout(120000);
 
-        cnxnFactory = NIOServerCnxnFactory.createFactory(new InetSocketAddress(port), 0);
+        cnxnFactory = NIOServerCnxnFactory.createFactory(new InetSocketAddress(port), 300);
     }
 
     public void start()

@@ -16,13 +16,11 @@ package com.facebook.presto.kafka.util;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.io.Files;
-import kafka.admin.AdminUtils;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.ProducerConfig;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
-import kafka.utils.ZKStringSerializer$;
-import org.I0Itec.zkclient.ZkClient;
+import scala.Option;
 
 import java.io.Closeable;
 import java.io.File;
@@ -33,7 +31,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.facebook.presto.kafka.util.TestUtils.findUnusedPort;
 import static com.facebook.presto.kafka.util.TestUtils.toProperties;
-import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.testing.FileUtils.deleteRecursively;
 import static java.util.Objects.requireNonNull;
 
@@ -70,23 +67,26 @@ public class EmbeddedKafka
         this.kafkaDataDir = Files.createTempDir();
 
         Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("broker.id", "0")
-                .put("host.name", "localhost")
+                .put("brokerid", "0")
+                .put("regionid", "1")
+                .put("hostname", "localhost")
                 .put("num.partitions", "2")
-                .put("log.flush.interval.messages", "10000")
-                .put("log.flush.interval.ms", "1000")
-                .put("log.retention.minutes", "60")
-                .put("log.segment.bytes", "1048576")
+                .put("log.flush.interval", "10000")
+                .put("log.default.flush.interval.ms", "1000")
+                .put("log.retention.hours", "1")
+                .put("log.segment.bytes", "10248576")
+                .put("log.file.size", "1048576")
                 .put("auto.create.topics.enable", "false")
                 .put("zookeeper.connection.timeout.ms", "1000000")
                 .put("port", Integer.toString(port))
-                .put("log.dirs", kafkaDataDir.getAbsolutePath())
+                .put("log.dir", kafkaDataDir.getAbsolutePath())
                 .put("zookeeper.connect", zookeeper.getConnectString())
+                .put("zk.connect", zookeeper.getConnectString())
                 .putAll(Maps.fromProperties(overrideProperties))
                 .build();
 
         KafkaConfig config = new KafkaConfig(toProperties(properties));
-        this.kafka = new KafkaServerStartable(config);
+        this.kafka = new KafkaServerStartable(config, Option.empty());
     }
 
     public void start()
@@ -116,26 +116,15 @@ public class EmbeddedKafka
 
     public void createTopics(int partitions, int replication, Properties topicProperties, String... topics)
     {
-        checkState(started.get() && !stopped.get(), "not started!");
-
-        ZkClient zkClient = new ZkClient(getZookeeperConnectString(), 30_000, 30_000, ZKStringSerializer$.MODULE$);
-        try {
-            for (String topic : topics) {
-                AdminUtils.createTopic(zkClient, topic, partitions, replication, topicProperties);
-            }
-        }
-        finally {
-            zkClient.close();
-        }
+        // noop
     }
 
     public CloseableProducer<Long, Object> createProducer()
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
-                .put("metadata.broker.list", getConnectString())
+                .put("broker.list", String.format("0:%s", getConnectString()))
                 .put("serializer.class", JsonEncoder.class.getName())
                 .put("key.serializer.class", NumberEncoder.class.getName())
-                .put("partitioner.class", NumberPartitioner.class.getName())
                 .put("request.required.acks", "1")
                 .build();
 

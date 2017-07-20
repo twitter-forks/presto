@@ -13,25 +13,19 @@
  */
 package com.facebook.presto.kafka.util;
 
+import kafka.message.Message;
 import kafka.serializer.Encoder;
-import kafka.utils.VerifiableProperties;
 
 import java.nio.ByteBuffer;
 
 public class NumberEncoder
         implements Encoder<Number>
 {
-    @SuppressWarnings("UnusedParameters")
-    public NumberEncoder(VerifiableProperties properties)
-    {
-        // constructor required by Kafka
-    }
-
     @Override
-    public byte[] toBytes(Number value)
+    public Message toMessage(Number value)
     {
         ByteBuffer buf = ByteBuffer.allocate(8);
         buf.putLong(value == null ? 0L : value.longValue());
-        return buf.array();
+        return new Message(buf.array());
     }
 }

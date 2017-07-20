@@ -23,7 +23,6 @@ import io.airlift.units.Duration;
 import io.airlift.units.MinDuration;
 
 import javax.validation.constraints.NotNull;
-import javax.validation.constraints.Size;
 
 import java.io.File;
 import java.util.Set;
@@ -62,12 +61,22 @@ public class KafkaConnectorConfig
     /**
      * Folder holding the JSON description files for Kafka topics.
      */
-    private File tableDescriptionDir = new File("etc/kafka/");
+    private File tableDescriptionDir = new File("etc/kafka07/");
 
     /**
      * Whether internal columns are shown in table metadata or not. Default is no.
      */
     private boolean hideInternalColumns = true;
+
+    /**
+     * ZK endpoint for getting broker list
+     */
+    private String zkEndpoint = "";
+
+    /**
+     * Fetch size
+     */
+    private int fetchSize = 10 * 1024 * 1024;
 
     @NotNull
     public File getTableDescriptionDir()
@@ -108,7 +117,6 @@ public class KafkaConnectorConfig
         return this;
     }
 
-    @Size(min = 1)
     public Set<HostAddress> getNodes()
     {
         return nodes;
@@ -155,6 +163,31 @@ public class KafkaConnectorConfig
     public KafkaConnectorConfig setHideInternalColumns(boolean hideInternalColumns)
     {
         this.hideInternalColumns = hideInternalColumns;
+        return this;
+    }
+
+    @NotNull
+    public String getZkEndpoint()
+    {
+        return zkEndpoint;
+    }
+
+    @Config("kafka.zk-endpoint")
+    public KafkaConnectorConfig setZkEndpoint(String zkEndpoint)
+    {
+        this.zkEndpoint = zkEndpoint;
+        return this;
+    }
+
+    public int getFetchSize()
+    {
+        return fetchSize;
+    }
+
+    @Config("kafka.fetch-size")
+    public KafkaConnectorConfig setFetchSize(int fetchSize)
+    {
+        this.fetchSize = fetchSize;
         return this;
     }
 

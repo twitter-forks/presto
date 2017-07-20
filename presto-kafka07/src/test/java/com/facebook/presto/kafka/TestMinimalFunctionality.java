@@ -23,14 +23,16 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.tests.StandaloneQueryRunner;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import kafka.producer.KeyedMessage;
+import kafka.javaapi.producer.ProducerData;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
@@ -96,10 +98,12 @@ public class TestMinimalFunctionality
     private void createMessages(String topicName, int count)
     {
         try (CloseableProducer<Long, Object> producer = embeddedKafka.createProducer()) {
+            ImmutableList.Builder<ProducerData<Long, Object>> builder = ImmutableList.builder();
             for (long i = 0; i < count; i++) {
                 Object message = ImmutableMap.of("id", Long.toString(i), "value", UUID.randomUUID().toString());
-                producer.send(new KeyedMessage<>(topicName, i, message));
+                builder.add(new ProducerData<>(topicName, i, Collections.singletonList(message)));
             }
+            producer.send(builder.build());
         }
     }
 
@@ -131,7 +135,7 @@ public class TestMinimalFunctionality
 
         int count = 1000;
         createMessages(topicName, count);
-
+        Thread.sleep(10_000);
         result = queryRunner.execute("SELECT count(1) from " + topicName);
 
         expected = MaterializedResult.resultBuilder(SESSION, BigintType.BIGINT)

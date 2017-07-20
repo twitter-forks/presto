@@ -24,10 +24,11 @@ import com.facebook.presto.tests.AbstractTestingPrestoClient;
 import com.facebook.presto.tests.ResultsSession;
 import com.google.common.collect.ImmutableMap;
 import kafka.javaapi.producer.Producer;
-import kafka.producer.KeyedMessage;
+import kafka.javaapi.producer.ProducerData;
 import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -109,7 +110,7 @@ public class KafkaLoader
                         }
                     }
 
-                    producer.send(new KeyedMessage<>(topicName, count.getAndIncrement(), builder.build()));
+                    producer.send(new ProducerData<>(topicName, count.getAndIncrement(), Collections.singletonList(builder.build())));
                 }
             }
         }

@@ -22,13 +22,14 @@ import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.tests.StandaloneQueryRunner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import kafka.producer.KeyedMessage;
+import kafka.javaapi.producer.ProducerData;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.Collections;
 import java.util.Properties;
 import java.util.UUID;
 
@@ -67,9 +68,9 @@ public class TestManySegments
             int jMax = 10_000;
             int iMax = 100_000 / jMax;
             for (long i = 0; i < iMax; i++) {
-                ImmutableList.Builder<KeyedMessage<Long, Object>> builder = ImmutableList.builder();
+                ImmutableList.Builder<ProducerData<Long, Object>> builder = ImmutableList.builder();
                 for (long j = 0; j < jMax; j++) {
-                    builder.add(new KeyedMessage<Long, Object>(topicName, i, ImmutableMap.of("id", Long.toString(i * iMax + j), "value", UUID.randomUUID().toString())));
+                    builder.add(new ProducerData<>(topicName, i, Collections.singletonList(ImmutableMap.of("id", String.format("%05d", i * jMax + j), "value", UUID.randomUUID().toString()))));
                 }
                 producer.send(builder.build());
             }

@@ -49,7 +49,7 @@ public class KafkaConnectorFactory
     @Override
     public String getName()
     {
-        return "kafka";
+        return "kafka07";
     }
 
     @Override
