@@ -33,8 +33,10 @@ import java.util.List;
 import static com.datastax.driver.core.utils.Bytes.toRawHexString;
 import static com.facebook.presto.cassandra.CassandraQueryRunner.createCassandraSession;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_ALL_TYPES;
+import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_ALL_TYPES_INSERT;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_ALL_TYPES_PARTITION_KEY;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_CLUSTERING_KEYS;
+import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_CLUSTERING_KEYS_INEQUALITY;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_CLUSTERING_KEYS_LARGE;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.TABLE_MULTI_PARTITION_CLUSTERING_KEYS;
 import static com.facebook.presto.cassandra.CassandraTestingUtils.createTestTables;
@@ -201,6 +203,54 @@ public class TestCassandraIntegrationSmokeTest
         assertEquals(execute(sql).getRowCount(), 1);
         sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two='clust_two_2' AND clust_three='clust_three_2'";
         assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two='clust_two_2' AND clust_three IN ('clust_three_1', 'clust_three_2', 'clust_three_3')";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2') AND clust_three IN ('clust_three_1', 'clust_three_2', 'clust_three_3')";
+        assertEquals(execute(sql).getRowCount(), 2);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two > 'clust_two_998'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two > 'clust_two_997' AND clust_two < 'clust_two_999'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2') AND clust_three > 'clust_three_998'";
+        assertEquals(execute(sql).getRowCount(), 0);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2') AND clust_three < 'clust_three_3'";
+        assertEquals(execute(sql).getRowCount(), 2);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2') AND clust_three > 'clust_three_1' AND clust_three < 'clust_three_3'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2','clust_two_3') AND clust_two < 'clust_two_2'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_997','clust_two_998','clust_two_999') AND clust_two > 'clust_two_998'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_LARGE + " WHERE clust_one='clust_one' AND clust_two IN ('clust_two_1','clust_two_2','clust_two_3') AND clust_two = 'clust_two_2'";
+        assertEquals(execute(sql).getRowCount(), 1);
+    }
+
+    @Test
+    public void testClusteringKeyPushdownInequality()
+            throws Exception
+    {
+        String sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one'";
+        assertEquals(execute(sql).getRowCount(), 4);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two=2";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two=2 AND clust_three = timestamp '1970-01-01 03:04:05.020'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two=2 AND clust_three = timestamp '1970-01-01 03:04:05.010'";
+        assertEquals(execute(sql).getRowCount(), 0);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two IN (1,2)";
+        assertEquals(execute(sql).getRowCount(), 2);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two > 1 AND clust_two < 3";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two=2 AND clust_three >= timestamp '1970-01-01 03:04:05.010' AND clust_three <= timestamp '1970-01-01 03:04:05.020'";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two IN (1,2) AND clust_three >= timestamp '1970-01-01 03:04:05.010' AND clust_three <= timestamp '1970-01-01 03:04:05.020'";
+        assertEquals(execute(sql).getRowCount(), 2);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two IN (1,2,3) AND clust_two < 2";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two IN (1,2,3) AND clust_two > 2";
+        assertEquals(execute(sql).getRowCount(), 1);
+        sql = "SELECT * FROM " + TABLE_CLUSTERING_KEYS_INEQUALITY + " WHERE key='key_1' AND clust_one='clust_one' AND clust_two IN (1,2,3) AND clust_two = 2";
+        assertEquals(execute(sql).getRowCount(), 1);
     }
 
     @Test
@@ -225,8 +275,7 @@ public class TestCassandraIntegrationSmokeTest
                 .row("column_1", "bigint", "", "")
                 .build());
 
-        // TODO replace with the Presto INSERT INTO once implemented
-        session.execute("INSERT INTO keyspace_1.table_1 (column_1) VALUES (1)");
+        execute("INSERT INTO keyspace_1.table_1 (column_1) VALUES (1)");
 
         assertEquals(execute("SELECT column_1 FROM cassandra.keyspace_1.table_1").getRowCount(), 1);
         assertUpdate("DROP TABLE cassandra.keyspace_1.table_1");
@@ -257,8 +306,7 @@ public class TestCassandraIntegrationSmokeTest
                 .row("column_2", "bigint", "", "")
                 .build());
 
-        // TODO replace with the Presto INSERT INTO once implemented
-        session.execute("INSERT INTO \"KEYSPACE_2\".\"TABLE_2\" (\"COLUMN_2\") VALUES (1)");
+        execute("INSERT INTO \"KEYSPACE_2\".\"TABLE_2\" (\"COLUMN_2\") VALUES (1)");
 
         assertEquals(execute("SELECT column_2 FROM cassandra.keyspace_2.table_2").getRowCount(), 1);
         assertUpdate("DROP TABLE cassandra.keyspace_2.table_2");
@@ -283,8 +331,10 @@ public class TestCassandraIntegrationSmokeTest
                 .build(), new Duration(1, MINUTES));
 
         // There is no way to figure out what the exactly keyspace we want to retrieve tables from
-        assertQueryFails("SHOW TABLES FROM cassandra.keyspace_3",
-                "More than one keyspace has been found for the case insensitive schema name: keyspace_3 -> \\(KeYsPaCe_3, kEySpAcE_3\\)");
+        assertQueryFailsEventually(
+                "SHOW TABLES FROM cassandra.keyspace_3",
+                "More than one keyspace has been found for the case insensitive schema name: keyspace_3 -> \\(KeYsPaCe_3, kEySpAcE_3\\)",
+                new Duration(1, MINUTES));
 
         session.execute("DROP KEYSPACE \"KeYsPaCe_3\"");
         session.execute("DROP KEYSPACE \"kEySpAcE_3\"");
@@ -311,11 +361,14 @@ public class TestCassandraIntegrationSmokeTest
                 .build(), new Duration(1, MINUTES));
 
         // There is no way to figure out what the exactly table is being queried
-        assertQueryFails("SHOW COLUMNS FROM cassandra.keyspace_4.table_4",
-                "More than one table has been found for the case insensitive table name: table_4 -> \\(TaBlE_4, tAbLe_4\\)");
-        assertQueryFails("SELECT * FROM cassandra.keyspace_4.table_4",
-                "More than one table has been found for the case insensitive table name: table_4 -> \\(TaBlE_4, tAbLe_4\\)");
-
+        assertQueryFailsEventually(
+                "SHOW COLUMNS FROM cassandra.keyspace_4.table_4",
+                "More than one table has been found for the case insensitive table name: table_4 -> \\(TaBlE_4, tAbLe_4\\)",
+                new Duration(1, MINUTES));
+        assertQueryFailsEventually(
+                "SELECT * FROM cassandra.keyspace_4.table_4",
+                "More than one table has been found for the case insensitive table name: table_4 -> \\(TaBlE_4, tAbLe_4\\)",
+                new Duration(1, MINUTES));
         session.execute("DROP KEYSPACE keyspace_4");
     }
 
@@ -333,12 +386,121 @@ public class TestCassandraIntegrationSmokeTest
                 .row("table_5")
                 .build(), new Duration(1, MINUTES));
 
-        assertQueryFails("SHOW COLUMNS FROM cassandra.keyspace_5.table_5",
-                "More than one column has been found for the case insensitive column name: column_5 -> \\(CoLuMn_5, cOlUmN_5\\)");
-        assertQueryFails("SELECT * FROM cassandra.keyspace_5.table_5",
-                "More than one column has been found for the case insensitive column name: column_5 -> \\(CoLuMn_5, cOlUmN_5\\)");
+        assertQueryFailsEventually(
+                "SHOW COLUMNS FROM cassandra.keyspace_5.table_5",
+                "More than one column has been found for the case insensitive column name: column_5 -> \\(CoLuMn_5, cOlUmN_5\\)",
+                new Duration(1, MINUTES));
+        assertQueryFailsEventually(
+                "SELECT * FROM cassandra.keyspace_5.table_5",
+                "More than one column has been found for the case insensitive column name: column_5 -> \\(CoLuMn_5, cOlUmN_5\\)",
+                new Duration(1, MINUTES));
 
         session.execute("DROP KEYSPACE keyspace_5");
+    }
+
+    @Test
+    public void testInsert()
+    {
+        String sql = "SELECT key, typeuuid, typeinteger, typelong, typebytes, typetimestamp, typeansi, typeboolean, typedecimal, " +
+                "typedouble, typefloat, typeinet, typevarchar, typevarint, typetimeuuid, typelist, typemap, typeset" +
+                " FROM " + TABLE_ALL_TYPES_INSERT;
+        assertEquals(execute(sql).getRowCount(), 0);
+
+        // TODO Following types are not supported now. We need to change null into the value after fixing it
+        // blob, frozen<set<type>>, inet, list<type>, map<type,type>, set<type>, timeuuid, decimal, uuid, varint
+        // timestamp can be inserted but the expected and actual values are not same
+        execute("INSERT INTO " + TABLE_ALL_TYPES_INSERT + " (" +
+                "key," +
+                "typeuuid," +
+                "typeinteger," +
+                "typelong," +
+                "typebytes," +
+                "typetimestamp," +
+                "typeansi," +
+                "typeboolean," +
+                "typedecimal," +
+                "typedouble," +
+                "typefloat," +
+                "typeinet," +
+                "typevarchar," +
+                "typevarint," +
+                "typetimeuuid," +
+                "typelist," +
+                "typemap," +
+                "typeset" +
+                ") VALUES (" +
+                "'key1', " +
+                "null, " +
+                "1, " +
+                "1000, " +
+                "null, " +
+                "timestamp '1970-01-01 08:34:05.0', " +
+                "'ansi1', " +
+                "true, " +
+                "null, " +
+                "0.3, " +
+                "cast('0.4' as real), " +
+                "null, " +
+                "'varchar1', " +
+                "null, " +
+                "null, " +
+                "null, " +
+                "null, " +
+                "null " +
+                ")");
+
+        MaterializedResult result = execute(sql);
+        int rowCount = result.getRowCount();
+        assertEquals(rowCount, 1);
+        assertEquals(result.getMaterializedRows().get(0), new MaterializedRow(DEFAULT_PRECISION,
+                "key1",
+                null,
+                1,
+                1000L,
+                null,
+                Timestamp.valueOf("1970-01-01 14:04:05.0"),
+                "ansi1",
+                true,
+                null,
+                0.3,
+                (float) 0.4,
+                null,
+                "varchar1",
+                null,
+                null,
+                null,
+                null,
+                null
+        ));
+
+        // insert null for all datatypes
+        execute("INSERT INTO " + TABLE_ALL_TYPES_INSERT + " (" +
+                "key, typeuuid, typeinteger, typelong, typebytes, typetimestamp, typeansi, typeboolean, typedecimal," +
+                "typedouble, typefloat, typeinet, typevarchar, typevarint, typetimeuuid, typelist, typemap, typeset" +
+                ") VALUES (" +
+                "'key2', null, null, null, null, null, null, null, null," +
+                "null, null, null, null, null, null, null, null, null)");
+        sql = "SELECT key, typeuuid, typeinteger, typelong, typebytes, typetimestamp, typeansi, typeboolean, typedecimal, " +
+                "typedouble, typefloat, typeinet, typevarchar, typevarint, typetimeuuid, typelist, typemap, typeset" +
+                " FROM " + TABLE_ALL_TYPES_INSERT + " WHERE key = 'key2'";
+        result = execute(sql);
+        rowCount = result.getRowCount();
+        assertEquals(rowCount, 1);
+        assertEquals(result.getMaterializedRows().get(0), new MaterializedRow(DEFAULT_PRECISION,
+                "key2", null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null));
+
+        // insert into only a subset of columns
+        execute("INSERT INTO " + TABLE_ALL_TYPES_INSERT + " (" +
+                "key, typeinteger, typeansi, typeboolean) VALUES (" +
+                "'key3', 999, 'ansi', false)");
+        sql = "SELECT key, typeuuid, typeinteger, typelong, typebytes, typetimestamp, typeansi, typeboolean, typedecimal, " +
+                "typedouble, typefloat, typeinet, typevarchar, typevarint, typetimeuuid, typelist, typemap, typeset" +
+                " FROM " + TABLE_ALL_TYPES_INSERT + " WHERE key = 'key3'";
+        result = execute(sql);
+        rowCount = result.getRowCount();
+        assertEquals(rowCount, 1);
+        assertEquals(result.getMaterializedRows().get(0), new MaterializedRow(DEFAULT_PRECISION,
+                "key3", null, 999, null, null, null, "ansi", false, null, null, null, null, null, null, null, null, null, null));
     }
 
     private void assertSelect(String tableName, boolean createdByPresto)

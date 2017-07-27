@@ -15,14 +15,13 @@ package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
-import com.facebook.presto.sql.planner.DependencyExtractor;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.SymbolsExtractor;
 import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.iterative.Pattern;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
@@ -67,7 +66,7 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 public class AddIntermediateAggregations
         implements Rule
 {
-    private static final Pattern PATTERN = Pattern.node(AggregationNode.class);
+    private static final Pattern PATTERN = Pattern.typeOf(AggregationNode.class);
 
     @Override
     public Pattern getPattern()
@@ -76,8 +75,12 @@ public class AddIntermediateAggregations
     }
 
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
+    public Optional<PlanNode> apply(PlanNode node, Context context)
     {
+        Lookup lookup = context.getLookup();
+        PlanNodeIdAllocator idAllocator = context.getIdAllocator();
+        Session session = context.getSession();
+
         if (!SystemSessionProperties.isEnableIntermediateAggregations(session)) {
             return Optional.empty();
         }
@@ -195,7 +198,7 @@ public class AddIntermediateAggregations
         ImmutableMap.Builder<Symbol, AggregationNode.Aggregation> builder = ImmutableMap.builder();
         for (Map.Entry<Symbol, AggregationNode.Aggregation> entry : assignments.entrySet()) {
             // Should only have one input symbol
-            Symbol input = getOnlyElement(DependencyExtractor.extractAll(entry.getValue().getCall()));
+            Symbol input = getOnlyElement(SymbolsExtractor.extractAll(entry.getValue().getCall()));
             builder.put(input, entry.getValue());
         }
         return builder.build();

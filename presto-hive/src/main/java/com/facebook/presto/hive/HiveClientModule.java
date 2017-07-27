@@ -85,7 +85,7 @@ public class HiveClientModule
         binder.bind(HiveTableProperties.class).in(Scopes.SINGLETON);
 
         binder.bind(NamenodeStats.class).in(Scopes.SINGLETON);
-        newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class));
+        newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class, connectorId));
 
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
         binder.bind(PooledHiveMetastoreClientFactory.class).in(Scopes.SINGLETON);

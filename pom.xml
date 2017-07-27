@@ -51,11 +51,11 @@
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.29</dep.slice.version>
         <dep.aws-sdk.version>1.11.30</dep.aws-sdk.version>
+        <dep.okhttp.version>3.8.1</dep.okhttp.version>
         <dep.tempto.version>1.31</dep.tempto.version>
         <dep.testng.version>6.10</dep.testng.version>
-
-        <cli.skip-execute>true</cli.skip-execute>
-        <cli.main-class>None</cli.main-class>
+        <dep.nifty.version>0.15.1</dep.nifty.version>
+        <dep.swift.version>0.15.2</dep.swift.version>
 
         <!-- use a fractional hour timezone offset for tests -->
         <air.test.timezone>Asia/Katmandu</air.test.timezone>
@@ -112,6 +112,9 @@
         <module>presto-plugin-toolkit</module>
         <module>presto-resource-group-managers</module>
         <module>presto-benchto-benchmarks</module>
+        <module>presto-thrift-connector-api</module>
+        <module>presto-thrift-testing-server</module>
+        <module>presto-thrift-connector</module>
     </modules>
 
     <dependencyManagement>
@@ -345,6 +348,32 @@
             </dependency>
 
             <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift-connector-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift-connector-api</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift-testing-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift-connector</artifactId>
+                <version>${project.version}</version>
+                <type>zip</type>
+            </dependency>
+
+            <dependency>
                 <groupId>com.facebook.hive</groupId>
                 <artifactId>hive-dwrf</artifactId>
                 <version>0.8.2</version>
@@ -353,7 +382,7 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>aircompressor</artifactId>
-                <version>0.7</version>
+                <version>0.8</version>
             </dependency>
 
             <dependency>
@@ -605,6 +634,54 @@
             </dependency>
 
             <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>okhttp</artifactId>
+                <version>${dep.okhttp.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.squareup.okhttp3</groupId>
+                <artifactId>mockwebserver</artifactId>
+                <version>${dep.okhttp.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.swift</groupId>
+                <artifactId>swift-annotations</artifactId>
+                <version>${dep.swift.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.swift</groupId>
+                <artifactId>swift-codec</artifactId>
+                <version>${dep.swift.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.swift</groupId>
+                <artifactId>swift-service</artifactId>
+                <version>${dep.swift.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.swift</groupId>
+                <artifactId>swift-javadoc</artifactId>
+                <version>${dep.swift.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.nifty</groupId>
+                <artifactId>nifty-core</artifactId>
+                <version>${dep.nifty.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.nifty</groupId>
+                <artifactId>nifty-client</artifactId>
+                <version>${dep.nifty.version}</version>
+            </dependency>
+
+            <dependency>
                 <groupId>org.apache.thrift</groupId>
                 <artifactId>libthrift</artifactId>
                 <version>0.9.1</version>
@@ -693,7 +770,7 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>testing-postgresql-server</artifactId>
-                <version>9.6.1-1</version>
+                <version>9.6.3-1</version>
             </dependency>
 
             <dependency>
@@ -890,7 +967,7 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
-                    <version>1.2.1</version>
+                    <version>1.6.0</version>
                 </plugin>
 
                 <plugin>
@@ -909,6 +986,27 @@
                         <exclusionPatterns>
                             <exclusionPattern>org/joda/time/.*</exclusionPattern>
                         </exclusionPatterns>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>com.ning.maven.plugins</groupId>
+                    <artifactId>maven-dependency-versions-check-plugin</artifactId>
+                    <configuration>
+                        <exceptions>
+                            <exception>
+                                <groupId>com.google.inject</groupId>
+                                <artifactId>guice</artifactId>
+                                <expectedVersion>4.0-beta5</expectedVersion>
+                                <resolvedVersion>4.0</resolvedVersion>
+                            </exception>
+                            <exception>
+                                <groupId>com.google.inject.extensions</groupId>
+                                <artifactId>guice-multibindings</artifactId>
+                                <expectedVersion>4.0-beta5</expectedVersion>
+                                <resolvedVersion>4.0</resolvedVersion>
+                            </exception>
+                        </exceptions>
                     </configuration>
                 </plugin>
 
@@ -1087,26 +1185,6 @@
     </build>
 
     <profiles>
-        <!-- run cli for development: mvn -am -pl presto-cli -P cli compile exec:java -->
-        <profile>
-            <id>cli</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.codehaus.mojo</groupId>
-                        <artifactId>exec-maven-plugin</artifactId>
-                        <configuration>
-                            <skip>${cli.skip-execute}</skip>
-                            <executable>${java.home}/bin/java</executable>
-                            <mainClass>${cli.main-class}</mainClass>
-                            <arguments>
-                                <argument>--debug</argument>
-                            </arguments>
-                        </configuration>
-                    </plugin>
-                </plugins>
-            </build>
-        </profile>
         <profile>
             <id>eclipse-compiler</id>
             <build>

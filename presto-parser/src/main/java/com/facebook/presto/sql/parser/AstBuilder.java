@@ -48,6 +48,7 @@ import com.facebook.presto.sql.tree.DereferenceExpression;
 import com.facebook.presto.sql.tree.DescribeInput;
 import com.facebook.presto.sql.tree.DescribeOutput;
 import com.facebook.presto.sql.tree.DoubleLiteral;
+import com.facebook.presto.sql.tree.DropColumn;
 import com.facebook.presto.sql.tree.DropSchema;
 import com.facebook.presto.sql.tree.DropTable;
 import com.facebook.presto.sql.tree.DropView;
@@ -84,6 +85,7 @@ import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.JoinUsing;
 import com.facebook.presto.sql.tree.LambdaArgumentDeclaration;
 import com.facebook.presto.sql.tree.LambdaExpression;
+import com.facebook.presto.sql.tree.Lateral;
 import com.facebook.presto.sql.tree.LikeClause;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.LogicalBinaryExpression;
@@ -309,6 +311,12 @@ class AstBuilder
     public Node visitAddColumn(SqlBaseParser.AddColumnContext context)
     {
         return new AddColumn(getLocation(context), getQualifiedName(context.qualifiedName()), (ColumnDefinition) visit(context.columnDefinition()));
+    }
+
+    @Override
+    public Node visitDropColumn(SqlBaseParser.DropColumnContext context)
+    {
+        return new DropColumn(getLocation(context), getQualifiedName(context.tableName), context.column.getText());
     }
 
     @Override
@@ -615,7 +623,7 @@ class AstBuilder
     @Override
     public Node visitExplain(SqlBaseParser.ExplainContext context)
     {
-        return new Explain(getLocation(context), context.ANALYZE() != null, (Statement) visit(context.statement()), visit(context.explainOption(), ExplainOption.class));
+        return new Explain(getLocation(context), context.ANALYZE() != null, context.VERBOSE() != null, (Statement) visit(context.statement()), visit(context.explainOption(), ExplainOption.class));
     }
 
     @Override
@@ -910,6 +918,12 @@ class AstBuilder
     public Node visitUnnest(SqlBaseParser.UnnestContext context)
     {
         return new Unnest(getLocation(context), visit(context.expression(), Expression.class), context.ORDINALITY() != null);
+    }
+
+    @Override
+    public Node visitLateral(SqlBaseParser.LateralContext context)
+    {
+        return new Lateral(getLocation(context), (Query) visit(context.query()));
     }
 
     @Override

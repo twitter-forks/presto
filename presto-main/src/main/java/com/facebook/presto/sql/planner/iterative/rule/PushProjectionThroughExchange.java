@@ -13,15 +13,11 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.Session;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.ExpressionSymbolInliner;
 import com.facebook.presto.sql.planner.PartitioningScheme;
-import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.SymbolAllocator;
-import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.iterative.Pattern;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
@@ -30,13 +26,14 @@ import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.facebook.presto.sql.planner.plan.Assignments.identity;
+import static com.facebook.presto.sql.planner.iterative.rule.Util.restrictOutputs;
 
 /**
  * Transforms:
@@ -70,7 +67,7 @@ import static com.facebook.presto.sql.planner.plan.Assignments.identity;
 public class PushProjectionThroughExchange
         implements Rule
 {
-    private static final Pattern PATTERN = Pattern.node(ProjectNode.class);
+    private static final Pattern PATTERN = Pattern.typeOf(ProjectNode.class);
 
     @Override
     public Pattern getPattern()
@@ -79,7 +76,7 @@ public class PushProjectionThroughExchange
     }
 
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
+    public Optional<PlanNode> apply(PlanNode node, Context context)
     {
         if (!(node instanceof ProjectNode)) {
             return Optional.empty();
@@ -87,7 +84,7 @@ public class PushProjectionThroughExchange
 
         ProjectNode project = (ProjectNode) node;
 
-        PlanNode child = lookup.resolve(project.getSource());
+        PlanNode child = context.getLookup().resolve(project.getSource());
         if (!(child instanceof ExchangeNode)) {
             return Optional.empty();
         }
@@ -122,12 +119,12 @@ public class PushProjectionThroughExchange
             }
             for (Map.Entry<Symbol, Expression> projection : project.getAssignments().entrySet()) {
                 Expression translatedExpression = translateExpression(projection.getValue(), outputToInputMap);
-                Type type = symbolAllocator.getTypes().get(projection.getKey());
-                Symbol symbol = symbolAllocator.newSymbol(translatedExpression, type);
+                Type type = context.getSymbolAllocator().getTypes().get(projection.getKey());
+                Symbol symbol = context.getSymbolAllocator().newSymbol(translatedExpression, type);
                 projections.put(symbol, translatedExpression);
                 inputs.add(symbol);
             }
-            newSourceBuilder.add(new ProjectNode(idAllocator.getNextId(), exchange.getSources().get(i), projections.build()));
+            newSourceBuilder.add(new ProjectNode(context.getIdAllocator().getNextId(), exchange.getSources().get(i), projections.build()));
             inputsBuilder.add(inputs.build());
         }
 
@@ -158,12 +155,8 @@ public class PushProjectionThroughExchange
                 newSourceBuilder.build(),
                 inputsBuilder.build());
 
-        if (!result.getOutputSymbols().equals(project.getOutputSymbols())) {
-            // we need to strip unnecessary symbols (hash, partitioning columns).
-            result = new ProjectNode(idAllocator.getNextId(), result, identity(project.getOutputSymbols()));
-        }
-
-        return Optional.of(result);
+        // we need to strip unnecessary symbols (hash, partitioning columns).
+        return Optional.of(restrictOutputs(context.getIdAllocator(), result, ImmutableSet.copyOf(project.getOutputSymbols())).orElse(result));
     }
 
     private boolean isSymbolToSymbolProjection(ProjectNode project)

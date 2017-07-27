@@ -15,8 +15,10 @@ package com.facebook.presto.type;
 
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.spi.function.OperatorType;
+import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.CharType;
 import com.facebook.presto.spi.type.DecimalType;
+import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.ParametricType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
@@ -25,6 +27,8 @@ import com.facebook.presto.spi.type.TypeParameter;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.sql.analyzer.FeaturesConfig;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
@@ -71,7 +75,6 @@ import static com.facebook.presto.type.JsonPathType.JSON_PATH;
 import static com.facebook.presto.type.JsonType.JSON;
 import static com.facebook.presto.type.LikePatternType.LIKE_PATTERN;
 import static com.facebook.presto.type.ListLiteralType.LIST_LITERAL;
-import static com.facebook.presto.type.MapParametricType.MAP;
 import static com.facebook.presto.type.Re2JRegexpType.RE2J_REGEXP;
 import static com.facebook.presto.type.RowParametricType.ROW;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
@@ -88,13 +91,20 @@ public final class TypeRegistry
 
     private FunctionRegistry functionRegistry;
 
+    @VisibleForTesting
     public TypeRegistry()
     {
-        this(ImmutableSet.of());
+        this(ImmutableSet.of(), new FeaturesConfig());
+    }
+
+    @VisibleForTesting
+    public TypeRegistry(Set<Type> types)
+    {
+        this(ImmutableSet.of(), new FeaturesConfig());
     }
 
     @Inject
-    public TypeRegistry(Set<Type> types)
+    public TypeRegistry(Set<Type> types, FeaturesConfig featuresConfig)
     {
         requireNonNull(types, "types is null");
 
@@ -132,7 +142,7 @@ public final class TypeRegistry
         addParametricType(DecimalParametricType.DECIMAL);
         addParametricType(ROW);
         addParametricType(ARRAY);
-        addParametricType(MAP);
+        addParametricType(new MapParametricType(featuresConfig.isNewMapBlock()));
         addParametricType(FUNCTION);
 
         for (Type type : types) {

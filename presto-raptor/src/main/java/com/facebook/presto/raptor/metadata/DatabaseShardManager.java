@@ -72,6 +72,7 @@ import static com.facebook.presto.raptor.util.ArrayUtil.intArrayFromBytes;
 import static com.facebook.presto.raptor.util.ArrayUtil.intArrayToBytes;
 import static com.facebook.presto.raptor.util.DatabaseUtil.bindOptionalInt;
 import static com.facebook.presto.raptor.util.DatabaseUtil.isSyntaxOrAccessError;
+import static com.facebook.presto.raptor.util.DatabaseUtil.isTransactionCacheFullError;
 import static com.facebook.presto.raptor.util.DatabaseUtil.metadataError;
 import static com.facebook.presto.raptor.util.DatabaseUtil.runIgnoringConstraintViolation;
 import static com.facebook.presto.raptor.util.DatabaseUtil.runTransaction;
@@ -82,7 +83,7 @@ import static com.facebook.presto.spi.StandardErrorCode.NO_NODES_AVAILABLE;
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_STARTING_UP;
 import static com.facebook.presto.spi.StandardErrorCode.TRANSACTION_CONFLICT;
 import static com.google.common.base.Preconditions.checkArgument;
-import static com.google.common.base.Throwables.propagateIfInstanceOf;
+import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.collect.Iterables.partition;
 import static java.lang.Boolean.TRUE;
 import static java.lang.Math.multiplyExact;
@@ -365,7 +366,14 @@ public class DatabaseShardManager
                 return;
             }
             catch (DBIException e) {
-                propagateIfInstanceOf(e.getCause(), PrestoException.class);
+                if (isTransactionCacheFullError(e)) {
+                    throw metadataError(e, "Transaction too large");
+                }
+
+                if (e.getCause() != null) {
+                    throwIfInstanceOf(e.getCause(), PrestoException.class);
+                }
+
                 if (attempt == maxAttempts) {
                     throw metadataError(e);
                 }

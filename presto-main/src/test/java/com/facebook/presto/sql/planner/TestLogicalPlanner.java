@@ -26,6 +26,7 @@ import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
+import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.tests.QueryTemplate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -50,15 +51,17 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.functi
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.lateral;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.output;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.semiJoin;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictTableScan;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
-import static com.facebook.presto.sql.planner.optimizations.Predicates.isInstanceOfAny;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
+import static com.facebook.presto.util.MorePredicates.isInstanceOfAny;
 import static io.airlift.slice.Slices.utf8Slice;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -369,5 +372,37 @@ public class TestLogicalPlanner
                                                                                         tableScan("orders", ImmutableMap.of("ORDERKEY", "orderkey"))),
                                                                                 project(ImmutableMap.of("NON_NULL", expression("true")),
                                                                                         node(ValuesNode.class)))))))))));
+    }
+
+    @Test
+    public void testRemovesTrivialFilters()
+    {
+        assertPlan(
+                "SELECT * FROM nation WHERE 1 = 1",
+                output(
+                        tableScan("nation"))
+        );
+        assertPlan(
+                "SELECT * FROM nation WHERE 1 = 0",
+                output(
+                        values("nationkey", "name", "regionkey", "comment"))
+        );
+    }
+
+    @Test
+    public void testPruneCountAggregationOverScalar()
+    {
+        assertPlan(
+                "SELECT count(*) FROM (SELECT sum(orderkey) FROM orders)",
+                output(
+                        values(ImmutableList.of("_col0"), ImmutableList.of(ImmutableList.of(new LongLiteral("1"))))));
+        assertPlan(
+                "SELECT count(s) FROM (SELECT sum(orderkey) AS s FROM orders)",
+                anyTree(
+                        tableScan("orders")));
+        assertPlan(
+                "SELECT count(*) FROM (SELECT sum(orderkey) FROM orders GROUP BY custkey)",
+                anyTree(
+                        tableScan("orders")));
     }
 }
