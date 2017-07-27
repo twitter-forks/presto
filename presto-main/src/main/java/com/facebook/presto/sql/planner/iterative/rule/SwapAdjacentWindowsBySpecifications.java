@@ -13,12 +13,8 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.Session;
-import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.SymbolAllocator;
-import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.iterative.Pattern;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
@@ -32,7 +28,7 @@ import static com.facebook.presto.sql.planner.optimizations.WindowNodeUtil.depen
 public class SwapAdjacentWindowsBySpecifications
         implements Rule
 {
-    private static final Pattern PATTERN = Pattern.node(WindowNode.class);
+    private static final Pattern PATTERN = Pattern.typeOf(WindowNode.class);
 
     @Override
     public Pattern getPattern()
@@ -41,11 +37,11 @@ public class SwapAdjacentWindowsBySpecifications
     }
 
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
+    public Optional<PlanNode> apply(PlanNode node, Context context)
     {
         WindowNode parent = (WindowNode) node;
 
-        PlanNode child = lookup.resolve(parent.getSource());
+        PlanNode child = context.getLookup().resolve(parent.getSource());
         if (!(child instanceof WindowNode)) {
             return Optional.empty();
         }

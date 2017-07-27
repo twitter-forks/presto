@@ -60,6 +60,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_FILE_MISSING_COLUMN_NA
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_MISSING_DATA;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcMaxBufferSize;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcMaxMergeDistance;
+import static com.facebook.presto.hive.HiveSessionProperties.getOrcMaxReadBlockSize;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcStreamBufferSize;
 import static com.facebook.presto.hive.HiveSessionProperties.isOrcBloomFiltersEnabled;
 import static com.facebook.presto.hive.HiveUtil.isDeserializerClass;
@@ -97,6 +98,7 @@ public class OrcPageSourceFactory
             Path path,
             long start,
             long length,
+            long fileSize,
             Properties schema,
             List<HiveColumnHandle> columns,
             TupleDomain<HiveColumnHandle> effectivePredicate,
@@ -114,6 +116,7 @@ public class OrcPageSourceFactory
                 path,
                 start,
                 length,
+                fileSize,
                 columns,
                 useOrcColumnNames,
                 effectivePredicate,
@@ -122,6 +125,7 @@ public class OrcPageSourceFactory
                 getOrcMaxMergeDistance(session),
                 getOrcMaxBufferSize(session),
                 getOrcStreamBufferSize(session),
+                getOrcMaxReadBlockSize(session),
                 isOrcBloomFiltersEnabled(session),
                 stats));
     }
@@ -134,6 +138,7 @@ public class OrcPageSourceFactory
             Path path,
             long start,
             long length,
+            long fileSize,
             List<HiveColumnHandle> columns,
             boolean useOrcColumnNames,
             TupleDomain<HiveColumnHandle> effectivePredicate,
@@ -142,15 +147,15 @@ public class OrcPageSourceFactory
             DataSize maxMergeDistance,
             DataSize maxBufferSize,
             DataSize streamBufferSize,
+            DataSize maxReadBlockSize,
             boolean orcBloomFiltersEnabled,
             FileFormatDataSourceStats stats)
     {
         OrcDataSource orcDataSource;
         try {
             FileSystem fileSystem = hdfsEnvironment.getFileSystem(sessionUser, path, configuration);
-            long size = fileSystem.getFileStatus(path).getLen();
             FSDataInputStream inputStream = fileSystem.open(path);
-            orcDataSource = new HdfsOrcDataSource(new OrcDataSourceId(path.toString()), size, maxMergeDistance, maxBufferSize, streamBufferSize, inputStream, stats);
+            orcDataSource = new HdfsOrcDataSource(new OrcDataSourceId(path.toString()), fileSize, maxMergeDistance, maxBufferSize, streamBufferSize, inputStream, stats);
         }
         catch (Exception e) {
             if (nullToEmpty(e.getMessage()).trim().equals("Filesystem closed") ||
@@ -162,7 +167,7 @@ public class OrcPageSourceFactory
 
         AggregatedMemoryContext systemMemoryUsage = new AggregatedMemoryContext();
         try {
-            OrcReader reader = new OrcReader(orcDataSource, metadataReader, maxMergeDistance, maxBufferSize);
+            OrcReader reader = new OrcReader(orcDataSource, metadataReader, maxMergeDistance, maxBufferSize, maxReadBlockSize);
 
             List<HiveColumnHandle> physicalColumns = getPhysicalHiveColumnHandles(columns, useOrcColumnNames, reader, path);
             ImmutableMap.Builder<Integer, Type> includedColumns = ImmutableMap.builder();

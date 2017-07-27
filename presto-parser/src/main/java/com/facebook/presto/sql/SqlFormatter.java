@@ -29,6 +29,7 @@ import com.facebook.presto.sql.tree.Deallocate;
 import com.facebook.presto.sql.tree.Delete;
 import com.facebook.presto.sql.tree.DescribeInput;
 import com.facebook.presto.sql.tree.DescribeOutput;
+import com.facebook.presto.sql.tree.DropColumn;
 import com.facebook.presto.sql.tree.DropSchema;
 import com.facebook.presto.sql.tree.DropTable;
 import com.facebook.presto.sql.tree.DropView;
@@ -47,6 +48,7 @@ import com.facebook.presto.sql.tree.Join;
 import com.facebook.presto.sql.tree.JoinCriteria;
 import com.facebook.presto.sql.tree.JoinOn;
 import com.facebook.presto.sql.tree.JoinUsing;
+import com.facebook.presto.sql.tree.Lateral;
 import com.facebook.presto.sql.tree.LikeClause;
 import com.facebook.presto.sql.tree.NaturalJoin;
 import com.facebook.presto.sql.tree.Node;
@@ -152,6 +154,15 @@ public final class SqlFormatter
         protected Void visitUnnest(Unnest node, Integer indent)
         {
             builder.append(node.toString());
+            return null;
+        }
+
+        @Override
+        protected Void visitLateral(Lateral node, Integer indent)
+        {
+            append(indent, "LATERAL (");
+            process(node.getQuery(), indent + 1);
+            append(indent, ")");
             return null;
         }
 
@@ -872,6 +883,17 @@ public final class SqlFormatter
                     .append(node.getSource())
                     .append(" TO ")
                     .append(node.getTarget());
+
+            return null;
+        }
+
+        @Override
+        protected Void visitDropColumn(DropColumn node, Integer context)
+        {
+            builder.append("ALTER TABLE ")
+                    .append(formatName(node.getTable()))
+                    .append(" DROP COLUMN ")
+                    .append(formatName(node.getColumn()));
 
             return null;
         }

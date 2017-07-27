@@ -30,6 +30,7 @@ import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilege;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.units.Duration;
 import org.intellij.lang.annotations.Language;
 import org.testng.SkipException;
 import org.testng.annotations.AfterClass;
@@ -117,11 +118,6 @@ public abstract class AbstractTestQueryFramework
         QueryAssertions.assertQuery(queryRunner, session, sql, h2QueryRunner, sql, false, false);
     }
 
-    public void assertQueryOrdered(@Language("SQL") String sql)
-    {
-        QueryAssertions.assertQuery(queryRunner, getSession(), sql, h2QueryRunner, sql, true, false);
-    }
-
     protected void assertQuery(@Language("SQL") String actual, @Language("SQL") String expected)
     {
         QueryAssertions.assertQuery(queryRunner, getSession(), actual, h2QueryRunner, expected, false, false);
@@ -130,6 +126,16 @@ public abstract class AbstractTestQueryFramework
     protected void assertQuery(Session session, @Language("SQL") String actual, @Language("SQL") String expected)
     {
         QueryAssertions.assertQuery(queryRunner, session, actual, h2QueryRunner, expected, false, false);
+    }
+
+    public void assertQueryOrdered(@Language("SQL") String sql)
+    {
+        assertQueryOrdered(getSession(), sql);
+    }
+
+    public void assertQueryOrdered(Session session, @Language("SQL") String sql)
+    {
+        assertQueryOrdered(session, sql, sql);
     }
 
     protected void assertQueryOrdered(@Language("SQL") String actual, @Language("SQL") String expected)
@@ -172,20 +178,19 @@ public abstract class AbstractTestQueryFramework
         QueryAssertions.assertUpdate(queryRunner, session, sql, OptionalLong.of(count));
     }
 
+    protected void assertQueryFailsEventually(@Language("SQL") String sql, @Language("RegExp") String expectedMessageRegExp, Duration timeout)
+    {
+        QueryAssertions.assertQueryFailsEventually(queryRunner, getSession(), sql, expectedMessageRegExp, timeout);
+    }
+
     protected void assertQueryFails(@Language("SQL") String sql, @Language("RegExp") String expectedMessageRegExp)
     {
-        assertQueryFails(getSession(), sql, expectedMessageRegExp);
+        QueryAssertions.assertQueryFails(queryRunner, getSession(), sql, expectedMessageRegExp);
     }
 
     protected void assertQueryFails(Session session, @Language("SQL") String sql, @Language("RegExp") String expectedMessageRegExp)
     {
-        try {
-            queryRunner.execute(session, sql);
-            fail(format("Expected query to fail: %s", sql));
-        }
-        catch (RuntimeException ex) {
-            assertExceptionMessage(sql, ex, expectedMessageRegExp);
-        }
+        QueryAssertions.assertQueryFails(queryRunner, session, sql, expectedMessageRegExp);
     }
 
     protected void assertAccessAllowed(@Language("SQL") String sql, TestingPrivilege... deniedPrivileges)

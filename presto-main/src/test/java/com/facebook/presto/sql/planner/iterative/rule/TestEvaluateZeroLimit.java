@@ -13,45 +13,27 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expression;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expressions;
-import static io.airlift.testing.Closeables.closeAllRuntimeException;
 
 public class TestEvaluateZeroLimit
+            extends BaseRuleTest
 {
-    private RuleTester tester;
-
-    @BeforeClass
-    public void setUp()
-    {
-        tester = new RuleTester();
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        closeAllRuntimeException(tester);
-        tester = null;
-    }
-
     @Test
     public void testDoesNotFire()
             throws Exception
     {
-        tester.assertThat(new EvaluateZeroLimit())
+        tester().assertThat(new EvaluateZeroLimit())
                 .on(p ->
                         p.limit(
                                 1,
-                                p.values(p.symbol("a", BIGINT))))
+                                p.values(p.symbol("a"))))
                 .doesNotFire();
     }
 
@@ -59,14 +41,14 @@ public class TestEvaluateZeroLimit
     public void test()
             throws Exception
     {
-        tester.assertThat(new EvaluateZeroLimit())
+        tester().assertThat(new EvaluateZeroLimit())
                 .on(p ->
                         p.limit(
                                 0,
                                 p.filter(
                                         expression("b > 5"),
                                         p.values(
-                                                ImmutableList.of(p.symbol("a", BIGINT), p.symbol("b", BIGINT)),
+                                                ImmutableList.of(p.symbol("a"), p.symbol("b")),
                                                 ImmutableList.of(
                                                         expressions("1", "10"),
                                                         expressions("2", "11"))))))

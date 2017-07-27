@@ -15,6 +15,7 @@ package com.facebook.presto.sql.planner.iterative;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.matching.MatchingEngine;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
@@ -41,7 +42,7 @@ public class IterativeOptimizer
         implements PlanOptimizer
 {
     private final List<PlanOptimizer> legacyRules;
-    private final RuleStore ruleStore;
+    private final MatchingEngine<Rule> ruleStore;
     private final StatsRecorder stats;
 
     public IterativeOptimizer(StatsRecorder stats, Set<Rule> rules)
@@ -52,7 +53,7 @@ public class IterativeOptimizer
     public IterativeOptimizer(StatsRecorder stats, List<PlanOptimizer> legacyRules, Set<Rule> newRules)
     {
         this.legacyRules = ImmutableList.copyOf(legacyRules);
-        this.ruleStore = RuleStore.builder()
+        this.ruleStore = MatchingEngine.<Rule>builder()
                 .register(newRules)
                 .build();
 
@@ -127,7 +128,7 @@ public class IterativeOptimizer
                 long duration;
                 try {
                     long start = System.nanoTime();
-                    transformed = rule.apply(node, context.getLookup(), context.getIdAllocator(), context.getSymbolAllocator(), context.getSession());
+                    transformed = rule.apply(node, context);
                     duration = System.nanoTime() - start;
                 }
                 catch (RuntimeException e) {
@@ -169,7 +170,7 @@ public class IterativeOptimizer
         return progress;
     }
 
-    private static class Context
+    private static class Context implements Rule.Context
     {
         private final Memo memo;
         private final Lookup lookup;
@@ -204,16 +205,19 @@ public class IterativeOptimizer
             return memo;
         }
 
+        @Override
         public Lookup getLookup()
         {
             return lookup;
         }
 
+        @Override
         public PlanNodeIdAllocator getIdAllocator()
         {
             return idAllocator;
         }
 
+        @Override
         public SymbolAllocator getSymbolAllocator()
         {
             return symbolAllocator;
@@ -229,6 +233,7 @@ public class IterativeOptimizer
             return timeoutInMilliseconds;
         }
 
+        @Override
         public Session getSession()
         {
             return session;

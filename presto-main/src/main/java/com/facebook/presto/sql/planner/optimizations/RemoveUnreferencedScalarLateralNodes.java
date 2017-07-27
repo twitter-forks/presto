@@ -25,12 +25,13 @@ import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 
 import java.util.Map;
 
-import static com.facebook.presto.sql.planner.optimizations.ScalarQueryUtil.isScalar;
+import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isScalar;
 import static com.facebook.presto.sql.planner.plan.SimplePlanRewriter.rewriteWith;
 
 /**
  * Remove LateralJoinNodes with unreferenced scalar input, e.g: "SELECT (SELECT 1)".
  */
+@Deprecated
 public class RemoveUnreferencedScalarLateralNodes
         implements PlanOptimizer
 {
@@ -46,15 +47,23 @@ public class RemoveUnreferencedScalarLateralNodes
         @Override
         public PlanNode visitLateralJoin(LateralJoinNode node, RewriteContext<PlanNode> context)
         {
-            if (node.getInput().getOutputSymbols().isEmpty() && isScalar(node.getInput())) {
-                return context.rewrite(node.getSubquery());
+            PlanNode input = node.getInput();
+            PlanNode subquery = node.getSubquery();
+
+            if (isUnreferencedScalar(input)) {
+                return context.rewrite(subquery);
             }
 
-            if (node.getSubquery().getOutputSymbols().isEmpty() && isScalar(node.getSubquery())) {
-                return context.rewrite(node.getInput());
+            if (isUnreferencedScalar(subquery)) {
+                return context.rewrite(input);
             }
 
             return context.defaultRewrite(node);
+        }
+
+        private boolean isUnreferencedScalar(PlanNode input)
+        {
+            return input.getOutputSymbols().isEmpty() && isScalar(input);
         }
     }
 }

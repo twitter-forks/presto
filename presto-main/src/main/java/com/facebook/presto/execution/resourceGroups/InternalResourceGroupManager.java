@@ -16,6 +16,7 @@ package com.facebook.presto.execution.resourceGroups;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.QueryExecution;
 import com.facebook.presto.execution.resourceGroups.InternalResourceGroup.RootInternalResourceGroup;
+import com.facebook.presto.server.ResourceGroupStateInfo;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.memory.ClusterMemoryPoolManager;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupConfigurationManager;
@@ -44,6 +45,7 @@ import java.io.FileInputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,18 +106,27 @@ public final class InternalResourceGroupManager
     }
 
     @Override
+    public ResourceGroupStateInfo getResourceGroupStateInfo(ResourceGroupId id)
+    {
+        if (!groups.containsKey(id)) {
+            throw new NoSuchElementException();
+        }
+        return groups.get(id).getStateInfo();
+    }
+
+    @Override
     public void submit(Statement statement, QueryExecution queryExecution, Executor executor)
     {
         checkState(configurationManager.get() != null, "configurationManager not set");
         ResourceGroupId group;
         try {
-            group = selectGroup(queryExecution.getSession());
+            group = selectGroup(queryExecution);
         }
         catch (PrestoException e) {
             queryExecution.fail(e);
             return;
         }
-        createGroupIfNecessary(group, queryExecution.getSession(), executor);
+        createGroupIfNecessary(group, queryExecution, executor);
         groups.get(group).run(queryExecution);
     }
 
@@ -224,13 +235,19 @@ public final class InternalResourceGroupManager
         }
     }
 
-    private synchronized void createGroupIfNecessary(ResourceGroupId id, Session session, Executor executor)
+    private synchronized void createGroupIfNecessary(ResourceGroupId id, QueryExecution queryExecution, Executor executor)
     {
-        SelectionContext context = new SelectionContext(session.getIdentity().getPrincipal().isPresent(), session.getUser(), session.getSource(), getQueryPriority(session));
+        Session session = queryExecution.getSession();
+        SelectionContext context = new SelectionContext(
+                session.getIdentity().getPrincipal().isPresent(),
+                session.getUser(),
+                session.getSource(),
+                getQueryPriority(session),
+                determineQueryType(queryExecution));
         if (!groups.containsKey(id)) {
             InternalResourceGroup group;
             if (id.getParent().isPresent()) {
-                createGroupIfNecessary(id.getParent().get(), session, executor);
+                createGroupIfNecessary(id.getParent().get(), queryExecution, executor);
                 InternalResourceGroup parent = groups.get(id.getParent().get());
                 requireNonNull(parent, "parent is null");
                 group = parent.getOrCreateSubGroup(id.getLastSegment());
@@ -261,9 +278,15 @@ public final class InternalResourceGroupManager
         }
     }
 
-    private ResourceGroupId selectGroup(Session session)
+    private ResourceGroupId selectGroup(QueryExecution queryExecution)
     {
-        SelectionContext context = new SelectionContext(session.getIdentity().getPrincipal().isPresent(), session.getUser(), session.getSource(), getQueryPriority(session));
+        Session session = queryExecution.getSession();
+        SelectionContext context = new SelectionContext(
+                session.getIdentity().getPrincipal().isPresent(),
+                session.getUser(),
+                session.getSource(),
+                getQueryPriority(session),
+                determineQueryType(queryExecution));
         for (ResourceGroupSelector selector : configurationManager.get().getSelectors()) {
             Optional<ResourceGroupId> group = selector.match(context);
             if (group.isPresent()) {
@@ -271,5 +294,10 @@ public final class InternalResourceGroupManager
             }
         }
         throw new PrestoException(QUERY_REJECTED, "Query did not match any selection rule");
+    }
+
+    private Optional<String> determineQueryType(QueryExecution queryExecution)
+    {
+        return queryExecution.getQueryType().map(Enum::toString);
     }
 }

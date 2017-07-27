@@ -14,23 +14,34 @@
 package com.facebook.presto.sql.planner.iterative;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.matching.Matchable;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.SymbolAllocator;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 
 import java.util.Optional;
 
-public interface Rule
+public interface Rule extends Matchable
 {
     /**
      * Returns a pattern to which plan nodes this rule applies.
-     * Notice that rule may be still invoked for plan nodes which given pattern does not apply,
-     * then rule should return Optional.empty() in such case
      */
     default Pattern getPattern()
     {
         return Pattern.any();
     }
 
-    Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session);
+    Optional<PlanNode> apply(PlanNode node, Context context);
+
+    interface Context
+    {
+        Lookup getLookup();
+
+        PlanNodeIdAllocator getIdAllocator();
+
+        SymbolAllocator getSymbolAllocator();
+
+        Session getSession();
+    }
 }

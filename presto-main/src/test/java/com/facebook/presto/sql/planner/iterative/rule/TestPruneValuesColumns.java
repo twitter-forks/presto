@@ -14,47 +14,29 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expression;
-import static io.airlift.testing.Closeables.closeAllRuntimeException;
 
 public class TestPruneValuesColumns
+        extends BaseRuleTest
 {
-    private RuleTester tester;
-
-    @BeforeClass
-    public void setUp()
-    {
-        tester = new RuleTester();
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        closeAllRuntimeException(tester);
-        tester = null;
-    }
-
     @Test
     public void testNotAllOutputsReferenced()
             throws Exception
     {
-        tester.assertThat(new PruneValuesColumns())
+        tester().assertThat(new PruneValuesColumns())
                 .on(p ->
                         p.project(
-                                Assignments.of(p.symbol("y", BIGINT), expression("x")),
+                                Assignments.of(p.symbol("y"), expression("x")),
                                 p.values(
-                                        ImmutableList.of(p.symbol("unused", BIGINT), p.symbol("x", BIGINT)),
+                                        ImmutableList.of(p.symbol("unused"), p.symbol("x")),
                                         ImmutableList.of(
                                                 ImmutableList.of(expression("1"), expression("2")),
                                                 ImmutableList.of(expression("3"), expression("4"))))))
@@ -72,11 +54,11 @@ public class TestPruneValuesColumns
     public void testAllOutputsReferenced()
             throws Exception
     {
-        tester.assertThat(new PruneValuesColumns())
+        tester().assertThat(new PruneValuesColumns())
                 .on(p ->
                         p.project(
-                                Assignments.of(p.symbol("y", BIGINT), expression("x")),
-                                p.values(p.symbol("x", BIGINT))))
+                                Assignments.of(p.symbol("y"), expression("x")),
+                                p.values(p.symbol("x"))))
                 .doesNotFire();
     }
 }

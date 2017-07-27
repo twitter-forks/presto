@@ -28,6 +28,9 @@ import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.function.OperatorType;
+import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.RowType;
+import com.facebook.presto.spi.type.RowType.RowField;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -83,11 +86,8 @@ import com.facebook.presto.sql.tree.SubscriptExpression;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.facebook.presto.sql.tree.TryExpression;
 import com.facebook.presto.sql.tree.WhenClause;
-import com.facebook.presto.type.ArrayType;
 import com.facebook.presto.type.FunctionType;
 import com.facebook.presto.type.LikeFunctions;
-import com.facebook.presto.type.RowType;
-import com.facebook.presto.type.RowType.RowField;
 import com.facebook.presto.util.Failures;
 import com.facebook.presto.util.FastutilSetHelper;
 import com.google.common.annotations.VisibleForTesting;
@@ -128,6 +128,7 @@ import static com.facebook.presto.type.LikeFunctions.unescapeLiteralLikePattern;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Predicates.instanceOf;
+import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.any;
@@ -760,8 +761,8 @@ public class ExpressionInterpreter
                         return handle.invokeWithArguments(value);
                     }
                     catch (Throwable throwable) {
-                        Throwables.propagateIfInstanceOf(throwable, RuntimeException.class);
-                        Throwables.propagateIfInstanceOf(throwable, Error.class);
+                        throwIfInstanceOf(throwable, RuntimeException.class);
+                        throwIfInstanceOf(throwable, Error.class);
                         throw new RuntimeException(throwable.getMessage(), throwable);
                     }
             }

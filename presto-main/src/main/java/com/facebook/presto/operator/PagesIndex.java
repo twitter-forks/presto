@@ -153,9 +153,12 @@ public class PagesIndex
     {
         for (ObjectArrayList<Block> channel : channels) {
             channel.clear();
+            channel.trim();
         }
         valueAddresses.clear();
+        valueAddresses.trim();
         positionCount = 0;
+        nextBlockToCompact = 0;
         pagesMemorySize = 0;
 
         estimatedSize = calculateEstimatedSize();

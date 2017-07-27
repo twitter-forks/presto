@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.iterative.rule.test;
 
 import com.facebook.presto.connector.ConnectorId;
+import com.facebook.presto.metadata.IndexHandle;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.TableHandle;
@@ -28,20 +29,28 @@ import com.facebook.presto.sql.planner.Partitioning;
 import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TestingConnectorIndexHandle;
+import com.facebook.presto.sql.planner.TestingConnectorTransactionHandle;
+import com.facebook.presto.sql.planner.TestingWriterTarget;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Aggregation;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Step;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
+import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
+import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
+import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
+import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
+import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.TableFinishNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
 import com.facebook.presto.sql.planner.plan.TableWriterNode;
@@ -63,9 +72,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -85,6 +97,15 @@ public class PlanBuilder
         this.metadata = metadata;
     }
 
+    public OutputNode output(List<String> columnNames, List<Symbol> outputs, PlanNode source)
+    {
+        return new OutputNode(
+                idAllocator.getNextId(),
+                source,
+                columnNames,
+                outputs);
+    }
+
     public ValuesNode values(Symbol... columns)
     {
         return new ValuesNode(
@@ -98,9 +119,19 @@ public class PlanBuilder
         return new ValuesNode(idAllocator.getNextId(), columns, rows);
     }
 
+    public EnforceSingleRowNode enforceSingleRow(PlanNode source)
+    {
+        return new EnforceSingleRowNode(idAllocator.getNextId(), source);
+    }
+
     public LimitNode limit(long limit, PlanNode source)
     {
         return new LimitNode(idAllocator.getNextId(), source, limit, false);
+    }
+
+    public MarkDistinctNode markDistinct(PlanNode source, Symbol markerSymbol, List<Symbol> distinctSymbols)
+    {
+        return new MarkDistinctNode(idAllocator.getNextId(), source, markerSymbol, distinctSymbols, Optional.empty());
     }
 
     public SampleNode sample(double sampleRatio, SampleNode.Type type, PlanNode source)
@@ -111,6 +142,16 @@ public class PlanBuilder
     public ProjectNode project(Assignments assignments, PlanNode source)
     {
         return new ProjectNode(idAllocator.getNextId(), source, assignments);
+    }
+
+    public MarkDistinctNode markDistinct(Symbol markerSymbol, List<Symbol> distinctSymbols, PlanNode source)
+    {
+        return new MarkDistinctNode(idAllocator.getNextId(), source, markerSymbol, distinctSymbols, Optional.empty());
+    }
+
+    public MarkDistinctNode markDistinct(Symbol markerSymbol, List<Symbol> distinctSymbols, Symbol hashSymbol, PlanNode source)
+    {
+        return new MarkDistinctNode(idAllocator.getNextId(), source, markerSymbol, distinctSymbols, Optional.of(hashSymbol));
     }
 
     public FilterNode filter(Expression predicate, PlanNode source)
@@ -221,13 +262,22 @@ public class PlanBuilder
 
     public TableScanNode tableScan(List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments)
     {
+        return tableScan(symbols, assignments, null);
+    }
+
+    public TableScanNode tableScan(List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments, Expression originalConstraint)
+    {
         TableHandle tableHandle = new TableHandle(new ConnectorId("testConnector"), new TestingTableHandle());
-        return tableScan(tableHandle, symbols, assignments);
+        return tableScan(tableHandle, symbols, assignments, originalConstraint);
     }
 
     public TableScanNode tableScan(TableHandle tableHandle, List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments)
     {
-        Expression originalConstraint = null;
+        return tableScan(tableHandle, symbols, assignments, null);
+    }
+
+    public TableScanNode tableScan(TableHandle tableHandle, List<Symbol> symbols, Map<Symbol, ColumnHandle> assignments, Expression originalConstraint)
+    {
         return new TableScanNode(
                 idAllocator.getNextId(),
                 tableHandle,
@@ -272,6 +322,47 @@ public class PlanBuilder
                 .singleDistributionPartitioningScheme(child.getOutputSymbols())
                 .addSource(child)
                 .addInputsSet(child.getOutputSymbols()));
+    }
+
+    public SemiJoinNode semiJoin(
+            Symbol sourceJoinSymbol,
+            Symbol filteringSourceJoinSymbol,
+            Symbol semiJoinOutput,
+            Optional<Symbol> sourceHashSymbol,
+            Optional<Symbol> filteringSourceHashSymbol,
+            PlanNode source,
+            PlanNode filteringSource)
+    {
+        return new SemiJoinNode(idAllocator.getNextId(),
+                source,
+                filteringSource,
+                sourceJoinSymbol,
+                filteringSourceJoinSymbol,
+                semiJoinOutput,
+                sourceHashSymbol,
+                filteringSourceHashSymbol,
+                Optional.empty());
+    }
+
+    public IndexSourceNode indexSource(
+            TableHandle tableHandle,
+            Set<Symbol> lookupSymbols,
+            List<Symbol> outputSymbols,
+            Map<Symbol, ColumnHandle> assignments,
+            TupleDomain<ColumnHandle> effectiveTupleDomain)
+    {
+        return new IndexSourceNode(
+                idAllocator.getNextId(),
+                new IndexHandle(
+                        tableHandle.getConnectorId(),
+                        TestingConnectorTransactionHandle.INSTANCE,
+                        TestingConnectorIndexHandle.INSTANCE),
+                tableHandle,
+                Optional.empty(),
+                lookupSymbols,
+                outputSymbols,
+                assignments,
+                effectiveTupleDomain);
     }
 
     public ExchangeNode exchange(Consumer<ExchangeBuilder> exchangeBuilderConsumer)
@@ -352,7 +443,17 @@ public class PlanBuilder
 
     public JoinNode join(JoinNode.Type joinType, PlanNode left, PlanNode right, JoinNode.EquiJoinClause... criteria)
     {
-        return new JoinNode(idAllocator.getNextId(),
+        return join(joinType, left, right, Optional.empty(), criteria);
+    }
+
+    public JoinNode join(JoinNode.Type joinType, PlanNode left, PlanNode right, Expression filter, JoinNode.EquiJoinClause... criteria)
+    {
+        return join(joinType, left, right, Optional.of(filter), criteria);
+    }
+
+    private JoinNode join(JoinNode.Type joinType, PlanNode left, PlanNode right, Optional<Expression> filter, JoinNode.EquiJoinClause... criteria)
+    {
+        return join(
                 joinType,
                 left,
                 right,
@@ -361,11 +462,9 @@ public class PlanBuilder
                         .addAll(left.getOutputSymbols())
                         .addAll(right.getOutputSymbols())
                         .build(),
+                filter,
                 Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty()
-        );
+                Optional.empty());
     }
 
     public JoinNode join(
@@ -381,9 +480,27 @@ public class PlanBuilder
         return new JoinNode(idAllocator.getNextId(), type, left, right, criteria, outputSymbols, filter, leftHashSymbol, rightHashSymbol, Optional.empty());
     }
 
-    public UnionNode union(List<? extends PlanNode> sources, ListMultimap<Symbol, Symbol> outputsToInputs, List<Symbol> outputs)
+    public UnionNode union(ListMultimap<Symbol, Symbol> outputsToInputs, List<PlanNode> sources)
     {
-        return new UnionNode(idAllocator.getNextId(), (List<PlanNode>) sources, outputsToInputs, outputs);
+        ImmutableList<Symbol> outputs = outputsToInputs.keySet().stream().collect(toImmutableList());
+        return new UnionNode(idAllocator.getNextId(), sources, outputsToInputs, outputs);
+    }
+
+    public TableWriterNode tableWriter(List<Symbol> columns, List<String> columnNames, PlanNode source)
+    {
+        return new TableWriterNode(
+                idAllocator.getNextId(),
+                source,
+                new TestingWriterTarget(),
+                columns,
+                columnNames,
+                ImmutableList.of(symbol("partialrows", BIGINT), symbol("fragment", VARBINARY)),
+                Optional.empty());
+    }
+
+    public Symbol symbol(String name)
+    {
+        return symbol(name, BIGINT);
     }
 
     public Symbol symbol(String name, Type type)
