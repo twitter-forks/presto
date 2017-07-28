@@ -33,6 +33,7 @@ public final class HiveSessionProperties
     private static final String ORC_MAX_MERGE_DISTANCE = "orc_max_merge_distance";
     private static final String ORC_MAX_BUFFER_SIZE = "orc_max_buffer_size";
     private static final String ORC_STREAM_BUFFER_SIZE = "orc_stream_buffer_size";
+    private static final String ORC_MAX_READ_BLOCK_SIZE = "orc_max_read_block_size";
     private static final String PARQUET_PREDICATE_PUSHDOWN_ENABLED = "parquet_predicate_pushdown_enabled";
     private static final String PARQUET_OPTIMIZED_READER_ENABLED = "parquet_optimized_reader_enabled";
     private static final String READ_AS_QUERY_USER = "read_as_query_user";
@@ -83,6 +84,11 @@ public final class HiveSessionProperties
                         "ORC: Size of buffer for streaming reads",
                         config.getOrcStreamBufferSize(),
                         false),
+                dataSizeSessionProperty(
+                        ORC_MAX_READ_BLOCK_SIZE,
+                        "ORC: Maximum size of a block to read",
+                        config.getOrcMaxReadBlockSize(),
+                        false),
                 booleanSessionProperty(
                         PARQUET_OPTIMIZED_READER_ENABLED,
                         "Experimental: Parquet: Enable optimized reader",
@@ -111,7 +117,7 @@ public final class HiveSessionProperties
                 booleanSessionProperty(
                         RCFILE_OPTIMIZED_WRITER_VALIDATE,
                         "Experimental: RCFile: Validate writer files",
-                        true,
+                        config.isRcfileWriterValidate(),
                         false),
                 booleanSessionProperty(
                         STATISTICS_ENABLED,
@@ -158,6 +164,11 @@ public final class HiveSessionProperties
     public static DataSize getOrcStreamBufferSize(ConnectorSession session)
     {
         return session.getProperty(ORC_STREAM_BUFFER_SIZE, DataSize.class);
+    }
+
+    public static DataSize getOrcMaxReadBlockSize(ConnectorSession session)
+    {
+        return session.getProperty(ORC_MAX_READ_BLOCK_SIZE, DataSize.class);
     }
 
     public static boolean isParquetPredicatePushdownEnabled(ConnectorSession session)

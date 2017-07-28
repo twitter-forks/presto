@@ -17,53 +17,35 @@ import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.assertions.PlanMatchPattern;
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.testing.TestingMetadata.TestingColumnHandle;
 import com.facebook.presto.tpch.TpchColumnHandle;
 import com.facebook.presto.tpch.TpchTableHandle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictProject;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.strictTableScan;
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expression;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCALE_FACTOR;
-import static io.airlift.testing.Closeables.closeAllRuntimeException;
 
 public class TestPruneTableScanColumns
+        extends BaseRuleTest
 {
-    private RuleTester tester;
-
-    @BeforeClass
-    public void setUp()
-    {
-        tester = new RuleTester();
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        closeAllRuntimeException(tester);
-        tester = null;
-    }
-
     @Test
     public void testNotAllOutputsReferenced()
     {
-        tester.assertThat(new PruneTableScanColumns())
+        tester().assertThat(new PruneTableScanColumns())
                 .on(p ->
                 {
                     Symbol orderdate = p.symbol("orderdate", DATE);
                     Symbol totalprice = p.symbol("totalprice", DOUBLE);
                     return p.project(
-                            Assignments.of(p.symbol("x", BIGINT), totalprice.toSymbolReference()),
+                            Assignments.of(p.symbol("x"), totalprice.toSymbolReference()),
                             p.tableScan(
                                     new TableHandle(
                                             new ConnectorId("local"),
@@ -82,13 +64,13 @@ public class TestPruneTableScanColumns
     @Test
     public void testAllOutputsReferenced()
     {
-        tester.assertThat(new PruneTableScanColumns())
+        tester().assertThat(new PruneTableScanColumns())
                 .on(p ->
                         p.project(
-                                Assignments.of(p.symbol("y", BIGINT), expression("x")),
+                                Assignments.of(p.symbol("y"), expression("x")),
                                 p.tableScan(
-                                        ImmutableList.of(p.symbol("x", BIGINT)),
-                                        ImmutableMap.of(p.symbol("x", BIGINT), new TestingColumnHandle("x")))))
+                                        ImmutableList.of(p.symbol("x")),
+                                        ImmutableMap.of(p.symbol("x"), new TestingColumnHandle("x")))))
                 .doesNotFire();
     }
 }

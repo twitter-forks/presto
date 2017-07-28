@@ -13,11 +13,7 @@
  */
 package com.facebook.presto.sql.planner.iterative.rule;
 
-import com.facebook.presto.Session;
-import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
-import com.facebook.presto.sql.planner.SymbolAllocator;
-import com.facebook.presto.sql.planner.iterative.Lookup;
-import com.facebook.presto.sql.planner.iterative.Pattern;
+import com.facebook.presto.matching.Pattern;
 import com.facebook.presto.sql.planner.iterative.Rule;
 import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
@@ -29,7 +25,7 @@ import java.util.Optional;
 public class EvaluateZeroLimit
     implements Rule
 {
-    private static final Pattern PATTERN = Pattern.node(LimitNode.class);
+    private static final Pattern PATTERN = Pattern.typeOf(LimitNode.class);
 
     @Override
     public Pattern getPattern()
@@ -38,7 +34,7 @@ public class EvaluateZeroLimit
     }
 
     @Override
-    public Optional<PlanNode> apply(PlanNode node, Lookup lookup, PlanNodeIdAllocator idAllocator, SymbolAllocator symbolAllocator, Session session)
+    public Optional<PlanNode> apply(PlanNode node, Context context)
     {
         LimitNode limit = (LimitNode) node;
 

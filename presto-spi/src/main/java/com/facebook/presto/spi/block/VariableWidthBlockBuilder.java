@@ -23,10 +23,10 @@ import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 import static com.facebook.presto.spi.block.BlockUtil.MAX_ARRAY_SIZE;
 import static com.facebook.presto.spi.block.BlockUtil.calculateBlockResetSize;
-import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
 import static io.airlift.slice.SizeOf.SIZE_OF_BYTE;
 import static io.airlift.slice.SizeOf.SIZE_OF_INT;
 import static io.airlift.slice.SizeOf.SIZE_OF_LONG;
@@ -97,31 +97,40 @@ public class VariableWidthBlockBuilder
     }
 
     @Override
-    public int getSizeInBytes()
+    public long getSizeInBytes()
     {
         long arraysSizeInBytes = (Integer.BYTES + Byte.BYTES) * (long) positions;
-        return intSaturatedCast(sliceOutput.size() + arraysSizeInBytes);
+        return sliceOutput.size() + arraysSizeInBytes;
     }
 
     @Override
-    public int getRegionSizeInBytes(int positionOffset, int length)
+    public long getRegionSizeInBytes(int positionOffset, int length)
     {
         int positionCount = getPositionCount();
         if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
             throw new IndexOutOfBoundsException("Invalid position " + positionOffset + " length " + length + " in block with " + positionCount + " positions");
         }
         long arraysSizeInBytes = (Integer.BYTES + Byte.BYTES) * (long) length;
-        return intSaturatedCast(getOffset(positionOffset + length) - getOffset(positionOffset) + arraysSizeInBytes);
+        return getOffset(positionOffset + length) - getOffset(positionOffset) + arraysSizeInBytes;
     }
 
     @Override
-    public int getRetainedSizeInBytes()
+    public long getRetainedSizeInBytes()
     {
         long size = INSTANCE_SIZE + sliceOutput.getRetainedSize() + arraysRetainedSizeInBytes;
         if (blockBuilderStatus != null) {
             size += BlockBuilderStatus.INSTANCE_SIZE;
         }
-        return intSaturatedCast(size);
+        return size;
+    }
+
+    @Override
+    public void retainedBytesForEachPart(BiConsumer<Object, Long> consumer)
+    {
+        consumer.accept(sliceOutput, (long) sliceOutput.getRetainedSize());
+        consumer.accept(offsets, sizeOf(offsets));
+        consumer.accept(valueIsNull, sizeOf(valueIsNull));
+        consumer.accept(this, (long) INSTANCE_SIZE);
     }
 
     @Override
@@ -260,7 +269,7 @@ public class VariableWidthBlockBuilder
 
     private void updateArraysDataSize()
     {
-        arraysRetainedSizeInBytes = intSaturatedCast(sizeOf(valueIsNull) + sizeOf(offsets));
+        arraysRetainedSizeInBytes = sizeOf(valueIsNull) + sizeOf(offsets);
     }
 
     @Override

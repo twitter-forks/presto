@@ -28,20 +28,24 @@ import com.facebook.presto.sql.planner.plan.ExceptNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.GroupIdNode;
+import com.facebook.presto.sql.planner.plan.IndexSourceNode;
 import com.facebook.presto.sql.planner.plan.IntersectNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.LimitNode;
+import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
 import com.facebook.presto.sql.planner.plan.SortNode;
 import com.facebook.presto.sql.planner.plan.TableScanNode;
+import com.facebook.presto.sql.planner.plan.TableWriterNode;
 import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.Expression;
+import com.facebook.presto.sql.tree.FrameBound;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.WindowFrame;
@@ -55,6 +59,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 import static com.facebook.presto.sql.ExpressionUtils.rewriteIdentifiersToSymbolReferences;
@@ -107,6 +112,12 @@ public final class PlanMatchPattern
         return node(TableScanNode.class).with(new TableScanMatcher(expectedTableName));
     }
 
+    public static PlanMatchPattern tableScan(String expectedTableName, String originalConstraint)
+    {
+        Expression expectedOriginalConstraint = rewriteIdentifiersToSymbolReferences(new SqlParser().createExpression(originalConstraint));
+        return node(TableScanNode.class).with(new TableScanMatcher(expectedTableName, expectedOriginalConstraint));
+    }
+
     public static PlanMatchPattern tableScan(String expectedTableName, Map<String, String> columnReferences)
     {
         PlanMatchPattern result = tableScan(expectedTableName);
@@ -130,6 +141,13 @@ public final class PlanMatchPattern
     {
         PlanMatchPattern result = constrainedTableScan(expectedTableName, constraint);
         return result.addColumnReferences(expectedTableName, columnReferences);
+    }
+
+    public static PlanMatchPattern constrainedIndexSource(String expectedTableName, Map<String, Domain> constraint, Map<String, String> columnReferences)
+    {
+        return node(IndexSourceNode.class)
+                .with(new IndexSourceMatcher(expectedTableName, constraint))
+                .addColumnReferences(expectedTableName, columnReferences);
     }
 
     private PlanMatchPattern addColumnReferences(String expectedTableName, Map<String, String> columnReferences)
@@ -163,26 +181,49 @@ public final class PlanMatchPattern
         return result;
     }
 
-    public static PlanMatchPattern window(
-            ExpectedValueProvider<WindowNode.Specification> specification,
-            List<ExpectedValueProvider<FunctionCall>> windowFunctions,
+    public static PlanMatchPattern markDistinct(
+            String markerSymbol,
+            List<String> distinctSymbols,
             PlanMatchPattern source)
     {
-        PlanMatchPattern result = node(WindowNode.class, source).with(new WindowMatcher(specification));
-        windowFunctions.forEach(
-                function -> result.withAlias(Optional.empty(), new WindowFunctionMatcher(function)));
-        return result;
+        return node(MarkDistinctNode.class, source).with(new MarkDistinctMatcher(
+                new SymbolAlias(markerSymbol),
+                toSymbolAliases(distinctSymbols),
+                Optional.empty()));
     }
 
-    public static PlanMatchPattern window(
-            ExpectedValueProvider<WindowNode.Specification> specification,
-            Map<String, ExpectedValueProvider<FunctionCall>> assignments,
+    public static PlanMatchPattern markDistinct(
+            String markerSymbol,
+            List<String> distinctSymbols,
+            String hashSymbol,
             PlanMatchPattern source)
     {
-        PlanMatchPattern result = node(WindowNode.class, source).with(new WindowMatcher(specification));
-        assignments.entrySet().forEach(
-                assignment -> result.withAlias(assignment.getKey(), new WindowFunctionMatcher(assignment.getValue())));
-        return result;
+        return node(MarkDistinctNode.class, source).with(new MarkDistinctMatcher(
+                new SymbolAlias(markerSymbol),
+                toSymbolAliases(distinctSymbols),
+                Optional.of(new SymbolAlias(hashSymbol))));
+    }
+
+    public static ExpectedValueProvider<WindowNode.Frame> windowFrame(
+            WindowFrame.Type type,
+            FrameBound.Type startType,
+            Optional<String> startValue,
+            FrameBound.Type endType,
+            Optional<String> endValue)
+    {
+        return new WindowFrameProvider(
+                type,
+                startType,
+                startValue.map(SymbolAlias::new),
+                endType,
+                endValue.map(SymbolAlias::new));
+    }
+
+    public static PlanMatchPattern window(Consumer<WindowMatcher.Builder> windowMatcherBuilderConsumer, PlanMatchPattern source)
+    {
+        WindowMatcher.Builder windowMatcherBuilder = new WindowMatcher.Builder(source);
+        windowMatcherBuilderConsumer.accept(windowMatcherBuilder);
+        return windowMatcherBuilder.build();
     }
 
     public static PlanMatchPattern sort(PlanMatchPattern source)
@@ -358,6 +399,11 @@ public final class PlanMatchPattern
     public static PlanMatchPattern limit(long limit, PlanMatchPattern source)
     {
         return node(LimitNode.class, source).with(new LimitMatcher(limit));
+    }
+
+    public static PlanMatchPattern tableWriter(List<String> columns, List<String> columnNames, PlanMatchPattern source)
+    {
+        return node(TableWriterNode.class, source).with(new TableWriterMatcher(columns, columnNames));
     }
 
     public PlanMatchPattern(List<PlanMatchPattern> sourcePatterns)

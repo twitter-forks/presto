@@ -42,14 +42,13 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 import static com.facebook.presto.hive.HiveUtil.toPartitionValues;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.cache.CacheLoader.asyncReloading;
 import static com.google.common.collect.Iterables.transform;
+import static com.google.common.collect.Streams.stream;
 import static com.google.common.util.concurrent.MoreExecutors.newDirectExecutorService;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -434,11 +433,6 @@ public class CachingHiveMetastore
         return resultMap.build();
     }
 
-    private <T> Stream<T> stream(Iterable<T> keys)
-    {
-        return StreamSupport.stream(keys.spliterator(), false);
-    }
-
     @Override
     public Optional<List<String>> getAllTables(String databaseName)
     {
@@ -565,6 +559,17 @@ public class CachingHiveMetastore
     {
         try {
             delegate.renameColumn(databaseName, tableName, oldColumnName, newColumnName);
+        }
+        finally {
+            invalidateTable(databaseName, tableName);
+        }
+    }
+
+    @Override
+    public void dropColumn(String databaseName, String tableName, String columnName)
+    {
+        try {
+            delegate.dropColumn(databaseName, tableName, columnName);
         }
         finally {
             invalidateTable(databaseName, tableName);

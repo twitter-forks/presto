@@ -427,6 +427,11 @@ public abstract class AstVisitor<R, C>
         return visitRelation(node, context);
     }
 
+    protected R visitLateral(Lateral node, C context)
+    {
+        return visitRelation(node, context);
+    }
+
     protected R visitValues(Values node, C context)
     {
         return visitQueryBody(node, context);
@@ -548,6 +553,11 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitRenameColumn(RenameColumn node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitDropColumn(DropColumn node, C context)
     {
         return visitStatement(node, context);
     }

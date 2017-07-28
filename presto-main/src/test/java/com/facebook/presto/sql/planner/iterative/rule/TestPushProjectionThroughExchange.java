@@ -14,49 +14,31 @@
 package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.sql.planner.Symbol;
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.tree.ArithmeticBinaryExpression;
 import com.facebook.presto.sql.tree.LongLiteral;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.ImmutableList;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.exchange;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expression;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
-import static io.airlift.testing.Closeables.closeAllRuntimeException;
 
 public class TestPushProjectionThroughExchange
+        extends BaseRuleTest
 {
-    private RuleTester tester;
-
-    @BeforeClass
-    public void setUp()
-    {
-        tester = new RuleTester();
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        closeAllRuntimeException(tester);
-        tester = null;
-    }
-
     @Test
     public void testDoesNotFireNoExchange()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughExchange())
+        tester().assertThat(new PushProjectionThroughExchange())
                 .on(p ->
                         p.project(
-                                Assignments.of(p.symbol("x", BIGINT), new LongLiteral("3")),
-                                p.values(p.symbol("a", BIGINT))))
+                                Assignments.of(p.symbol("x"), new LongLiteral("3")),
+                                p.values(p.symbol("a"))))
                 .doesNotFire();
     }
 
@@ -64,11 +46,11 @@ public class TestPushProjectionThroughExchange
     public void testDoesNotFireNarrowingProjection()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughExchange())
+        tester().assertThat(new PushProjectionThroughExchange())
                 .on(p -> {
-                    Symbol a = p.symbol("a", BIGINT);
-                    Symbol b = p.symbol("b", BIGINT);
-                    Symbol c = p.symbol("c", BIGINT);
+                    Symbol a = p.symbol("a");
+                    Symbol b = p.symbol("b");
+                    Symbol c = p.symbol("c");
 
                     return p.project(
                             Assignments.builder()
@@ -87,13 +69,13 @@ public class TestPushProjectionThroughExchange
     public void testSimpleMultipleInputs()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughExchange())
+        tester().assertThat(new PushProjectionThroughExchange())
                 .on(p -> {
-                    Symbol a = p.symbol("a", BIGINT);
-                    Symbol b = p.symbol("b", BIGINT);
-                    Symbol c = p.symbol("c", BIGINT);
-                    Symbol c2 = p.symbol("c2", BIGINT);
-                    Symbol x = p.symbol("x", BIGINT);
+                    Symbol a = p.symbol("a");
+                    Symbol b = p.symbol("b");
+                    Symbol c = p.symbol("c");
+                    Symbol c2 = p.symbol("c2");
+                    Symbol x = p.symbol("x");
                     return p.project(
                             Assignments.of(
                                     x, new LongLiteral("3"),
@@ -128,14 +110,14 @@ public class TestPushProjectionThroughExchange
     public void testPartitioningColumnAndHashWithoutIdentityMappingInProjection()
             throws Exception
     {
-        tester.assertThat(new PushProjectionThroughExchange())
+        tester().assertThat(new PushProjectionThroughExchange())
                 .on(p -> {
-                    Symbol a = p.symbol("a", BIGINT);
-                    Symbol b = p.symbol("b", BIGINT);
-                    Symbol h = p.symbol("h", BIGINT);
-                    Symbol aTimes5 = p.symbol("a_times_5", BIGINT);
-                    Symbol bTimes5 = p.symbol("b_times_5", BIGINT);
-                    Symbol hTimes5 = p.symbol("h_times_5", BIGINT);
+                    Symbol a = p.symbol("a");
+                    Symbol b = p.symbol("b");
+                    Symbol h = p.symbol("h");
+                    Symbol aTimes5 = p.symbol("a_times_5");
+                    Symbol bTimes5 = p.symbol("b_times_5");
+                    Symbol hTimes5 = p.symbol("h_times_5");
                     return p.project(
                             Assignments.builder()
                                     .put(aTimes5, new ArithmeticBinaryExpression(ArithmeticBinaryExpression.Type.MULTIPLY, new SymbolReference("a"), new LongLiteral("5")))

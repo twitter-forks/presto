@@ -56,6 +56,7 @@ public class OrcReader
     private final ExceptionWrappingMetadataReader metadataReader;
     private final DataSize maxMergeDistance;
     private final DataSize maxReadSize;
+    private final DataSize maxBlockSize;
     private final HiveWriterVersion hiveWriterVersion;
     private final int bufferSize;
     private final Footer footer;
@@ -63,14 +64,15 @@ public class OrcReader
     private Optional<OrcDecompressor> decompressor = Optional.empty();
 
     // This is based on the Apache Hive ORC code
-    public OrcReader(OrcDataSource orcDataSource, MetadataReader metadataReader, DataSize maxMergeDistance, DataSize maxReadSize)
+    public OrcReader(OrcDataSource orcDataSource, MetadataReader delegate, DataSize maxMergeDistance, DataSize maxReadSize, DataSize maxBlockSize)
             throws IOException
     {
         orcDataSource = wrapWithCacheIfTiny(requireNonNull(orcDataSource, "orcDataSource is null"), maxMergeDistance);
         this.orcDataSource = orcDataSource;
-        this.metadataReader = new ExceptionWrappingMetadataReader(orcDataSource.getId(), requireNonNull(metadataReader, "metadataReader is null"));
+        this.metadataReader = new ExceptionWrappingMetadataReader(orcDataSource.getId(), requireNonNull(delegate, "delegate is null"));
         this.maxMergeDistance = requireNonNull(maxMergeDistance, "maxMergeDistance is null");
         this.maxReadSize = requireNonNull(maxReadSize, "maxReadSize is null");
+        this.maxBlockSize = requireNonNull(maxBlockSize, "maxBlockSize is null");
 
         //
         // Read the file tail:
@@ -213,6 +215,7 @@ public class OrcReader
                 metadataReader,
                 maxMergeDistance,
                 maxReadSize,
+                maxBlockSize,
                 footer.getUserMetadata(),
                 systemMemoryUsage);
     }
