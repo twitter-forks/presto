@@ -34,7 +34,6 @@ import org.I0Itec.zkclient.ZkClient;
 import javax.inject.Inject;
 
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 import static com.facebook.presto.kafka.KafkaHandleResolver.convertLayout;
 import static java.util.Objects.requireNonNull;
@@ -91,8 +90,8 @@ public class KafkaSplitManager
             // Kafka contains a reverse list of "end - start" pairs for the splits
 
             KafkaTableLayoutHandle layoutHandle = (KafkaTableLayoutHandle) layout;
-            Long startTs = layoutHandle.getOffsetStartTs();
-            Long endTs = layoutHandle.getOffsetEndTs();
+            long startTs = layoutHandle.getOffsetStartTs();
+            long endTs = layoutHandle.getOffsetEndTs();
 
             long[] offsets = findAllOffsets(leaderConsumer,  kafkaTableHandle.getTopicName(), part.partId(), startTs, endTs);
             for (int i = offsets.length - 1; i > 0; i--) {
@@ -122,12 +121,10 @@ public class KafkaSplitManager
         return new FixedSplitSource(builtSplits);
     }
 
-    private static long[] findAllOffsets(SimpleConsumer consumer, String topicName, int partitionId, Long startTs, Long endTs)
+    private static long[] findAllOffsets(SimpleConsumer consumer, String topicName, int partitionId, long startTs, long endTs)
     {
         // startTs: start timestamp, or -2/null as earliest
         // endTs: end timestamp, or -1/null as latest
-        startTs = startTs == null ? OffsetRequest.EarliestTime() : startTs;
-        endTs = endTs == null ? OffsetRequest.LatestTime() : endTs;
         if (startTs >= endTs && endTs != OffsetRequest.LatestTime()) {
             throw new IllegalArgumentException(String.format("Invalid Kafka Offset start/end pair: %s - %s", startTs, endTs));
         }
@@ -152,11 +149,5 @@ public class KafkaSplitManager
         }
 
         return offsets;
-    }
-
-    private static <T> T selectRandom(Iterable<T> iterable)
-    {
-        List<T> list = ImmutableList.copyOf(iterable);
-        return list.get(ThreadLocalRandom.current().nextInt(list.size()));
     }
 }

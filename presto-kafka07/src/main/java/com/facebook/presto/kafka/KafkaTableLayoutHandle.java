@@ -24,8 +24,8 @@ public class KafkaTableLayoutHandle
         implements ConnectorTableLayoutHandle
 {
     private final KafkaTableHandle table;
-    private final Long offsetStartTs;
-    private final Long offsetEndTs;
+    private final long offsetStartTs;
+    private final long offsetEndTs;
 
     @JsonCreator
     public KafkaTableLayoutHandle(
@@ -45,13 +45,13 @@ public class KafkaTableLayoutHandle
     }
 
     @JsonProperty
-    public Long getOffsetStartTs()
+    public long getOffsetStartTs()
     {
         return offsetStartTs;
     }
 
     @JsonProperty
-    public Long getOffsetEndTs()
+    public long getOffsetEndTs()
     {
         return offsetEndTs;
     }

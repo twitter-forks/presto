@@ -178,7 +178,7 @@ public class KafkaRecordSet
                     if (cursorOffset >= split.getEnd()) {
                         return endOfData(2); // Split end is exclusive.
                     }
-                    while (messageAndOffsetIterator.hasNext()) {
+                    if (messageAndOffsetIterator.hasNext()) {
                         MessageAndOffset currentMessageAndOffset = messageAndOffsetIterator.next();
                         return nextRow(currentMessageAndOffset);
                     }
@@ -252,21 +252,21 @@ public class KafkaRecordSet
                 log.info("Fetching %d bytes from partition %d @offset %d (%d - %d) -- %d messages read so far",
                         fetchSize, split.getPartitionId(), cursorOffset, split.getStart(), split.getEnd(), totalMessages);
                 cursorOffset += fetchedSize;
-                FetchRequest req = new FetchRequest(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize);
-                // TODO - this should look at the actual node this is running on and prefer
-                // that copy if running locally. - look into NodeInfo
-                SimpleConsumer consumer = consumerManager.getConsumer(split.getLeader());
+                if (cursorOffset < split.getEnd()) {
+                    FetchRequest req = new FetchRequest(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize);
+                    SimpleConsumer consumer = consumerManager.getConsumer(split.getLeader());
 
-                ByteBufferMessageSet fetch = consumer.fetch(req);
-                log.debug("\t...fetched %s bytes, validBytes=%s, initialOffset=%s", fetch.sizeInBytes(), fetch.validBytes(), fetch.getInitialOffset());
-                int errorCode = fetch.getErrorCode();
-                if (errorCode != ErrorMapping.NoError() && errorCode != ErrorMapping.OffsetOutOfRangeCode()) {
-                    log.warn("Fetch response has error: %d", errorCode);
-                    throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
+                    ByteBufferMessageSet fetch = consumer.fetch(req);
+                    log.debug("\t...fetched %s bytes, validBytes=%s, initialOffset=%s", fetch.sizeInBytes(), fetch.validBytes(), fetch.getInitialOffset());
+                    int errorCode = fetch.getErrorCode();
+                    if (errorCode != ErrorMapping.NoError() && errorCode != ErrorMapping.OffsetOutOfRangeCode()) {
+                        log.warn("Fetch response has error: %d", errorCode);
+                        throw new PrestoException(KAFKA_SPLIT_ERROR, "could not fetch data from Kafka, error code is '" + errorCode + "'");
+                    }
+
+                    fetchedSize = fetch.validBytes();
+                    messageAndOffsetIterator = fetch.iterator();
                 }
-
-                fetchedSize = fetch.validBytes();
-                messageAndOffsetIterator = fetch.iterator();
             }
         }
 
@@ -277,7 +277,7 @@ public class KafkaRecordSet
             }
 
             if (endTs == OffsetRequest.LatestTime()) {
-                endTs = Long.MAX_VALUE;
+                endTs = System.currentTimeMillis();
             }
 
             return startTs + (endTs - startTs) / 2;
