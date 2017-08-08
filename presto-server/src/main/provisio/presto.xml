@@ -74,6 +74,12 @@
         </artifact>
     </artifactSet>
 
+    <artifactSet to="plugin/kafka07">
+        <artifact id="${project.groupId}:presto-kafka07:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
+
     <artifactSet to="plugin/atop">
         <artifact id="${project.groupId}:presto-atop:zip:${project.version}">
             <unpack />
