@@ -204,7 +204,7 @@ public class KafkaMetadata
         Long startTs = null;
         Long endTs = null;
         Optional<Map<ColumnHandle, Domain>> domains = constraint.getSummary().getDomains();
-        log.info("TableLayout");
+        log.info(constraint.getSummary().toString(null));
         if (domains.isPresent()) {
             Map<ColumnHandle, Domain> columnHandleDomainMap = domains.get();
             for (Map.Entry<ColumnHandle, Domain> entry : columnHandleDomainMap.entrySet()) {
