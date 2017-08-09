@@ -109,7 +109,7 @@ public class KafkaSplitManager
                 splits.add(split);
 
                 long splitSize = (split.getEnd() - split.getStart()) / 1024 / 1024;
-                log.info("Split summarize: %s-%s (%sMB)", split.getStart(), split.getEnd(), splitSize);
+                log.debug("Split summarize: %s-%s (%sMB)", split.getStart(), split.getEnd(), splitSize);
                 estimatedTotalSize += splitSize;
             }
         }
