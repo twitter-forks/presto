@@ -43,7 +43,7 @@ public final class KafkaSessionProperties
                 doubleSessionProperty(
                         SAMPLING_PERCENT,
                         "The first x percent will be sampled, and the rest of the data will be discarded",
-                        10.0,
+                        0.1,
                         false
                 ));
     }

@@ -17,6 +17,7 @@ import com.facebook.presto.decoder.DecoderColumnHandle;
 import com.facebook.presto.decoder.FieldDecoder;
 import com.facebook.presto.decoder.FieldValueProvider;
 import com.facebook.presto.decoder.RowDecoder;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordSet;
@@ -70,6 +71,7 @@ public class KafkaRecordSet
     private final List<Type> columnTypes;
 
     private final Set<FieldValueProvider> globalInternalFieldValueProviders;
+    private final ConnectorSession session;
 
     KafkaRecordSet(KafkaSplit split,
             KafkaSimpleConsumerManager consumerManager,
@@ -78,7 +80,8 @@ public class KafkaRecordSet
             RowDecoder messageDecoder,
             Map<DecoderColumnHandle, FieldDecoder<?>> keyFieldDecoders,
             Map<DecoderColumnHandle, FieldDecoder<?>> messageFieldDecoders,
-            int fetchSize)
+            int fetchSize,
+            ConnectorSession session)
     {
         this.split = requireNonNull(split, "split is null");
 
@@ -104,6 +107,7 @@ public class KafkaRecordSet
 
         this.columnTypes = typeBuilder.build();
         this.fetchSize = fetchSize;
+        this.session = requireNonNull(session, "connectorSession is null");
     }
 
     @Override
@@ -174,7 +178,10 @@ public class KafkaRecordSet
 
                 try {
                     // Create a fetch request
-                    openFetchRequest();
+                    KafkaFetchStatus kafkaFetchStatus = openFetchRequest();
+                    if (kafkaFetchStatus == KafkaFetchStatus.SAMPLE_ACHIEVED) {
+                        return endOfData(3);
+                    }
                     if (cursorOffset >= split.getEnd()) {
                         return endOfData(2); // Split end is exclusive.
                     }
@@ -246,12 +253,16 @@ public class KafkaRecordSet
             return true; // Advanced successfully.
         }
 
-        private void openFetchRequest()
+        private KafkaFetchStatus openFetchRequest()
         {
             if (messageAndOffsetIterator == null) {
                 log.info("Fetching %d bytes from partition %d @offset %d (%d - %d) -- %d messages read so far",
                         fetchSize, split.getPartitionId(), cursorOffset, split.getStart(), split.getEnd(), totalMessages);
                 cursorOffset += fetchedSize;
+                if (KafkaSessionProperties.isSamplingOnly(session)
+                        && ((double) (cursorOffset - split.getStart())) / (split.getEnd() - split.getStart()) >= KafkaSessionProperties.getSamplingPercent(session)) {
+                    return KafkaFetchStatus.SAMPLE_ACHIEVED;
+                }
                 if (cursorOffset < split.getEnd()) {
                     FetchRequest req = new FetchRequest(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize);
                     SimpleConsumer consumer = consumerManager.getConsumer(split.getLeader());
@@ -268,6 +279,7 @@ public class KafkaRecordSet
                     messageAndOffsetIterator = fetch.iterator();
                 }
             }
+            return KafkaFetchStatus.ONGOING;
         }
 
         private long populateOffsetTimestamp(long startTs, long endTs)
