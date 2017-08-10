@@ -47,6 +47,8 @@ public class KafkaConnectorModule
         binder.bind(KafkaSplitManager.class).in(Scopes.SINGLETON);
         binder.bind(KafkaRecordSetProvider.class).in(Scopes.SINGLETON);
 
+        binder.bind(KafkaSessionProperties.class).in(Scopes.SINGLETON);
+
         binder.bind(KafkaSimpleConsumerManager.class).in(Scopes.SINGLETON);
 
         configBinder(binder).bindConfig(KafkaConnectorConfig.class);

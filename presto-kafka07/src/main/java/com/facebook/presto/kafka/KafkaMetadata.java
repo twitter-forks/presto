@@ -225,6 +225,12 @@ public class KafkaMetadata
         }
 
         log.info("startTs: %s, endTs: %s", startTs, endTs);
+
+        if (startTs == null && endTs == null) {
+            log.info("startTs and endTs are both empty");
+            throw new IllegalArgumentException("Must provide filter on " + KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName());
+        }
+
         ConnectorTableLayout layout = new ConnectorTableLayout(new KafkaTableLayoutHandle(handle, startTs, endTs));
         return ImmutableList.of(new ConnectorTableLayoutResult(layout, constraint.getSummary()));
     }
