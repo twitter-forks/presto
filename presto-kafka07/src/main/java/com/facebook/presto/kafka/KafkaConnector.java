@@ -57,7 +57,7 @@ public class KafkaConnector
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.recordSetProvider = requireNonNull(recordSetProvider, "recordSetProvider is null");
-        this.sessionProperties = sessionProperties;
+        this.sessionProperties = requireNonNull(sessionProperties, "sessionProperties is null");
     }
 
     @Override
