@@ -42,7 +42,7 @@ import static com.facebook.presto.testing.assertions.Assert.assertEquals;
 public class TestManySegments
 {
     private static final Session SESSION = testSessionBuilder()
-            .setCatalog("kafka")
+            .setCatalog("kafka07")
             .setSchema("default")
             .build();
 
