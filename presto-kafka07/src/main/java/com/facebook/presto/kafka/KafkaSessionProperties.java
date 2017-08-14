@@ -27,8 +27,13 @@ import static com.facebook.presto.spi.session.PropertyMetadata.doubleSessionProp
 
 public final class KafkaSessionProperties
 {
+    /**
+     * If we further research into how sampling could work better(for example, jumping randomly in the segment instead of just sampling first few percent),
+     * then sampling_only is a global feature flag, where sampling_percent or another new session var sampling_jump could be minor feature flag
+     */
     private static final String SAMPLING_ONLY = "sampling_only";
     private static final String SAMPLING_PERCENT = "sampling_percent";
+
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
