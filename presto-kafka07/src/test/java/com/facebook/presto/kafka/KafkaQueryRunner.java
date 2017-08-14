@@ -124,7 +124,7 @@ public final class KafkaQueryRunner
     public static Session createSession()
     {
         return testSessionBuilder()
-                .setCatalog("kafka")
+                .setCatalog("kafka07")
                 .setSchema(TPCH_SCHEMA)
                 .build();
     }

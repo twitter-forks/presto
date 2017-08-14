@@ -228,7 +228,7 @@ public class KafkaMetadata
 
         log.info("startTs: %s, endTs: %s", startTs, endTs);
 
-        if (startTs == null && endTs == null) {
+        if (config.isHardLimitOn() && startTs == null && endTs == null) {
             log.info("startTs and endTs are both empty");
             // throw new IllegalArgumentException("Must provide filter on " + KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName());
             endTs = System.currentTimeMillis();

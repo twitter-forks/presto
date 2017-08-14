@@ -48,7 +48,7 @@ import static org.testng.Assert.assertTrue;
 public class TestMinimalFunctionality
 {
     private static final Session SESSION = testSessionBuilder()
-            .setCatalog("kafka")
+            .setCatalog("kafka07")
             .setSchema("default")
             .build();
 
@@ -111,7 +111,7 @@ public class TestMinimalFunctionality
     public void testTopicExists()
             throws Exception
     {
-        QualifiedObjectName name = new QualifiedObjectName("kafka", "default", topicName);
+        QualifiedObjectName name = new QualifiedObjectName("kafka07", "default", topicName);
 
         transaction(queryRunner.getTransactionManager(), new AllowAllAccessControl())
                 .singleStatement()

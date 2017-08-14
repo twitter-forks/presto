@@ -60,14 +60,14 @@ public final class TestUtils
         kafkaPlugin.setTableDescriptionSupplier(() -> topicDescriptions);
         queryRunner.installPlugin(kafkaPlugin);
 
-        Map<String, String> kafkaConfig = ImmutableMap.of(
-                "kafka.nodes", embeddedKafka.getConnectString(),
-                "kafka.table-names", Joiner.on(",").join(topicDescriptions.keySet()),
-                "kafka.connect-timeout", "120s",
-                "kafka.default-schema", "default",
-                "kafka.zk-endpoint", embeddedKafka.getZookeeperConnectString()
-        );
-        queryRunner.createCatalog("kafka", "kafka", kafkaConfig);
+        Map<String, String> kafkaConfig = ImmutableMap.<String, String>builder()
+                .put("kafka.nodes", embeddedKafka.getConnectString())
+                .put("kafka.table-names", Joiner.on(",").join(topicDescriptions.keySet()))
+                .put("kafka.connect-timeout", "120s")
+                .put("kafka.default-schema", "default")
+                .put("kafka.zk-endpoint", embeddedKafka.getZookeeperConnectString())
+                .put("kafka.hardlimit-on", "false").build();
+        queryRunner.createCatalog("kafka07", "kafka07", kafkaConfig);
     }
 
     public static void loadTpchTopic(EmbeddedKafka embeddedKafka, TestingPrestoClient prestoClient, String topicName, QualifiedObjectName tpchTableName)

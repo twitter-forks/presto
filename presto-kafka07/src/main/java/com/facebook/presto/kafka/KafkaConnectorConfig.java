@@ -78,7 +78,15 @@ public class KafkaConnectorConfig
      */
     private int fetchSize = 10 * 1024 * 1024;
 
+    /**
+     * Default Query Interval
+     */
     private long defaultQueryInterval = 10 * 60 * 1000;
+
+    /**
+     * Hard limit on
+     */
+    private boolean hardLimitOn = true;
 
     @NotNull
     public File getTableDescriptionDir()
@@ -202,6 +210,18 @@ public class KafkaConnectorConfig
     public KafkaConnectorConfig setDefaultQueryInterval(long defaultQueryInterval)
     {
         this.defaultQueryInterval = defaultQueryInterval;
+        return this;
+    }
+
+    public boolean isHardLimitOn()
+    {
+        return hardLimitOn;
+    }
+
+    @Config("kafka.hardlimit-on")
+    public KafkaConnectorConfig setHardLimitOn(boolean hardLimitOn)
+    {
+        this.hardLimitOn = hardLimitOn;
         return this;
     }
 
