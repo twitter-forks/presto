@@ -167,6 +167,23 @@ public class StatementResource
                     .build());
         }
 
+        // The Teradata Presto ODBC Driver checks node version to decide the Presto's statement
+        // protocol and sends test queries about PREPARE statement.
+        // Rewrite the statement so that Presto always returns version for the compatible protocol.
+        // Ban the statement which will never be consumed by the driver.
+        if (servletRequest.getHeader("User-Agent").equals("Teradata Presto ODBC Driver")) {
+            if (statement.equals("select node_version from system.runtime.nodes where coordinator=true")) {
+                statement = "select '0.148' as node_version";
+            }
+            else if (statement.equals("DESCRIBE OUTPUT prepare_test_stmt")) {
+                return Response
+                    .status(Status.BAD_REQUEST)
+                    .type(MediaType.TEXT_PLAIN)
+                    .entity("SQL statement is known, and wouldn't be consumed by this driver")
+                    .build();
+            }
+        }
+
         SessionSupplier sessionSupplier = new HttpRequestSessionFactory(servletRequest);
 
         ExchangeClient exchangeClient = exchangeClientSupplier.get(deltaMemoryInBytes -> { });
