@@ -61,6 +61,7 @@ public class KafkaMetadata
     private final boolean hideInternalColumns;
     private final Map<SchemaTableName, KafkaTopicDescription> tableDescriptions;
     private final Set<KafkaInternalFieldDescription> internalFieldDescriptions;
+    private final KafkaConnectorConfig config;
 
     @Inject
     public KafkaMetadata(
@@ -70,6 +71,7 @@ public class KafkaMetadata
             Set<KafkaInternalFieldDescription> internalFieldDescriptions)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
+        this.config = requireNonNull(kafkaConnectorConfig, "config is null");
 
         requireNonNull(kafkaConnectorConfig, "kafkaConfig is null");
         this.hideInternalColumns = kafkaConnectorConfig.isHideInternalColumns();
@@ -230,7 +232,7 @@ public class KafkaMetadata
             log.info("startTs and endTs are both empty");
             // throw new IllegalArgumentException("Must provide filter on " + KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName());
             endTs = System.currentTimeMillis();
-            startTs = endTs - 10 * 60 * 1000;
+            startTs = endTs - config.getDefaultQueryInterval();
         }
 
         ConnectorTableLayout layout = new ConnectorTableLayout(new KafkaTableLayoutHandle(handle, startTs, endTs));

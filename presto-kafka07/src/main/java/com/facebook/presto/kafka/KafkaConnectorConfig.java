@@ -78,6 +78,8 @@ public class KafkaConnectorConfig
      */
     private int fetchSize = 10 * 1024 * 1024;
 
+    private long defaultQueryInterval = 10 * 60 * 1000;
+
     @NotNull
     public File getTableDescriptionDir()
     {
@@ -188,6 +190,18 @@ public class KafkaConnectorConfig
     public KafkaConnectorConfig setFetchSize(int fetchSize)
     {
         this.fetchSize = fetchSize;
+        return this;
+    }
+
+    public long getDefaultQueryInterval()
+    {
+        return defaultQueryInterval;
+    }
+
+    @Config("kafka.default-query-interval")
+    public KafkaConnectorConfig setDefaultQueryInterval(long defaultQueryInterval)
+    {
+        this.defaultQueryInterval = defaultQueryInterval;
         return this;
     }
 
