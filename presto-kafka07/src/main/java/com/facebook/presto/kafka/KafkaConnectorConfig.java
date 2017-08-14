@@ -76,12 +76,12 @@ public class KafkaConnectorConfig
     /**
      * Fetch size
      */
-    private int fetchSize = 10 * 1024 * 1024;
+    private DataSize fetchSize = new DataSize(10, Unit.MEGABYTE);
 
     /**
      * Default Query Interval
      */
-    private long defaultQueryInterval = 10 * 60 * 1000;
+    private Duration defaultQueryInterval = Duration.valueOf("10m");
 
     /**
      * Hard limit on
@@ -189,27 +189,28 @@ public class KafkaConnectorConfig
         return this;
     }
 
-    public int getFetchSize()
+    public DataSize getFetchSize()
     {
         return fetchSize;
     }
 
     @Config("kafka.fetch-size")
-    public KafkaConnectorConfig setFetchSize(int fetchSize)
+    public KafkaConnectorConfig setFetchSize(String fetchSize)
     {
-        this.fetchSize = fetchSize;
+        this.fetchSize = DataSize.valueOf(fetchSize);
         return this;
     }
 
-    public long getDefaultQueryInterval()
+    @MinDuration("1s")
+    public Duration getDefaultQueryInterval()
     {
         return defaultQueryInterval;
     }
 
     @Config("kafka.default-query-interval")
-    public KafkaConnectorConfig setDefaultQueryInterval(long defaultQueryInterval)
+    public KafkaConnectorConfig setDefaultQueryInterval(String defaultQueryInterval)
     {
-        this.defaultQueryInterval = defaultQueryInterval;
+        this.defaultQueryInterval = Duration.valueOf(defaultQueryInterval);
         return this;
     }
 

@@ -230,7 +230,7 @@ public class KafkaMetadata
         if (config.isHardLimitOn() && startTs == null && endTs == null) {
             log.info("startTs and endTs are both empty");
             endTs = System.currentTimeMillis();
-            startTs = endTs - config.getDefaultQueryInterval();
+            startTs = endTs - config.getDefaultQueryInterval().toMillis();
         }
         ConnectorTableLayout layout = new ConnectorTableLayout(new KafkaTableLayoutHandle(handle, startTs, endTs));
         return ImmutableList.of(new ConnectorTableLayoutResult(layout, constraint.getSummary()));

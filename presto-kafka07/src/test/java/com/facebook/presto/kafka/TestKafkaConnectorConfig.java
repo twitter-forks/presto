@@ -33,9 +33,9 @@ public class TestKafkaConnectorConfig
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka07/"))
                 .setHideInternalColumns(true)
-                .setFetchSize(10485760)
+                .setFetchSize("10MB")
                 .setZkEndpoint("")
-                .setDefaultQueryInterval(10 * 60 * 1000)
+                .setDefaultQueryInterval("10m")
                 .setHardLimitOn(true)
         );
     }
@@ -51,9 +51,9 @@ public class TestKafkaConnectorConfig
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
-                .put("kafka.fetch-size", "10000000")
+                .put("kafka.fetch-size", "100MB")
                 .put("kafka.zk-endpoint", "localhost:2181")
-                .put("kafka.default-query-interval", "3600000")
+                .put("kafka.default-query-interval", "1h")
                 .put("kafka.hardlimit-on", "false")
                 .build();
 
@@ -65,9 +65,9 @@ public class TestKafkaConnectorConfig
                 .setKafkaConnectTimeout("1h")
                 .setKafkaBufferSize("1MB")
                 .setHideInternalColumns(false)
-                .setFetchSize(10000000)
+                .setFetchSize("100MB")
                 .setZkEndpoint("localhost:2181")
-                .setDefaultQueryInterval(3600000)
+                .setDefaultQueryInterval("1h")
                 .setHardLimitOn(false);
 
         ConfigAssertions.assertFullMapping(properties, expected);
