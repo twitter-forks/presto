@@ -104,6 +104,8 @@ import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.util.Failures.toFailure;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
+import static com.google.common.base.Strings.nullToEmpty;
+
 import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -171,7 +173,7 @@ public class StatementResource
         // protocol and sends test queries about PREPARE statement.
         // Rewrite the statement so that Presto always returns version for the compatible protocol.
         // Ban the statement which will never be consumed by the driver.
-        if (servletRequest.getHeader("User-Agent").equals("Teradata Presto ODBC Driver")) {
+        if (nullToEmpty(servletRequest.getHeader("User-Agent")).equals("Teradata Presto ODBC Driver")) {
             if (statement.equals("select node_version from system.runtime.nodes where coordinator=true")) {
                 statement = "select '0.148' as node_version";
             }
