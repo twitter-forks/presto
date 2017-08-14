@@ -228,7 +228,9 @@ public class KafkaMetadata
 
         if (startTs == null && endTs == null) {
             log.info("startTs and endTs are both empty");
-            throw new IllegalArgumentException("Must provide filter on " + KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName());
+            // throw new IllegalArgumentException("Must provide filter on " + KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName());
+            endTs = System.currentTimeMillis();
+            startTs = endTs - 10 * 60 * 1000;
         }
 
         ConnectorTableLayout layout = new ConnectorTableLayout(new KafkaTableLayoutHandle(handle, startTs, endTs));
