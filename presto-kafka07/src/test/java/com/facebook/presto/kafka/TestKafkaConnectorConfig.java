@@ -31,10 +31,12 @@ public class TestKafkaConnectorConfig
                 .setKafkaBufferSize("64kB")
                 .setDefaultSchema("default")
                 .setTableNames("")
-                .setTableDescriptionDir(new File("etc/kafka/"))
+                .setTableDescriptionDir(new File("etc/kafka07/"))
                 .setHideInternalColumns(true)
-                .setFetchSize(10485760)
+                .setFetchSize("10MB")
                 .setZkEndpoint("")
+                .setDefaultQueryInterval("10m")
+                .setHardLimitOn(true)
         );
     }
 
@@ -42,27 +44,31 @@ public class TestKafkaConnectorConfig
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
-                .put("kafka.table-description-dir", "/var/lib/kafka")
+                .put("kafka.table-description-dir", "/var/lib/kafka07")
                 .put("kafka.table-names", "table1, table2, table3")
                 .put("kafka.default-schema", "kafka")
                 .put("kafka.nodes", "localhost:12345,localhost:23456")
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
-                .put("kafka.fetch-size", "10000000")
+                .put("kafka.fetch-size", "100MB")
                 .put("kafka.zk-endpoint", "localhost:2181")
+                .put("kafka.default-query-interval", "1h")
+                .put("kafka.hardlimit-on", "false")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
-                .setTableDescriptionDir(new File("/var/lib/kafka"))
+                .setTableDescriptionDir(new File("/var/lib/kafka07"))
                 .setTableNames("table1, table2, table3")
                 .setDefaultSchema("kafka")
                 .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
                 .setKafkaBufferSize("1MB")
                 .setHideInternalColumns(false)
-                .setFetchSize(10000000)
-                .setZkEndpoint("localhost:2181");
+                .setFetchSize("100MB")
+                .setZkEndpoint("localhost:2181")
+                .setDefaultQueryInterval("1h")
+                .setHardLimitOn(false);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

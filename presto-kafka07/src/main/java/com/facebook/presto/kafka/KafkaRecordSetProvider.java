@@ -32,6 +32,7 @@ import java.util.List;
 
 import static com.facebook.presto.kafka.KafkaHandleResolver.convertColumnHandle;
 import static com.facebook.presto.kafka.KafkaHandleResolver.convertSplit;
+import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -92,6 +93,6 @@ public class KafkaRecordSetProvider
         ImmutableMap<DecoderColumnHandle, FieldDecoder<?>> keyFieldDecoders = keyFieldDecoderBuilder.build();
         ImmutableMap<DecoderColumnHandle, FieldDecoder<?>> messageFieldDecoders = messageFieldDecoderBuilder.build();
 
-        return new KafkaRecordSet(kafkaSplit, consumerManager, handles, keyDecoder, messageDecoder, keyFieldDecoders, messageFieldDecoders, config.getFetchSize());
+        return new KafkaRecordSet(kafkaSplit, consumerManager, handles, keyDecoder, messageDecoder, keyFieldDecoders, messageFieldDecoders, toIntExact(config.getFetchSize().toBytes()));
     }
 }

@@ -61,6 +61,7 @@ public class KafkaMetadata
     private final boolean hideInternalColumns;
     private final Map<SchemaTableName, KafkaTopicDescription> tableDescriptions;
     private final Set<KafkaInternalFieldDescription> internalFieldDescriptions;
+    private final KafkaConnectorConfig config;
 
     @Inject
     public KafkaMetadata(
@@ -70,6 +71,7 @@ public class KafkaMetadata
             Set<KafkaInternalFieldDescription> internalFieldDescriptions)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
+        this.config = requireNonNull(kafkaConnectorConfig, "config is null");
 
         requireNonNull(kafkaConnectorConfig, "kafkaConfig is null");
         this.hideInternalColumns = kafkaConnectorConfig.isHideInternalColumns();
@@ -225,6 +227,11 @@ public class KafkaMetadata
         }
 
         log.info("startTs: %s, endTs: %s", startTs, endTs);
+        if (config.isHardLimitOn() && startTs == null && endTs == null) {
+            log.info("startTs and endTs are both empty");
+            endTs = System.currentTimeMillis();
+            startTs = endTs - config.getDefaultQueryInterval().toMillis();
+        }
         ConnectorTableLayout layout = new ConnectorTableLayout(new KafkaTableLayoutHandle(handle, startTs, endTs));
         return ImmutableList.of(new ConnectorTableLayoutResult(layout, constraint.getSummary()));
     }
