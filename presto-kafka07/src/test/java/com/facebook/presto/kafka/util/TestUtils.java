@@ -67,7 +67,7 @@ public final class TestUtils
                 "kafka.default-schema", "default",
                 "kafka.zk-endpoint", embeddedKafka.getZookeeperConnectString()
         );
-        queryRunner.createCatalog("kafka", "kafka", kafkaConfig);
+        queryRunner.createCatalog("kafka", "kafka07", kafkaConfig);
     }
 
     public static void loadTpchTopic(EmbeddedKafka embeddedKafka, TestingPrestoClient prestoClient, String topicName, QualifiedObjectName tpchTableName)

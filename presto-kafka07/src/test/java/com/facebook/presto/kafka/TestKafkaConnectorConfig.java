@@ -31,7 +31,7 @@ public class TestKafkaConnectorConfig
                 .setKafkaBufferSize("64kB")
                 .setDefaultSchema("default")
                 .setTableNames("")
-                .setTableDescriptionDir(new File("etc/kafka/"))
+                .setTableDescriptionDir(new File("etc/kafka07/"))
                 .setHideInternalColumns(true)
                 .setFetchSize(10485760)
                 .setZkEndpoint("")
