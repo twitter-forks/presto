@@ -45,7 +45,7 @@
         <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>presto-thrift-java</artifactId>
-            <version>0.0.3</version>
+            <version>0.0.4</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.twitter</groupId>
