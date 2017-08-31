@@ -10,7 +10,7 @@
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.181-tw-0.38</version>
+    <version>0.181-tw-0.39</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -30,7 +30,7 @@
     <scm>
         <connection>scm:git:git://github.com/twitter-forks/presto.git</connection>
         <url>https://github.com/twitter-forks/presto</url>
-        <tag>0.181-tw-0.38</tag>
+        <tag>0.181-tw-0.39</tag>
     </scm>
 
     <properties>
