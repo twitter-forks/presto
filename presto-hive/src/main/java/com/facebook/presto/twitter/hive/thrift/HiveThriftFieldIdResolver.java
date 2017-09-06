@@ -52,13 +52,14 @@ import static com.google.common.base.MoreObjects.toStringHelper;
  *         '0': {
  *              '0': 1,
  *              '1': 2,
+ *              'id': 1
  *         },
  *         '1': 3
  *     }
  *
  * The json property is:
  *
- *     {"0":{"0":1,"1":2},"1":3}
+ *     {"0":{"0":1,"1":2,"id":1},"1":3}
  */
 public class HiveThriftFieldIdResolver
         implements ThriftFieldIdResolver
