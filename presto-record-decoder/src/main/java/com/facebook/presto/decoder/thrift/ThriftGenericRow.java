@@ -19,6 +19,7 @@ import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TFieldIdEnum;
 import org.apache.thrift.protocol.TField;
+import org.apache.thrift.protocol.TJSONProtocol;
 import org.apache.thrift.protocol.TList;
 import org.apache.thrift.protocol.TMap;
 import org.apache.thrift.protocol.TProtocol;
@@ -42,6 +43,7 @@ public class ThriftGenericRow
         implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
 {
     private static final Logger log = Logger.get(ThriftGenericRow.class);
+    private static final byte[] COLON = new byte[]{58};
     private final Map<Short, Object> values = new HashMap<>();
     private TProtocolFactory iprotFactory;
     private byte[] buf;
@@ -100,7 +102,15 @@ public class ThriftGenericRow
         buf = trans.getBuffer();
         off = trans.getBufferPosition();
         TProtocolUtil.skip(iprot, TType.STRUCT);
+        omitContextSyntaxChar(iprot);
         len = trans.getBufferPosition() - off;
+    }
+
+    private void omitContextSyntaxChar(TProtocol iprot) throws TException
+    {
+        if (TJSONProtocol.class.isAssignableFrom(iprot.getClass()) && buf[off] == COLON[0]) {
+            off = off + 1;
+        }
     }
 
     public void parse()
