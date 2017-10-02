@@ -624,7 +624,7 @@ public class BackgroundHiveSplitLoader
                     while (chunkOffset >= blockLocation.getLength()) {
                         // allow overrun for lzo compressed file for intermediate blocks
                         if (!isLzopCompressedFile(filePath) || blockLocation.getOffset() + blockLocation.getLength() >= length) {
-                            checkState(chunkOffset == blockLocation.getLength(), "Error splitting blocks");
+                            checkState(chunkOffset == blockLocation.getLength(), "Error splitting blocks for file: " + filePath.toString() + "");
                         }
                         blockLocationIterator.next();
                         chunkOffset -= blockLocation.getLength();
