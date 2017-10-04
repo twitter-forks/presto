@@ -73,6 +73,7 @@ import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.NamedTypeSignature;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.SqlDate;
 import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.SqlVarbinary;
@@ -2846,6 +2847,22 @@ public abstract class AbstractTestHiveClient
                     }
                 }
 
+                // STRUCT<s_string: STRING, s_double:DOUBLE>
+                index = columnIndex.get("t_struct");
+                if (index != null) {
+                    if ((rowNumber % 31) == 0) {
+                        assertNull(row.getField(index));
+                    }
+                    else {
+                        assertTrue(row.getField(index) instanceof List);
+                        List values = (List) row.getField(index);
+                        assertEquals(values.size(), 3);
+                        assertEquals(values.get(0), "test abc");
+                        assertEquals(values.get(1), 0.1);
+                        assertNull(values.get(2));
+                    }
+                }
+
                 // MAP<INT, ARRAY<STRUCT<s_string: STRING, s_double:DOUBLE>>>
                 index = columnIndex.get("t_complex");
                 if (index != null) {
@@ -3080,7 +3097,7 @@ public abstract class AbstractTestHiveClient
                 else if (DATE.equals(column.getType())) {
                     assertInstanceOf(value, SqlDate.class);
                 }
-                else if (column.getType() instanceof ArrayType) {
+                else if (column.getType() instanceof ArrayType || column.getType() instanceof RowType) {
                     assertInstanceOf(value, List.class);
                 }
                 else if (column.getType() instanceof MapType) {
