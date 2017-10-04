@@ -16,8 +16,15 @@ package com.facebook.presto.hive;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.VarcharType;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 
 import javax.inject.Inject;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.HiveType.HIVE_BYTE;
 import static com.facebook.presto.hive.HiveType.HIVE_DOUBLE;
@@ -25,6 +32,8 @@ import static com.facebook.presto.hive.HiveType.HIVE_FLOAT;
 import static com.facebook.presto.hive.HiveType.HIVE_INT;
 import static com.facebook.presto.hive.HiveType.HIVE_LONG;
 import static com.facebook.presto.hive.HiveType.HIVE_SHORT;
+import static com.facebook.presto.hive.HiveType.valueOf;
+
 import static java.util.Objects.requireNonNull;
 
 public class HiveCoercionPolicy
@@ -62,6 +71,49 @@ public class HiveCoercionPolicy
             return toHiveType.equals(HIVE_DOUBLE);
         }
 
-        return false;
+        return canCoerceForList(fromHiveType, toHiveType) || canCoerceForMap(fromHiveType, toHiveType) || canCoerceForStruct(fromHiveType, toHiveType);
+    }
+
+    private boolean canCoerceForMap(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.MAP) || !toHiveType.getCategory().equals(Category.MAP)) {
+            return false;
+        }
+        HiveType fromKeyType = valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+        HiveType fromValueType = valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+        HiveType toKeyType = valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+        HiveType toValueType = valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+        return canCoerce(fromKeyType, toKeyType) && canCoerce(fromValueType, toValueType);
+    }
+
+    private boolean canCoerceForList(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.LIST) || !toHiveType.getCategory().equals(Category.LIST)) {
+            return false;
+        }
+        HiveType fromElementType = valueOf(((ListTypeInfo) fromHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+        HiveType toElementType = valueOf(((ListTypeInfo) toHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+        return canCoerce(fromElementType, toElementType);
+    }
+
+    private boolean canCoerceForStruct(HiveType fromHiveType, HiveType toHiveType)
+    {
+        if (!fromHiveType.getCategory().equals(Category.STRUCT) || !toHiveType.getCategory().equals(Category.STRUCT)) {
+            return false;
+        }
+        List<HiveType> fromFieldTypes = getAllStructFieldTypeInfos(fromHiveType);
+        List<HiveType> toFieldTypes = getAllStructFieldTypeInfos(toHiveType);
+        for (int i = 0; i < Math.min(fromFieldTypes.size(), toFieldTypes.size()); i++) {
+            if (!canCoerce(fromFieldTypes.get(i), toFieldTypes.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private List<HiveType> getAllStructFieldTypeInfos(HiveType hiveType)
+    {
+        return ((StructTypeInfo) hiveType.getTypeInfo()).getAllStructFieldTypeInfos()
+            .stream().map(typeInfo -> valueOf(typeInfo.getTypeName())).collect(Collectors.toList());
     }
 }
