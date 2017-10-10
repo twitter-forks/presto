@@ -118,6 +118,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.stream.Stream;
 
 import static com.facebook.presto.hive.AbstractTestHiveClient.TransactionDeleteInsertTestTag.COMMIT;
 import static com.facebook.presto.hive.AbstractTestHiveClient.TransactionDeleteInsertTestTag.ROLLBACK_AFTER_APPEND_PAGE;
@@ -250,7 +251,7 @@ public abstract class AbstractTestHiveClient
             .add(new ColumnMetadata("t_row", ROW_TYPE))
             .build();
 
-    private static final List<ColumnMetadata> MISMATCH_SCHEMA_TABLE_BEFORE = ImmutableList.<ColumnMetadata>builder()
+    private static final List<ColumnMetadata> MISMATCH_SCHEMA_PRIMITIVE_COLUMN_BEFORE = ImmutableList.<ColumnMetadata>builder()
             .add(new ColumnMetadata("tinyint_to_smallint", TINYINT))
             .add(new ColumnMetadata("tinyint_to_integer", TINYINT))
             .add(new ColumnMetadata("tinyint_to_bigint", TINYINT))
@@ -260,10 +261,10 @@ public abstract class AbstractTestHiveClient
             .add(new ColumnMetadata("integer_to_varchar", INTEGER))
             .add(new ColumnMetadata("varchar_to_integer", createUnboundedVarcharType()))
             .add(new ColumnMetadata("float_to_double", REAL))
-            .add(new ColumnMetadata("ds", createUnboundedVarcharType()))
+            .add(new ColumnMetadata("varchar_to_varchar", createUnboundedVarcharType()))
             .build();
 
-    private static final List<ColumnMetadata> MISMATCH_SCHEMA_TABLE_AFTER = ImmutableList.<ColumnMetadata>builder()
+    private static final List<ColumnMetadata> MISMATCH_SCHEMA_PRIMITIVE_COLUMN_AFTER = ImmutableList.<ColumnMetadata>builder()
             .add(new ColumnMetadata("tinyint_to_smallint", SMALLINT))
             .add(new ColumnMetadata("tinyint_to_integer", INTEGER))
             .add(new ColumnMetadata("tinyint_to_bigint", BIGINT))
@@ -273,6 +274,52 @@ public abstract class AbstractTestHiveClient
             .add(new ColumnMetadata("integer_to_varchar", createUnboundedVarcharType()))
             .add(new ColumnMetadata("varchar_to_integer", INTEGER))
             .add(new ColumnMetadata("float_to_double", DOUBLE))
+            .add(new ColumnMetadata("varchar_to_varchar", createUnboundedVarcharType()))
+            .build();
+
+    private static final Type MISMATCH_SCHEMA_ROW_TYPE_BEFORE = TYPE_MANAGER.getParameterizedType(
+            ROW,
+            MISMATCH_SCHEMA_PRIMITIVE_COLUMN_BEFORE
+                    .stream()
+                    .map(col -> TypeSignatureParameter.of(new NamedTypeSignature(format("f_%s", col.getName()), col.getType().getTypeSignature())))
+                    .collect(toList()));
+    private static final Type MISMATCH_SCHEMA_ROW_TYPE_AFTER = TYPE_MANAGER.getParameterizedType(
+            ROW,
+            Stream.concat(
+                    MISMATCH_SCHEMA_PRIMITIVE_COLUMN_AFTER.stream(),
+                    MISMATCH_SCHEMA_PRIMITIVE_COLUMN_AFTER.stream().limit(1).map(columnMetadata -> new ColumnMetadata(format("%s_append", columnMetadata.getName()), columnMetadata.getType())))
+                    .map(col -> TypeSignatureParameter.of(new NamedTypeSignature(format("f_%s", col.getName()), col.getType().getTypeSignature())))
+                    .collect(toList()));
+    private static final Type MISMATCH_SCHEMA_ARRAY_TYPE_BEFORE = TYPE_MANAGER.getParameterizedType(
+            ARRAY,
+            ImmutableList.of(TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_BEFORE.getTypeSignature())));
+    private static final Type MISMATCH_SCHEMA_ARRAY_TYPE_AFTER = TYPE_MANAGER.getParameterizedType(
+            ARRAY,
+            ImmutableList.of(TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_AFTER.getTypeSignature())));
+    private static final Type MISMATCH_SCHEMA_MAP_TYPE_BEFORE = TYPE_MANAGER.getParameterizedType(
+            MAP,
+            ImmutableList.of(
+                    TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_BEFORE.getTypeParameters().get(1).getTypeSignature()),
+                    TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_BEFORE.getTypeSignature())));
+    private static final Type MISMATCH_SCHEMA_MAP_TYPE_AFTER = TYPE_MANAGER.getParameterizedType(
+            MAP,
+            ImmutableList.of(
+                    TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_AFTER.getTypeParameters().get(1).getTypeSignature()),
+                    TypeSignatureParameter.of(MISMATCH_SCHEMA_ROW_TYPE_AFTER.getTypeSignature())));
+
+    private static final List<ColumnMetadata> MISMATCH_SCHEMA_TABLE_BEFORE = ImmutableList.<ColumnMetadata>builder()
+            .addAll(MISMATCH_SCHEMA_PRIMITIVE_COLUMN_BEFORE)
+            .add(new ColumnMetadata("struct_to_struct", MISMATCH_SCHEMA_ROW_TYPE_BEFORE))
+            .add(new ColumnMetadata("list_to_list", MISMATCH_SCHEMA_ARRAY_TYPE_BEFORE))
+            .add(new ColumnMetadata("map_to_map", MISMATCH_SCHEMA_MAP_TYPE_BEFORE))
+            .add(new ColumnMetadata("ds", createUnboundedVarcharType()))
+            .build();
+
+    private static final List<ColumnMetadata> MISMATCH_SCHEMA_TABLE_AFTER = ImmutableList.<ColumnMetadata>builder()
+            .addAll(MISMATCH_SCHEMA_PRIMITIVE_COLUMN_AFTER)
+            .add(new ColumnMetadata("struct_to_struct", MISMATCH_SCHEMA_ROW_TYPE_AFTER))
+            .add(new ColumnMetadata("list_to_list", MISMATCH_SCHEMA_ARRAY_TYPE_AFTER))
+            .add(new ColumnMetadata("map_to_map", MISMATCH_SCHEMA_MAP_TYPE_AFTER))
             .add(new ColumnMetadata("ds", createUnboundedVarcharType()))
             .build();
 
@@ -283,7 +330,7 @@ public abstract class AbstractTestHiveClient
                     .row(3L, "bye", (byte) 46, (short) 346, 345, 456L, 754.2008f, 98.1, false, ImmutableList.of("ape", "bear"), ImmutableMap.of("three", 3L, "four", 4L), ImmutableList.of("false", 0L, false))
                     .build();
 
-    private static final MaterializedResult MISMATCH_SCHEMA_TABLE_DATA_BEFORE =
+    private static final MaterializedResult MISMATCH_SCHEMA_PRIMITIVE_FIELDS_DATA_BEFORE =
             MaterializedResult.resultBuilder(SESSION, TINYINT, TINYINT, TINYINT, SMALLINT, SMALLINT, INTEGER, INTEGER, createUnboundedVarcharType(), REAL, createUnboundedVarcharType())
                     .row((byte) -11, (byte) 12, (byte) -13, (short) 14, (short) 15, -16, 17, "2147483647", 18.0f, "2016-08-01")
                     .row((byte) 21, (byte) -22, (byte) 23, (short) -24, (short) 25, 26, -27, "asdf", -28.0f, "2016-08-02")
@@ -291,12 +338,42 @@ public abstract class AbstractTestHiveClient
                     .row(null, (byte) 42, (byte) 43, (short) 44, (short) -45, 46, 47, "2147483648", 49.5f, "2016-08-03")
                     .build();
 
-    private static final MaterializedResult MISMATCH_SCHEMA_TABLE_DATA_AFTER =
+    private static final MaterializedResult MISMATCH_SCHEMA_PRIMITIVE_FIELDS_DATA_AFTER =
             MaterializedResult.resultBuilder(SESSION, SMALLINT, INTEGER, BIGINT, INTEGER, BIGINT, BIGINT, createUnboundedVarcharType(), INTEGER, DOUBLE, createUnboundedVarcharType())
                     .row((short) -11, 12, -13L, 14, 15L, -16L, "17", 2147483647, 18.0, "2016-08-01")
                     .row((short) 21, -22, 23L, -24, 25L, 26L, "-27", null, -28.0, "2016-08-02")
                     .row((short) -31, -32, 33L, 34, -35L, 36L, "37", -923, 39.5, "2016-08-03")
                     .row(null, 42, 43L, 44, -45L, 46L, "47", null, 49.5, "2016-08-03")
+                    .build();
+
+    private static final MaterializedResult MISMATCH_SCHEMA_TABLE_DATA_BEFORE =
+            MaterializedResult.resultBuilder(SESSION, MISMATCH_SCHEMA_TABLE_BEFORE.stream().map(ColumnMetadata::getType).collect(toList()))
+                    .rows(MISMATCH_SCHEMA_PRIMITIVE_FIELDS_DATA_BEFORE.getMaterializedRows()
+                            .stream()
+                            .map(materializedRow -> {
+                                List<Object> result = materializedRow.getFields();
+                                List<Object> rowResult = materializedRow.getFields();
+                                result.add(rowResult);
+                                result.add(ImmutableList.of(rowResult, rowResult));
+                                result.add(ImmutableMap.of(rowResult.get(1), rowResult));
+                                result.add(rowResult.get(9));
+                                return new MaterializedRow(materializedRow.getPrecision(), result);
+                            }).collect(toList()))
+                    .build();
+    private static final MaterializedResult MISMATCH_SCHEMA_TABLE_DATA_AFTER =
+            MaterializedResult.resultBuilder(SESSION, MISMATCH_SCHEMA_TABLE_AFTER.stream().map(ColumnMetadata::getType).collect(toList()))
+                    .rows(MISMATCH_SCHEMA_PRIMITIVE_FIELDS_DATA_AFTER.getMaterializedRows()
+                            .stream()
+                            .map(materializedRow -> {
+                                List<Object> result = materializedRow.getFields();
+                                List<Object> rowResult = materializedRow.getFields();
+                                rowResult.add(null);
+                                result.add(rowResult);
+                                result.add(ImmutableList.of(rowResult, rowResult));
+                                result.add(ImmutableMap.of(rowResult.get(1), rowResult));
+                                result.add(rowResult.get(9));
+                                return new MaterializedRow(materializedRow.getPrecision(), result);
+                            }).collect(toList()))
                     .build();
 
     private static final List<ColumnMetadata> CREATE_TABLE_COLUMNS_PARTITIONED = ImmutableList.<ColumnMetadata>builder()
