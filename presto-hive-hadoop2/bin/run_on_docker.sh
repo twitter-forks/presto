@@ -108,7 +108,7 @@ fi
 # run product tests
 pushd $PROJECT_ROOT
 set +e
-./mvnw -pl presto-hive-hadoop2 test -P test-hive-hadoop2 \
+./mvnw -pl presto-hive-hadoop2 test -P test-hive-hadoop2,!twitter-modules \
   -Dhive.hadoop2.timeZone=UTC \
   -DHADOOP_USER_NAME=hive \
   -Dhive.hadoop2.metastoreHost=hadoop-master \

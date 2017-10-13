@@ -441,6 +441,17 @@ public final class HiveWriteUtils
         }
     }
 
+    public static boolean isHDFSCompatibleViewFileSystem(String user, HdfsEnvironment hdfsEnvironment, Path path)
+    {
+        try {
+            return hdfsEnvironment.getFileSystem(user, path)
+                    .getClass().getName().equals("org.apache.hadoop.fs.viewfs.HDFSCompatibleViewFileSystem");
+        }
+        catch (IOException e) {
+            throw new PrestoException(HIVE_FILESYSTEM_ERROR, "Failed checking path: " + path, e);
+        }
+    }
+
     public static boolean isLocalFileSystem(String user, HdfsEnvironment hdfsEnvironment, Path path)
     {
         try {
@@ -465,7 +476,7 @@ public final class HiveWriteUtils
     public static Path createTemporaryPath(String user, HdfsEnvironment hdfsEnvironment, Path targetPath)
     {
         // use a per-user temporary directory to avoid permission problems
-        String temporaryPrefix = "/user/" + user + "/warehouse/.hive-staging";
+        String temporaryPrefix = "/tmp/presto-" + user;
 
         // use a per-user temporary directory in local fs system
         if (isLocalFileSystem(user, hdfsEnvironment, targetPath)) {
@@ -475,6 +486,11 @@ public final class HiveWriteUtils
         // use relative temporary directory on ViewFS
         if (isViewFileSystem(user, hdfsEnvironment, targetPath)) {
             temporaryPrefix = ".hive-staging";
+        }
+
+        // use relative temporary directory on HDFSCompatibleViewFileSystem
+        if (isHDFSCompatibleViewFileSystem(user, hdfsEnvironment, targetPath)) {
+            temporaryPrefix = "../.hive-staging";
         }
 
         // create a temporary directory on the same filesystem
