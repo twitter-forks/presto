@@ -32,27 +32,43 @@ addons:
 cache:
   directories:
     - $HOME/.m2/repository
+    - $HOME/.thrift
 
 services:
   - docker
+
+before_install:
+  - |
+    if [[ ! -e $HOME/.thrift/bin/thrift ]]; then
+      sudo apt-get install libboost-dev libboost-test-dev libboost-program-options-dev libboost-filesystem-dev libboost-thread-dev libevent-dev automake libtool flex bison pkg-config g++ libssl-dev
+      wget https://www.apache.org/dist/thrift/0.9.3/thrift-0.9.3.tar.gz
+      tar xfz thrift-0.9.3.tar.gz
+      cd thrift-0.9.3 && ./configure --without-cpp --without-c_glib --without-python --without-ruby --without-php --without-erlang --without-go --without-nodejs -q --prefix=$HOME/.thrift
+      sudo make install > thrift_make_install.log
+      cd ..
+    fi
+  - |
+    if [[ ! -e /usr/local/bin/thrift ]]; then
+      sudo ln -s $HOME/.thrift/bin/thrift /usr/local/bin/thrift
+    fi
 
 install:
   - ./mvnw -v
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then
-      ./mvnw install $MAVEN_FAST_INSTALL -pl $TEST_SPECIFIC_MODULES -am
+      ./mvnw install $MAVEN_FAST_INSTALL -P !twitter-modules -pl $TEST_SPECIFIC_MODULES -am
     fi
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
-      ./mvnw install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server,!presto-server-rpm'
+      ./mvnw install $MAVEN_FAST_INSTALL -P !twitter-modules  -pl '!presto-docs,!presto-server,!presto-server-rpm'
     fi
   - |
     if [[ -v PRODUCT_TESTS_BASIC_ENVIRONMENT || -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
-      ./mvnw install $MAVEN_FAST_INSTALL -pl '!presto-docs,!presto-server-rpm'
+      ./mvnw install $MAVEN_FAST_INSTALL -P !twitter-modules  -pl '!presto-docs,!presto-server-rpm'
     fi
   - |
     if [[ -v HIVE_TESTS ]]; then
-      ./mvnw install $MAVEN_FAST_INSTALL -pl presto-hive-hadoop2 -am
+      ./mvnw install $MAVEN_FAST_INSTALL -P !twitter-modules -pl presto-hive-hadoop2 -am
     fi
 
 before_script:
@@ -65,30 +81,30 @@ before_script:
 script:
   - |
     if [[ -v MAVEN_CHECKS ]]; then
-      ./mvnw install -DskipTests -B -T C1
+      ./mvnw install -DskipTests -B -T C1 -P !twitter-modules
     fi
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then
-      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
+      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -P !twitter-modules -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
     fi
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
-      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES
+      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -P !twitter-modules -B -pl $TEST_OTHER_MODULES
     fi
   - |
     if [[ -v PRODUCT_TESTS_BASIC_ENVIRONMENT ]]; then
       presto-product-tests/bin/run_on_docker.sh \
-        multinode -x quarantine,big_query,storage_formats,profile_specific_tests,tpcds
+        multinode -x quarantine,big_query,storage_formats,profile_specific_tests,tpcds,cli,hive_connector
     fi
   - |
     if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
       presto-product-tests/bin/run_on_docker.sh \
-        singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization
+        singlenode-kerberos-hdfs-impersonation -g storage_formats,hdfs_impersonation,authorization
     fi
   - |
     if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
       presto-product-tests/bin/run_on_docker.sh \
-        singlenode-ldap -g ldap -x simba_jdbc
+        singlenode-ldap -g ldap -x simba_jdbc,ldap_cli
     fi
 # SQL server image sporadically hangs during the startup
 # TODO: Uncomment it once issue is fixed
@@ -101,7 +117,7 @@ script:
   - |
     if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
       presto-product-tests/bin/run_on_docker.sh \
-        multinode-tls -g smoke,cli,group-by,join,tls
+        multinode-tls -g smoke,group-by,join,tls
     fi
   - |
     if [[ -v HIVE_TESTS ]]; then
@@ -113,8 +129,9 @@ before_cache:
   - rm -rf $HOME/.m2/repository/com/facebook
 
 notifications:
-  slack:
-    secure: V5eyoGShxFoCcYJcp858vf/T6gC9KeMxL0C1EElcpZRcKBrIVZzvhek3HLHxZOxlghqnvNVsyDtU3u5orkEaAXeXj5c2dN+4XBsAB9oeN5MtQ0Z3VLAhZDqKIW1LzcXrq4DpzM0PkGhjfjum/P94/qFYk0UckPtB6a341AuYRo8=
+  hipchat:
+    rooms:
+      secure: peNh1KxwlxIpFyb60S8AMvaJThgh1LsjE+Whf1rYkJalVd2wUrqBIoyDKVSueyHD01hQ06gT7rBV6Pu/QcBMR1a9BbMCjERfxLZFUAheuC2Rsb+p1c4dyvBcFUGacgW7XWKCaVYGDGxuUvb0I3Z8cR6KxhK2xi88tHiqBGVGV2yI6zzOTpWVknMfFBtn+ONU1Ob2P6trclXaDyFd4MxubULri6CQdl35eQAq/VnmR3SZOgyVu3V30MGKwI3zhSli+3VqmW0JmaDGoHN6gznM1+VqABLgmIq0P+n+r5gdZWRCorq10NZCFMhVQ8U6rQHcL7sAniYJJsC/yRt6+pjyzIF4N+LSzZ7T+FLxQqT7k/1ukNgrujLDfTpn76Mo9eYTZmfAdzbm1QKJDACwr8Slqhq1jGzcrFMHunvXhVqjOs24R+JAHblY0O9PXvv7aR29GOQWDCvD7nV5QBUr8Xz5q7ozbLqHTI+yH02Jj4EaZ+azWYdRmnr9wDBxWMYBEgOdj4pII9b298XEDB72TxA3KpLTpdLxBTR+gIk/LjJqb/wb84xUv8gPXkaXccltGd5YI90c84cX8isbzNkAylzyfF2Eyueh0XbnMHfpFqBS7qaVM0/D+UxZkU0WNJ0x7G9XJvkiq49bZz2q1KLE4XuvVnTZSSjVSUAS8RtHfwUV33c=
 
 before_deploy:
   - mkdir /tmp/artifacts
