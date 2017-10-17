@@ -23,11 +23,7 @@ env:
 
 sudo: required
 dist: trusty
-group: deprecated-2017Q2
-addons:
-  apt:
-    packages:
-      - oracle-java8-installer
+group: deprecated-2017Q3
 
 cache:
   directories:
