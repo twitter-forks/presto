@@ -20,7 +20,6 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
-import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
@@ -57,7 +56,7 @@ import static com.facebook.presto.hive.HiveUtil.isStructuralType;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.Chars.isCharType;
-import static com.facebook.presto.spi.type.Chars.trimSpacesAndTruncateToLength;
+import static com.facebook.presto.spi.type.Chars.truncateToLengthAndTrimSpaces;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.Decimals.rescale;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
@@ -167,12 +166,6 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             hiveIndexs[i] = column.getHiveColumnIndex();
             thriftIds[i] = thriftFieldIdResolver.getThriftId(hiveIndexs[i]);
         }
-    }
-
-    @Override
-    public long getTotalBytes()
-    {
-        return totalBytes;
     }
 
     @Override
@@ -396,7 +389,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             sliceValue = truncateToLength(sliceValue, type);
         }
         if (isCharType(type)) {
-            sliceValue = trimSpacesAndTruncateToLength(sliceValue, type);
+            sliceValue = truncateToLengthAndTrimSpaces(sliceValue, type);
         }
 
         return sliceValue;
@@ -615,7 +608,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             currentBuilder = builder.beginBlockEntry();
         }
         else {
-            currentBuilder = new InterleavedBlockBuilder(typeParameters, new BlockBuilderStatus(), map.size());
+            currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), map.size());
         }
 
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -650,7 +643,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             currentBuilder = builder.beginBlockEntry();
         }
         else {
-            currentBuilder = new InterleavedBlockBuilder(typeParameters, new BlockBuilderStatus(), typeParameters.size());
+            currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), typeParameters.size());
         }
 
         for (int i = 0; i < typeParameters.size(); i++) {
