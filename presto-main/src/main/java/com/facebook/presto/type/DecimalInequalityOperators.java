@@ -27,6 +27,8 @@ import java.lang.invoke.MethodHandle;
 
 import static com.facebook.presto.metadata.FunctionKind.SCALAR;
 import static com.facebook.presto.metadata.SqlScalarFunctionBuilder.constant;
+import static com.facebook.presto.operator.scalar.ScalarFunctionImplementation.ArgumentProperty.valueTypeArgumentProperty;
+import static com.facebook.presto.operator.scalar.ScalarFunctionImplementation.NullConvention.USE_NULL_FLAG;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.function.OperatorType.BETWEEN;
 import static com.facebook.presto.spi.function.OperatorType.EQUAL;
@@ -117,8 +119,7 @@ public class DecimalInequalityOperators
         return makeBinaryOperatorFunctionBuilder(operatorType)
                 .implementation(b -> b
                         .methods("opShortShort", "opLongLong")
-                        .withExtraParameters(constant(getResultMethodHandle))
-                )
+                        .withExtraParameters(constant(getResultMethodHandle)))
                 .build();
     }
 
@@ -137,11 +138,11 @@ public class DecimalInequalityOperators
     private static SqlScalarFunction distinctOperator()
     {
         return makeBinaryOperatorFunctionBuilder(IS_DISTINCT_FROM)
-                .nullableArguments(true, true)
-                .nullFlags(true, true)
+                .argumentProperties(
+                        valueTypeArgumentProperty(USE_NULL_FLAG),
+                        valueTypeArgumentProperty(USE_NULL_FLAG))
                 .implementation(b -> b
-                        .methods("distinctShortShort", "distinctLongLong")
-                )
+                        .methods("distinctShortShort", "distinctLongLong"))
                 .build();
     }
 
@@ -192,8 +193,7 @@ public class DecimalInequalityOperators
         return SqlScalarFunction.builder(DecimalInequalityOperators.class)
                 .signature(signature)
                 .implementation(b -> b
-                        .methods("betweenShortShortShort", "betweenLongLongLong")
-                )
+                        .methods("betweenShortShortShort", "betweenLongLongLong"))
                 .build();
     }
 

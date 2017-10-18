@@ -105,9 +105,11 @@ public class PartitionedLookupSource
     }
 
     @Override
-    public int getJoinPositionCount()
+    public long getJoinPositionCount()
     {
-        throw new UnsupportedOperationException("Parallel hash can not be used in a RIGHT or FULL outer join");
+        return Arrays.stream(lookupSources)
+                .mapToLong(LookupSource::getJoinPositionCount)
+                .sum();
     }
 
     @Override
@@ -119,7 +121,7 @@ public class PartitionedLookupSource
     @Override
     public long getJoinPosition(int position, Page hashChannelsPage, Page allChannelsPage)
     {
-        return getJoinPosition(position, hashChannelsPage, allChannelsPage, partitionGenerator.getRawHash(position, hashChannelsPage));
+        return getJoinPosition(position, hashChannelsPage, allChannelsPage, partitionGenerator.getRawHash(hashChannelsPage, position));
     }
 
     @Override
@@ -165,6 +167,12 @@ public class PartitionedLookupSource
         if (outerPositionTracker != null) {
             outerPositionTracker.positionVisited(partition, joinPosition);
         }
+    }
+
+    @Override
+    public long joinPositionWithinPartition(long joinPosition)
+    {
+        return decodeJoinPosition(joinPosition);
     }
 
     @Override
@@ -231,12 +239,12 @@ public class PartitionedLookupSource
      * Each LookupSource has it's own copy of OuterPositionTracker instance.
      * Each of those OuterPositionTracker must be committed after last write
      * and before first read.
-     *
+     * <p>
      * All instances share visitedPositions array, but it is safe because each thread
      * starts with visitedPositions filled with false values and marks only some positions
      * to true. Since we don't care what will be the order of those writes to
      * visitedPositions, writes can be without synchronization.
-     *
+     * <p>
      * Memory visibility between last writes in commit() and first read in
      * getVisitedPositions() is guaranteed by accessing AtomicLong referenceCount
      * variables in those two methods.
@@ -258,6 +266,7 @@ public class PartitionedLookupSource
 
                 visitedPositions = Arrays.stream(this.lookupSources)
                         .map(LookupSource::getJoinPositionCount)
+                        .map(Math::toIntExact)
                         .map(boolean[]::new)
                         .toArray(boolean[][]::new);
             }

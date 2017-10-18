@@ -24,6 +24,7 @@ import java.util.Optional;
 
 import static com.facebook.presto.operator.GroupByHash.createGroupByHash;
 import static com.facebook.presto.type.UnknownType.UNKNOWN;
+import static com.google.common.base.Verify.verify;
 
 public class ChannelSet
 {
@@ -70,7 +71,7 @@ public class ChannelSet
 
     public static class ChannelSetBuilder
     {
-        private static final int[] HASH_CHANNELS = { 0 };
+        private static final int[] HASH_CHANNELS = {0};
 
         private final GroupByHash hash;
         private final OperatorContext operatorContext;
@@ -101,7 +102,10 @@ public class ChannelSet
 
         public void addPage(Page page)
         {
-            hash.addPage(page);
+            Work<?> work = hash.addPage(page);
+            boolean done = work.process();
+            // TODO: this class does not yield wrt memory limit; enable it
+            verify(done);
 
             if (operatorContext != null) {
                 operatorContext.setMemoryReservation(hash.getEstimatedSize());

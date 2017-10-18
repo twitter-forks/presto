@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.HdfsEnvironment.HdfsContext;
 import com.facebook.presto.hive.metastore.Column;
 import com.facebook.presto.hive.metastore.Partition;
 import com.facebook.presto.hive.metastore.Table;
@@ -23,6 +24,7 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
+import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.twitter.hive.util.UgiUtils;
 import com.google.common.base.Throwables;
@@ -56,7 +58,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.List;
@@ -72,6 +73,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static com.facebook.presto.hadoop.HadoopFileStatus.isDirectory;
 import static com.facebook.presto.hive.HiveBucketing.HiveBucket;
+import static com.facebook.presto.hive.HiveColumnHandle.isPathColumnHandle;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_BUCKET_FILES;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
@@ -88,8 +90,10 @@ import static com.facebook.presto.hive.metastore.MetastoreUtil.getHiveSchema;
 import static com.facebook.presto.hive.util.ConfigurationUtils.toJobConf;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Preconditions.checkState;
+import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
+import static java.util.Collections.emptyIterator;
 import static org.apache.hadoop.hive.common.FileUtils.HIDDEN_FILES_PATH_FILTER;
 
 public class BackgroundHiveSplitLoader
@@ -104,6 +108,7 @@ public class BackgroundHiveSplitLoader
     private final Optional<HiveBucketHandle> bucketHandle;
     private final List<HiveBucket> buckets;
     private final HdfsEnvironment hdfsEnvironment;
+    private final HdfsContext hdfsContext;
     private final NamenodeStats namenodeStats;
     private final DirectoryLister directoryLister;
     private final DataSize maxSplitSize;
@@ -162,6 +167,7 @@ public class BackgroundHiveSplitLoader
         this.recursiveDirWalkerEnabled = recursiveDirWalkerEnabled;
         this.executor = executor;
         this.partitions = new ConcurrentLazyQueue<>(partitions);
+        this.hdfsContext = new HdfsContext(session, table.getDatabaseName(), table.getTableName());
     }
 
     @Override
@@ -227,7 +233,7 @@ public class BackgroundHiveSplitLoader
                     finally {
                         taskExecutionLock.readLock().unlock();
                     }
-                    invokeFinishedIfNecessary();
+                    invokeNoMoreSplitsIfNecessary();
                     if (!future.isDone()) {
                         return TaskStatus.continueOn(future);
                     }
@@ -239,16 +245,16 @@ public class BackgroundHiveSplitLoader
         }
     }
 
-    private void invokeFinishedIfNecessary()
+    private void invokeNoMoreSplitsIfNecessary()
     {
         if (partitions.isEmpty() && fileIterators.isEmpty()) {
             taskExecutionLock.writeLock().lock();
             try {
                 // the write lock guarantees that no one is operating on the partitions, fileIterators, or hiveSplitSource, or half way through doing so.
                 if (partitions.isEmpty() && fileIterators.isEmpty()) {
-                    // It is legal to call `finished` multiple times or after `stop` was called.
-                    // Nothing bad will happen if `finished` implementation calls methods that will try to obtain a read lock because the lock is re-entrant.
-                    hiveSplitSource.finished();
+                    // It is legal to call `noMoreSplits` multiple times or after `stop` was called.
+                    // Nothing bad will happen if `noMoreSplits` implementation calls methods that will try to obtain a read lock because the lock is re-entrant.
+                    hiveSplitSource.noMoreSplits();
                 }
             }
             finally {
@@ -289,7 +295,7 @@ public class BackgroundHiveSplitLoader
                 }
             }
             else {
-                boolean splittable = isSplittable(files.getInputFormat(), hdfsEnvironment.getFileSystem(session.getUser(), file.getPath()), file.getPath());
+                boolean splittable = isSplittable(files.getInputFormat(), hdfsEnvironment.getFileSystem(hdfsContext, file.getPath()), file.getPath());
 
                 CompletableFuture<?> future = hiveSplitSource.addToQueue(createHiveSplitIterator(
                         files.getPartitionName(),
@@ -304,7 +310,8 @@ public class BackgroundHiveSplitLoader
                         session,
                         OptionalInt.empty(),
                         files.getEffectivePredicate(),
-                        files.getColumnCoercions()));
+                        files.getColumnCoercions(),
+                        getPathDomain(files.getEffectivePredicate())));
                 if (!future.isDone()) {
                     fileIterators.addFirst(files);
                     return future;
@@ -323,11 +330,12 @@ public class BackgroundHiveSplitLoader
         Properties schema = getPartitionSchema(table, partition.getPartition());
         List<HivePartitionKey> partitionKeys = getPartitionKeys(table, partition.getPartition());
         TupleDomain<HiveColumnHandle> effectivePredicate = partition.getHivePartition().getEffectivePredicate();
+        Optional<Domain> pathDomain = getPathDomain(effectivePredicate);
 
         Path path = new Path(getPartitionLocation(table, partition.getPartition()));
-        Configuration configuration = hdfsEnvironment.getConfiguration(path);
+        Configuration configuration = hdfsEnvironment.getConfiguration(hdfsContext, path);
         InputFormat<?, ?> inputFormat = getInputFormat(configuration, schema, false);
-        FileSystem fs = hdfsEnvironment.getFileSystem(session.getUser(), path);
+        FileSystem fs = hdfsEnvironment.getFileSystem(hdfsContext, path);
 
         if (inputFormat instanceof SymlinkTextInputFormat) {
             if (bucketHandle.isPresent()) {
@@ -339,14 +347,14 @@ public class BackgroundHiveSplitLoader
                 // The input should be in TextInputFormat.
                 TextInputFormat targetInputFormat = new TextInputFormat();
                 // get the configuration for the target path -- it may be a different hdfs instance
-                Configuration targetConfiguration = hdfsEnvironment.getConfiguration(targetPath);
+                Configuration targetConfiguration = hdfsEnvironment.getConfiguration(hdfsContext, targetPath);
                 JobConf targetJob = toJobConf(targetConfiguration);
                 targetJob.setInputFormat(TextInputFormat.class);
                 targetInputFormat.configure(targetJob);
                 FileInputFormat.setInputPaths(targetJob, targetPath);
                 InputSplit[] targetSplits = targetInputFormat.getSplits(targetJob, 0);
 
-                if (addSplitsToSource(targetSplits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions())) {
+                if (addSplitsToSource(targetSplits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions(), pathDomain)) {
                     return;
                 }
             }
@@ -360,7 +368,7 @@ public class BackgroundHiveSplitLoader
             FileInputFormat.setInputPaths(jobConf, path);
             InputSplit[] splits = inputFormat.getSplits(jobConf, 0);
 
-            addSplitsToSource(splits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions());
+            addSplitsToSource(splits, partitionName, partitionKeys, schema, effectivePredicate, partition.getColumnCoercions(), pathDomain);
             return;
         }
 
@@ -374,7 +382,7 @@ public class BackgroundHiveSplitLoader
             for (HiveBucket bucket : buckets) {
                 int bucketNumber = bucket.getBucketNumber();
                 LocatedFileStatus file = list.get(bucketNumber);
-                boolean splittable = isSplittable(iterator.getInputFormat(), hdfsEnvironment.getFileSystem(session.getUser(), file.getPath()), file.getPath());
+                boolean splittable = isSplittable(iterator.getInputFormat(), hdfsEnvironment.getFileSystem(hdfsContext, file.getPath()), file.getPath());
 
                 iteratorList.add(createHiveSplitIterator(
                         iterator.getPartitionName(),
@@ -389,7 +397,8 @@ public class BackgroundHiveSplitLoader
                         session,
                         OptionalInt.of(bucketNumber),
                         effectivePredicate,
-                        partition.getColumnCoercions()));
+                        partition.getColumnCoercions(),
+                        pathDomain));
             }
 
             addToHiveSplitSourceRoundRobin(iteratorList);
@@ -405,7 +414,7 @@ public class BackgroundHiveSplitLoader
 
             for (int bucketIndex = 0; bucketIndex < bucketCount; bucketIndex++) {
                 LocatedFileStatus file = list.get(bucketIndex);
-                boolean splittable = isSplittable(iterator.getInputFormat(), hdfsEnvironment.getFileSystem(session.getUser(), file.getPath()), file.getPath());
+                boolean splittable = isSplittable(iterator.getInputFormat(), hdfsEnvironment.getFileSystem(hdfsContext, file.getPath()), file.getPath());
 
                 iteratorList.add(createHiveSplitIterator(
                         iterator.getPartitionName(),
@@ -420,7 +429,8 @@ public class BackgroundHiveSplitLoader
                         session,
                         OptionalInt.of(bucketIndex),
                         iterator.getEffectivePredicate(),
-                        partition.getColumnCoercions()));
+                        partition.getColumnCoercions(),
+                        pathDomain));
             }
 
             addToHiveSplitSourceRoundRobin(iteratorList);
@@ -436,12 +446,13 @@ public class BackgroundHiveSplitLoader
             List<HivePartitionKey> partitionKeys,
             Properties schema,
             TupleDomain<HiveColumnHandle> effectivePredicate,
-            Map<Integer, HiveType> columnCoercions)
+            Map<Integer, HiveType> columnCoercions,
+            Optional<Domain> pathDomain)
             throws IOException
     {
         for (InputSplit inputSplit : targetSplits) {
             FileSplit split = (FileSplit) inputSplit;
-            FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(session.getUser(), split.getPath());
+            FileSystem targetFilesystem = hdfsEnvironment.getFileSystem(hdfsContext, split.getPath());
             FileStatus file = targetFilesystem.getFileStatus(split.getPath());
             hiveSplitSource.addToQueue(createHiveSplitIterator(
                     partitionName,
@@ -456,7 +467,9 @@ public class BackgroundHiveSplitLoader
                     session,
                     OptionalInt.empty(),
                     effectivePredicate,
-                    columnCoercions));
+                    columnCoercions,
+                    pathDomain));
+
             if (stopped) {
                 return true;
             }
@@ -543,23 +556,25 @@ public class BackgroundHiveSplitLoader
             ConnectorSession session,
             OptionalInt bucketNumber,
             TupleDomain<HiveColumnHandle> effectivePredicate,
-            Map<Integer, HiveType> columnCoercions)
+            Map<Integer, HiveType> columnCoercions,
+            Optional<Domain> pathDomain)
             throws IOException
     {
         Path filePath = new Path(path);
-        // filter the index files
-        if (isLzopIndexFile(filePath)) {
-            return Collections.<HiveSplit>emptyIterator();
+        if (!pathMatchesPredicate(pathDomain, path)) {
+            return emptyIterator();
         }
+
         boolean forceLocalScheduling = HiveSessionProperties.isForceLocalScheduling(session);
 
         if (splittable) {
             PeekingIterator<BlockLocation> blockLocationIterator = Iterators.peekingIterator(Arrays.stream(blockLocations).iterator());
 
-            return new AbstractIterator<HiveSplit>() {
+            return new AbstractIterator<HiveSplit>()
+            {
                 private long chunkOffset = 0;
                 private LzoIndex index = isLzopCompressedFile(filePath) ?
-                    LzoIndex.readIndex(hdfsEnvironment.getFileSystem(session.getUser(), getLzopIndexPath(filePath)), filePath) :
+                    LzoIndex.readIndex(hdfsEnvironment.getFileSystem(hdfsContext, getLzopIndexPath(filePath)), filePath) :
                     null;
 
                 @Override
@@ -624,7 +639,7 @@ public class BackgroundHiveSplitLoader
                     while (chunkOffset >= blockLocation.getLength()) {
                         // allow overrun for lzo compressed file for intermediate blocks
                         if (!isLzopCompressedFile(filePath) || blockLocation.getOffset() + blockLocation.getLength() >= length) {
-                            checkState(chunkOffset == blockLocation.getLength(), "Error splitting blocks for file: " + filePath.toString() + "");
+                            checkState(chunkOffset == blockLocation.getLength(), "Error splitting blocks for file: " + filePath.toString());
                         }
                         blockLocationIterator.next();
                         chunkOffset -= blockLocation.getLength();
@@ -695,7 +710,7 @@ public class BackgroundHiveSplitLoader
             }
             String value = values.get(i);
             checkCondition(value != null, HIVE_INVALID_PARTITION_VALUE, "partition key value cannot be null for field: %s", name);
-            partitionKeys.add(new HivePartitionKey(name, hiveType, value));
+            partitionKeys.add(new HivePartitionKey(name, value));
         }
         return partitionKeys.build();
     }
@@ -714,5 +729,30 @@ public class BackgroundHiveSplitLoader
             return table.getStorage().getLocation();
         }
         return partition.get().getStorage().getLocation();
+    }
+
+    private static Optional<Domain> getPathDomain(TupleDomain<HiveColumnHandle> effectivePredicate)
+    {
+        if (!effectivePredicate.getDomains().isPresent()) {
+            return Optional.empty();
+        }
+
+        return effectivePredicate.getDomains().get().entrySet().stream()
+                .filter(entry -> isPathColumnHandle(entry.getKey()))
+                .findFirst()
+                .map(Map.Entry::getValue);
+    }
+
+    private static boolean pathMatchesPredicate(Optional<Domain> pathDomain, String path)
+    {
+        if (isLzopIndexFile(new Path(path))) {
+            return true;
+        }
+
+        if (!pathDomain.isPresent()) {
+            return true;
+        }
+
+        return pathDomain.get().includesNullableValue(utf8Slice(path));
     }
 }

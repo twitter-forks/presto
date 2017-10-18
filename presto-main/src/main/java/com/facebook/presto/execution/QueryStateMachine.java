@@ -701,10 +701,9 @@ public class QueryStateMachine
         fireOnceStateChangeListener.stateChanged(finalQueryInfo.get());
     }
 
-    public Duration waitForStateChange(QueryState currentState, Duration maxWait)
-            throws InterruptedException
+    public ListenableFuture<QueryState> getStateChange(QueryState currentState)
     {
-        return queryState.waitForStateChange(currentState, maxWait);
+        return queryState.getStateChange(currentState);
     }
 
     public void recordHeartbeat()
@@ -764,8 +763,7 @@ public class QueryStateMachine
                 outputStage.getStageStats(),
                 ImmutableList.of(), // Remove the tasks
                 ImmutableList.of(), // Remove the substages
-                outputStage.getFailureCause()
-        );
+                outputStage.getFailureCause());
 
         QueryInfo prunedQueryInfo = new QueryInfo(
                 queryInfo.getQueryId(),
@@ -776,7 +774,7 @@ public class QueryStateMachine
                 queryInfo.getSelf(),
                 queryInfo.getFieldNames(),
                 queryInfo.getQuery(),
-                queryInfo.getQueryStats(),
+                pruneQueryStats(queryInfo.getQueryStats()),
                 queryInfo.getSetSessionProperties(),
                 queryInfo.getResetSessionProperties(),
                 queryInfo.getAddedPreparedStatements(),
@@ -792,6 +790,46 @@ public class QueryStateMachine
                 queryInfo.isCompleteInfo(),
                 queryInfo.getResourceGroupName());
         finalQueryInfo.compareAndSet(finalInfo, Optional.of(prunedQueryInfo));
+    }
+
+    private QueryStats pruneQueryStats(QueryStats queryStats)
+    {
+        return new QueryStats(
+                queryStats.getCreateTime(),
+                queryStats.getExecutionStartTime(),
+                queryStats.getLastHeartbeat(),
+                queryStats.getEndTime(),
+                queryStats.getElapsedTime(),
+                queryStats.getQueuedTime(),
+                queryStats.getAnalysisTime(),
+                queryStats.getDistributedPlanningTime(),
+                queryStats.getTotalPlanningTime(),
+                queryStats.getFinishingTime(),
+                queryStats.getTotalTasks(),
+                queryStats.getRunningTasks(),
+                queryStats.getCompletedTasks(),
+                queryStats.getTotalDrivers(),
+                queryStats.getQueuedDrivers(),
+                queryStats.getRunningDrivers(),
+                queryStats.getBlockedDrivers(),
+                queryStats.getCompletedDrivers(),
+                queryStats.getCumulativeMemory(),
+                queryStats.getTotalMemoryReservation(),
+                queryStats.getPeakMemoryReservation(),
+                queryStats.isScheduled(),
+                queryStats.getTotalScheduledTime(),
+                queryStats.getTotalCpuTime(),
+                queryStats.getTotalUserTime(),
+                queryStats.getTotalBlockedTime(),
+                queryStats.isFullyBlocked(),
+                queryStats.getBlockedReasons(),
+                queryStats.getRawInputDataSize(),
+                queryStats.getRawInputPositions(),
+                queryStats.getProcessedInputDataSize(),
+                queryStats.getProcessedInputPositions(),
+                queryStats.getOutputDataSize(),
+                queryStats.getOutputPositions(),
+                ImmutableList.of()); // Remove the operator summaries as OperatorInfo (especially ExchangeClientStatus) can hold onto a large amount of memory
     }
 
     private long tickerNanos()

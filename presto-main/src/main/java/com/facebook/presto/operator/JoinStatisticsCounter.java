@@ -35,9 +35,20 @@ public class JoinStatisticsCounter
     //      [2*bucket + 1]  total count of rows that were produces by probe rows in this bucket.
     private final long[] logHistogramCounters = new long[HISTOGRAM_BUCKETS * 2];
 
+    /** Estimated number of positions in on the build side */
+    private long lookupSourcePositions = -1;
+
     public JoinStatisticsCounter(JoinType joinType)
     {
         this.joinType = requireNonNull(joinType, "joinType is null");
+    }
+
+    public void updateLookupSourcePositions(long lookupSourcePositionsDelta)
+    {
+        if (this.lookupSourcePositions == -1) {
+            this.lookupSourcePositions = 0;
+        }
+        this.lookupSourcePositions += lookupSourcePositionsDelta;
     }
 
     public void recordProbe(int numSourcePositions)
@@ -62,6 +73,6 @@ public class JoinStatisticsCounter
     @Override
     public JoinOperatorInfo get()
     {
-        return createJoinOperatorInfo(joinType, logHistogramCounters);
+        return createJoinOperatorInfo(joinType, logHistogramCounters, lookupSourcePositions);
     }
 }

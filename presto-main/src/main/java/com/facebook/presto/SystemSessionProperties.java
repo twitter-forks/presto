@@ -48,6 +48,7 @@ public final class SystemSessionProperties
     public static final String TASK_CONCURRENCY = "task_concurrency";
     public static final String TASK_SHARE_INDEX_LOADING = "task_share_index_loading";
     public static final String QUERY_MAX_MEMORY = "query_max_memory";
+    public static final String QUERY_MAX_EXECUTION_TIME = "query_max_execution_time";
     public static final String QUERY_MAX_RUN_TIME = "query_max_run_time";
     public static final String RESOURCE_OVERCOMMIT = "resource_overcommit";
     public static final String QUERY_MAX_CPU_TIME = "query_max_cpu_time";
@@ -64,7 +65,7 @@ public final class SystemSessionProperties
     public static final String FAST_INEQUALITY_JOINS = "fast_inequality_joins";
     public static final String QUERY_PRIORITY = "query_priority";
     public static final String SPILL_ENABLED = "spill_enabled";
-    public static final String OPERATOR_MEMORY_LIMIT_BEFORE_SPILL = "operator_memory_limit_before_spill";
+    public static final String AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT = "aggregation_operator_unspill_memory_limit";
     public static final String OPTIMIZE_DISTINCT_AGGREGATIONS = "optimize_mixed_distinct_aggregations";
     public static final String LEGACY_ORDER_BY = "legacy_order_by";
     public static final String ITERATIVE_OPTIMIZER = "iterative_optimizer_enabled";
@@ -73,6 +74,7 @@ public final class SystemSessionProperties
     public static final String ENABLE_INTERMEDIATE_AGGREGATIONS = "enable_intermediate_aggregations";
     public static final String PUSH_AGGREGATION_THROUGH_JOIN = "push_aggregation_through_join";
     public static final String PUSH_PARTIAL_AGGREGATION_THROUGH_JOIN = "push_partial_aggregation_through_join";
+    public static final String FORCE_SINGLE_NODE_OUTPUT = "force_single_node_output";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -170,10 +172,19 @@ public final class SystemSessionProperties
                         false),
                 new PropertyMetadata<>(
                         QUERY_MAX_RUN_TIME,
-                        "Maximum run time of a query",
+                        "Maximum run time of a query (includes the queueing time)",
                         VARCHAR,
                         Duration.class,
                         queryManagerConfig.getQueryMaxRunTime(),
+                        false,
+                        value -> Duration.valueOf((String) value),
+                        Duration::toString),
+                new PropertyMetadata<>(
+                        QUERY_MAX_EXECUTION_TIME,
+                        "Maximum execution time of a query",
+                        VARCHAR,
+                        Duration.class,
+                        queryManagerConfig.getQueryMaxExecutionTime(),
                         false,
                         value -> Duration.valueOf((String) value),
                         Duration::toString),
@@ -267,11 +278,11 @@ public final class SystemSessionProperties
                         },
                         value -> value),
                 new PropertyMetadata<>(
-                        OPERATOR_MEMORY_LIMIT_BEFORE_SPILL,
-                        "Experimental: Operator memory limit before spill",
+                        AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT,
+                        "Experimental: How much memory can should be allocated per aggragation operator in unspilling process",
                         VARCHAR,
                         DataSize.class,
-                        featuresConfig.getOperatorMemoryLimitBeforeSpill(),
+                        featuresConfig.getAggregationOperatorUnspillMemoryLimit(),
                         false,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -318,7 +329,12 @@ public final class SystemSessionProperties
                         PUSH_PARTIAL_AGGREGATION_THROUGH_JOIN,
                         "Push partial aggregations below joins",
                         false,
-                        false));
+                        false),
+                booleanSessionProperty(
+                        FORCE_SINGLE_NODE_OUTPUT,
+                        "Force single node output",
+                        featuresConfig.isForceSingleNodeOutput(),
+                        true));
     }
 
     public List<PropertyMetadata<?>> getSessionProperties()
@@ -401,6 +417,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(QUERY_MAX_RUN_TIME, Duration.class);
     }
 
+    public static Duration getQueryMaxExecutionTime(Session session)
+    {
+        return session.getSystemProperty(QUERY_MAX_EXECUTION_TIME, Duration.class);
+    }
+
     public static boolean resourceOvercommit(Session session)
     {
         return session.getSystemProperty(RESOURCE_OVERCOMMIT, Boolean.class);
@@ -453,11 +474,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(SPILL_ENABLED, Boolean.class);
     }
 
-    public static DataSize getOperatorMemoryLimitBeforeSpill(Session session)
+    public static DataSize getAggregationOperatorUnspillMemoryLimit(Session session)
     {
-        DataSize memoryLimitBeforeSpill = session.getSystemProperty(OPERATOR_MEMORY_LIMIT_BEFORE_SPILL, DataSize.class);
-        checkArgument(memoryLimitBeforeSpill.toBytes() >= 0, "%s must be positive", OPERATOR_MEMORY_LIMIT_BEFORE_SPILL);
-        return memoryLimitBeforeSpill;
+        DataSize memoryLimitForMerge = session.getSystemProperty(AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT, DataSize.class);
+        checkArgument(memoryLimitForMerge.toBytes() >= 0, "%s must be positive", AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT);
+        return memoryLimitForMerge;
     }
 
     public static boolean isOptimizeDistinctAggregationEnabled(Session session)
@@ -498,5 +519,10 @@ public final class SystemSessionProperties
     public static boolean isPushAggregationThroughJoin(Session session)
     {
         return session.getSystemProperty(PUSH_PARTIAL_AGGREGATION_THROUGH_JOIN, Boolean.class);
+    }
+
+    public static boolean isForceSingleNodeOutput(Session session)
+    {
+        return session.getSystemProperty(FORCE_SINGLE_NODE_OUTPUT, Boolean.class);
     }
 }

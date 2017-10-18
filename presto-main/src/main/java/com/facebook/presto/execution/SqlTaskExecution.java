@@ -126,8 +126,7 @@ public class SqlTaskExecution
                 planner,
                 taskExecutor,
                 queryMonitor,
-                notificationExecutor
-        );
+                notificationExecutor);
 
         try (SetThreadName ignored = new SetThreadName("Task-%s", task.getTaskId())) {
             task.start();
@@ -160,7 +159,7 @@ public class SqlTaskExecution
             List<DriverFactory> driverFactories;
             try {
                 LocalExecutionPlan localExecutionPlan = planner.plan(
-                        taskContext.getSession(),
+                        taskContext,
                         fragment.getRoot(),
                         fragment.getSymbols(),
                         fragment.getPartitioningScheme(),
@@ -199,7 +198,7 @@ public class SqlTaskExecution
                 taskStateMachine.addStateChangeListener(state -> {
                     if (state.isDone()) {
                         for (DriverFactory factory : driverFactories) {
-                            factory.close();
+                            factory.noMoreDrivers();
                         }
                     }
                 });
@@ -549,7 +548,7 @@ public class SqlTaskExecution
         private void closeDriverFactoryIfFullyCreated()
         {
             if (isNoMoreSplits() && pendingCreation.get() <= 0) {
-                driverFactory.close();
+                driverFactory.noMoreDrivers();
             }
         }
 
