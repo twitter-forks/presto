@@ -641,6 +641,9 @@ public class BackgroundHiveSplitLoader
                         }
                         blockLocationIterator.next();
                         chunkOffset -= blockLocation.getLength();
+                        if (chunkOffset == 0) {
+                            break;
+                        }
                         if (blockLocationIterator.hasNext()) {
                             blockLocation = blockLocationIterator.peek();
                         }
@@ -744,7 +747,7 @@ public class BackgroundHiveSplitLoader
     private static boolean pathMatchesPredicate(Optional<Domain> pathDomain, String path)
     {
         if (isLzopIndexFile(new Path(path))) {
-            return true;
+            return false;
         }
 
         if (!pathDomain.isPresent()) {
