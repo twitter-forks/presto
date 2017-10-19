@@ -14,6 +14,7 @@
 package com.facebook.presto.kafka.util;
 
 import com.google.common.io.Files;
+import com.google.common.io.MoreFiles;
 import org.apache.zookeeper.server.NIOServerCnxnFactory;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ZooKeeperServer;
@@ -25,7 +26,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static io.airlift.testing.FileUtils.deleteRecursively;
+import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 
 public class EmbeddedZookeeper
         implements Closeable
@@ -69,6 +70,7 @@ public class EmbeddedZookeeper
 
     @Override
     public void close()
+            throws IOException
     {
         if (started.get() && !stopped.getAndSet(true)) {
             cnxnFactory.shutdown();
@@ -83,7 +85,7 @@ public class EmbeddedZookeeper
                 zkServer.shutdown();
             }
 
-            deleteRecursively(zkDataDir);
+            MoreFiles.deleteRecursively(zkDataDir.toPath(), ALLOW_INSECURE);
         }
     }
 

@@ -18,11 +18,12 @@ import com.facebook.presto.spi.eventlistener.EventListenerFactory;
 
 import com.google.common.collect.ImmutableList;
 
-public class TwitterEventListenerPlugin implements Plugin
+public class TwitterEventListenerPlugin
+        implements Plugin
 {
-  @Override
-  public Iterable<EventListenerFactory> getEventListenerFactories()
-  {
-    return ImmutableList.of(new TwitterEventListenerFactory());
-  }
+    @Override
+    public Iterable<EventListenerFactory> getEventListenerFactories()
+    {
+        return ImmutableList.of(new TwitterEventListenerFactory());
+    }
 }

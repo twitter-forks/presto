@@ -573,9 +573,7 @@ public class BackgroundHiveSplitLoader
             return new AbstractIterator<HiveSplit>()
             {
                 private long chunkOffset = 0;
-                private LzoIndex index = isLzopCompressedFile(filePath) ?
-                    LzoIndex.readIndex(hdfsEnvironment.getFileSystem(hdfsContext, getLzopIndexPath(filePath)), filePath) :
-                    null;
+                private LzoIndex index = isLzopCompressedFile(filePath) ? LzoIndex.readIndex(hdfsEnvironment.getFileSystem(hdfsContext, getLzopIndexPath(filePath)), filePath) : null;
 
                 @Override
                 protected HiveSplit computeNext()

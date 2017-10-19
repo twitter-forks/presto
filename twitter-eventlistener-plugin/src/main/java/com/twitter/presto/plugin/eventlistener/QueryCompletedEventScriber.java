@@ -34,83 +34,83 @@ import java.util.Map;
  */
 public class QueryCompletedEventScriber
 {
-  private static final String DASH = "-";
-  private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
+    private static final String DASH = "-";
+    private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
 
-  private TwitterScriber scriber = new TwitterScriber("presto_query_completion");
+    private TwitterScriber scriber = new TwitterScriber("presto_query_completion");
 
-  public void handle(QueryCompletedEvent event)
-  {
-    try {
-      scriber.scribe(toThriftQueryCompletionEvent(event));
-    }
-    catch (TException e) {
-      log.warn(e,
-        String.format("Could not serialize thrift object of Query(id=%s, user=%s, env=%s, schema=%s.%s)",
-          event.getMetadata().getQueryId(),
-          event.getContext().getUser(),
-          event.getContext().getEnvironment(),
-          event.getContext().getCatalog().orElse(DASH),
-          event.getContext().getSchema().orElse(DASH)));
-    }
-  }
-
-  private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
-  {
-    QueryMetadata eventMetadata = event.getMetadata();
-    QueryContext eventContext = event.getContext();
-    QueryStatistics eventStat = event.getStatistics();
-
-    QueryCompletionEvent thriftEvent =
-      new com.twitter.presto.thriftjava.QueryCompletionEvent();
-
-    thriftEvent.query_id = eventMetadata.getQueryId();
-    thriftEvent.transaction_id = eventMetadata.getTransactionId().orElse(DASH);
-    thriftEvent.user = eventContext.getUser();
-    thriftEvent.principal = eventContext.getPrincipal().orElse(DASH);
-    thriftEvent.source = eventContext.getSource().orElse(DASH);
-    thriftEvent.server_version = eventContext.getServerVersion();
-    thriftEvent.environment = eventContext.getEnvironment();
-    thriftEvent.catalog = eventContext.getCatalog().orElse(DASH);
-    thriftEvent.schema = eventContext.getSchema().orElse(DASH);
-    Map<String, List<String>> queriedColumnsByTable = new HashMap<String, List<String>>();
-    event.getIoMetadata().getInputs().forEach(input -> queriedColumnsByTable.put(String.format("%s.%s", input.getSchema(), input.getTable()), input.getColumns()));
-    thriftEvent.queried_columns_by_table = queriedColumnsByTable;
-    thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(DASH);
-    thriftEvent.user_agent = eventContext.getUserAgent().orElse(DASH);
-    thriftEvent.query_state = QueryState.valueOf(eventMetadata.getQueryState());
-    thriftEvent.uri = eventMetadata.getUri().toString();
-    thriftEvent.query = eventMetadata.getQuery();
-    thriftEvent.create_time_ms = event.getCreateTime().toEpochMilli();
-    thriftEvent.execution_start_time_ms = event.getExecutionStartTime().toEpochMilli();
-    thriftEvent.end_time_ms = event.getEndTime().toEpochMilli();
-    thriftEvent.queued_time_ms = eventStat.getQueuedTime().toMillis();
-    thriftEvent.query_wall_time_ms = eventStat.getWallTime().toMillis();
-    thriftEvent.cumulative_memory_bytesecond = eventStat.getCumulativeMemory();
-    thriftEvent.peak_memory_bytes = eventStat.getPeakMemoryBytes();
-    thriftEvent.cpu_time_ms = eventStat.getCpuTime().toMillis();
-    if (eventStat.getAnalysisTime().isPresent()) {
-      thriftEvent.analysis_time_ms = eventStat.getAnalysisTime().get().toMillis();
-    }
-    if (eventStat.getDistributedPlanningTime().isPresent()) {
-      thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
-    }
-    thriftEvent.total_bytes = eventStat.getTotalBytes();
-    thriftEvent.query_stages = QueryStatsHelper.getQueryStages(eventMetadata);
-    thriftEvent.operator_summaries = QueryStatsHelper.getOperatorSummaries(eventStat);
-    thriftEvent.total_rows = eventStat.getTotalRows();
-    thriftEvent.splits = eventStat.getCompletedSplits();
-    if (event.getFailureInfo().isPresent()) {
-      QueryFailureInfo eventFailureInfo = event.getFailureInfo().get();
-      thriftEvent.error_code_id = eventFailureInfo.getErrorCode().getCode();
-      thriftEvent.error_code_name = eventFailureInfo.getErrorCode().getName();
-      thriftEvent.failure_type = eventFailureInfo.getFailureType().orElse(DASH);
-      thriftEvent.failure_message = eventFailureInfo.getFailureMessage().orElse(DASH);
-      thriftEvent.failure_task = eventFailureInfo.getFailureTask().orElse(DASH);
-      thriftEvent.failure_host = eventFailureInfo.getFailureHost().orElse(DASH);
-      thriftEvent.failures_json = eventFailureInfo.getFailuresJson();
+    public void handle(QueryCompletedEvent event)
+    {
+        try {
+            scriber.scribe(toThriftQueryCompletionEvent(event));
+        }
+        catch (TException e) {
+            log.warn(e,
+                    String.format("Could not serialize thrift object of Query(id=%s, user=%s, env=%s, schema=%s.%s)",
+                            event.getMetadata().getQueryId(),
+                            event.getContext().getUser(),
+                            event.getContext().getEnvironment(),
+                            event.getContext().getCatalog().orElse(DASH),
+                            event.getContext().getSchema().orElse(DASH)));
+        }
     }
 
-    return thriftEvent;
-  }
+    private static QueryCompletionEvent toThriftQueryCompletionEvent(QueryCompletedEvent event)
+    {
+        QueryMetadata eventMetadata = event.getMetadata();
+        QueryContext eventContext = event.getContext();
+        QueryStatistics eventStat = event.getStatistics();
+
+        QueryCompletionEvent thriftEvent =
+                new com.twitter.presto.thriftjava.QueryCompletionEvent();
+
+        thriftEvent.query_id = eventMetadata.getQueryId();
+        thriftEvent.transaction_id = eventMetadata.getTransactionId().orElse(DASH);
+        thriftEvent.user = eventContext.getUser();
+        thriftEvent.principal = eventContext.getPrincipal().orElse(DASH);
+        thriftEvent.source = eventContext.getSource().orElse(DASH);
+        thriftEvent.server_version = eventContext.getServerVersion();
+        thriftEvent.environment = eventContext.getEnvironment();
+        thriftEvent.catalog = eventContext.getCatalog().orElse(DASH);
+        thriftEvent.schema = eventContext.getSchema().orElse(DASH);
+        Map<String, List<String>> queriedColumnsByTable = new HashMap<String, List<String>>();
+        event.getIoMetadata().getInputs().forEach(input -> queriedColumnsByTable.put(String.format("%s.%s", input.getSchema(), input.getTable()), input.getColumns()));
+        thriftEvent.queried_columns_by_table = queriedColumnsByTable;
+        thriftEvent.remote_client_address = eventContext.getRemoteClientAddress().orElse(DASH);
+        thriftEvent.user_agent = eventContext.getUserAgent().orElse(DASH);
+        thriftEvent.query_state = QueryState.valueOf(eventMetadata.getQueryState());
+        thriftEvent.uri = eventMetadata.getUri().toString();
+        thriftEvent.query = eventMetadata.getQuery();
+        thriftEvent.create_time_ms = event.getCreateTime().toEpochMilli();
+        thriftEvent.execution_start_time_ms = event.getExecutionStartTime().toEpochMilli();
+        thriftEvent.end_time_ms = event.getEndTime().toEpochMilli();
+        thriftEvent.queued_time_ms = eventStat.getQueuedTime().toMillis();
+        thriftEvent.query_wall_time_ms = eventStat.getWallTime().toMillis();
+        thriftEvent.cumulative_memory_bytesecond = eventStat.getCumulativeMemory();
+        thriftEvent.peak_memory_bytes = eventStat.getPeakMemoryBytes();
+        thriftEvent.cpu_time_ms = eventStat.getCpuTime().toMillis();
+        if (eventStat.getAnalysisTime().isPresent()) {
+            thriftEvent.analysis_time_ms = eventStat.getAnalysisTime().get().toMillis();
+        }
+        if (eventStat.getDistributedPlanningTime().isPresent()) {
+            thriftEvent.distributed_planning_time_ms = eventStat.getDistributedPlanningTime().get().toMillis();
+        }
+        thriftEvent.total_bytes = eventStat.getTotalBytes();
+        thriftEvent.query_stages = QueryStatsHelper.getQueryStages(eventMetadata);
+        thriftEvent.operator_summaries = QueryStatsHelper.getOperatorSummaries(eventStat);
+        thriftEvent.total_rows = eventStat.getTotalRows();
+        thriftEvent.splits = eventStat.getCompletedSplits();
+        if (event.getFailureInfo().isPresent()) {
+            QueryFailureInfo eventFailureInfo = event.getFailureInfo().get();
+            thriftEvent.error_code_id = eventFailureInfo.getErrorCode().getCode();
+            thriftEvent.error_code_name = eventFailureInfo.getErrorCode().getName();
+            thriftEvent.failure_type = eventFailureInfo.getFailureType().orElse(DASH);
+            thriftEvent.failure_message = eventFailureInfo.getFailureMessage().orElse(DASH);
+            thriftEvent.failure_task = eventFailureInfo.getFailureTask().orElse(DASH);
+            thriftEvent.failure_host = eventFailureInfo.getFailureHost().orElse(DASH);
+            thriftEvent.failures_json = eventFailureInfo.getFailuresJson();
+        }
+
+        return thriftEvent;
+    }
 }

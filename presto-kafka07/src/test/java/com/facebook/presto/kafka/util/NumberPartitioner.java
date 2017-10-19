@@ -19,7 +19,8 @@ import scala.collection.Seq;
 
 import static java.lang.Math.toIntExact;
 
-public class NumberPartitioner implements Partitioner<Object>
+public class NumberPartitioner
+        implements Partitioner<Object>
 {
     @Override
     public int partition(Object key, Seq<Partition> partitions)

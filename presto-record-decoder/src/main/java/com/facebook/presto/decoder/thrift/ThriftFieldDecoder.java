@@ -20,7 +20,6 @@ import com.facebook.presto.decoder.FieldValueProvider;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
-import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableSet;
@@ -38,7 +37,7 @@ import java.util.concurrent.TimeUnit;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.Chars.isCharType;
-import static com.facebook.presto.spi.type.Chars.trimSpacesAndTruncateToLength;
+import static com.facebook.presto.spi.type.Chars.truncateToLengthAndTrimSpaces;
 import static com.facebook.presto.spi.type.DateType.DATE;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.IntegerType.INTEGER;
@@ -177,7 +176,7 @@ public class ThriftFieldDecoder
                 sliceValue = truncateToLength(sliceValue, type);
             }
             if (isCharType(type)) {
-                sliceValue = trimSpacesAndTruncateToLength(sliceValue, type);
+                sliceValue = truncateToLengthAndTrimSpaces(sliceValue, type);
             }
 
             return sliceValue;
@@ -264,7 +263,7 @@ public class ThriftFieldDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = new InterleavedBlockBuilder(typeParameters, new BlockBuilderStatus(), map.size());
+                currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), map.size());
             }
 
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -299,7 +298,7 @@ public class ThriftFieldDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = new InterleavedBlockBuilder(typeParameters, new BlockBuilderStatus(), typeParameters.size());
+                currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), typeParameters.size());
             }
 
             for (int i = 0; i < typeParameters.size(); i++) {

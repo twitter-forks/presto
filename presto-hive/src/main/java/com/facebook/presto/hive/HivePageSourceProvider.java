@@ -86,8 +86,7 @@ public class HivePageSourceProvider
             UserGroupInformation ugi = UgiUtils.getUgi(session.getUser());
             try {
                 return ugi.doAs((PrivilegedExceptionAction<ConnectorPageSource>) () ->
-                                doCreatePageSource(session, split, columns)
-                );
+                                doCreatePageSource(session, split, columns));
             }
             catch (IOException | InterruptedException e) {
                 throw new RuntimeException("Could not runAs " + session.getUser(), e);

@@ -18,17 +18,18 @@ import com.facebook.presto.spi.eventlistener.EventListenerFactory;
 
 import java.util.Map;
 
-public class TwitterEventListenerFactory implements EventListenerFactory
+public class TwitterEventListenerFactory
+        implements EventListenerFactory
 {
-  @Override
-  public String getName()
-  {
-    return "twitter-event-listener";
-  }
+    @Override
+    public String getName()
+    {
+        return "twitter-event-listener";
+    }
 
-  @Override
-  public EventListener create(Map<String, String> config)
-  {
-    return new TwitterEventListener();
-  }
+    @Override
+    public EventListener create(Map<String, String> config)
+    {
+        return new TwitterEventListener();
+    }
 }
