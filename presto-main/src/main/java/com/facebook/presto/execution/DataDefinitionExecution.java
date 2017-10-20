@@ -30,6 +30,7 @@ import com.google.common.base.Throwables;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.units.Duration;
 
 import javax.annotation.Nullable;
@@ -116,7 +117,8 @@ public class DataDefinitionExecution<T extends Statement>
             }
 
             ListenableFuture<?> future = task.execute(statement, transactionManager, metadata, accessControl, stateMachine, parameters);
-            Futures.addCallback(future, new FutureCallback<Object>() {
+            Futures.addCallback(future, new FutureCallback<Object>()
+            {
                 @Override
                 public void onSuccess(@Nullable Object result)
                 {
@@ -139,10 +141,15 @@ public class DataDefinitionExecution<T extends Statement>
     }
 
     @Override
-    public Duration waitForStateChange(QueryState currentState, Duration maxWait)
-            throws InterruptedException
+    public ListenableFuture<QueryOutputInfo> getOutputInfo()
     {
-        return stateMachine.waitForStateChange(currentState, maxWait);
+        return SettableFuture.create();
+    }
+
+    @Override
+    public ListenableFuture<QueryState> getStateChange(QueryState currentState)
+    {
+        return stateMachine.getStateChange(currentState);
     }
 
     @Override

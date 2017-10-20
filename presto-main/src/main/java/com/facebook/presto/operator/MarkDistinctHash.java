@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import static com.facebook.presto.operator.GroupByHash.createGroupByHash;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.google.common.base.Verify.verify;
 
 public class MarkDistinctHash
 {
@@ -36,6 +37,7 @@ public class MarkDistinctHash
     {
         this(session, types, channels, hashChannel, 10_000, joinCompiler);
     }
+
     public MarkDistinctHash(Session session, List<Type> types, int[] channels, Optional<Integer> hashChannel, int expectedDistinctValues, JoinCompiler joinCompiler)
     {
         this.groupByHash = createGroupByHash(session, types, channels, hashChannel, expectedDistinctValues, joinCompiler);
@@ -48,7 +50,11 @@ public class MarkDistinctHash
 
     public Block markDistinctRows(Page page)
     {
-        GroupByIdBlock ids = groupByHash.getGroupIds(page);
+        Work<GroupByIdBlock> work = groupByHash.getGroupIds(page);
+        boolean done = work.process();
+        // TODO: this class does not yield wrt memory limit; enable it
+        verify(done);
+        GroupByIdBlock ids = work.getResult();
         BlockBuilder blockBuilder = BOOLEAN.createBlockBuilder(new BlockBuilderStatus(), ids.getPositionCount());
         for (int i = 0; i < ids.getPositionCount(); i++) {
             if (ids.getGroupId(i) == nextDistinctId) {

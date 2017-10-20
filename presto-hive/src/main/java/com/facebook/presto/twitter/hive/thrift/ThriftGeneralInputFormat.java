@@ -39,7 +39,8 @@ import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
  * Remove the class once #481 is included in a release
  */
 @SuppressWarnings("deprecation")
-public class ThriftGeneralInputFormat extends DeprecatedFileInputFormatWrapper<LongWritable, BinaryWritable>
+public class ThriftGeneralInputFormat
+        extends DeprecatedFileInputFormatWrapper<LongWritable, BinaryWritable>
 {
     public ThriftGeneralInputFormat()
     {

@@ -20,13 +20,13 @@ import com.google.inject.Module;
 import static com.facebook.presto.decoder.DecoderModule.bindFieldDecoder;
 import static com.facebook.presto.decoder.DecoderModule.bindRowDecoder;
 
-public class ThriftDecoderModule implements Module
+public class ThriftDecoderModule
+        implements Module
 {
-  @Override
-  public void configure(Binder binder)
-  {
-    bindRowDecoder(binder, ThriftRowDecoder.class);
-
-    bindFieldDecoder(binder, ThriftFieldDecoder.class);
-  }
+    @Override
+    public void configure(Binder binder)
+    {
+        bindRowDecoder(binder, ThriftRowDecoder.class);
+        bindFieldDecoder(binder, ThriftFieldDecoder.class);
+    }
 }

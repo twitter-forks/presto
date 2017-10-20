@@ -99,7 +99,7 @@ public class GroupIdOperator
         }
 
         @Override
-        public void close()
+        public void noMoreOperators()
         {
             closed = true;
         }
@@ -130,9 +130,9 @@ public class GroupIdOperator
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
-        this.groupingSetInputs =  requireNonNull(groupingSetInputs, "groupingSetInputs is null");
+        this.groupingSetInputs = requireNonNull(groupingSetInputs, "groupingSetInputs is null");
         this.nullBlocks = requireNonNull(nullBlocks, "nullBlocks is null");
-        this.groupIdBlocks = requireNonNull(groupIdBlocks,  "groupIdBlocks is null");
+        this.groupIdBlocks = requireNonNull(groupIdBlocks, "groupIdBlocks is null");
     }
 
     @Override

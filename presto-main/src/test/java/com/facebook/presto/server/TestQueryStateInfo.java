@@ -40,6 +40,7 @@ import static com.facebook.presto.operator.BlockedReason.WAITING_FOR_MEMORY;
 import static com.facebook.presto.server.QueryStateInfo.createQueryStateInfo;
 import static com.facebook.presto.spi.resourceGroups.ResourceGroupState.CAN_QUEUE;
 import static com.facebook.presto.spi.resourceGroups.ResourceGroupState.CAN_RUN;
+import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.airlift.units.DataSize.Unit.BYTE;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.HOURS;
@@ -61,6 +62,7 @@ public class TestQueryStateInfo
                 groupRootAX,
                 new DataSize(6000, BYTE),
                 1,
+                1,
                 null,
                 10,
                 null,
@@ -74,6 +76,7 @@ public class TestQueryStateInfo
         ResourceGroupInfo rootAYInfo = new ResourceGroupInfo(
                 groupRootAY,
                 new DataSize(8000, BYTE),
+                1,
                 1,
                 new Duration(10, HOURS),
                 10,
@@ -89,6 +92,7 @@ public class TestQueryStateInfo
                 groupRootA,
                 new DataSize(8000, BYTE),
                 1,
+                1,
                 null,
                 10,
                 null,
@@ -103,6 +107,7 @@ public class TestQueryStateInfo
                 groupRootB,
                 new DataSize(8000, BYTE),
                 1,
+                1,
                 new Duration(10, HOURS),
                 10,
                 new Duration(1, DAYS),
@@ -116,6 +121,7 @@ public class TestQueryStateInfo
         ResourceGroupInfo rootInfo = new ResourceGroupInfo(
                 new ResourceGroupId("root"),
                 new DataSize(10000, BYTE),
+                2,
                 2,
                 null,
                 20,
@@ -163,6 +169,8 @@ public class TestQueryStateInfo
                 createQueryInfo("query_root_b", QUEUED, "SELECT count(*) FROM t"),
                 Optional.of(groupRootB),
                 Optional.of(rootInfo));
+        assertEquals(infoForQueryQueuedOnRootB.getCatalog().get(), "tpch");
+        assertEquals(infoForQueryQueuedOnRootB.getSchema().get(), TINY_SCHEMA_NAME);
         assertEquals(infoForQueryQueuedOnRootB.getQuery(), "SELECT count(*) FROM t");
         assertEquals(infoForQueryQueuedOnRootB.getQueryId().toString(), "query_root_b");
         assertEquals(infoForQueryQueuedOnRootB.getQueryState(), QUEUED);

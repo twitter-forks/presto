@@ -14,7 +14,6 @@
 package com.facebook.presto.spi.block;
 
 import com.facebook.presto.spi.type.Type;
-import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import it.unimi.dsi.fastutil.Hash.Strategy;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenCustomHashMap;
@@ -86,14 +85,6 @@ public class TestBlockRetainedSizeBreakdown
     }
 
     @Test
-    public void testInterleavedBlock()
-    {
-        BlockBuilder blockBuilder = new InterleavedBlockBuilder(ImmutableList.of(INTEGER, INTEGER), new BlockBuilderStatus(), EXPECTED_ENTRIES);
-        writeEntries(EXPECTED_ENTRIES, blockBuilder, INTEGER);
-        checkRetainedSize(blockBuilder.build(), false);
-    }
-
-    @Test
     public void testLongArrayBlock()
     {
         BlockBuilder blockBuilder = new LongArrayBlockBuilder(new BlockBuilderStatus(), EXPECTED_ENTRIES);
@@ -128,7 +119,7 @@ public class TestBlockRetainedSizeBreakdown
     @Test
     public void testVariableWidthBlock()
     {
-        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), EXPECTED_ENTRIES, 4);
+        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), EXPECTED_ENTRIES, 4 * EXPECTED_ENTRIES);
         writeEntries(EXPECTED_ENTRIES, blockBuilder, VARCHAR);
         checkRetainedSize(blockBuilder.build(), false);
     }

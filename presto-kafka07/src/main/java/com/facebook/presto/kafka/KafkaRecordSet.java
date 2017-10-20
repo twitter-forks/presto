@@ -55,7 +55,7 @@ public class KafkaRecordSet
 {
     private static final Logger log = Logger.get(KafkaRecordSet.class);
 
-    private static final byte [] EMPTY_BYTE_ARRAY = new byte [0];
+    private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
 
     private final KafkaSplit split;
     private final KafkaSimpleConsumerManager consumerManager;
@@ -137,12 +137,6 @@ public class KafkaRecordSet
         {
             this.startTs = startTs;
             this.endTs = endTs;
-        }
-
-        @Override
-        public long getTotalBytes()
-        {
-            return totalBytes;
         }
 
         @Override

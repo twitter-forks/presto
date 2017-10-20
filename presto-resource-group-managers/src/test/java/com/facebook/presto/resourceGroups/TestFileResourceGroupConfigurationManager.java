@@ -18,21 +18,19 @@ import com.facebook.presto.spi.resourceGroups.ResourceGroupConfigurationManager;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupSelector;
 import com.facebook.presto.spi.resourceGroups.SelectionContext;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 import static com.facebook.presto.spi.resourceGroups.SchedulingPolicy.WEIGHTED;
-import static io.airlift.json.JsonCodec.jsonCodec;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.HOURS;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -47,6 +45,7 @@ public class TestFileResourceGroupConfigurationManager
         assertFails("resource_groups_config_bad_group_id.json", "Invalid resource group name. 'glo.bal' contains a '.'");
         assertFails("resource_groups_config_bad_query_priority_scheduling_policy.json", "Must use \"weighted\" scheduling policy when using scheduling weight");
         assertFails("resource_groups_config_bad_weighted_scheduling_policy.json", "Must specify scheduling weight for each sub group when using \"weighted\" scheduling policy");
+        assertFails("resource_groups_config_unused_field.json", "Unknown property at line 8:6: maxFoo");
     }
 
     @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = "No matching configuration found for: missing")
@@ -61,7 +60,7 @@ public class TestFileResourceGroupConfigurationManager
     public void testQueryTypeConfiguration()
     {
         ResourceGroupConfigurationManager manager = parse("resource_groups_config_query_type.json");
-        List<ResourceGroupSelector> selectors =  manager.getSelectors();
+        List<ResourceGroupSelector> selectors = manager.getSelectors();
         assertMatch(selectors, new SelectionContext(true, "test_user", Optional.empty(), 1, Optional.of("select")), "global.select");
         assertMatch(selectors, new SelectionContext(true, "test_user", Optional.empty(), 1, Optional.of("explain")), "global.explain");
         assertMatch(selectors, new SelectionContext(true, "test_user", Optional.empty(), 1, Optional.of("insert")), "global.insert");
@@ -106,7 +105,7 @@ public class TestFileResourceGroupConfigurationManager
         assertEquals(global.getHardCpuLimit(), new Duration(1, DAYS));
         assertEquals(global.getCpuQuotaGenerationMillisPerSecond(), 1000 * 24);
         assertEquals(global.getMaxQueuedQueries(), 1000);
-        assertEquals(global.getMaxRunningQueries(), 100);
+        assertEquals(global.getHardConcurrencyLimit(), 100);
         assertEquals(global.getSchedulingPolicy(), WEIGHTED);
         assertEquals(global.getSchedulingWeight(), 0);
         assertEquals(global.getJmxExport(), true);
@@ -116,13 +115,24 @@ public class TestFileResourceGroupConfigurationManager
         ResourceGroup sub = new TestingResourceGroup(new ResourceGroupId(new ResourceGroupId("global"), "sub"));
         manager.configure(sub, new SelectionContext(true, "user", Optional.empty(), 1, Optional.empty()));
         assertEquals(sub.getSoftMemoryLimit(), new DataSize(2, MEGABYTE));
-        assertEquals(sub.getMaxRunningQueries(), 3);
+        assertEquals(sub.getHardConcurrencyLimit(), 3);
         assertEquals(sub.getMaxQueuedQueries(), 4);
         assertEquals(sub.getSchedulingPolicy(), null);
         assertEquals(sub.getSchedulingWeight(), 5);
         assertEquals(sub.getJmxExport(), false);
         assertEquals(global.getQueuedTimeLimit(), new Duration(1, HOURS));
         assertEquals(global.getRunningTimeLimit(), new Duration(1, HOURS));
+    }
+
+    @Test
+    public void testLegacyConfiguration()
+    {
+        ResourceGroupConfigurationManager manager = parse("resource_groups_config_legacy.json");
+        ResourceGroup global = new TestingResourceGroup(new ResourceGroupId("global"));
+        manager.configure(global, new SelectionContext(true, "user", Optional.empty(), 1, Optional.empty()));
+        assertEquals(global.getSoftMemoryLimit(), new DataSize(3, MEGABYTE));
+        assertEquals(global.getMaxQueuedQueries(), 99);
+        assertEquals(global.getHardConcurrencyLimit(), 42);
     }
 
     @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Selector refers to nonexistent group: a.b.c.X")
@@ -135,10 +145,7 @@ public class TestFileResourceGroupConfigurationManager
     {
         FileResourceGroupConfig config = new FileResourceGroupConfig();
         config.setConfigFile(getResourceFilePath(fileName));
-        return new FileResourceGroupConfigurationManager(
-                (poolId, listener) -> { },
-                config,
-                jsonCodec(ManagerSpec.class));
+        return new FileResourceGroupConfigurationManager((poolId, listener) -> {}, config);
     }
 
     private String getResourceFilePath(String fileName)
@@ -153,17 +160,7 @@ public class TestFileResourceGroupConfigurationManager
             fail("Expected parsing to fail");
         }
         catch (RuntimeException e) {
-            Throwable cause = e.getCause();
-            if (cause == null) {
-                cause = e;
-            }
-            else {
-                assertTrue(cause instanceof JsonMappingException);
-                cause = cause.getCause();
-            }
-            assertTrue(cause instanceof IllegalArgumentException);
-            assertTrue(Pattern.matches(expectedPattern, cause.getMessage()),
-                    "\nExpected (re) :" + expectedPattern + "\nActual        :" + cause.getMessage());
+            assertThat(e.getMessage()).matches(expectedPattern);
         }
     }
 }

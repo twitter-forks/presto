@@ -93,7 +93,7 @@ public class KafkaSplitManager
             long startTs = layoutHandle.getOffsetStartTs();
             long endTs = layoutHandle.getOffsetEndTs();
 
-            long[] offsets = findAllOffsets(leaderConsumer,  kafkaTableHandle.getTopicName(), part.partId(), startTs, endTs);
+            long[] offsets = findAllOffsets(leaderConsumer, kafkaTableHandle.getTopicName(), part.partId(), startTs, endTs);
             for (int i = offsets.length - 1; i > 0; i--) {
                 KafkaSplit split = new KafkaSplit(
                         connectorId,

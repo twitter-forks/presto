@@ -34,8 +34,7 @@ public class TestKafkaConnectorConfig
                 .setTableDescriptionDir(new File("etc/kafka07/"))
                 .setHideInternalColumns(true)
                 .setFetchSize(10485760)
-                .setZkEndpoint("")
-        );
+                .setZkEndpoint(""));
     }
 
     @Test

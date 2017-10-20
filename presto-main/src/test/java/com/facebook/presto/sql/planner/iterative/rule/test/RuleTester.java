@@ -52,7 +52,7 @@ public class RuleTester
         queryRunner = new LocalQueryRunner(session);
         queryRunner.createCatalog(session.getCatalog().get(),
                 new TpchConnectorFactory(1),
-                ImmutableMap.<String, String>of());
+                ImmutableMap.of());
 
         this.metadata = queryRunner.getMetadata();
         this.costCalculator = queryRunner.getCostCalculator();
@@ -69,5 +69,15 @@ public class RuleTester
     public void close()
     {
         queryRunner.close();
+    }
+
+    public Metadata getMetadata()
+    {
+        return metadata;
+    }
+
+    public ConnectorId getCurrentConnectorId()
+    {
+        return queryRunner.inTransaction(transactionSession -> metadata.getCatalogHandle(transactionSession, session.getCatalog().get())).get();
     }
 }

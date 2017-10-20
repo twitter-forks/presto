@@ -29,18 +29,20 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterators;
 import com.google.common.io.Files;
 import com.google.common.util.concurrent.ListeningExecutorService;
-import io.airlift.testing.FileUtils;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.util.Iterator;
 import java.util.List;
 
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.google.common.io.MoreFiles.deleteRecursively;
+import static com.google.common.io.MoreFiles.listFiles;
+import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
-import static io.airlift.testing.FileUtils.deleteRecursively;
 import static java.lang.Double.doubleToLongBits;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static org.testng.Assert.assertEquals;
@@ -57,7 +59,7 @@ public class TestFileSingleStreamSpiller
             throws Exception
     {
         executor.shutdown();
-        deleteRecursively(spillPath);
+        deleteRecursively(spillPath.toPath(), ALLOW_INSECURE);
     }
 
     @Test
@@ -68,28 +70,30 @@ public class TestFileSingleStreamSpiller
         PagesSerde serde = serdeFactory.createPagesSerde();
         SpillerStats spillerStats = new SpillerStats();
         LocalMemoryContext memoryContext = new AggregatedMemoryContext().newLocalMemoryContext();
-        FileSingleStreamSpiller spiller = new FileSingleStreamSpiller(serde, executor, spillPath.toPath(), spillerStats, bytes -> { }, memoryContext);
+        FileSingleStreamSpiller spiller = new FileSingleStreamSpiller(serde, executor, spillPath.toPath(), spillerStats, bytes -> {}, memoryContext);
 
         Page page = buildPage();
 
         assertEquals(memoryContext.getBytes(), 0);
         spiller.spill(page).get();
         spiller.spill(Iterators.forArray(page, page, page)).get();
-        assertEquals(1, FileUtils.listFiles(spillPath).size());
+        assertEquals(listFiles(spillPath.toPath()).size(), 1);
 
         // for spilling memory should be accounted only during spill() method is executing
         assertEquals(memoryContext.getBytes(), 0);
 
-        ImmutableList<Page> spilledPages = ImmutableList.copyOf(spiller.getSpilledPages());
+        Iterator<Page> spilledPagesIterator = spiller.getSpilledPages();
+        assertEquals(memoryContext.getBytes(), FileSingleStreamSpiller.BUFFER_SIZE);
+        ImmutableList<Page> spilledPages = ImmutableList.copyOf(spilledPagesIterator);
+        assertEquals(memoryContext.getBytes(), 0);
 
         assertEquals(4, spilledPages.size());
         for (int i = 0; i < 4; ++i) {
             PageAssertions.assertPageEquals(TYPES, page, spilledPages.get(i));
         }
 
-        assertEquals(memoryContext.getBytes(), FileSingleStreamSpiller.BUFFER_SIZE);
         spiller.close();
-        assertEquals(0, FileUtils.listFiles(spillPath).size());
+        assertEquals(listFiles(spillPath.toPath()).size(), 0);
         assertEquals(memoryContext.getBytes(), 0);
     }
 

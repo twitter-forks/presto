@@ -19,6 +19,7 @@ import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 
 import javax.annotation.Nullable;
@@ -44,6 +45,7 @@ import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
 import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
 import static com.facebook.presto.spi.type.StandardTypes.INTERVAL_DAY_TO_SECOND;
 import static com.facebook.presto.spi.type.StandardTypes.INTERVAL_YEAR_TO_MONTH;
+import static com.facebook.presto.spi.type.StandardTypes.IPADDRESS;
 import static com.facebook.presto.spi.type.StandardTypes.JSON;
 import static com.facebook.presto.spi.type.StandardTypes.MAP;
 import static com.facebook.presto.spi.type.StandardTypes.REAL;
@@ -111,6 +113,7 @@ public class QueryResults
         this.nextUri = nextUri;
         this.columns = (columns != null) ? ImmutableList.copyOf(columns) : null;
         this.data = (data != null) ? unmodifiableIterable(data) : null;
+        checkArgument(data == null || columns != null, "data present without columns");
         this.stats = requireNonNull(stats, "stats is null");
         this.error = error;
         this.updateType = updateType;
@@ -204,7 +207,8 @@ public class QueryResults
                 .toString();
     }
 
-    private static Iterable<List<Object>> fixData(List<Column> columns, List<List<Object>> data)
+    @VisibleForTesting
+    static Iterable<List<Object>> fixData(List<Column> columns, List<List<Object>> data)
     {
         if (data == null) {
             return null;
@@ -311,6 +315,7 @@ public class QueryResults
             case DATE:
             case INTERVAL_YEAR_TO_MONTH:
             case INTERVAL_DAY_TO_SECOND:
+            case IPADDRESS:
             case DECIMAL:
             case CHAR:
                 return String.class.cast(value);

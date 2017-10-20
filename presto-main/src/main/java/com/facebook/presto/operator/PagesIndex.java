@@ -24,7 +24,7 @@ import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler.LookupSourceSupplierFactory;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
 import com.facebook.presto.sql.gen.OrderingCompiler;
-import com.facebook.presto.sql.planner.SortExpressionExtractor.SortExpression;
+import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
@@ -36,10 +36,13 @@ import org.openjdk.jol.info.ClassLayout;
 
 import javax.inject.Inject;
 
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static com.facebook.presto.operator.SyntheticAddress.decodePosition;
 import static com.facebook.presto.operator.SyntheticAddress.decodeSliceIndex;
@@ -89,6 +92,8 @@ public class PagesIndex
         for (int i = 0; i < channels.length; i++) {
             channels[i] = ObjectArrayList.wrap(new Block[1024], 0);
         }
+
+        estimatedSize = calculateEstimatedSize();
     }
 
     public interface Factory
@@ -371,15 +376,15 @@ public class PagesIndex
 
     public Supplier<LookupSource> createLookupSourceSupplier(Session session, List<Integer> joinChannels)
     {
-        return createLookupSourceSupplier(session, joinChannels, Optional.empty(), Optional.empty(), Optional.empty());
+        return createLookupSourceSupplier(session, joinChannels, OptionalInt.empty(), Optional.empty(), Optional.empty(), ImmutableList.of());
     }
 
-    public PagesHashStrategy createPagesHashStrategy(List<Integer> joinChannels, Optional<Integer> hashChannel)
+    public PagesHashStrategy createPagesHashStrategy(List<Integer> joinChannels, OptionalInt hashChannel)
     {
         return createPagesHashStrategy(joinChannels, hashChannel, Optional.empty());
     }
 
-    public PagesHashStrategy createPagesHashStrategy(List<Integer> joinChannels, Optional<Integer> hashChannel, Optional<List<Integer>> outputChannels)
+    public PagesHashStrategy createPagesHashStrategy(List<Integer> joinChannels, OptionalInt hashChannel, Optional<List<Integer>> outputChannels)
     {
         try {
             return joinCompiler.compilePagesHashStrategyFactory(types, joinChannels, outputChannels)
@@ -402,17 +407,21 @@ public class PagesIndex
     public LookupSourceSupplier createLookupSourceSupplier(
             Session session,
             List<Integer> joinChannels,
-            Optional<Integer> hashChannel,
-            Optional<JoinFilterFunctionFactory> filterFunctionFactory)
+            OptionalInt hashChannel,
+            Optional<JoinFilterFunctionFactory> filterFunctionFactory,
+            Optional<Integer> sortChannel,
+            List<JoinFilterFunctionFactory> searchFunctionFactories)
     {
-        return createLookupSourceSupplier(session, joinChannels, hashChannel, filterFunctionFactory, Optional.empty());
+        return createLookupSourceSupplier(session, joinChannels, hashChannel, filterFunctionFactory, sortChannel, searchFunctionFactories, Optional.empty());
     }
 
     public LookupSourceSupplier createLookupSourceSupplier(
             Session session,
             List<Integer> joinChannels,
-            Optional<Integer> hashChannel,
+            OptionalInt hashChannel,
             Optional<JoinFilterFunctionFactory> filterFunctionFactory,
+            Optional<Integer> sortChannel,
+            List<JoinFilterFunctionFactory> searchFunctionFactories,
             Optional<List<Integer>> outputChannels)
     {
         List<List<Block>> channels = ImmutableList.copyOf(this.channels);
@@ -422,17 +431,15 @@ public class PagesIndex
             //        OUTER joins into NestedLoopsJoin and remove "type == INNER" condition in LocalExecutionPlanner.visitJoin()
 
             try {
-                Optional<SortExpression> sortChannel = Optional.empty();
-                if (filterFunctionFactory.isPresent()) {
-                    sortChannel = filterFunctionFactory.get().getSortChannel();
-                }
                 LookupSourceSupplierFactory lookupSourceFactory = joinCompiler.compileLookupSourceFactory(types, joinChannels, sortChannel, outputChannels);
                 return lookupSourceFactory.createLookupSourceSupplier(
                         session,
                         valueAddresses,
                         channels,
                         hashChannel,
-                        filterFunctionFactory);
+                        filterFunctionFactory,
+                        sortChannel,
+                        searchFunctionFactories);
             }
             catch (Exception e) {
                 log.error(e, "Lookup source compile failed for types=%s error=%s", types, e);
@@ -446,14 +453,16 @@ public class PagesIndex
                 channels,
                 joinChannels,
                 hashChannel,
-                filterFunctionFactory.map(JoinFilterFunctionFactory::getSortChannel).orElse(Optional.empty()));
+                sortChannel);
 
         return new JoinHashSupplier(
                 session,
                 hashStrategy,
                 valueAddresses,
                 channels,
-                filterFunctionFactory);
+                filterFunctionFactory,
+                sortChannel,
+                searchFunctionFactories);
     }
 
     private List<Integer> rangeList(int endExclusive)
@@ -471,5 +480,27 @@ public class PagesIndex
                 .add("types", types)
                 .add("estimatedSize", estimatedSize)
                 .toString();
+    }
+
+    public Iterator<Page> getPages()
+    {
+        return new AbstractIterator<Page>()
+        {
+            private int pageCounter;
+
+            @Override
+            protected Page computeNext()
+            {
+                if (pageCounter == channels[0].size()) {
+                    return endOfData();
+                }
+
+                Block[] blocks = Stream.of(channels)
+                        .map(channel -> channel.get(pageCounter))
+                        .toArray(Block[]::new);
+                pageCounter++;
+                return new Page(blocks);
+            }
+        };
     }
 }

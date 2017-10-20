@@ -16,6 +16,7 @@ package com.facebook.presto.kafka.util;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.google.common.io.Files;
+import com.google.common.io.MoreFiles;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.ProducerConfig;
 import kafka.server.KafkaConfig;
@@ -31,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.facebook.presto.kafka.util.TestUtils.findUnusedPort;
 import static com.facebook.presto.kafka.util.TestUtils.toProperties;
-import static io.airlift.testing.FileUtils.deleteRecursively;
+import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static java.util.Objects.requireNonNull;
 
 public class EmbeddedKafka
@@ -100,12 +101,13 @@ public class EmbeddedKafka
 
     @Override
     public void close()
+            throws IOException
     {
         if (started.get() && !stopped.getAndSet(true)) {
             kafka.shutdown();
             kafka.awaitShutdown();
             zookeeper.close();
-            deleteRecursively(kafkaDataDir);
+            MoreFiles.deleteRecursively(kafkaDataDir.toPath(), ALLOW_INSECURE);
         }
     }
 
