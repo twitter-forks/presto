@@ -100,7 +100,7 @@ script:
   - |
     if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
       presto-product-tests/bin/run_on_docker.sh \
-        singlenode-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation
+        singlenode-hdfs-impersonation -g storage_formats,hdfs_impersonation
     fi
   - |
     if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
