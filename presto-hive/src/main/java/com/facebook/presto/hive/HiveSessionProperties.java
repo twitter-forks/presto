@@ -39,7 +39,6 @@ public final class HiveSessionProperties
     private static final String ORC_OPTIMIZED_WRITER_VALIDATE = "orc_optimized_writer_validate";
     private static final String PARQUET_PREDICATE_PUSHDOWN_ENABLED = "parquet_predicate_pushdown_enabled";
     private static final String PARQUET_OPTIMIZED_READER_ENABLED = "parquet_optimized_reader_enabled";
-    private static final String READ_AS_QUERY_USER = "read_as_query_user";
     private static final String MAX_SPLIT_SIZE = "max_split_size";
     private static final String MAX_INITIAL_SPLIT_SIZE = "max_initial_split_size";
     public static final String RCFILE_OPTIMIZED_WRITER_ENABLED = "rcfile_optimized_writer_enabled";
@@ -62,11 +61,6 @@ public final class HiveSessionProperties
                         "Only schedule splits on workers colocated with data node",
                         config.isForceLocalScheduling(),
                         false),
-                booleanSessionProperty(
-                        READ_AS_QUERY_USER,
-                        "Query reads happen as the user submitting the query",
-                        config.getReadAsQueryUser(),
-                        true),
                 booleanSessionProperty(
                         ORC_BLOOM_FILTERS_ENABLED,
                         "ORC: Enable bloom filters for predicate pushdown",
@@ -207,11 +201,6 @@ public final class HiveSessionProperties
     public static boolean isParquetPredicatePushdownEnabled(ConnectorSession session)
     {
         return session.getProperty(PARQUET_PREDICATE_PUSHDOWN_ENABLED, Boolean.class);
-    }
-
-    public static boolean getReadAsQueryUser(ConnectorSession session)
-    {
-        return session.getProperty(READ_AS_QUERY_USER, Boolean.class);
     }
 
     public static DataSize getMaxSplitSize(ConnectorSession session)

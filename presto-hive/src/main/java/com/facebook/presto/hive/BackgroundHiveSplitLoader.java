@@ -26,7 +26,6 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.StandardErrorCode;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.twitter.hive.util.UgiUtils;
 import com.google.common.base.Throwables;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
@@ -48,14 +47,12 @@ import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.TextInputFormat;
-import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.annotation.Annotation;
 import java.nio.charset.StandardCharsets;
-import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
@@ -174,15 +171,8 @@ public class BackgroundHiveSplitLoader
     public void start(HiveSplitSource splitSource)
     {
         this.hiveSplitSource = splitSource;
-
-        UserGroupInformation ugi = null;
-
-        if (HiveSessionProperties.getReadAsQueryUser(session)) {
-            ugi = UgiUtils.getUgi(session.getUser());
-        }
-
         for (int i = 0; i < maxPartitionBatchSize; i++) {
-            ResumableTasks.submit(executor, new HiveSplitLoaderTask(ugi));
+            ResumableTasks.submit(executor, new HiveSplitLoaderTask());
         }
     }
 
@@ -195,30 +185,8 @@ public class BackgroundHiveSplitLoader
     private class HiveSplitLoaderTask
             implements ResumableTask
     {
-        private UserGroupInformation ugi;
-
-        public HiveSplitLoaderTask(UserGroupInformation ugi)
-        {
-            this.ugi = ugi;
-        }
-
         @Override
         public TaskStatus process()
-        {
-            if (ugi != null) {
-                try {
-                    return ugi.doAs((PrivilegedExceptionAction<TaskStatus>) this::doProcess);
-                }
-                catch (IOException | InterruptedException e) {
-                    throw new RuntimeException("Could not runAs " + session.getUser(), e);
-                }
-            }
-            else {
-                return doProcess();
-            }
-        }
-
-        private TaskStatus doProcess()
         {
             while (true) {
                 if (stopped) {
