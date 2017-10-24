@@ -62,7 +62,7 @@ public final class GeoFunctions
     @SqlType(GEOMETRY_TYPE_NAME)
     public static Slice parseLine(@SqlType(StandardTypes.VARCHAR) Slice input)
     {
-        OGCGeometry geometry = OGCGeometry.fromText(input.toStringUtf8());
+        OGCGeometry geometry = geometryFromText(input);
         validateType("ST_LineFromText", geometry, EnumSet.of(LINE_STRING));
         return serialize(geometry);
     }
@@ -81,7 +81,7 @@ public final class GeoFunctions
     @SqlType(GEOMETRY_TYPE_NAME)
     public static Slice stPolygon(@SqlType(StandardTypes.VARCHAR) Slice input)
     {
-        OGCGeometry geometry = OGCGeometry.fromText(input.toStringUtf8());
+        OGCGeometry geometry = geometryFromText(input);
         validateType("ST_Polygon", geometry, EnumSet.of(POLYGON));
         return serialize(geometry);
     }
@@ -101,7 +101,7 @@ public final class GeoFunctions
     @SqlType(GEOMETRY_TYPE_NAME)
     public static Slice stGeometryFromText(@SqlType(StandardTypes.VARCHAR) Slice input)
     {
-        return serialize(OGCGeometry.fromText(input.toStringUtf8()));
+        return serialize(geometryFromText(input));
     }
 
     @SqlNullable
@@ -533,6 +533,13 @@ public final class GeoFunctions
         return leftGeometry.within(rightGeometry);
     }
 
+    private static OGCGeometry geometryFromText(Slice input)
+    {
+        OGCGeometry geometry = OGCGeometry.fromText(input.toStringUtf8());
+        geometry.setSpatialReference(null);
+        return geometry;
+    }
+
     private static void validateType(String function, OGCGeometry geometry, Set<GeometryTypeName> validTypes)
     {
         GeometryTypeName type = GeometryUtils.valueOf(geometry.geometryType());
@@ -550,7 +557,7 @@ public final class GeoFunctions
 
     private static void verifySameSpatialReference(OGCGeometry leftGeometry, OGCGeometry rightGeometry)
     {
-        checkArgument(Objects.equals(leftGeometry.getEsriSpatialReference(), rightGeometry.getEsriSpatialReference()), "Input geometries must have same spatial reference");
+        checkArgument(Objects.equals(leftGeometry.getEsriSpatialReference(), rightGeometry.getEsriSpatialReference()), "Input geometries must have the same spatial reference");
     }
 
     // Points centroid is arithmetic mean of the input points

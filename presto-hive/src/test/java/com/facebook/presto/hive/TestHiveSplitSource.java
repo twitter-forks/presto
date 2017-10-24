@@ -15,17 +15,27 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.HostAddress;
+import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.predicate.TupleDomain;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.SettableFuture;
+import io.airlift.stats.CounterStat;
+import io.airlift.units.DataSize;
 import org.testng.annotations.Test;
 
 import java.util.List;
+import java.util.OptionalInt;
+import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
+import static io.airlift.testing.Assertions.assertContains;
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
+import static java.lang.Math.toIntExact;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -35,7 +45,17 @@ public class TestHiveSplitSource
     public void testOutstandingSplitCount()
             throws Exception
     {
-        HiveSplitSource hiveSplitSource = new HiveSplitSource(10, new TestingHiveSplitLoader(), Executors.newFixedThreadPool(5));
+        HiveSplitSource hiveSplitSource = new HiveSplitSource(
+                "client-id",
+                "query-id",
+                "database",
+                "table",
+                TupleDomain.all(),
+                10,
+                new DataSize(32, MEGABYTE),
+                new TestingHiveSplitLoader(),
+                Executors.newFixedThreadPool(5),
+                new CounterStat());
 
         // add 10 splits
         for (int i = 0; i < 10; i++) {
@@ -60,7 +80,17 @@ public class TestHiveSplitSource
     public void testFail()
             throws Exception
     {
-        HiveSplitSource hiveSplitSource = new HiveSplitSource(10, new TestingHiveSplitLoader(), Executors.newFixedThreadPool(5));
+        HiveSplitSource hiveSplitSource = new HiveSplitSource(
+                "client-id",
+                "query-id",
+                "database",
+                "table",
+                TupleDomain.all(),
+                10,
+                new DataSize(32, MEGABYTE),
+                new TestingHiveSplitLoader(),
+                Executors.newFixedThreadPool(5),
+                new CounterStat());
 
         // add some splits
         for (int i = 0; i < 5; i++) {
@@ -108,7 +138,17 @@ public class TestHiveSplitSource
     public void testReaderWaitsForSplits()
             throws Exception
     {
-        final HiveSplitSource hiveSplitSource = new HiveSplitSource(10, new TestingHiveSplitLoader(), Executors.newFixedThreadPool(5));
+        final HiveSplitSource hiveSplitSource = new HiveSplitSource(
+                "client-id",
+                "query-id",
+                "database",
+                "table",
+                TupleDomain.all(),
+                10,
+                new DataSize(1, MEGABYTE),
+                new TestingHiveSplitLoader(),
+                Executors.newFixedThreadPool(5),
+                new CounterStat());
 
         final SettableFuture<ConnectorSplit> splits = SettableFuture.create();
 
@@ -145,11 +185,62 @@ public class TestHiveSplitSource
 
             // wait for thread to get the split
             ConnectorSplit split = splits.get(800, TimeUnit.MILLISECONDS);
-            assertSame(split.getInfo(), 33);
+            assertEquals(((HiveSplit) split).getSchema().getProperty("id"), "33");
         }
         finally {
             // make sure the thread exits
             getterThread.interrupt();
+        }
+    }
+
+    @Test(enabled = false)
+    public void testOutstandingSplitSize()
+            throws Exception
+    {
+        DataSize maxOutstandingSplitsSize = new DataSize(1, MEGABYTE);
+        HiveSplitSource hiveSplitSource = new HiveSplitSource(
+                "client-id",
+                "query-id",
+                "database",
+                "table",
+                TupleDomain.all(),
+                10000,
+                maxOutstandingSplitsSize,
+                new TestingHiveSplitLoader(),
+                Executors.newFixedThreadPool(5),
+                new CounterStat());
+        InternalHiveSplit testSplit = new InternalHiveSplit(
+                "partition-name",
+                "path",
+                0,
+                100,
+                100,
+                new Properties(),
+                ImmutableList.of(new HivePartitionKey("pk_col", "pk_value")),
+                ImmutableList.of(HostAddress.fromString("localhost")),
+                OptionalInt.empty(),
+                false,
+                ImmutableMap.of());
+        int testSplitSizeInBytes = testSplit.getEstimatedSizeInBytes();
+
+        int maxSplitCount = toIntExact(maxOutstandingSplitsSize.toBytes()) / testSplitSizeInBytes;
+        for (int i = 0; i < maxSplitCount; i++) {
+            hiveSplitSource.addToQueue(testSplit);
+            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+        }
+
+        assertEquals(getFutureValue(hiveSplitSource.getNextBatch(maxSplitCount)).size(), maxSplitCount);
+
+        for (int i = 0; i < maxSplitCount; i++) {
+            hiveSplitSource.addToQueue(testSplit);
+            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+        }
+        try {
+            hiveSplitSource.addToQueue(testSplit);
+            fail("expect failure");
+        }
+        catch (PrestoException e) {
+            assertContains(e.getMessage(), "Split buffering for database.table exceeded memory limit");
         }
     }
 
@@ -168,31 +259,29 @@ public class TestHiveSplitSource
     }
 
     private static class TestSplit
-            implements ConnectorSplit
+            extends InternalHiveSplit
     {
-        private final int id;
-
         private TestSplit(int id)
         {
-            this.id = id;
+            super(
+                    "partition-name",
+                    "path",
+                    0,
+                    100,
+                    100,
+                    properties("id", String.valueOf(id)),
+                    ImmutableList.of(),
+                    ImmutableList.of(),
+                    OptionalInt.empty(),
+                    false,
+                    ImmutableMap.of());
         }
 
-        @Override
-        public boolean isRemotelyAccessible()
+        private static Properties properties(String key, String value)
         {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public List<HostAddress> getAddresses()
-        {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Object getInfo()
-        {
-            return id;
+            Properties properties = new Properties();
+            properties.put(key, value);
+            return properties;
         }
     }
 }
