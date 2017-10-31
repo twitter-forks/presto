@@ -603,13 +603,12 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         Type valueType = typeParameters.get(1);
         ThriftFieldIdResolver keyResolver = resolver.getNestedResolver(0);
         ThriftFieldIdResolver valueResolver = resolver.getNestedResolver(1);
-        BlockBuilder currentBuilder;
-        if (builder != null) {
-            currentBuilder = builder.beginBlockEntry();
+        boolean builderSynthesized = false;
+        if (builder == null) {
+            builderSynthesized = true;
+            builder = type.createBlockBuilder(new BlockBuilderStatus(), 1);
         }
-        else {
-            currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), map.size());
-        }
+        BlockBuilder currentBuilder = builder.beginBlockEntry();
 
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             // Hive skips map entries with null keys
@@ -619,13 +618,12 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             }
         }
 
-        if (builder != null) {
-            builder.closeEntry();
-            return null;
+        builder.closeEntry();
+        if (builderSynthesized) {
+            return (Block) type.getObject(builder, 0);
         }
         else {
-            Block resultBlock = currentBuilder.build();
-            return resultBlock;
+            return null;
         }
     }
 
@@ -633,13 +631,13 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     {
         ThriftGenericRow structData = (ThriftGenericRow) requireNonNull(object, "object is null");
         List<Type> typeParameters = type.getTypeParameters();
-        BlockBuilder currentBuilder;
-        if (builder != null) {
-            currentBuilder = builder.beginBlockEntry();
+
+        boolean builderSynthesized = false;
+        if (builder == null) {
+            builderSynthesized = true;
+            builder = type.createBlockBuilder(new BlockBuilderStatus(), 1);
         }
-        else {
-            currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), typeParameters.size());
-        }
+        BlockBuilder currentBuilder = builder.beginBlockEntry();
 
         for (int i = 0; i < typeParameters.size(); i++) {
             Object fieldValue = structData.getFieldValueForThriftId(resolver.getThriftId(i));
@@ -651,13 +649,12 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             }
         }
 
-        if (builder != null) {
-            builder.closeEntry();
-            return null;
+        builder.closeEntry();
+        if (builderSynthesized) {
+            return (Block) type.getObject(builder, 0);
         }
         else {
-            Block resultBlock = currentBuilder.build();
-            return resultBlock;
+            return null;
         }
     }
 
