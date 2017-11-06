@@ -448,7 +448,7 @@ public final class HiveWriteUtils
     public static boolean isHDFSCompatibleViewFileSystem(HdfsContext context, HdfsEnvironment hdfsEnvironment, Path path)
     {
         try {
-            return hdfsEnvironment.getFileSystem(context, path)
+            return getRawFileSystem(hdfsEnvironment.getFileSystem(context, path))
                     .getClass().getName().equals("org.apache.hadoop.fs.viewfs.HDFSCompatibleViewFileSystem");
         }
         catch (IOException e) {
