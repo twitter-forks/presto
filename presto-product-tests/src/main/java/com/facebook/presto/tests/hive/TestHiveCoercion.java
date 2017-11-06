@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.tests.hive;
 
+import com.facebook.presto.jdbc.PrestoArray;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.teradata.tempto.ProductTest;
 import com.teradata.tempto.Requirement;
 import com.teradata.tempto.RequirementsProvider;
@@ -31,8 +34,13 @@ import org.testng.annotations.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.tests.TestGroups.HIVE_COERCION;
 import static com.facebook.presto.tests.TestGroups.HIVE_CONNECTOR;
@@ -45,18 +53,23 @@ import static com.teradata.tempto.fulfillment.table.MutableTableRequirement.Stat
 import static com.teradata.tempto.fulfillment.table.TableHandle.tableHandle;
 import static com.teradata.tempto.query.QueryExecutor.defaultQueryExecutor;
 import static com.teradata.tempto.query.QueryExecutor.query;
+import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 import static java.lang.String.format;
+import static java.sql.JDBCType.ARRAY;
 import static java.sql.JDBCType.BIGINT;
 import static java.sql.JDBCType.DOUBLE;
 import static java.sql.JDBCType.INTEGER;
+import static java.sql.JDBCType.JAVA_OBJECT;
 import static java.sql.JDBCType.LONGNVARCHAR;
 import static java.sql.JDBCType.SMALLINT;
 import static java.sql.JDBCType.VARBINARY;
+import static org.testng.Assert.assertEquals;
 
 public class TestHiveCoercion
         extends ProductTest
 {
     private static String tableNameFormat = "%s_hive_coercion";
+    private static String dummyTableNameFormat = "%s_dummy";
 
     public static final HiveTableDefinition HIVE_COERCION_TEXTFILE = tableDefinitionBuilder("TEXTFILE", Optional.empty(), Optional.of("DELIMITED FIELDS TERMINATED BY '|'"))
             .setNoData()
@@ -91,7 +104,10 @@ public class TestHiveCoercion
                         "    smallint_to_bigint         SMALLINT," +
                         "    int_to_bigint              INT," +
                         "    bigint_to_varchar          BIGINT," +
-                        "    float_to_double            FLOAT" +
+                        "    float_to_double            FLOAT," +
+                        "    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : FLOAT >," +
+                        "    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : FLOAT > >," +
+                        "    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : FLOAT > >" +
                         ") " +
                         "PARTITIONED BY (id BIGINT) " +
                         (rowFormat.isPresent() ? "ROW FORMAT " + rowFormat.get() + " " : " ") +
@@ -110,10 +126,24 @@ public class TestHiveCoercion
                         "    smallint_to_bigint         SMALLINT," +
                         "    int_to_bigint              INT," +
                         "    bigint_to_varchar          BIGINT," +
-                        "    float_to_double            DOUBLE" +
+                        "    float_to_double            DOUBLE," +
+                        "    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : DOUBLE >," +
+                        "    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : DOUBLE > >," +
+                        "    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : DOUBLE > >" +
                         ") " +
                         "PARTITIONED BY (id BIGINT) " +
                         "STORED AS PARQUET");
+    }
+
+    private static String getCreateDummyTableDDL(HiveTableDefinition tableDefinition)
+    {
+        String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
+        String floatToDoubleType = tableName.toLowerCase(Locale.ENGLISH).contains("parquet") ? "DOUBLE" : "FLOAT";
+        return tableDefinition.getCreateTableDDL(format(dummyTableNameFormat, tableName), Optional.empty())
+                    .replace(format("    float_to_double            %s,", floatToDoubleType), format("    float_to_double            %s", floatToDoubleType))
+                    .replace(format("    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s >,", floatToDoubleType), "")
+                    .replace(format("    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >,", floatToDoubleType), "")
+                    .replace(format("    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >", floatToDoubleType), "");
     }
 
     public static final class TextRequirements
@@ -210,20 +240,37 @@ public class TestHiveCoercion
             throws SQLException
     {
         String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
-
+        String dummyTableName = format(dummyTableNameFormat, tableName);
+        executeHiveQuery(format("DROP TABLE IF EXISTS %s", dummyTableName));
+        executeHiveQuery(getCreateDummyTableDDL(tableDefinition));
         executeHiveQuery(format("INSERT INTO TABLE %s " +
                         "PARTITION (id=1) " +
                         "VALUES" +
                         "(-1, 2, -3, 100, -101, 2323, 12345, 0.5)," +
                         "(1, -2, null, -100, 101, -2323, -12345, -1.5)",
-                tableName));
+                dummyTableName));
+        executeHiveQuery(format("INSERT INTO TABLE %s " +
+                        "PARTITION (id=1) " +
+                        "SELECT" +
+                        "   tinyint_to_smallint," +
+                        "   tinyint_to_int," +
+                        "   tinyint_to_bigint," +
+                        "   smallint_to_int," +
+                        "   smallint_to_bigint," +
+                        "   int_to_bigint," +
+                        "   bigint_to_varchar," +
+                        "   float_to_double," +
+                        "   named_struct('tinyint_to_smallint', tinyint_to_smallint, 'tinyint_to_int', tinyint_to_int, 'tinyint_to_bigint', tinyint_to_bigint, 'smallint_to_int', smallint_to_int, 'smallint_to_bigint', smallint_to_bigint, 'int_to_bigint', int_to_bigint, 'bigint_to_varchar', bigint_to_varchar, 'float_to_double', float_to_double)," +
+                        "   array(named_struct('tinyint_to_smallint', tinyint_to_smallint, 'tinyint_to_int', tinyint_to_int, 'tinyint_to_bigint', tinyint_to_bigint, 'smallint_to_int', smallint_to_int, 'smallint_to_bigint', smallint_to_bigint, 'int_to_bigint', int_to_bigint, 'bigint_to_varchar', bigint_to_varchar, 'float_to_double', float_to_double))," +
+                        "   map(tinyint_to_int, named_struct('tinyint_to_smallint', tinyint_to_smallint, 'tinyint_to_int', tinyint_to_int, 'tinyint_to_bigint', tinyint_to_bigint, 'smallint_to_int', smallint_to_int, 'smallint_to_bigint', smallint_to_bigint, 'int_to_bigint', int_to_bigint, 'bigint_to_varchar', bigint_to_varchar, 'float_to_double', float_to_double))" +
+                        "FROM %s", tableName, dummyTableName));
 
         alterTableColumnTypes(tableName);
         assertProperAlteredTableSchema(tableName);
 
         QueryResult queryResult = query(format("SELECT * FROM %s", tableName));
         assertColumnTypes(queryResult);
-        assertThat(queryResult).containsOnly(
+        assertThat(queryResult.project(1, 2, 3, 4, 5, 6, 7, 8, 12)).containsOnly(
                 row(
                         -1,
                         2,
@@ -244,6 +291,15 @@ public class TestHiveCoercion
                         "-12345",
                         -1.5,
                         1));
+        List<Map> rowColumn = ImmutableList.of(
+                namedStruct("tinyint_to_smallint", (short) -1, "tinyint_to_int", 2, "tinyint_to_bigint", -3L, "smallint_to_int", 100, "smallint_to_bigint", -101L, "int_to_bigint", 2323L, "bigint_to_varchar", "12345", "float_to_double", 0.5),
+                namedStruct("tinyint_to_smallint", (short) 1, "tinyint_to_int", -2, "tinyint_to_bigint", null, "smallint_to_int", -100, "smallint_to_bigint", 101L, "int_to_bigint", -2323L, "bigint_to_varchar", "-12345", "float_to_double", -1.5));
+        assertEqualsIgnoreOrder(queryResult.column(9), rowColumn, "row_to_row field is not equal");
+        assertEqualsIgnoreOrder(
+                queryResult.column(10).stream().map(o -> Arrays.asList((Object[]) ((PrestoArray) o).getArray())).collect(Collectors.toList()),
+                rowColumn.stream().map(ImmutableList::of).collect(Collectors.toList()),
+                "list_to_list field is not equal");
+        assertEqualsIgnoreOrder(queryResult.column(11), rowColumn.stream().map(map -> ImmutableMap.of(map.get("tinyint_to_int"), map)).collect(Collectors.toList()), "map_to_map field is not equal");
     }
 
     private void assertProperAlteredTableSchema(String tableName)
@@ -257,6 +313,9 @@ public class TestHiveCoercion
                 row("int_to_bigint", "bigint"),
                 row("bigint_to_varchar", "varchar"),
                 row("float_to_double", "double"),
+                row("row_to_row", "row(tinyint_to_smallint smallint, tinyint_to_int integer, tinyint_to_bigint bigint, smallint_to_int integer, smallint_to_bigint bigint, int_to_bigint bigint, bigint_to_varchar varchar, float_to_double double)"),
+                row("list_to_list", "array(row(tinyint_to_smallint smallint, tinyint_to_int integer, tinyint_to_bigint bigint, smallint_to_int integer, smallint_to_bigint bigint, int_to_bigint bigint, bigint_to_varchar varchar, float_to_double double))"),
+                row("map_to_map", "map(integer, row(tinyint_to_smallint smallint, tinyint_to_int integer, tinyint_to_bigint bigint, smallint_to_int integer, smallint_to_bigint bigint, int_to_bigint bigint, bigint_to_varchar varchar, float_to_double double))"),
                 row("id", "bigint"));
     }
 
@@ -273,6 +332,9 @@ public class TestHiveCoercion
                     BIGINT,
                     LONGNVARCHAR,
                     DOUBLE,
+                    JAVA_OBJECT,
+                    ARRAY,
+                    JAVA_OBJECT,
                     BIGINT);
         }
         else if (usingTeradataJdbcDriver(connection)) {
@@ -285,6 +347,9 @@ public class TestHiveCoercion
                     BIGINT,
                     VARBINARY,
                     DOUBLE,
+                    JAVA_OBJECT,
+                    ARRAY,
+                    JAVA_OBJECT,
                     BIGINT);
         }
         else {
@@ -302,6 +367,9 @@ public class TestHiveCoercion
         executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN int_to_bigint int_to_bigint bigint", tableName));
         executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN bigint_to_varchar bigint_to_varchar string", tableName));
         executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN float_to_double float_to_double double", tableName));
+        executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN row_to_row row_to_row struct<tinyint_to_smallint:smallint,tinyint_to_int:int,tinyint_to_bigint:bigint,smallint_to_int:int,smallint_to_bigint:bigint,int_to_bigint:bigint,bigint_to_varchar:string,float_to_double:double>", tableName));
+        executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN list_to_list list_to_list array<struct<tinyint_to_smallint:smallint,tinyint_to_int:int,tinyint_to_bigint:bigint,smallint_to_int:int,smallint_to_bigint:bigint,int_to_bigint:bigint,bigint_to_varchar:string,float_to_double:double>>", tableName));
+        executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN map_to_map map_to_map map<int,struct<tinyint_to_smallint:smallint,tinyint_to_int:int,tinyint_to_bigint:bigint,smallint_to_int:int,smallint_to_bigint:bigint,int_to_bigint:bigint,bigint_to_varchar:string,float_to_double:double>>", tableName));
     }
 
     private static TableInstance mutableTableInstanceOf(TableDefinition tableDefinition)
@@ -336,5 +404,15 @@ public class TestHiveCoercion
     private static QueryResult executeHiveQuery(String query)
     {
         return testContext().getDependency(QueryExecutor.class, "hive").executeQuery(query);
+    }
+
+    private static Map<Object, Object> namedStruct(Object... objects)
+    {
+        assertEquals(objects.length % 2, 0, "number of objects must be even");
+        Map<Object, Object> struct = new HashMap<>();
+        for (int i = 0; i < objects.length; i += 2) {
+            struct.put(objects[i], objects[i + 1]);
+        }
+        return struct;
     }
 }

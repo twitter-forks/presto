@@ -28,11 +28,16 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.base.Throwables;
+import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 import org.joda.time.DateTimeZone;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
 import static com.facebook.presto.hive.HiveType.HIVE_BYTE;
@@ -287,6 +292,15 @@ public class HivePageSource
         else if (fromHiveType.equals(HIVE_FLOAT) && toHiveType.equals(HIVE_DOUBLE)) {
             return new FloatToDoubleCoercer();
         }
+        else if (HiveUtil.isArrayType(fromType) && HiveUtil.isArrayType(toType)) {
+            return new ListToListCoercer(typeManager, fromHiveType, toHiveType);
+        }
+        else if (HiveUtil.isMapType(fromType) && HiveUtil.isMapType(toType)) {
+            return new MapToMapCoercer(typeManager, fromHiveType, toHiveType);
+        }
+        else if (HiveUtil.isRowType(fromType) && HiveUtil.isRowType(toType)) {
+            return new StructToStructCoercer(typeManager, fromHiveType, toHiveType);
+        }
 
         throw new PrestoException(NOT_SUPPORTED, format("Unsupported coercion from %s to %s", fromHiveType, toHiveType));
     }
@@ -424,6 +438,195 @@ public class HivePageSource
         }
     }
 
+    private static class ListToListCoercer
+            implements Function<Block, Block>
+    {
+        private final TypeManager typeManager;
+        private final HiveType fromHiveType;
+        private final HiveType toHiveType;
+        private final Function<Block, Block> elementCoercer;
+
+        public ListToListCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+        {
+            this.typeManager = requireNonNull(typeManager, "typeManage is null");
+            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
+            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
+            HiveType fromElementHiveType = HiveType.valueOf(((ListTypeInfo) fromHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+            HiveType toElementHiveType = HiveType.valueOf(((ListTypeInfo) toHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+            this.elementCoercer = fromElementHiveType.equals(toElementHiveType) ? null : createCoercer(typeManager, fromElementHiveType, toElementHiveType);
+        }
+
+        @Override
+        public Block apply(Block block)
+        {
+            BlockBuilder blockBuilder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), block.getPositionCount());
+            for (int i = 0; i < block.getPositionCount(); i++) {
+                if (block.isNull(i)) {
+                    blockBuilder.appendNull();
+                    continue;
+                }
+                Block singleArrayBlock = block.getObject(i, Block.class);
+                BlockBuilder singleArrayBuilder = blockBuilder.beginBlockEntry();
+                for (int j = 0; j < singleArrayBlock.getPositionCount(); j++) {
+                    if (singleArrayBlock.isNull(j)) {
+                        singleArrayBuilder.appendNull();
+                    }
+                    else if (elementCoercer == null) {
+                        singleArrayBlock.writePositionTo(j, singleArrayBuilder);
+                        singleArrayBuilder.closeEntry();
+                    }
+                    else {
+                        Block singleElementBlock = elementCoercer.apply(singleArrayBlock.getSingleValueBlock(j));
+                        if (singleElementBlock.isNull(0)) {
+                            singleArrayBuilder.appendNull();
+                        }
+                        else {
+                            singleElementBlock.writePositionTo(0, singleArrayBuilder);
+                            singleArrayBuilder.closeEntry();
+                        }
+                    }
+                }
+                blockBuilder.closeEntry();
+            }
+            return blockBuilder.build();
+        }
+    }
+
+    private static class MapToMapCoercer
+            implements Function<Block, Block>
+    {
+        private final TypeManager typeManager;
+        private final HiveType fromHiveType;
+        private final HiveType toHiveType;
+        private final Function<Block, Block> keyCoercer;
+        private final Function<Block, Block> valueCoercer;
+
+        public MapToMapCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+        {
+            this.typeManager = requireNonNull(typeManager, "typeManage is null");
+            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
+            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
+            HiveType fromKeyHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+            HiveType fromValueHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+            HiveType toKeyHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+            HiveType toValueHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+            this.keyCoercer = fromKeyHiveType.equals(toKeyHiveType) ? null : createCoercer(typeManager, fromKeyHiveType, toKeyHiveType);
+            this.valueCoercer = fromValueHiveType.equals(toValueHiveType) ? null : createCoercer(typeManager, fromValueHiveType, toValueHiveType);
+        }
+
+        @Override
+        public Block apply(Block block)
+        {
+            BlockBuilder blockBuilder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), block.getPositionCount());
+            for (int i = 0; i < block.getPositionCount(); i++) {
+                if (block.isNull(i)) {
+                    blockBuilder.appendNull();
+                    continue;
+                }
+                Block singleMapBlock = block.getObject(i, Block.class);
+                BlockBuilder singleMapBuilder = blockBuilder.beginBlockEntry();
+                if (singleMapBlock.isNull(0)) {
+                    singleMapBuilder.appendNull();
+                }
+                else if (keyCoercer == null) {
+                    singleMapBlock.writePositionTo(0, singleMapBuilder);
+                    singleMapBuilder.closeEntry();
+                }
+                else {
+                    Block singleKeyBlock = keyCoercer.apply(singleMapBlock.getSingleValueBlock(0));
+                    if (singleKeyBlock.isNull(0)) {
+                        singleMapBuilder.appendNull();
+                    }
+                    else {
+                        singleKeyBlock.writePositionTo(0, singleMapBuilder);
+                        singleMapBuilder.closeEntry();
+                    }
+                }
+                if (singleMapBlock.isNull(1)) {
+                    singleMapBuilder.appendNull();
+                }
+                else if (valueCoercer == null) {
+                    singleMapBlock.writePositionTo(1, singleMapBuilder);
+                    singleMapBuilder.closeEntry();
+                }
+                else {
+                    Block singleValueBlock = valueCoercer.apply(singleMapBlock.getSingleValueBlock(1));
+                    if (singleValueBlock.isNull(0)) {
+                        singleMapBuilder.appendNull();
+                    }
+                    else {
+                        singleValueBlock.writePositionTo(0, singleMapBuilder);
+                        singleMapBuilder.closeEntry();
+                    }
+                }
+                blockBuilder.closeEntry();
+            }
+            return blockBuilder.build();
+        }
+    }
+
+    private static class StructToStructCoercer
+            implements Function<Block, Block>
+    {
+        private final TypeManager typeManager;
+        private final HiveType fromHiveType;
+        private final HiveType toHiveType;
+        private final List<HiveType> fromFieldTypes;
+        private final List<HiveType> toFieldTypes;
+        private final Function<Block, Block>[] coercers;
+
+        public StructToStructCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+        {
+            this.typeManager = requireNonNull(typeManager, "typeManage is null");
+            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
+            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
+            this.fromFieldTypes = getAllStructFieldTypeInfos(fromHiveType);
+            this.toFieldTypes = getAllStructFieldTypeInfos(toHiveType);
+            this.coercers = new Function[toFieldTypes.size()];
+            Arrays.fill(this.coercers, null);
+            for (int i = 0; i < Math.min(fromFieldTypes.size(), toFieldTypes.size()); i++) {
+                if (!fromFieldTypes.get(i).equals(toFieldTypes.get(i))) {
+                    coercers[i] = createCoercer(typeManager, fromFieldTypes.get(i), toFieldTypes.get(i));
+                }
+            }
+        }
+
+        @Override
+        public Block apply(Block block)
+        {
+            BlockBuilder blockBuilder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), block.getPositionCount());
+            for (int i = 0; i < block.getPositionCount(); i++) {
+                if (block.isNull(i)) {
+                    blockBuilder.appendNull();
+                    continue;
+                }
+                Block singleRowBlock = block.getObject(i, Block.class);
+                BlockBuilder singleRowBuilder = blockBuilder.beginBlockEntry();
+                for (int j = 0; j < toFieldTypes.size(); j++) {
+                    if (j >= fromFieldTypes.size() || singleRowBlock.isNull(j)) {
+                        singleRowBuilder.appendNull();
+                    }
+                    else if (coercers[j] == null) {
+                        singleRowBlock.writePositionTo(j, singleRowBuilder);
+                        singleRowBuilder.closeEntry();
+                    }
+                    else {
+                        Block singleFieldBlock = coercers[j].apply(singleRowBlock.getSingleValueBlock(j));
+                        if (singleFieldBlock.isNull(0)) {
+                            singleRowBuilder.appendNull();
+                        }
+                        else {
+                            singleFieldBlock.writePositionTo(0, singleRowBuilder);
+                            singleRowBuilder.closeEntry();
+                        }
+                    }
+                }
+                blockBuilder.closeEntry();
+            }
+            return blockBuilder.build();
+        }
+    }
+
     private final class CoercionLazyBlockLoader
             implements LazyBlockLoader<LazyBlock>
     {
@@ -449,5 +652,11 @@ public class HivePageSource
             // clear reference to loader to free resources, since load was successful
             block = null;
         }
+    }
+
+    private static List<HiveType> getAllStructFieldTypeInfos(HiveType hiveType)
+    {
+        return ((StructTypeInfo) hiveType.getTypeInfo()).getAllStructFieldTypeInfos()
+                .stream().map(typeInfo -> HiveType.valueOf(typeInfo.getTypeName())).collect(Collectors.toList());
     }
 }
