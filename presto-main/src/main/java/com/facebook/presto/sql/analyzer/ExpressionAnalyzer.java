@@ -289,14 +289,15 @@ public class ExpressionAnalyzer
             this.scope = requireNonNull(scope, "scope is null");
         }
 
-        @SuppressWarnings("SuspiciousMethodCalls")
         @Override
         public Type process(Node node, @Nullable StackableAstVisitorContext<Context> context)
         {
-            // don't double process a node
-            Type type = expressionTypes.get(NodeRef.of(node));
-            if (type != null) {
-                return type;
+            if (node instanceof Expression) {
+                // don't double process a node
+                Type type = expressionTypes.get(NodeRef.of(((Expression) node)));
+                if (type != null) {
+                    return type;
+                }
             }
             return super.process(node, context);
         }
@@ -1035,7 +1036,7 @@ public class ExpressionAnalyzer
                     }
                     break;
                 default:
-                    checkState(false, "Unexpected comparison type: %s", node.getComparisonType());
+                    throw new IllegalStateException(format("Unexpected comparison type: %s", node.getComparisonType()));
             }
 
             return setExpressionType(node, BOOLEAN);
@@ -1063,7 +1064,6 @@ public class ExpressionAnalyzer
                 throw new SemanticException(INVALID_PARAMETER_USAGE, node,
                         format("Expected a lambda that takes %s argument(s) but got %s", types.size(), lambdaArguments.size()));
             }
-            verify(types.size() == lambdaArguments.size());
 
             Map<String, LambdaArgumentDeclaration> nameToLambdaArgumentDeclarationMap = new HashMap<>();
             if (context.getContext().isInLambda()) {
@@ -1074,7 +1074,7 @@ public class ExpressionAnalyzer
                 nameToLambdaArgumentDeclarationMap.put(lambdaArgument.getName().getValue(), lambdaArgument);
                 setExpressionType(lambdaArgument, types.get(i));
             }
-            Type returnType = process(node.getBody(), new StackableAstVisitorContext<Context>(Context.inLambda(nameToLambdaArgumentDeclarationMap)));
+            Type returnType = process(node.getBody(), new StackableAstVisitorContext<>(Context.inLambda(nameToLambdaArgumentDeclarationMap)));
             FunctionType functionType = new FunctionType(types, returnType);
             return setExpressionType(node, functionType);
         }
@@ -1117,6 +1117,7 @@ public class ExpressionAnalyzer
             throw new SemanticException(NOT_SUPPORTED, node, "not yet implemented: " + node.getClass().getName());
         }
 
+        @Override
         public Type visitGroupingOperation(GroupingOperation node, StackableAstVisitorContext<Context> context)
         {
             if (node.getGroupingColumns().size() > MAX_NUMBER_GROUPING_ARGUMENTS_BIGINT) {

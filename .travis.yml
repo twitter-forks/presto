@@ -77,7 +77,7 @@ before_script:
 script:
   - |
     if [[ -v MAVEN_CHECKS ]]; then
-      ./mvnw install -DskipTests -B -T C1 -P !twitter-modules
+      ./mvnw install -DskipTests -B -T C1 -P 'ci,!twitter-modules'
     fi
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then

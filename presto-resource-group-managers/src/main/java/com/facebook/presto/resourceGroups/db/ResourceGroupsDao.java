@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.resourceGroups.db;
 
+import org.skife.jdbi.v2.sqlobject.Bind;
 import org.skife.jdbi.v2.sqlobject.SqlQuery;
 import org.skife.jdbi.v2.sqlobject.SqlUpdate;
 import org.skife.jdbi.v2.sqlobject.customizers.Mapper;
@@ -47,6 +48,7 @@ public interface ResourceGroupsDao
             "  queued_time_limit VARCHAR(128) NULL,\n" +
             "  running_time_limit VARCHAR(128) NULL,\n" +
             "  parent BIGINT NULL,\n" +
+            "  environment VARCHAR(128) NULL,\n" +
             "  PRIMARY KEY (resource_group_id),\n" +
             "  FOREIGN KEY (parent) REFERENCES resource_groups (resource_group_id)\n" +
             ")")
@@ -55,11 +57,12 @@ public interface ResourceGroupsDao
     @SqlQuery("SELECT resource_group_id, name, soft_memory_limit, max_queued, soft_concurrency_limit, " +
             "  hard_concurrency_limit, scheduling_policy, scheduling_weight, jmx_export, soft_cpu_limit, " +
             "  hard_cpu_limit, queued_time_limit, running_time_limit, parent\n" +
-            "FROM resource_groups")
+            "FROM resource_groups\n" +
+            "WHERE environment = :environment\n")
     @Mapper(ResourceGroupSpecBuilder.Mapper.class)
-    List<ResourceGroupSpecBuilder> getResourceGroups();
+    List<ResourceGroupSpecBuilder> getResourceGroups(@Bind("environment") String environment);
 
-    @SqlQuery("SELECT resource_group_id, user_regex, source_regex from selectors")
+    @SqlQuery("SELECT resource_group_id, user_regex, source_regex, client_tags from selectors")
     @Mapper(SelectorRecord.Mapper.class)
     List<SelectorRecord> getSelectors();
 
@@ -67,6 +70,7 @@ public interface ResourceGroupsDao
             "  resource_group_id BIGINT NOT NULL,\n" +
             "  user_regex VARCHAR(512),\n" +
             "  source_regex VARCHAR(512),\n" +
+            "  client_tags VARCHAR(512),\n" +
             "  FOREIGN KEY (resource_group_id) REFERENCES resource_groups (resource_group_id)\n" +
             ")")
     void createSelectorsTable();
