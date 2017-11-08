@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.187-tw-0.42</version>
+        <version>0.188-tw-0.43</version>
     </parent>
 
     <artifactId>presto-jdbc</artifactId>
@@ -186,19 +186,6 @@
                                         <exclude>META-INF/maven/**</exclude>
                                         <exclude>META-INF/services/com.fasterxml.**</exclude>
                                         <exclude>LICENSE</exclude>
-                                    </excludes>
-                                </filter>
-                                <filter>
-                                    <artifact>com.google.code.findbugs:annotations</artifact>
-                                    <excludes>
-                                        <exclude>**</exclude>
-                                    </excludes>
-                                </filter>
-                                <!-- TODO: fix in okhttp: https://github.com/square/okhttp/pull/3421 -->
-                                <filter>
-                                    <artifact>com.squareup.okhttp3:okhttp</artifact>
-                                    <excludes>
-                                        <exclude>publicsuffixes.gz</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
