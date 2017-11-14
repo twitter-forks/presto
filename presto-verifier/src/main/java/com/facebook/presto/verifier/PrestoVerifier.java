@@ -20,6 +20,7 @@ import com.facebook.presto.sql.tree.CreateTable;
 import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.Delete;
+import com.facebook.presto.sql.tree.DropColumn;
 import com.facebook.presto.sql.tree.DropTable;
 import com.facebook.presto.sql.tree.DropView;
 import com.facebook.presto.sql.tree.Explain;
@@ -107,7 +108,7 @@ public class PrestoVerifier
             }
             Set<EventClient> eventClients = injector.getInstance(Key.get(new TypeLiteral<Set<EventClient>>() {}));
 
-            VerifierDao dao = new DBI(config.getQueryDatabase()).onDemand(VerifierDao.class);
+            VerifierDao dao = getQueryDatabase(injector).onDemand(VerifierDao.class);
 
             ImmutableList.Builder<QueryPair> queriesBuilder = ImmutableList.builder();
             for (String suite : config.getSuites()) {
@@ -185,6 +186,15 @@ public class PrestoVerifier
             urlList.add(Paths.get(file.getAbsolutePath()).toUri().toURL());
         }
         return urlList.build();
+    }
+
+    /**
+     * Override this method to use a different method of acquiring a database connection.
+     */
+    protected DBI getQueryDatabase(Injector injector)
+    {
+        VerifierConfig config = injector.getInstance(VerifierConfig.class);
+        return new DBI(config.getQueryDatabase());
     }
 
     /**
@@ -319,6 +329,9 @@ public class PrestoVerifier
             return READ;
         }
         if (statement instanceof RenameColumn) {
+            return MODIFY;
+        }
+        if (statement instanceof DropColumn) {
             return MODIFY;
         }
         if (statement instanceof RenameTable) {

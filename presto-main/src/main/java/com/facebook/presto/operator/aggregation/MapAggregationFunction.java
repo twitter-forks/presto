@@ -22,11 +22,11 @@ import com.facebook.presto.operator.aggregation.state.KeyValuePairsState;
 import com.facebook.presto.operator.aggregation.state.KeyValuePairsStateFactory;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
-import com.facebook.presto.type.MapType;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
@@ -104,9 +104,9 @@ public class MapAggregationFunction
     private static List<ParameterMetadata> createInputParameterMetadata(Type keyType, Type valueType)
     {
         return ImmutableList.of(new ParameterMetadata(STATE),
-                                new ParameterMetadata(BLOCK_INPUT_CHANNEL, keyType),
-                                new ParameterMetadata(NULLABLE_BLOCK_INPUT_CHANNEL, valueType),
-                                new ParameterMetadata(BLOCK_INDEX));
+                new ParameterMetadata(BLOCK_INPUT_CHANNEL, keyType),
+                new ParameterMetadata(NULLABLE_BLOCK_INPUT_CHANNEL, valueType),
+                new ParameterMetadata(BLOCK_INDEX));
     }
 
     public static void input(Type keyType, Type valueType, KeyValuePairsState state, Block key, Block value, int position)

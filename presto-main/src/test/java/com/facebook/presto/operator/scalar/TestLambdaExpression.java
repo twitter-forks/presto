@@ -14,8 +14,8 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.RowType;
+import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.RowType;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.BeforeClass;
@@ -25,7 +25,6 @@ import java.util.Optional;
 
 import static com.facebook.presto.operator.scalar.ApplyFunction.APPLY_FUNCTION;
 import static com.facebook.presto.operator.scalar.InvokeFunction.INVOKE_FUNCTION;
-import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
@@ -84,6 +83,12 @@ public class TestLambdaExpression
     }
 
     @Test
+    public void testLambdaWithoutArgument()
+    {
+        assertFunction("invoke(() -> 42)", INTEGER, 42);
+    }
+
+    @Test
     public void testSessionDependent()
             throws Exception
     {
@@ -94,15 +99,6 @@ public class TestLambdaExpression
     public void testInstanceFunction()
     {
         assertFunction("apply(ARRAY[2], x -> concat(ARRAY [1], x))", new ArrayType(INTEGER), ImmutableList.of(1, 2));
-    }
-
-    @Test
-    public void testWithTry()
-            throws Exception
-    {
-        assertFunction("TRY(apply(5, x -> x + 1) / 0)", INTEGER, null);
-        assertFunction("TRY(apply(5 + RANDOM(1), x -> x + 1) / 0)", INTEGER, null);
-        assertInvalidFunction("apply(5 + RANDOM(1), x -> x + TRY(1 / 0))", NOT_SUPPORTED);
     }
 
     @Test

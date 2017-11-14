@@ -31,6 +31,7 @@ import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
+import com.facebook.presto.spi.resourceGroups.QueryType;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.split.SplitSource;
@@ -52,12 +53,31 @@ import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.planner.StageExecutionPlan;
 import com.facebook.presto.sql.planner.SubPlan;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
+import com.facebook.presto.sql.tree.CreateTableAsSelect;
+import com.facebook.presto.sql.tree.Delete;
+import com.facebook.presto.sql.tree.DescribeInput;
+import com.facebook.presto.sql.tree.DescribeOutput;
 import com.facebook.presto.sql.tree.Explain;
 import com.facebook.presto.sql.tree.Expression;
+import com.facebook.presto.sql.tree.Insert;
+import com.facebook.presto.sql.tree.Query;
+import com.facebook.presto.sql.tree.ShowCatalogs;
+import com.facebook.presto.sql.tree.ShowColumns;
+import com.facebook.presto.sql.tree.ShowCreate;
+import com.facebook.presto.sql.tree.ShowFunctions;
+import com.facebook.presto.sql.tree.ShowGrants;
+import com.facebook.presto.sql.tree.ShowPartitions;
+import com.facebook.presto.sql.tree.ShowSchemas;
+import com.facebook.presto.sql.tree.ShowSession;
+import com.facebook.presto.sql.tree.ShowStats;
+import com.facebook.presto.sql.tree.ShowTables;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -76,7 +96,13 @@ import java.util.concurrent.atomic.AtomicReference;
 import static com.facebook.presto.OutputBuffers.BROADCAST_PARTITION_ID;
 import static com.facebook.presto.OutputBuffers.createInitialEmptyOutputBuffers;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
+import static com.facebook.presto.spi.resourceGroups.QueryType.DELETE;
+import static com.facebook.presto.spi.resourceGroups.QueryType.DESCRIBE;
+import static com.facebook.presto.spi.resourceGroups.QueryType.EXPLAIN;
+import static com.facebook.presto.spi.resourceGroups.QueryType.INSERT;
+import static com.facebook.presto.spi.resourceGroups.QueryType.SELECT;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -105,6 +131,7 @@ public final class SqlQueryExecution
     private final FailureDetector failureDetector;
 
     private final QueryExplainer queryExplainer;
+    private final PlanFlattener planFlattener;
     private final CostCalculator costCalculator;
     private final AtomicReference<SqlQueryScheduler> queryScheduler = new AtomicReference<>();
     private final AtomicReference<Plan> queryPlan = new AtomicReference<>();
@@ -112,6 +139,7 @@ public final class SqlQueryExecution
     private final ExecutionPolicy executionPolicy;
     private final List<Expression> parameters;
     private final SplitSchedulerStats schedulerStats;
+    private final SettableFuture<QueryOutputInfo> outputInfo = SettableFuture.create();
 
     public SqlQueryExecution(QueryId queryId,
             String query,
@@ -134,6 +162,7 @@ public final class SqlQueryExecution
             FailureDetector failureDetector,
             NodeTaskMap nodeTaskMap,
             QueryExplainer queryExplainer,
+            PlanFlattener planFlattener,
             ExecutionPolicy executionPolicy,
             List<Expression> parameters,
             SplitSchedulerStats schedulerStats)
@@ -154,6 +183,7 @@ public final class SqlQueryExecution
             this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
             this.executionPolicy = requireNonNull(executionPolicy, "executionPolicy is null");
             this.queryExplainer = requireNonNull(queryExplainer, "queryExplainer is null");
+            this.planFlattener = requireNonNull(planFlattener, "planFlattener is null");
             this.parameters = requireNonNull(parameters);
             this.schedulerStats = requireNonNull(schedulerStats, "schedulerStats is null");
 
@@ -266,7 +296,7 @@ public final class SqlQueryExecution
             }
             catch (Throwable e) {
                 fail(e);
-                Throwables.propagateIfInstanceOf(e, Error.class);
+                throwIfInstanceOf(e, Error.class);
             }
         }
     }
@@ -283,6 +313,30 @@ public final class SqlQueryExecution
     public void addFinalQueryInfoListener(StateChangeListener<QueryInfo> stateChangeListener)
     {
         stateMachine.addQueryInfoStateChangeListener(stateChangeListener);
+    }
+
+    @Override
+    public Optional<QueryType> getQueryType()
+    {
+        if (statement instanceof Query) {
+            return Optional.of(SELECT);
+        }
+        else if (statement instanceof Explain) {
+            return Optional.of(EXPLAIN);
+        }
+        else if (statement instanceof ShowCatalogs || statement instanceof ShowCreate || statement instanceof ShowFunctions ||
+                statement instanceof ShowGrants || statement instanceof ShowPartitions || statement instanceof ShowSchemas ||
+                statement instanceof ShowSession || statement instanceof ShowStats || statement instanceof ShowTables ||
+                statement instanceof ShowColumns || statement instanceof DescribeInput || statement instanceof DescribeOutput) {
+            return Optional.of(DESCRIBE);
+        }
+        else if (statement instanceof CreateTableAsSelect || statement instanceof Insert) {
+            return Optional.of(INSERT);
+        }
+        else if (statement instanceof Delete) {
+            return Optional.of(DELETE);
+        }
+        return Optional.empty();
     }
 
     private PlanRoot analyzeQuery()
@@ -321,13 +375,14 @@ public final class SqlQueryExecution
         stateMachine.setOutput(output);
 
         // fragment the plan
-        SubPlan subplan = PlanFragmenter.createSubPlans(stateMachine.getSession(), metadata, plan);
+        SubPlan fragmentedPlan = PlanFragmenter.createSubPlans(stateMachine.getSession(), metadata, plan);
+        stateMachine.setPlan(planFlattener.flatten(fragmentedPlan, stateMachine.getSession()));
 
         // record analysis time
         stateMachine.recordAnalysisTime(analysisStart);
 
         boolean explainAnalyze = analysis.getStatement() instanceof Explain && ((Explain) analysis.getStatement()).isAnalyze();
-        return new PlanRoot(subplan, !explainAnalyze, extractConnectors(analysis));
+        return new PlanRoot(fragmentedPlan, !explainAnalyze, extractConnectors(analysis));
     }
 
     private Set<ConnectorId> extractConnectors(Analysis analysis)
@@ -396,6 +451,20 @@ public final class SqlQueryExecution
 
         queryScheduler.set(scheduler);
 
+        Futures.addCallback(scheduler.getRootStageOutputBufferLocations(), new FutureCallback<QueryOutputInfo>()
+        {
+            @Override
+            public void onSuccess(QueryOutputInfo result)
+            {
+                outputInfo.set(result);
+            }
+
+            @Override
+            public void onFailure(Throwable t)
+            {
+            }
+        });
+
         // if query was canceled during scheduler creation, abort the scheduler
         // directly since the callback may have already fired
         if (stateMachine.isDone()) {
@@ -448,12 +517,15 @@ public final class SqlQueryExecution
     }
 
     @Override
-    public Duration waitForStateChange(QueryState currentState, Duration maxWait)
-            throws InterruptedException
+    public ListenableFuture<QueryOutputInfo> getOutputInfo()
     {
-        try (SetThreadName ignored = new SetThreadName("Query-%s", stateMachine.getQueryId())) {
-            return stateMachine.waitForStateChange(currentState, maxWait);
-        }
+        return Futures.nonCancellationPropagating(outputInfo);
+    }
+
+    @Override
+    public ListenableFuture<QueryState> getStateChange(QueryState currentState)
+    {
+        return stateMachine.getStateChange(currentState);
     }
 
     @Override
@@ -576,6 +648,7 @@ public final class SqlQueryExecution
         private final RemoteTaskFactory remoteTaskFactory;
         private final TransactionManager transactionManager;
         private final QueryExplainer queryExplainer;
+        private final PlanFlattener planFlattener;
         private final LocationFactory locationFactory;
         private final ExecutorService executor;
         private final FailureDetector failureDetector;
@@ -600,6 +673,7 @@ public final class SqlQueryExecution
                 FailureDetector failureDetector,
                 NodeTaskMap nodeTaskMap,
                 QueryExplainer queryExplainer,
+                PlanFlattener planFlattener,
                 Map<String, ExecutionPolicy> executionPolicies,
                 SplitSchedulerStats schedulerStats)
         {
@@ -621,6 +695,7 @@ public final class SqlQueryExecution
             this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
             this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
             this.queryExplainer = requireNonNull(queryExplainer, "queryExplainer is null");
+            this.planFlattener = requireNonNull(planFlattener, "planFlattener is null");
 
             this.executionPolicies = requireNonNull(executionPolicies, "schedulerPolicies is null");
             this.costCalculator = requireNonNull(costCalculator, "cost calculator is null");
@@ -656,6 +731,7 @@ public final class SqlQueryExecution
                     failureDetector,
                     nodeTaskMap,
                     queryExplainer,
+                    planFlattener,
                     executionPolicy,
                     parameters,
                     schedulerStats);

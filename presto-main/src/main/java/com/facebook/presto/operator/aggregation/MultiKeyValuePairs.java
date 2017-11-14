@@ -16,11 +16,8 @@ package com.facebook.presto.operator.aggregation;
 import com.facebook.presto.array.ObjectBigArray;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
-import com.facebook.presto.spi.block.InterleavedBlockBuilder;
+import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.type.ArrayType;
-import com.google.common.collect.ImmutableList;
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.facebook.presto.type.TypeUtils.expectedValueSize;
@@ -85,7 +82,7 @@ public class MultiKeyValuePairs
     /**
      * Serialize as a multimap: map(key, array(value)), each key can be associated with multiple values
      */
-    public Block toMultimapNativeEncoding()
+    public void toMultimapNativeEncoding(BlockBuilder blockBuilder)
     {
         Block keys = keyBlockBuilder.build();
         Block values = valueBlockBuilder.build();
@@ -94,7 +91,7 @@ public class MultiKeyValuePairs
         BlockBuilder distinctKeyBlockBuilder = keyType.createBlockBuilder(null, keys.getPositionCount(), expectedValueSize(keyType, EXPECTED_ENTRY_SIZE));
         ObjectBigArray<BlockBuilder> valueArrayBlockBuilders = new ObjectBigArray<>();
         valueArrayBlockBuilders.ensureCapacity(keys.getPositionCount());
-        TypedSet keySet = new TypedSet(keyType, keys.getPositionCount());
+        TypedSet keySet = new TypedSet(keyType, keys.getPositionCount(), MultimapAggregationFunction.NAME);
         for (int keyValueIndex = 0; keyValueIndex < keys.getPositionCount(); keyValueIndex++) {
             if (!keySet.contains(keys, keyValueIndex)) {
                 keySet.add(keys, keyValueIndex);
@@ -108,13 +105,12 @@ public class MultiKeyValuePairs
         // Write keys and value arrays into one Block
         Block distinctKeys = distinctKeyBlockBuilder.build();
         Type valueArrayType = new ArrayType(valueType);
-        BlockBuilder multimapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(keyType, valueArrayType), new BlockBuilderStatus(), distinctKeyBlockBuilder.getPositionCount());
+        BlockBuilder multimapBlockBuilder = blockBuilder.beginBlockEntry();
         for (int i = 0; i < distinctKeys.getPositionCount(); i++) {
             keyType.appendTo(distinctKeys, i, multimapBlockBuilder);
             valueArrayType.writeObject(multimapBlockBuilder, valueArrayBlockBuilders.get(i).build());
         }
-
-        return multimapBlockBuilder.build();
+        blockBuilder.closeEntry();
     }
 
     public long estimatedInMemorySize()

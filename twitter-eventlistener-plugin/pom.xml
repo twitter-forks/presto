@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.179-tw-0.36</version>
+        <version>0.188-tw-0.43</version>
     </parent>
 
     <artifactId>twitter-eventlistener-plugin</artifactId>
@@ -19,7 +19,7 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-spi</artifactId>
-            <version>0.179-tw-0.36</version>
+            <version>0.188-tw-0.43</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -45,7 +45,7 @@
         <dependency>
             <groupId>com.twitter</groupId>
             <artifactId>presto-thrift-java</artifactId>
-            <version>0.0.3</version>
+            <version>0.0.5</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.twitter</groupId>

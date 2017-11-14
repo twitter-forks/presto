@@ -15,6 +15,7 @@ package com.facebook.presto.bytecode;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
@@ -30,6 +31,7 @@ import java.util.Optional;
 import static com.facebook.presto.bytecode.Access.STATIC;
 import static com.facebook.presto.bytecode.Access.toAccessModifier;
 import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterables.transform;
 import static org.objectweb.asm.Opcodes.RETURN;
 
@@ -56,8 +58,7 @@ public class MethodDefinition
             EnumSet<Access> access,
             String name,
             ParameterizedType returnType,
-            Parameter... parameters
-    )
+            Parameter... parameters)
     {
         this(declaringClass, access, name, returnType, ImmutableList.copyOf(parameters));
     }
@@ -67,9 +68,10 @@ public class MethodDefinition
             EnumSet<Access> access,
             String name,
             ParameterizedType returnType,
-            Iterable<Parameter> parameters
-    )
+            Iterable<Parameter> parameters)
     {
+        checkArgument(Iterables.size(parameters) <= 254, "Too many parameters for method");
+
         this.declaringClass = declaringClass;
         body = new BytecodeBlock();
 
@@ -281,22 +283,19 @@ public class MethodDefinition
     {
         return methodDescription(
                 type(returnType),
-                Lists.transform(parameterTypes, ParameterizedType::type)
-        );
+                Lists.transform(parameterTypes, ParameterizedType::type));
     }
 
     public static String methodDescription(
             ParameterizedType returnType,
-            ParameterizedType... parameterTypes
-    )
+            ParameterizedType... parameterTypes)
     {
         return methodDescription(returnType, ImmutableList.copyOf(parameterTypes));
     }
 
     public static String methodDescription(
             ParameterizedType returnType,
-            List<ParameterizedType> parameterTypes
-    )
+            List<ParameterizedType> parameterTypes)
     {
         StringBuilder sb = new StringBuilder();
         sb.append("(");
@@ -308,16 +307,14 @@ public class MethodDefinition
 
     public static String genericMethodSignature(
             ParameterizedType returnType,
-            ParameterizedType... parameterTypes
-    )
+            ParameterizedType... parameterTypes)
     {
         return genericMethodSignature(returnType, ImmutableList.copyOf(parameterTypes));
     }
 
     public static String genericMethodSignature(
             ParameterizedType returnType,
-            List<ParameterizedType> parameterTypes
-    )
+            List<ParameterizedType> parameterTypes)
     {
         StringBuilder sb = new StringBuilder();
         sb.append("(");

@@ -70,7 +70,7 @@ public class TestVariableWidthBlock
         Slice[] expectedValues = createExpectedValues(100);
         BlockBuilder emptyBlockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), 0, 0);
 
-        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), expectedValues.length, 32);
+        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), expectedValues.length, 32 * expectedValues.length);
         assertEquals(blockBuilder.getSizeInBytes(), emptyBlockBuilder.getSizeInBytes());
         assertEquals(blockBuilder.getRetainedSizeInBytes(), emptyBlockBuilder.getRetainedSizeInBytes());
 
@@ -88,18 +88,18 @@ public class TestVariableWidthBlock
     {
         int numEntries = 1000;
         VarcharType unboundedVarcharType = createUnboundedVarcharType();
-        VariableWidthBlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), numEntries, 20);
+        VariableWidthBlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), numEntries, 20 * numEntries);
         for (int i = 0; i < numEntries; i++) {
             unboundedVarcharType.writeString(blockBuilder, String.valueOf(ThreadLocalRandom.current().nextLong()));
         }
         Block block = blockBuilder.build();
 
         List<Block> splitQuarter = splitBlock(block, 4);
-        int sizeInBytes = block.getSizeInBytes();
-        int quarter1size = splitQuarter.get(0).getSizeInBytes();
-        int quarter2size = splitQuarter.get(1).getSizeInBytes();
-        int quarter3size = splitQuarter.get(2).getSizeInBytes();
-        int quarter4size = splitQuarter.get(3).getSizeInBytes();
+        long sizeInBytes = block.getSizeInBytes();
+        long quarter1size = splitQuarter.get(0).getSizeInBytes();
+        long quarter2size = splitQuarter.get(1).getSizeInBytes();
+        long quarter3size = splitQuarter.get(2).getSizeInBytes();
+        long quarter4size = splitQuarter.get(3).getSizeInBytes();
         double expectedQuarterSizeMin = sizeInBytes * 0.2;
         double expectedQuarterSizeMax = sizeInBytes * 0.3;
         assertTrue(quarter1size > expectedQuarterSizeMin && quarter1size < expectedQuarterSizeMax, format("quarter1size is %s, should be between %s and %s", quarter1size, expectedQuarterSizeMin, expectedQuarterSizeMax));
@@ -118,7 +118,7 @@ public class TestVariableWidthBlock
 
     private static BlockBuilder createBlockBuilderWithValues(Slice[] expectedValues)
     {
-        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), expectedValues.length, 32);
+        BlockBuilder blockBuilder = new VariableWidthBlockBuilder(new BlockBuilderStatus(), expectedValues.length, 32 * expectedValues.length);
         return writeValues(expectedValues, blockBuilder);
     }
 

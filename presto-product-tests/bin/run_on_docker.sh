@@ -45,7 +45,7 @@ function run_in_application_runner_container() {
 function check_presto() {
   run_in_application_runner_container \
     java -jar "/docker/volumes/presto-cli/presto-cli-executable.jar" \
-    --server presto-master:8080 \
+    ${CLI_ARGUMENTS} \
     --execute "SHOW CATALOGS" | grep -i hive
 }
 
@@ -55,6 +55,8 @@ function run_product_tests() {
   mkdir -p "${REPORT_DIR}"
   run_in_application_runner_container \
     java "-Djava.util.logging.config.file=/docker/volumes/conf/tempto/logging.properties" \
+    -Duser.timezone=Asia/Kathmandu \
+    ${TLS_CERTIFICATE} \
     -jar "/docker/volumes/presto-product-tests/presto-product-tests-executable.jar" \
     --report-dir "/docker/volumes/test-reports" \
     --config-local "/docker/volumes/tempto/tempto-configuration-local.yaml" \
@@ -161,7 +163,7 @@ function terminate() {
 }
 
 function getAvailableEnvironments() {
-  for i in $(ls -d $DOCKER_CONF_LOCATION/*/); do echo ${i%%/}; done\
+  for i in $(ls -d $DOCKER_CONF_LOCATION/*/); do echo ${i%%/}; done \
      | grep -v files | grep -v common | xargs -n1 basename
 }
 
@@ -180,6 +182,13 @@ shift 1
 PRESTO_SERVICES="presto-master"
 if [[ "$ENVIRONMENT" == "multinode" ]]; then
    PRESTO_SERVICES="${PRESTO_SERVICES} presto-worker"
+elif [[ "$ENVIRONMENT" == "multinode-tls" ]]; then
+   PRESTO_SERVICES="${PRESTO_SERVICES} presto-worker-1 presto-worker-2"
+fi
+
+CLI_ARGUMENTS="--server presto-master:8080"
+if [[ "$ENVIRONMENT" == "multinode-tls" ]]; then
+    CLI_ARGUMENTS="--server https://presto-master.docker.cluster:7778 --keystore-path /docker/volumes/conf/presto/etc/docker.cluster.jks --keystore-password 123456"
 fi
 
 # check docker and docker compose installation
@@ -199,25 +208,19 @@ fi
 # catch terminate signals
 trap terminate INT TERM EXIT
 
-# start external services
-# Tempto fails if cassandra is not running. It will
-# be removed from the list of EXTERNAL_SERVICES for
-# singlenode-sqlserver once we resolve
-# https://github.com/prestodb/tempto/issues/190
-if [[ "$ENVIRONMENT" == "singlenode-sqlserver" ]]; then
-  EXTERNAL_SERVICES="hadoop-master cassandra sqlserver"
-else
+if [[ "$ENVIRONMENT" == "singlenode" || "$ENVIRONMENT" == "multinode" ]]; then
   EXTERNAL_SERVICES="hadoop-master mysql postgres cassandra"
+elif [[ "$ENVIRONMENT" == "singlenode-sqlserver" ]]; then
+  EXTERNAL_SERVICES="hadoop-master sqlserver"
+elif [[ "$ENVIRONMENT" == "singlenode-ldap" ]]; then
+  EXTERNAL_SERVICES="hadoop-master ldapserver"
+else
+  EXTERNAL_SERVICES="hadoop-master"
 fi
 environment_compose up -d ${EXTERNAL_SERVICES}
 
 # start docker logs for the external services
 environment_compose logs --no-color -f ${EXTERNAL_SERVICES} &
-
-# start ldap container
-if [[ "$ENVIRONMENT" == "singlenode-ldap" ]]; then
-  environment_compose up -d ldapserver
-fi
 
 HADOOP_LOGS_PID=$!
 

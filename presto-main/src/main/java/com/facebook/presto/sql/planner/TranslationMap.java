@@ -279,7 +279,7 @@ class TranslationMap
                 ImmutableList.Builder<LambdaArgumentDeclaration> newArguments = ImmutableList.builder();
                 for (LambdaArgumentDeclaration argument : node.getArguments()) {
                     Symbol symbol = lambdaDeclarationToSymbolMap.get(NodeRef.of(argument));
-                    newArguments.add(new LambdaArgumentDeclaration(symbol.getName()));
+                    newArguments.add(new LambdaArgumentDeclaration(new Identifier(symbol.getName())));
                 }
                 Expression rewrittenBody = treeRewriter.rewrite(node.getBody(), null);
                 return new LambdaExpression(newArguments.build(), rewrittenBody);
@@ -305,6 +305,6 @@ class TranslationMap
         return plan.getScope()
                 .tryResolveField(expression)
                 .filter(ResolvedField::isLocal)
-                .map(field -> plan.getFieldMappings().get(field.getHierarchyFieldIndex()));
+                .map(field -> requireNonNull(plan.getFieldMappings().get(field.getHierarchyFieldIndex())));
     }
 }

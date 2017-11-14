@@ -20,24 +20,25 @@ import com.facebook.presto.spi.eventlistener.SplitCompletedEvent;
 
 import io.airlift.log.Logger;
 
-public class TwitterEventListener implements EventListener
+public class TwitterEventListener
+        implements EventListener
 {
-  private static final Logger log = Logger.get(TwitterEventListener.class);
-  private final QueryCompletedEventScriber scriber = new QueryCompletedEventScriber();
+    private static final Logger log = Logger.get(TwitterEventListener.class);
+    private final QueryCompletedEventScriber scriber = new QueryCompletedEventScriber();
 
-  @Override
-  public void queryCreated(QueryCreatedEvent queryCreatedEvent)
-  {
-  }
+    @Override
+    public void queryCreated(QueryCreatedEvent queryCreatedEvent)
+    {
+    }
 
-  @Override
-  public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
-  {
-    scriber.handle(queryCompletedEvent);
-  }
+    @Override
+    public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
+    {
+        scriber.handle(queryCompletedEvent);
+    }
 
-  @Override
-  public void splitCompleted(SplitCompletedEvent splitCompletedEvent)
-  {
-  }
+    @Override
+    public void splitCompleted(SplitCompletedEvent splitCompletedEvent)
+    {
+    }
 }

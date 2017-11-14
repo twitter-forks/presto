@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.HdfsEnvironment.HdfsContext;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
@@ -24,18 +25,14 @@ import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.twitter.hive.util.UgiUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.joda.time.DateTimeZone;
 
 import javax.inject.Inject;
 
-import java.io.IOException;
-import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,24 +78,6 @@ public class HivePageSourceProvider
     @Override
     public ConnectorPageSource createPageSource(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorSplit split, List<ColumnHandle> columns)
     {
-        if (HiveSessionProperties.getReadAsQueryUser(session)) {
-            UserGroupInformation ugi = UgiUtils.getUgi(session.getUser());
-            try {
-                return ugi.doAs((PrivilegedExceptionAction<ConnectorPageSource>) () ->
-                                doCreatePageSource(session, split, columns)
-                );
-            }
-            catch (IOException | InterruptedException e) {
-                throw new RuntimeException("Could not runAs " + session.getUser(), e);
-            }
-        }
-        else {
-            return doCreatePageSource(session, split, columns);
-        }
-    }
-
-    private ConnectorPageSource doCreatePageSource(ConnectorSession session, ConnectorSplit split, List<ColumnHandle> columns)
-    {
         List<HiveColumnHandle> hiveColumns = columns.stream()
                 .map(HiveColumnHandle.class::cast)
                 .collect(toList());
@@ -110,12 +89,13 @@ public class HivePageSourceProvider
                 cursorProviders,
                 pageSourceFactories,
                 hiveSplit.getClientId(),
-                hdfsEnvironment.getConfiguration(path),
+                hdfsEnvironment.getConfiguration(new HdfsContext(session, hiveSplit.getDatabase(), hiveSplit.getTable()), path),
                 session,
                 path,
                 hiveSplit.getBucketNumber(),
                 hiveSplit.getStart(),
                 hiveSplit.getLength(),
+                hiveSplit.getFileSize(),
                 hiveSplit.getSchema(),
                 hiveSplit.getEffectivePredicate(),
                 hiveColumns,
@@ -139,6 +119,7 @@ public class HivePageSourceProvider
             OptionalInt bucketNumber,
             long start,
             long length,
+            long fileSize,
             Properties schema,
             TupleDomain<HiveColumnHandle> effectivePredicate,
             List<HiveColumnHandle> hiveColumns,
@@ -157,11 +138,11 @@ public class HivePageSourceProvider
                     path,
                     start,
                     length,
+                    fileSize,
                     schema,
                     extractRegularColumnHandles(regularColumnMappings, true),
                     effectivePredicate,
-                    hiveStorageTimeZone
-            );
+                    hiveStorageTimeZone);
             if (pageSource.isPresent()) {
                 return Optional.of(
                         new HivePageSource(
@@ -183,6 +164,7 @@ public class HivePageSourceProvider
                     path,
                     start,
                     length,
+                    fileSize,
                     schema,
                     extractRegularColumnHandles(regularColumnMappings, doCoercion),
                     effectivePredicate,

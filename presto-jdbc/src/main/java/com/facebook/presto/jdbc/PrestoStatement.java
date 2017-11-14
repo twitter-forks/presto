@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.jdbc;
 
+import com.facebook.presto.client.ClientException;
 import com.facebook.presto.client.StatementClient;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Ints;
@@ -44,6 +45,7 @@ public class PrestoStatement
     private final AtomicBoolean escapeProcessing = new AtomicBoolean(true);
     private final AtomicBoolean closeOnCompletion = new AtomicBoolean();
     private final AtomicReference<PrestoConnection> connection;
+    private final AtomicReference<StatementClient> executingClient = new AtomicReference<>();
     private final AtomicReference<ResultSet> currentResult = new AtomicReference<>();
     private final AtomicLong currentUpdateCount = new AtomicLong(-1);
     private final AtomicReference<Optional<Consumer<QueryStats>>> progressCallback = new AtomicReference<>(Optional.empty());
@@ -170,7 +172,17 @@ public class PrestoStatement
     public void cancel()
             throws SQLException
     {
-        throw new SQLFeatureNotSupportedException("cancel");
+        checkOpen();
+
+        StatementClient client = executingClient.get();
+        if (client != null) {
+            client.close();
+        }
+
+        ResultSet resultSet = currentResult.get();
+        if (resultSet != null) {
+            resultSet.close();
+        }
     }
 
     @Override
@@ -219,6 +231,7 @@ public class PrestoStatement
             if (client.isFailed()) {
                 throw resultsException(client.finalResults());
             }
+            executingClient.set(client);
 
             resultSet = new PrestoResultSet(client, maxRows.get(), progressConsumer);
             checkSetOrResetSession(client);
@@ -239,10 +252,14 @@ public class PrestoStatement
 
             return false;
         }
+        catch (ClientException e) {
+            throw new SQLException(e.getMessage(), e);
+        }
         catch (RuntimeException e) {
             throw new SQLException("Error executing query", e);
         }
         finally {
+            executingClient.set(null);
             if (currentResult.get() == null) {
                 if (resultSet != null) {
                     resultSet.close();

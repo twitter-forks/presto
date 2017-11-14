@@ -15,11 +15,11 @@ package com.facebook.presto.spi.block;
 
 import org.openjdk.jol.info.ClassLayout;
 
-import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 import static com.facebook.presto.spi.block.BlockUtil.checkValidRegion;
-import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
+import static com.facebook.presto.spi.block.BlockUtil.compactArray;
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.Math.toIntExact;
 
@@ -33,8 +33,8 @@ public class LongArrayBlock
     private final boolean[] valueIsNull;
     private final long[] values;
 
-    private final int sizeInBytes;
-    private final int retainedSizeInBytes;
+    private final long sizeInBytes;
+    private final long retainedSizeInBytes;
 
     public LongArrayBlock(int positionCount, boolean[] valueIsNull, long[] values)
     {
@@ -62,26 +62,34 @@ public class LongArrayBlock
         }
         this.valueIsNull = valueIsNull;
 
-        sizeInBytes = intSaturatedCast((Long.BYTES + Byte.BYTES) * (long) positionCount);
-        retainedSizeInBytes = intSaturatedCast(INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values));
+        sizeInBytes = (Long.BYTES + Byte.BYTES) * (long) positionCount;
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
     }
 
     @Override
-    public int getSizeInBytes()
+    public long getSizeInBytes()
     {
         return sizeInBytes;
     }
 
     @Override
-    public int getRegionSizeInBytes(int position, int length)
+    public long getRegionSizeInBytes(int position, int length)
     {
-        return intSaturatedCast((Long.BYTES + Byte.BYTES) * (long) length);
+        return (Long.BYTES + Byte.BYTES) * (long) length;
     }
 
     @Override
-    public int getRetainedSizeInBytes()
+    public long getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;
+    }
+
+    @Override
+    public void retainedBytesForEachPart(BiConsumer<Object, Long> consumer)
+    {
+        consumer.accept(values, sizeOf(values));
+        consumer.accept(valueIsNull, sizeOf(valueIsNull));
+        consumer.accept(this, (long) INSTANCE_SIZE);
     }
 
     @Override
@@ -198,8 +206,12 @@ public class LongArrayBlock
         checkValidRegion(getPositionCount(), positionOffset, length);
 
         positionOffset += arrayOffset;
-        boolean[] newValueIsNull = Arrays.copyOfRange(valueIsNull, positionOffset, positionOffset + length);
-        long[] newValues = Arrays.copyOfRange(values, positionOffset, positionOffset + length);
+        boolean[] newValueIsNull = compactArray(valueIsNull, positionOffset, length);
+        long[] newValues = compactArray(values, positionOffset, length);
+
+        if (newValueIsNull == valueIsNull && newValues == values) {
+            return this;
+        }
         return new LongArrayBlock(length, newValueIsNull, newValues);
     }
 

@@ -16,8 +16,8 @@ package com.facebook.presto.sql.planner.iterative.rule;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.iterative.GroupReference;
+import com.facebook.presto.sql.planner.iterative.rule.test.BaseRuleTest;
 import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
-import com.facebook.presto.sql.planner.iterative.rule.test.RuleTester;
 import com.facebook.presto.sql.planner.optimizations.joins.JoinGraph;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.JoinNode;
@@ -29,8 +29,6 @@ import com.facebook.presto.sql.tree.ArithmeticUnaryExpression;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.google.common.collect.ImmutableList;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
@@ -38,11 +36,9 @@ import java.util.Optional;
 import java.util.function.Function;
 
 import static com.facebook.presto.SystemSessionProperties.REORDER_JOINS;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.any;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
-import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.project;
 import static com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins.getJoinOrder;
 import static com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins.isOriginalOrder;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
@@ -50,74 +46,50 @@ import static com.facebook.presto.sql.tree.ArithmeticUnaryExpression.Sign.MINUS;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Iterables.getOnlyElement;
-import static io.airlift.testing.Closeables.closeAllRuntimeException;
 import static org.testng.Assert.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertTrue;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 @Test(singleThreaded = true)
 public class TestEliminateCrossJoins
+        extends BaseRuleTest
 {
-    private RuleTester tester;
     private final PlanNodeIdAllocator idAllocator = new PlanNodeIdAllocator();
-
-    @BeforeClass
-    public void setUp()
-    {
-        tester = new RuleTester();
-    }
-
-    @AfterClass(alwaysRun = true)
-    public void tearDown()
-    {
-        closeAllRuntimeException(tester);
-        tester = null;
-    }
 
     @Test
     public void testEliminateCrossJoin()
     {
-        tester.assertThat(new EliminateCrossJoins())
+        tester().assertThat(new EliminateCrossJoins())
                 .setSystemProperty(REORDER_JOINS, "true")
                 .on(crossJoinAndJoin(INNER))
                 .matches(
-                        project(
+                        join(INNER,
+                                ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("cySymbol"), new Symbol("bySymbol"))),
                                 join(INNER,
-                                        ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("cySymbol"), new Symbol("bySymbol"))),
-                                        join(INNER,
-                                                ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("axSymbol"), new Symbol("cxSymbol"))),
-                                                any(),
-                                                any()
-                                        ),
-                                        any()
-                                )
-                        )
-                );
+                                        ImmutableList.of(aliases -> new EquiJoinClause(new Symbol("axSymbol"), new Symbol("cxSymbol"))),
+                                        any(),
+                                        any()),
+                                any()));
     }
 
     @Test
     public void testRetainOutgoingGroupReferences()
     {
-        tester.assertThat(new EliminateCrossJoins())
+        tester().assertThat(new EliminateCrossJoins())
                 .setSystemProperty(REORDER_JOINS, "true")
                 .on(crossJoinAndJoin(INNER))
                 .matches(
-                        any(
+                        node(JoinNode.class,
                                 node(JoinNode.class,
-                                        node(JoinNode.class,
-                                                node(GroupReference.class),
-                                                node(GroupReference.class)
-                                        ),
-                                        node(GroupReference.class)
-                                )
-                        )
-                );
+                                        node(GroupReference.class),
+                                        node(GroupReference.class)),
+                                node(GroupReference.class)));
     }
 
     @Test
     public void testDoNotReorderOuterJoin()
     {
-        tester.assertThat(new EliminateCrossJoins())
+        tester().assertThat(new EliminateCrossJoins())
                 .setSystemProperty(REORDER_JOINS, "true")
                 .on(crossJoinAndJoin(JoinNode.Type.LEFT))
                 .doesNotFire();
@@ -257,21 +229,19 @@ public class TestEliminateCrossJoins
     private Function<PlanBuilder, PlanNode> crossJoinAndJoin(JoinNode.Type secondJoinType)
     {
         return p -> {
-            Symbol axSymbol = p.symbol("axSymbol", BIGINT);
-            Symbol bySymbol = p.symbol("bySymbol", BIGINT);
-            Symbol cxSymbol = p.symbol("cxSymbol", BIGINT);
-            Symbol cySymbol = p.symbol("cySymbol", BIGINT);
+            Symbol axSymbol = p.symbol("axSymbol");
+            Symbol bySymbol = p.symbol("bySymbol");
+            Symbol cxSymbol = p.symbol("cxSymbol");
+            Symbol cySymbol = p.symbol("cySymbol");
 
             // (a inner join b) inner join c on c.x = a.x and c.y = b.y
             return p.join(INNER,
                     p.join(secondJoinType,
                             p.values(axSymbol),
-                            p.values(bySymbol)
-                    ),
+                            p.values(bySymbol)),
                     p.values(cxSymbol, cySymbol),
                     new EquiJoinClause(cxSymbol, axSymbol),
-                    new EquiJoinClause(cySymbol, bySymbol)
-            );
+                    new EquiJoinClause(cySymbol, bySymbol));
         };
     }
 

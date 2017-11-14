@@ -19,10 +19,10 @@ import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 import static com.facebook.presto.spi.block.BlockUtil.calculateBlockResetSize;
 import static com.facebook.presto.spi.block.BlockUtil.checkValidRegion;
-import static com.facebook.presto.spi.block.BlockUtil.intSaturatedCast;
 import static io.airlift.slice.SizeOf.sizeOf;
 import static java.lang.Math.max;
 import static java.lang.Math.toIntExact;
@@ -43,7 +43,7 @@ public class LongArrayBlockBuilder
     private boolean[] valueIsNull = new boolean[0];
     private long[] values = new long[0];
 
-    private int retainedSizeInBytes;
+    private long retainedSizeInBytes;
 
     public LongArrayBlockBuilder(@Nullable BlockBuilderStatus blockBuilderStatus, int expectedEntries)
     {
@@ -121,30 +121,36 @@ public class LongArrayBlockBuilder
 
     private void updateDataSize()
     {
-        long size = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
+        retainedSizeInBytes = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
         if (blockBuilderStatus != null) {
-            size += BlockBuilderStatus.INSTANCE_SIZE;
+            retainedSizeInBytes += BlockBuilderStatus.INSTANCE_SIZE;
         }
-        retainedSizeInBytes = intSaturatedCast(size);
     }
 
-    // Copied from LongArrayBlock
     @Override
-    public int getSizeInBytes()
+    public long getSizeInBytes()
     {
-        return intSaturatedCast((Long.BYTES + Byte.BYTES) * (long) positionCount);
+        return (Long.BYTES + Byte.BYTES) * (long) positionCount;
     }
 
     @Override
-    public int getRegionSizeInBytes(int position, int length)
+    public long getRegionSizeInBytes(int position, int length)
     {
-        return intSaturatedCast((Long.BYTES + Byte.BYTES) * (long) length);
+        return (Long.BYTES + Byte.BYTES) * (long) length;
     }
 
     @Override
-    public int getRetainedSizeInBytes()
+    public long getRetainedSizeInBytes()
     {
         return retainedSizeInBytes;
+    }
+
+    @Override
+    public void retainedBytesForEachPart(BiConsumer<Object, Long> consumer)
+    {
+        consumer.accept(values, sizeOf(values));
+        consumer.accept(valueIsNull, sizeOf(valueIsNull));
+        consumer.accept(this, (long) INSTANCE_SIZE);
     }
 
     @Override

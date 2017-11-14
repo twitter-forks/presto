@@ -40,7 +40,10 @@ import static com.facebook.presto.operator.BlockedReason.WAITING_FOR_MEMORY;
 import static com.facebook.presto.server.QueryStateInfo.createQueryStateInfo;
 import static com.facebook.presto.spi.resourceGroups.ResourceGroupState.CAN_QUEUE;
 import static com.facebook.presto.spi.resourceGroups.ResourceGroupState.CAN_RUN;
+import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.airlift.units.DataSize.Unit.BYTE;
+import static java.util.concurrent.TimeUnit.DAYS;
+import static java.util.concurrent.TimeUnit.HOURS;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -59,7 +62,10 @@ public class TestQueryStateInfo
                 groupRootAX,
                 new DataSize(6000, BYTE),
                 1,
+                1,
+                null,
                 10,
+                null,
                 CAN_QUEUE,
                 0,
                 new DataSize(4000, BYTE),
@@ -71,7 +77,10 @@ public class TestQueryStateInfo
                 groupRootAY,
                 new DataSize(8000, BYTE),
                 1,
+                1,
+                new Duration(10, HOURS),
                 10,
+                new Duration(1, DAYS),
                 CAN_RUN,
                 0,
                 new DataSize(0, BYTE),
@@ -83,7 +92,10 @@ public class TestQueryStateInfo
                 groupRootA,
                 new DataSize(8000, BYTE),
                 1,
+                1,
+                null,
                 10,
+                null,
                 CAN_QUEUE,
                 1,
                 new DataSize(4000, BYTE),
@@ -95,7 +107,10 @@ public class TestQueryStateInfo
                 groupRootB,
                 new DataSize(8000, BYTE),
                 1,
+                1,
+                new Duration(10, HOURS),
                 10,
+                new Duration(1, DAYS),
                 CAN_QUEUE,
                 0,
                 new DataSize(4000, BYTE),
@@ -107,7 +122,10 @@ public class TestQueryStateInfo
                 new ResourceGroupId("root"),
                 new DataSize(10000, BYTE),
                 2,
+                2,
+                null,
                 20,
+                null,
                 CAN_QUEUE,
                 0,
                 new DataSize(6000, BYTE),
@@ -151,6 +169,8 @@ public class TestQueryStateInfo
                 createQueryInfo("query_root_b", QUEUED, "SELECT count(*) FROM t"),
                 Optional.of(groupRootB),
                 Optional.of(rootInfo));
+        assertEquals(infoForQueryQueuedOnRootB.getCatalog().get(), "tpch");
+        assertEquals(infoForQueryQueuedOnRootB.getSchema().get(), TINY_SCHEMA_NAME);
         assertEquals(infoForQueryQueuedOnRootB.getQuery(), "SELECT count(*) FROM t");
         assertEquals(infoForQueryQueuedOnRootB.getQueryId().toString(), "query_root_b");
         assertEquals(infoForQueryQueuedOnRootB.getQueryState(), QUEUED);
@@ -193,6 +213,7 @@ public class TestQueryStateInfo
         assertEquals(progress.getCpuTimeMillis(), Duration.valueOf("24m").toMillis());
         assertEquals(progress.getScheduledTimeMillis(), Duration.valueOf("23m").toMillis());
         assertEquals(progress.getBlockedTimeMillis(), Duration.valueOf("26m").toMillis());
+        assertEquals(progress.getCurrentMemoryBytes(), DataSize.valueOf("21GB").toBytes());
         assertEquals(progress.getPeakMemoryBytes(), DataSize.valueOf("22GB").toBytes());
         assertEquals(progress.getInputRows(), 28);
         assertEquals(progress.getInputBytes(), DataSize.valueOf("27GB").toBytes());
@@ -256,6 +277,7 @@ public class TestQueryStateInfo
                 null,
                 null,
                 ImmutableSet.of(),
+                Optional.empty(),
                 Optional.empty(),
                 false,
                 Optional.empty());

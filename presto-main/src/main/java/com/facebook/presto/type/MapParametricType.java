@@ -14,6 +14,7 @@
 package com.facebook.presto.type;
 
 import com.facebook.presto.spi.function.OperatorType;
+import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.ParameterKind;
 import com.facebook.presto.spi.type.ParametricType;
 import com.facebook.presto.spi.type.StandardTypes;
@@ -33,10 +34,6 @@ public final class MapParametricType
         implements ParametricType
 {
     public static final MapParametricType MAP = new MapParametricType();
-
-    private MapParametricType()
-    {
-    }
 
     @Override
     public String getName()
@@ -61,6 +58,11 @@ public final class MapParametricType
         MethodHandle keyBlockNativeEquals = compose(keyNativeEquals, nativeValueGetter(keyType));
         MethodHandle keyNativeHashCode = typeManager.resolveOperator(OperatorType.HASH_CODE, ImmutableList.of(keyType));
         MethodHandle keyBlockHashCode = compose(keyNativeHashCode, nativeValueGetter(keyType));
-        return new MapType(keyType, valueType, keyBlockNativeEquals, keyNativeHashCode, keyBlockHashCode);
+        return new MapType(
+                keyType,
+                valueType,
+                keyBlockNativeEquals,
+                keyNativeHashCode,
+                keyBlockHashCode);
     }
 }

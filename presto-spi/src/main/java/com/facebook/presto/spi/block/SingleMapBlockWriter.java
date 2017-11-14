@@ -16,37 +16,66 @@ package com.facebook.presto.spi.block;
 import io.airlift.slice.Slice;
 import org.openjdk.jol.info.ClassLayout;
 
+import java.util.function.BiConsumer;
+
 public class SingleMapBlockWriter
         extends AbstractSingleMapBlock
         implements BlockBuilder
 {
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(SingleMapBlockWriter.class).instanceSize();
 
+    private final int offset;
     private final BlockBuilder keyBlockBuilder;
     private final BlockBuilder valueBlockBuilder;
-    private final int initialBlockBuilderSize;
+    private final long initialBlockBuilderSize;
     private int positionsWritten;
 
     private boolean writeToValueNext;
 
     SingleMapBlockWriter(int start, BlockBuilder keyBlockBuilder, BlockBuilder valueBlockBuilder)
     {
-        super(start, keyBlockBuilder, valueBlockBuilder);
+        this.offset = start;
         this.keyBlockBuilder = keyBlockBuilder;
         this.valueBlockBuilder = valueBlockBuilder;
         this.initialBlockBuilderSize = keyBlockBuilder.getSizeInBytes() + valueBlockBuilder.getSizeInBytes();
     }
 
     @Override
-    public int getSizeInBytes()
+    int getOffset()
+    {
+        return offset;
+    }
+
+    @Override
+    Block getKeyBlock()
+    {
+        return keyBlockBuilder;
+    }
+
+    @Override
+    Block getValueBlock()
+    {
+        return valueBlockBuilder;
+    }
+
+    @Override
+    public long getSizeInBytes()
     {
         return keyBlockBuilder.getSizeInBytes() + valueBlockBuilder.getSizeInBytes() - initialBlockBuilderSize;
     }
 
     @Override
-    public int getRetainedSizeInBytes()
+    public long getRetainedSizeInBytes()
     {
         return INSTANCE_SIZE + keyBlockBuilder.getRetainedSizeInBytes() + valueBlockBuilder.getRetainedSizeInBytes();
+    }
+
+    @Override
+    public void retainedBytesForEachPart(BiConsumer<Object, Long> consumer)
+    {
+        consumer.accept(keyBlockBuilder, keyBlockBuilder.getRetainedSizeInBytes());
+        consumer.accept(valueBlockBuilder, valueBlockBuilder.getRetainedSizeInBytes());
+        consumer.accept(this, (long) INSTANCE_SIZE);
     }
 
     @Override

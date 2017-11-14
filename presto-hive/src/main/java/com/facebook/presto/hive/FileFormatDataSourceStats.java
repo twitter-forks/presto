@@ -24,7 +24,7 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 public class FileFormatDataSourceStats
 {
     private final DistributionStat readBytes = new DistributionStat();
-    private final DistributionStat loadedBlockBytes = new DistributionStat();
+    private final DistributionStat maxCombinedBytesPerRow = new DistributionStat();
     private final TimeStat time0Bto100KB = new TimeStat(MILLISECONDS);
     private final TimeStat time100KBto1MB = new TimeStat(MILLISECONDS);
     private final TimeStat time1MBto10MB = new TimeStat(MILLISECONDS);
@@ -39,9 +39,9 @@ public class FileFormatDataSourceStats
 
     @Managed
     @Nested
-    public DistributionStat getLoadedBlockBytes()
+    public DistributionStat getMaxCombinedBytesPerRow()
     {
-        return loadedBlockBytes;
+        return maxCombinedBytesPerRow;
     }
 
     @Managed
@@ -89,8 +89,8 @@ public class FileFormatDataSourceStats
         }
     }
 
-    public void addLoadedBlockSize(long bytes)
+    public void addMaxCombinedBytesPerRow(long bytes)
     {
-        loadedBlockBytes.add(bytes);
+        maxCombinedBytesPerRow.add(bytes);
     }
 }

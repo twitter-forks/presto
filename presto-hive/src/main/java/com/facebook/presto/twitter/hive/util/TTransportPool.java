@@ -39,14 +39,14 @@ public class TTransportPool
     }
 
     protected TTransport get(String remote, PooledObjectFactory transportFactory)
-        throws Exception
+            throws Exception
     {
         add(remote, transportFactory);
         return get(remote);
     }
 
     protected TTransport get(String remote)
-        throws Exception
+            throws Exception
     {
         ObjectPool<TTransport> pool = pools.get(remote);
         if (pool == null) {
@@ -56,13 +56,13 @@ public class TTransportPool
     }
 
     public TTransport borrowObject(String host, int port, PooledObjectFactory transportFactory)
-        throws Exception
+            throws Exception
     {
         return get(HostAndPort.fromParts(host, port).toString(), transportFactory);
     }
 
     public TTransport borrowObject(String host, int port)
-        throws Exception
+            throws Exception
     {
         return get(HostAndPort.fromParts(host, port).toString());
     }

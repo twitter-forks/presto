@@ -38,9 +38,13 @@ public class PooledHiveMetastoreClientFactory
     private final HiveMetastoreAuthentication metastoreAuthentication;
     private final TTransportPool transportPool;
 
-    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy, Duration timeout,
-        HiveMetastoreAuthentication metastoreAuthentication,
-        int maxTransport, long idleTimeout, long transportEvictInterval, int evictNumTests)
+    public PooledHiveMetastoreClientFactory(@Nullable HostAndPort socksProxy,
+            Duration timeout,
+            HiveMetastoreAuthentication metastoreAuthentication,
+            int maxTransport,
+            long idleTimeout,
+            long transportEvictInterval,
+            int evictNumTests)
     {
         this.socksProxy = socksProxy;
         this.timeoutMillis = toIntExact(timeout.toMillis());
@@ -56,16 +60,16 @@ public class PooledHiveMetastoreClientFactory
 
     @Inject
     public PooledHiveMetastoreClientFactory(HiveClientConfig config,
-        ZookeeperServersetMetastoreConfig zkConfig,
-        HiveMetastoreAuthentication metastoreAuthentication)
+            ZookeeperServersetMetastoreConfig zkConfig,
+            HiveMetastoreAuthentication metastoreAuthentication)
     {
         this(config.getMetastoreSocksProxy(),
-             config.getMetastoreTimeout(),
-             metastoreAuthentication,
-             zkConfig.getMaxTransport(),
-             zkConfig.getTransportIdleTimeout(),
-             zkConfig.getTransportEvictInterval(),
-             zkConfig.getTransportEvictNumTests());
+                config.getMetastoreTimeout(),
+                metastoreAuthentication,
+                zkConfig.getMaxTransport(),
+                zkConfig.getTransportIdleTimeout(),
+                zkConfig.getTransportEvictInterval(),
+                zkConfig.getTransportEvictNumTests());
     }
 
     public HiveMetastoreClient create(String host, int port)

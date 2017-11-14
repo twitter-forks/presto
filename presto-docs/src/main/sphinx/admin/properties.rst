@@ -58,6 +58,85 @@ General Properties
     enough that the JVM does not fail with ``OutOfMemoryError``.
 
 
+.. _tuning-spilling:
+
+Spilling Properties
+-------------------
+
+``experimental.spill-enabled``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``boolean``
+    * **Default value:** ``false``
+
+    Try spilling memory to disk to avoid exceeding memory limits for the query.
+
+    Spilling works by offloading memory to disk. This process can allow a query with a large memory
+    footprint to pass at the cost of slower execution times. Currently, spilling is supported only for
+    aggregations and joins (inner and outer), so this property will not reduce memory usage required for
+    window functions, sorting and other join types.
+
+    Be aware that this is an experimental feature and should be used with care.
+
+    This config property can be overridden by the ``spill_enabled`` session property.
+
+``experimental.spiller-spill-path``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``string``
+    * **No default value.** Must be set when spilling is enabled
+
+    Directory where spilled content will be written. It can be a comma separated
+    list to spill simultaneously to multiple directories, which helps to utilize
+    multiple drives installed in the system.
+
+    It is not recommended to spill to system drives. Most importantly, do not spill
+    to the drive on which the JVM logs are written, as disk overutilization might
+    cause JVM to pause for lengthy periods, causing queries to fail.
+
+``experimental.spiller-minimum-free-space-threshold``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``double``
+    * **Default value:** ``0.9``
+
+    If disk space usage ratio of a given spill path is above this threshold,
+    this spill path will not be eligible for spilling.
+
+``experimental.spiller-threads``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Default value:** ``4``
+
+    Number of spiller threads. Increase this value if the default is not able
+    to saturate the underlying spilling device (for example, when using RAID).
+
+``experimental.max-spill-per-node``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``100 GB``
+
+    Max spill space to be used by all queries on a single node.
+
+``experimental.query-max-spill-per-node``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``100 GB``
+
+    Max spill space to be used by a single query on a single node.
+
+``experimental.aggregation-operator-unspill-memory-limit``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``data size``
+    * **Default value:** ``4 MB``
+
+    Limit for memory used for unspilling a single aggregation operator instance.
+
+
 Exchange Properties
 -------------------
 
@@ -134,6 +213,7 @@ communication issues or improve network utilization.
     improve network throughput for data transferred between stages if the
     network has high latency or if there are many nodes in the cluster.
 
+.. _task-properties:
 
 Task Properties
 ---------------
@@ -354,6 +434,27 @@ Optimizer Properties
     The single distinct optimization will try to replace multiple ``DISTINCT`` clauses
     with a single ``GROUP BY`` clause, which can be substantially faster to execute.
 
+``optimizer.push-aggregation-through-join``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``boolean``
+    * **Default value:** ``true``
+
+    When an aggregation is above an outer join and all columns from the outer side of the join
+    are in the grouping clause, the aggregation is pushed below the outer join. This optimization
+    is particularly useful for correlated scalar subqueries, which get rewritten to an aggregation
+    over an outer join. For example::
+
+        SELECT * FROM item i
+            WHERE i.i_current_price > (
+                SELECT AVG(j.i_current_price) FROM item j
+                    WHERE i.i_category = j.i_category);
+
+    Enabling this optimization can substantially speed up queries by reducing
+    the amount of data that needs to be processed by the join.  However, it may slow down some
+    queries that have very selective joins. This can also be specified on a per-query basis using
+    the ``push_aggregation_through_join`` session property.
+
 ``optimizer.push-table-write-through-union``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -366,3 +467,51 @@ Optimizer Properties
     ``UNION ALL`` speed when write speed is not yet saturated. However, it may slow down queries
     in an already heavily loaded system. This can also be specified on a per-query basis
     using the ``push_table_write_through_union`` session property.
+
+
+Regular Expression Function Properties
+--------------------------------------
+
+The following properties allow tuning the :doc:`/functions/regexp`.
+
+``regex-library``
+^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``string``
+    * **Allowed values:** ``JONI``, ``RE2J``
+    * **Default value:** ``JONI``
+
+    Which library to use for regular expression functions.
+    ``JONI`` is generally faster for common usage, but can require exponential
+    time for certain expression patterns. ``RE2J`` uses a different algorithm
+    which guarantees linear time, but is often slower.
+
+``re2j.dfa-states-limit``
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Minimum value:** ``2``
+    * **Default value:** ``2147483647``
+
+    The maximum number of states to use when RE2J builds the fast
+    but potentially memory intensive deterministic finite automaton (DFA)
+    for regular expression matching. If the limit is reached, RE2J will fall
+    back to the algorithm that uses the slower, but less memory intensive
+    non-deterministic finite automaton (NFA). Decreasing this value decreases the
+    maximum memory footprint of a regular expression search at the cost of speed.
+
+``re2j.dfa-retries``
+^^^^^^^^^^^^^^^^^^^^
+
+    * **Type:** ``integer``
+    * **Minimum value:** ``0``
+    * **Default value:** ``5``
+
+    The number of times that RE2J will retry the DFA algorithm when
+    it reaches a states limit before using the slower, but less memory
+    intensive NFA algorithm for all future inputs for that search. If hitting the
+    limit for a given input row is likely to be an outlier, you want to be able
+    to process subsequent rows using the faster DFA algorithm. If you are likely
+    to hit the limit on matches for subsequent rows as well, you want to use the
+    correct algorithm from the beginning so as not to waste time and resources.
+    The more rows you are processing, the larger this value should be.

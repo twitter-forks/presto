@@ -37,7 +37,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
+public class ThriftGenericRow
+        implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
 {
     private static final Logger log = Logger.get(ThriftGenericRow.class);
     private final Map<Short, Object> values = new HashMap<>();
@@ -45,14 +46,17 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
     private int off = 0;
     private int len = 0;
 
-    public ThriftGenericRow() {}
+    public ThriftGenericRow()
+    {
+    }
 
     public ThriftGenericRow(Map<Short, Object> values)
     {
         this.values.putAll(values);
     }
 
-    public class Fields implements TFieldIdEnum
+    public class Fields
+            implements TFieldIdEnum
     {
         private final short thriftId;
         private final String fieldName;
@@ -74,7 +78,8 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         }
     }
 
-    public void read(TProtocol iprot) throws TException
+    public void read(TProtocol iprot)
+            throws TException
     {
         TTransport trans = iprot.getTransport();
         buf = trans.getBuffer();
@@ -83,12 +88,14 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         len = trans.getBufferPosition() - off;
     }
 
-    public void parse() throws TException
+    public void parse()
+            throws TException
     {
         parse(null);
     }
 
-    public void parse(short[] thriftIds) throws TException
+    public void parse(short[] thriftIds)
+            throws TException
     {
         Set<Short> idSet = thriftIds == null ? null : new HashSet(Arrays.asList(ArrayUtils.toObject(thriftIds)));
         TMemoryInputTransport trans = new TMemoryInputTransport(buf, off, len);
@@ -111,7 +118,8 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         iprot.readStructEnd();
     }
 
-    private Object readElem(TProtocol iprot, byte type) throws TException
+    private Object readElem(TProtocol iprot, byte type)
+            throws TException
     {
         switch (type) {
             case TType.BOOL:
@@ -143,7 +151,8 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         }
     }
 
-    private Object readStruct(TProtocol iprot) throws TException
+    private Object readStruct(TProtocol iprot)
+            throws TException
     {
         ThriftGenericRow elem = new ThriftGenericRow();
         elem.read(iprot);
@@ -151,33 +160,36 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         return elem;
     }
 
-    private Object readList(TProtocol iprot) throws TException
+    private Object readList(TProtocol iprot)
+            throws TException
     {
         TList ilist = iprot.readListBegin();
         List<Object> listValue = new ArrayList<>();
-        for (int i = 0; i < ilist.size; ++i) {
+        for (int i = 0; i < ilist.size; i++) {
             listValue.add(readElem(iprot, ilist.elemType));
         }
         iprot.readListEnd();
         return listValue;
     }
 
-    private Object readSet(TProtocol iprot) throws TException
+    private Object readSet(TProtocol iprot)
+            throws TException
     {
         TSet iset = iprot.readSetBegin();
         List<Object> setValue = new ArrayList<>();
-        for (int i = 0; i < iset.size; ++i) {
+        for (int i = 0; i < iset.size; i++) {
             setValue.add(readElem(iprot, iset.elemType));
         }
         iprot.readSetEnd();
         return setValue;
     }
 
-    private Object readMap(TProtocol iprot) throws TException
+    private Object readMap(TProtocol iprot)
+            throws TException
     {
         TMap imap = iprot.readMapBegin();
         Map<Object, Object> mapValue = new HashMap<>();
-        for (int i = 0; i < imap.size; ++i) {
+        for (int i = 0; i < imap.size; i++) {
             mapValue.put(readElem(iprot, imap.keyType), readElem(iprot, imap.valueType));
         }
         iprot.readMapEnd();
@@ -216,7 +228,8 @@ public class ThriftGenericRow implements TBase<ThriftGenericRow, ThriftGenericRo
         values.put(field.getThriftFieldId(), value);
     }
 
-    public void write(TProtocol oprot) throws TException
+    public void write(TProtocol oprot)
+            throws TException
     {
         throw new UnsupportedOperationException("ThriftGenericRow.write is not supported.");
     }

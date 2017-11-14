@@ -47,7 +47,8 @@ import static com.facebook.presto.raptor.storage.TestOrcStorageManager.createOrc
 import static com.facebook.presto.spi.transaction.IsolationLevel.READ_COMMITTED;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
-import static io.airlift.testing.FileUtils.deleteRecursively;
+import static com.google.common.io.MoreFiles.deleteRecursively;
+import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -83,7 +84,7 @@ public class TestRaptorConnector
                 new RaptorMetadataFactory(connectorId, dbi, shardManager),
                 new RaptorSplitManager(connectorId, nodeSupplier, shardManager, false),
                 new RaptorPageSourceProvider(storageManager),
-                new RaptorPageSinkProvider(storageManager, new PagesIndexPageSorter(new PagesIndex.TestingFactory()), config),
+                new RaptorPageSinkProvider(storageManager, new PagesIndexPageSorter(new PagesIndex.TestingFactory(false)), config),
                 new RaptorNodePartitioningProvider(nodeSupplier),
                 new RaptorSessionProperties(config),
                 new RaptorTableProperties(typeRegistry),
@@ -96,7 +97,7 @@ public class TestRaptorConnector
             throws Exception
     {
         dummyHandle.close();
-        deleteRecursively(dataDir);
+        deleteRecursively(dataDir.toPath(), ALLOW_INSECURE);
     }
 
     @Test
@@ -171,7 +172,8 @@ public class TestRaptorConnector
         ConnectorTransactionHandle transaction = connector.beginTransaction(READ_COMMITTED, false);
         connector.getMetadata(transaction).createTable(SESSION, new ConnectorTableMetadata(
                 new SchemaTableName("test", name),
-                ImmutableList.of(new ColumnMetadata("id", BIGINT))));
+                ImmutableList.of(new ColumnMetadata("id", BIGINT))),
+                false);
         connector.commit(transaction);
 
         transaction = connector.beginTransaction(READ_COMMITTED, false);

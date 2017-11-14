@@ -34,7 +34,7 @@ import java.net.SocketException;
 import static java.util.Objects.requireNonNull;
 
 public class PooledTTransportFactory
-    extends BasePooledObjectFactory<TTransport>
+        extends BasePooledObjectFactory<TTransport>
 {
     private final TTransportPool pool;
     private final String host;
@@ -43,9 +43,12 @@ public class PooledTTransportFactory
     private final int timeoutMillis;
     private final HiveMetastoreAuthentication metastoreAuthentication;
 
-    public PooledTTransportFactory(TTransportPool pool, String host, int port,
-        @Nullable HostAndPort socksProxy, int timeoutMillis,
-        HiveMetastoreAuthentication metastoreAuthentication)
+    public PooledTTransportFactory(TTransportPool pool,
+            String host,
+            int port,
+            @Nullable HostAndPort socksProxy,
+            int timeoutMillis,
+            HiveMetastoreAuthentication metastoreAuthentication)
     {
         this.pool = requireNonNull(pool, "pool is null");
         this.host = requireNonNull(host, "host is null");
@@ -57,7 +60,7 @@ public class PooledTTransportFactory
 
     @Override
     public void activateObject(PooledObject<TTransport> pooledObject)
-        throws Exception
+            throws Exception
     {
         pooledObject.getObject().flush();
     }
@@ -76,7 +79,7 @@ public class PooledTTransportFactory
 
     @Override
     public TTransport create()
-        throws Exception
+            throws Exception
     {
         TTransport transport;
         if (socksProxy == null) {
@@ -142,7 +145,7 @@ public class PooledTTransportFactory
     }
 
     private static class PooledTTransport
-        extends TTransport
+            extends TTransport
     {
         private final String remote;
         private final TTransportPool pool;
@@ -161,7 +164,7 @@ public class PooledTTransportFactory
         }
 
         public boolean isReachable(int timeoutMillis)
-            throws ClassCastException, IOException
+                throws ClassCastException, IOException
         {
             return ((TSocket) transport).getSocket().getInetAddress().isReachable(timeoutMillis);
         }
@@ -215,42 +218,42 @@ public class PooledTTransportFactory
 
         @Override
         public void open()
-            throws TTransportException
+                throws TTransportException
         {
             transport.open();
         }
 
         @Override
         public int readAll(byte[] bytes, int off, int len)
-            throws TTransportException
+                throws TTransportException
         {
             return transport.readAll(bytes, off, len);
         }
 
         @Override
         public int read(byte[] bytes, int off, int len)
-            throws TTransportException
+                throws TTransportException
         {
             return transport.read(bytes, off, len);
         }
 
         @Override
         public void write(byte[] bytes)
-            throws TTransportException
+                throws TTransportException
         {
             transport.write(bytes);
         }
 
         @Override
         public void write(byte[] bytes, int off, int len)
-            throws TTransportException
+                throws TTransportException
         {
             transport.write(bytes, off, len);
         }
 
         @Override
         public void flush()
-            throws TTransportException
+                throws TTransportException
         {
             transport.flush();
         }

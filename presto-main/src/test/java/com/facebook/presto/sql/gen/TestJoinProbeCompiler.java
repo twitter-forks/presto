@@ -36,7 +36,9 @@ import org.testng.annotations.Test;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.operator.PageAssertions.assertPageEquals;
@@ -46,6 +48,7 @@ import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.TestingTaskContext.createTaskContext;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static java.util.concurrent.Executors.newCachedThreadPool;
+import static java.util.concurrent.Executors.newScheduledThreadPool;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
@@ -54,19 +57,22 @@ public class TestJoinProbeCompiler
 {
     private static final JoinCompiler joinCompiler = new JoinCompiler();
     private ExecutorService executor;
+    private ScheduledExecutorService scheduledExecutor;
     private TaskContext taskContext;
 
     @BeforeMethod
     public void setUp()
     {
-        executor = newCachedThreadPool(daemonThreadsNamed("test-%s"));
-        taskContext = createTaskContext(executor, TEST_SESSION);
+        executor = newCachedThreadPool(daemonThreadsNamed("test-executor-%s"));
+        scheduledExecutor = newScheduledThreadPool(2, daemonThreadsNamed("test-scheduledExecutor-%s"));
+        taskContext = createTaskContext(executor, scheduledExecutor, TEST_SESSION);
     }
 
     @AfterMethod
     public void tearDown()
     {
         executor.shutdownNow();
+        scheduledExecutor.shutdownNow();
     }
 
     @DataProvider(name = "hashEnabledValues")
@@ -103,7 +109,7 @@ public class TestJoinProbeCompiler
             }
         }
 
-        Optional<Integer> hashChannel = Optional.empty();
+        OptionalInt hashChannel = OptionalInt.empty();
         List<List<Block>> channels = ImmutableList.of(varcharChannel, extraUnusedDoubleChannel);
 
         if (hashEnabled) {
@@ -112,7 +118,7 @@ public class TestJoinProbeCompiler
                 hashChannelBuilder.add(TypeUtils.getHashBlock(ImmutableList.<Type>of(VARCHAR), block));
             }
             types = ImmutableList.of(VARCHAR, DOUBLE, BigintType.BIGINT);
-            hashChannel = Optional.of(2);
+            hashChannel = OptionalInt.of(2);
             channels = ImmutableList.of(varcharChannel, extraUnusedDoubleChannel, hashChannelBuilder.build());
             outputChannels = ImmutableList.of(0, 2);
             outputTypes = ImmutableList.of(VARCHAR, BigintType.BIGINT);
@@ -122,7 +128,9 @@ public class TestJoinProbeCompiler
                 addresses,
                 channels,
                 hashChannel,
-                Optional.empty())
+                Optional.empty(),
+                Optional.empty(),
+                ImmutableList.of())
                 .get();
 
         JoinProbeCompiler joinProbeCompiler = new JoinProbeCompiler();
@@ -138,7 +146,7 @@ public class TestJoinProbeCompiler
             page = new Page(page.getBlock(0), page.getBlock(1), TypeUtils.getHashBlock(ImmutableList.of(VARCHAR), page.getBlock(0)));
             outputPage = new Page(page.getBlock(0), page.getBlock(2));
         }
-        JoinProbe joinProbe = probeFactory.createJoinProbe(lookupSource, page);
+        JoinProbe joinProbe = probeFactory.createJoinProbe(page);
 
         // verify channel count
         assertEquals(joinProbe.getOutputChannelCount(), outputChannels.size());
@@ -150,7 +158,7 @@ public class TestJoinProbeCompiler
             pageBuilder.declarePosition();
             joinProbe.appendTo(pageBuilder);
 
-            assertEquals(joinProbe.getCurrentJoinPosition(), lookupSource.getJoinPosition(position, page, page));
+            assertEquals(joinProbe.getCurrentJoinPosition(lookupSource), lookupSource.getJoinPosition(position, page, page));
         }
         assertFalse(joinProbe.advanceNextPosition());
         assertPageEquals(outputTypes, pageBuilder.build(), outputPage);

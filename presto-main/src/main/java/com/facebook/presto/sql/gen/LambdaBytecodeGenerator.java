@@ -64,6 +64,7 @@ import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invoke
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.newArray;
 import static com.facebook.presto.bytecode.expression.BytecodeExpressions.setStatic;
 import static com.facebook.presto.spi.StandardErrorCode.COMPILER_ERROR;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.gen.BytecodeUtils.boxPrimitiveIfNecessary;
 import static com.facebook.presto.sql.gen.BytecodeUtils.unboxPrimitiveIfNecessary;
 import static com.facebook.presto.sql.gen.LambdaCapture.LAMBDA_CAPTURE_METHOD;
@@ -125,6 +126,7 @@ public class LambdaBytecodeGenerator
             List<Parameter> inputParameters,
             LambdaDefinitionExpression lambda)
     {
+        checkCondition(inputParameters.size() <= 254, NOT_SUPPORTED, "Too many arguments for lambda expression");
         Class<?> returnType = Primitives.wrap(lambda.getBody().getType().getJavaType());
         MethodDefinition method = classDefinition.declareMethod(a(PUBLIC), fieldAndMethodName, type(returnType), inputParameters);
 
@@ -206,9 +208,9 @@ public class LambdaBytecodeGenerator
         Type instantiatedMethodAsmType = getMethodType(
                 compiledLambda.getReturnType().getAsmType(),
                 compiledLambda.getParameterTypes().stream()
-                    .skip(captureExpressions.size() + 1) // skip capture variables and ConnectorSession
-                    .map(ParameterizedType::getAsmType)
-                    .collect(toImmutableList()).toArray(new Type[0]));
+                        .skip(captureExpressions.size() + 1) // skip capture variables and ConnectorSession
+                        .map(ParameterizedType::getAsmType)
+                        .collect(toImmutableList()).toArray(new Type[0]));
 
         block.append(
                 invokeDynamic(
@@ -216,12 +218,10 @@ public class LambdaBytecodeGenerator
                         ImmutableList.of(
                                 getType(getSingleApplyMethod(lambdaInterface)),
                                 compiledLambda.getLambdaAsmHandle(),
-                                instantiatedMethodAsmType
-                        ),
+                                instantiatedMethodAsmType),
                         "apply",
                         type(lambdaInterface),
-                        captureVariables)
-        );
+                        captureVariables));
         return block;
     }
 

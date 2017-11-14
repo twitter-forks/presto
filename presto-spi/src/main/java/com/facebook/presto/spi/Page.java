@@ -118,11 +118,8 @@ public class Page
             if (block instanceof DictionaryBlock) {
                 continue;
             }
-            if (block.getSizeInBytes() < block.getRetainedSizeInBytes()) {
-                // Copy the block to compact its size
-                Block compactedBlock = block.copyRegion(0, block.getPositionCount());
-                blocks[i] = compactedBlock;
-            }
+            // Compact the block
+            blocks[i] = block.copyRegion(0, block.getPositionCount());
         }
 
         Map<DictionaryId, DictionaryBlockIndexes> dictionaryBlocks = getRelatedDictionaryBlocks();
@@ -250,6 +247,16 @@ public class Page
         }
 
         return blocks[0].getPositionCount();
+    }
+
+    public Page mask(int[] retainedPositions)
+    {
+        requireNonNull(retainedPositions, "retainedPositions is null");
+
+        Block[] blocks = Arrays.stream(this.getBlocks())
+                .map(block -> new DictionaryBlock(block, retainedPositions))
+                .toArray(Block[]::new);
+        return new Page(retainedPositions.length, blocks);
     }
 
     private static class DictionaryBlockIndexes

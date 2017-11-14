@@ -23,9 +23,12 @@ import com.facebook.presto.spi.resourceGroups.ResourceGroup;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupSelector;
 import com.facebook.presto.spi.resourceGroups.SelectionContext;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import io.airlift.log.Logger;
+import io.airlift.node.NodeInfo;
 import io.airlift.units.Duration;
 
 import javax.annotation.PostConstruct;
@@ -57,6 +60,7 @@ import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 public class DbResourceGroupConfigurationManager
         extends AbstractResourceConfigurationManager
 {
+    private static final Logger log = Logger.get(DbResourceGroupConfigurationManager.class);
     private final ResourceGroupsDao dao;
     private final ConcurrentMap<ResourceGroupId, ResourceGroup> groups = new ConcurrentHashMap<>();
     @GuardedBy("this")
@@ -67,13 +71,15 @@ public class DbResourceGroupConfigurationManager
     private final AtomicReference<Optional<Duration>> cpuQuotaPeriod = new AtomicReference<>(Optional.empty());
     private final ScheduledExecutorService configExecutor = newSingleThreadScheduledExecutor(daemonThreadsNamed("DbResourceGroupConfigurationManager"));
     private final AtomicBoolean started = new AtomicBoolean();
+    private final NodeInfo nodeInfo;
 
     @Inject
-    public DbResourceGroupConfigurationManager(ClusterMemoryPoolManager memoryPoolManager, ResourceGroupsDao dao)
+    public DbResourceGroupConfigurationManager(ClusterMemoryPoolManager memoryPoolManager, ResourceGroupsDao dao, NodeInfo nodeInfo)
     {
         super(memoryPoolManager);
         requireNonNull(memoryPoolManager, "memoryPoolManager is null");
         requireNonNull(dao, "daoProvider is null");
+        this.nodeInfo = requireNonNull(nodeInfo, "nodeInfo is null");
         this.dao = dao;
         this.dao.createResourceGroupsGlobalPropertiesTable();
         this.dao.createResourceGroupsTable();
@@ -133,36 +139,42 @@ public class DbResourceGroupConfigurationManager
         return (!globalProperties.isEmpty()) ? globalProperties.get(0).getCpuQuotaPeriod() : Optional.empty();
     }
 
-    private synchronized void load()
+    @VisibleForTesting
+    public synchronized void load()
     {
-        Map.Entry<ManagerSpec, Map<ResourceGroupIdTemplate, ResourceGroupSpec>> specsFromDb = buildSpecsFromDb();
-        ManagerSpec managerSpec = specsFromDb.getKey();
-        Map<ResourceGroupIdTemplate, ResourceGroupSpec> resourceGroupSpecs = specsFromDb.getValue();
-        Set<ResourceGroupIdTemplate> changedSpecs = new HashSet<>();
-        Set<ResourceGroupIdTemplate> deletedSpecs = Sets.difference(this.resourceGroupSpecs.keySet(), resourceGroupSpecs.keySet());
+        try {
+            Map.Entry<ManagerSpec, Map<ResourceGroupIdTemplate, ResourceGroupSpec>> specsFromDb = buildSpecsFromDb();
+            ManagerSpec managerSpec = specsFromDb.getKey();
+            Map<ResourceGroupIdTemplate, ResourceGroupSpec> resourceGroupSpecs = specsFromDb.getValue();
+            Set<ResourceGroupIdTemplate> changedSpecs = new HashSet<>();
+            Set<ResourceGroupIdTemplate> deletedSpecs = Sets.difference(this.resourceGroupSpecs.keySet(), resourceGroupSpecs.keySet());
 
-        for (Map.Entry<ResourceGroupIdTemplate, ResourceGroupSpec> entry : resourceGroupSpecs.entrySet()) {
-            if (!entry.getValue().sameConfig(this.resourceGroupSpecs.get(entry.getKey()))) {
-                changedSpecs.add(entry.getKey());
+            for (Map.Entry<ResourceGroupIdTemplate, ResourceGroupSpec> entry : resourceGroupSpecs.entrySet()) {
+                if (!entry.getValue().sameConfig(this.resourceGroupSpecs.get(entry.getKey()))) {
+                    changedSpecs.add(entry.getKey());
+                }
             }
+
+            this.resourceGroupSpecs = resourceGroupSpecs;
+            this.cpuQuotaPeriod.set(managerSpec.getCpuQuotaPeriod());
+            this.rootGroups.set(managerSpec.getRootGroups());
+            this.selectors.set(buildSelectors(managerSpec));
+
+            configureChangedGroups(changedSpecs);
+            disableDeletedGroups(deletedSpecs);
         }
-
-        this.resourceGroupSpecs = resourceGroupSpecs;
-        this.cpuQuotaPeriod.set(managerSpec.getCpuQuotaPeriod());
-        this.rootGroups.set(managerSpec.getRootGroups());
-        this.selectors.set(buildSelectors(managerSpec));
-
-        configureChangedGroups(changedSpecs);
-        disableDeletedGroups(deletedSpecs);
+        catch (Throwable e) {
+            log.error(e, "Error loading configuration from db");
+        }
     }
 
     // Populate temporary data structures to build resource group specs and selectors from db
     private synchronized void populateFromDbHelper(Map<Long, ResourceGroupSpecBuilder> recordMap,
-                                                   Set<Long> rootGroupIds,
-                                                   Map<Long, ResourceGroupIdTemplate> resourceGroupIdTemplateMap,
-                                                   Map<Long, Set<Long>> subGroupIdsToBuild)
+            Set<Long> rootGroupIds,
+            Map<Long, ResourceGroupIdTemplate> resourceGroupIdTemplateMap,
+            Map<Long, Set<Long>> subGroupIdsToBuild)
     {
-        List<ResourceGroupSpecBuilder> records = dao.getResourceGroups();
+        List<ResourceGroupSpecBuilder> records = dao.getResourceGroups(nodeInfo.getEnvironment());
         for (ResourceGroupSpecBuilder record : records) {
             recordMap.put(record.getId(), record);
             if (!record.getParentId().isPresent()) {
@@ -224,8 +236,15 @@ public class DbResourceGroupConfigurationManager
         // Specs are built from db records, validate and return manager spec
         List<ResourceGroupSpec> rootGroups = rootGroupIds.stream().map(resourceGroupSpecMap::get).collect(Collectors.toList());
 
-        List<SelectorSpec> selectors = dao.getSelectors().stream().map(selectorRecord ->
-                new SelectorSpec(selectorRecord.getUserRegex(), selectorRecord.getSourceRegex(),
+        List<SelectorSpec> selectors = dao.getSelectors()
+                .stream()
+                .filter(selectorRecord -> resourceGroupIdTemplateMap.containsKey(selectorRecord.getResourceGroupId()))
+                .map(selectorRecord ->
+                new SelectorSpec(
+                        selectorRecord.getUserRegex(),
+                        selectorRecord.getSourceRegex(),
+                        selectorRecord.getClientTags(),
+                        Optional.empty(),
                         resourceGroupIdTemplateMap.get(selectorRecord.getResourceGroupId()))
         ).collect(Collectors.toList());
         ManagerSpec managerSpec = new ManagerSpec(rootGroups, selectors, getCpuQuotaPeriodFromDb());
@@ -256,7 +275,7 @@ public class DbResourceGroupConfigurationManager
     private synchronized void disableGroup(ResourceGroup group)
     {
         // Disable groups that are removed from the db
-        group.setMaxRunningQueries(0);
+        group.setHardConcurrencyLimit(0);
         group.setMaxQueuedQueries(0);
     }
 

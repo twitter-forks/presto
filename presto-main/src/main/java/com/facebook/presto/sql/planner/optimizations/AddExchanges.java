@@ -26,7 +26,6 @@ import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.planner.DependencyExtractor;
 import com.facebook.presto.sql.planner.DomainTranslator;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
 import com.facebook.presto.sql.planner.LookupSymbolResolver;
@@ -35,6 +34,7 @@ import com.facebook.presto.sql.planner.PartitioningScheme;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.SymbolsExtractor;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.Assignments;
@@ -99,6 +99,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import static com.facebook.presto.SystemSessionProperties.isColocatedJoinEnabled;
+import static com.facebook.presto.SystemSessionProperties.isForceSingleNodeOutput;
 import static com.facebook.presto.sql.ExpressionUtils.combineConjuncts;
 import static com.facebook.presto.sql.ExpressionUtils.extractConjuncts;
 import static com.facebook.presto.sql.ExpressionUtils.stripDeterministicConjuncts;
@@ -223,7 +224,7 @@ public class AddExchanges
         {
             PlanWithProperties child = planChild(node, context.withPreferredProperties(PreferredProperties.undistributed()));
 
-            if (!child.getProperties().isSingleNode()) {
+            if (!child.getProperties().isSingleNode() && isForceSingleNodeOutput(session)) {
                 child = withDerivedProperties(
                         gatheringExchange(idAllocator.getNextId(), REMOTE, child.getNode()),
                         child.getProperties());
@@ -558,8 +559,7 @@ public class AddExchanges
                                 REMOTE,
                                 source.getNode(),
                                 partitioningScheme.get()),
-                        source.getProperties()
-                );
+                        source.getProperties());
             }
             return rebaseAndDeriveProperties(node, source);
         }
@@ -674,7 +674,7 @@ public class AddExchanges
 
             // If any conjuncts evaluate to FALSE or null, then the whole predicate will never be true and so the partition should be pruned
             for (Expression expression : conjuncts) {
-                if (DependencyExtractor.extractUnique(expression).stream().anyMatch(correlations::contains)) {
+                if (SymbolsExtractor.extractUnique(expression).stream().anyMatch(correlations::contains)) {
                     // expression contains correlated symbol with outer query
                     continue;
                 }
@@ -1214,31 +1214,13 @@ public class AddExchanges
         @Override
         public PlanWithProperties visitApply(ApplyNode node, Context context)
         {
-            PlanWithProperties input = node.getInput().accept(this, context);
-            PlanWithProperties subquery = node.getSubquery().accept(this, context.withCorrelations(node.getCorrelation()));
-
-            ApplyNode rewritten = new ApplyNode(
-                    node.getId(),
-                    input.getNode(),
-                    subquery.getNode(),
-                    node.getSubqueryAssignments(),
-                    node.getCorrelation());
-            return new PlanWithProperties(rewritten, deriveProperties(rewritten, ImmutableList.of(input.getProperties(), subquery.getProperties())));
+            throw new IllegalStateException("Unexpected node: " + node.getClass().getName());
         }
 
         @Override
         public PlanWithProperties visitLateralJoin(LateralJoinNode node, Context context)
         {
-            PlanWithProperties input = node.getInput().accept(this, context);
-            PlanWithProperties subquery = node.getSubquery().accept(this, context.withCorrelations(node.getCorrelation()));
-
-            LateralJoinNode rewritten = new LateralJoinNode(
-                    node.getId(),
-                    input.getNode(),
-                    subquery.getNode(),
-                    node.getCorrelation(),
-                    node.getType());
-            return new PlanWithProperties(rewritten, deriveProperties(rewritten, ImmutableList.of(input.getProperties(), subquery.getProperties())));
+            throw new IllegalStateException("Unexpected node: " + node.getClass().getName());
         }
 
         private PlanWithProperties planChild(PlanNode node, Context context)
@@ -1294,14 +1276,7 @@ public class AddExchanges
     {
         // Calculating the matches can be a bit expensive, so cache the results between comparisons
         LoadingCache<List<LocalProperty<Symbol>>, List<Optional<LocalProperty<Symbol>>>> matchCache = CacheBuilder.newBuilder()
-                .build(new CacheLoader<List<LocalProperty<Symbol>>, List<Optional<LocalProperty<Symbol>>>>()
-                {
-                    @Override
-                    public List<Optional<LocalProperty<Symbol>>> load(List<LocalProperty<Symbol>> actualProperties)
-                    {
-                        return LocalProperties.match(actualProperties, preferred.getLocalProperties());
-                    }
-                });
+                .build(CacheLoader.from(actualProperties -> LocalProperties.match(actualProperties, preferred.getLocalProperties())));
 
         return (actual1, actual2) -> {
             List<Optional<LocalProperty<Symbol>>> matchLayout1 = matchCache.getUnchecked(actual1.getLocalProperties());

@@ -23,7 +23,6 @@ import java.util.Map;
 
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.RE2J;
-import static io.airlift.configuration.testing.ConfigAssertions.assertDeprecatedEquivalence;
 import static io.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
 import static io.airlift.configuration.testing.ConfigAssertions.assertRecordedDefaults;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -53,53 +52,26 @@ public class TestFeaturesConfig
                 .setRe2JDfaStatesLimit(Integer.MAX_VALUE)
                 .setRe2JDfaRetries(5)
                 .setSpillEnabled(false)
-                .setOperatorMemoryLimitBeforeSpill(DataSize.valueOf("4MB"))
+                .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("4MB"))
                 .setSpillerSpillPaths("")
                 .setSpillerThreads(4)
                 .setSpillMaxUsedSpaceThreshold(0.9)
+                .setMemoryRevokingThreshold(0.9)
+                .setMemoryRevokingTarget(0.5)
                 .setOptimizeMixedDistinctAggregations(false)
                 .setLegacyOrderBy(false)
                 .setIterativeOptimizerEnabled(true)
                 .setIterativeOptimizerTimeout(new Duration(3, MINUTES))
                 .setExchangeCompressionEnabled(false)
                 .setEnableIntermediateAggregations(false)
-                .setPushAggregationThroughJoin(true));
+                .setPushAggregationThroughJoin(true)
+                .setForceSingleNodeOutput(true)
+                .setPagesIndexEagerCompactionEnabled(false));
     }
 
     @Test
     public void testExplicitPropertyMappings()
     {
-        Map<String, String> propertiesLegacy = new ImmutableMap.Builder<String, String>()
-                .put("experimental.resource-groups-enabled", "true")
-                .put("experimental.iterative-optimizer-enabled", "false")
-                .put("experimental.iterative-optimizer-timeout", "10s")
-                .put("deprecated.legacy-array-agg", "true")
-                .put("deprecated.legacy-order-by", "true")
-                .put("deprecated.legacy-map-subscript", "true")
-                .put("distributed-index-joins-enabled", "true")
-                .put("distributed-joins-enabled", "false")
-                .put("fast-inequality-joins", "false")
-                .put("colocated-joins-enabled", "true")
-                .put("reorder-joins", "false")
-                .put("redistribute-writes", "false")
-                .put("optimizer.optimize-metadata-queries", "true")
-                .put("optimizer.optimize-hash-generation", "false")
-                .put("optimizer.optimize-single-distinct", "false")
-                .put("optimizer.optimize-mixed-distinct-aggregations", "true")
-                .put("optimizer.push-table-write-through-union", "false")
-                .put("optimizer.dictionary-aggregation", "true")
-                .put("optimizer.push-aggregation-through-join", "false")
-                .put("regex-library", "RE2J")
-                .put("re2j.dfa-states-limit", "42")
-                .put("re2j.dfa-retries", "42")
-                .put("experimental.spill-enabled", "true")
-                .put("experimental.operator-memory-limit-before-spill", "100MB")
-                .put("experimental.spiller-spill-path", "/tmp/custom/spill/path1,/tmp/custom/spill/path2")
-                .put("experimental.spiller-threads", "42")
-                .put("experimental.spiller-max-used-space-threshold", "0.8")
-                .put("exchange.compression-enabled", "true")
-                .put("optimizer.enable-intermediate-aggregations", "true")
-                .build();
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("experimental.resource-groups-enabled", "true")
                 .put("experimental.iterative-optimizer-enabled", "false")
@@ -124,12 +96,16 @@ public class TestFeaturesConfig
                 .put("re2j.dfa-states-limit", "42")
                 .put("re2j.dfa-retries", "42")
                 .put("experimental.spill-enabled", "true")
-                .put("experimental.operator-memory-limit-before-spill", "100MB")
+                .put("experimental.aggregation-operator-unspill-memory-limit", "100MB")
                 .put("experimental.spiller-spill-path", "/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .put("experimental.spiller-threads", "42")
                 .put("experimental.spiller-max-used-space-threshold", "0.8")
+                .put("experimental.memory-revoking-threshold", "0.2")
+                .put("experimental.memory-revoking-target", "0.8")
                 .put("exchange.compression-enabled", "true")
                 .put("optimizer.enable-intermediate-aggregations", "true")
+                .put("optimizer.force-single-node-output", "false")
+                .put("pages-index.eager-compaction-enabled", "true")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -155,15 +131,18 @@ public class TestFeaturesConfig
                 .setRe2JDfaStatesLimit(42)
                 .setRe2JDfaRetries(42)
                 .setSpillEnabled(true)
-                .setOperatorMemoryLimitBeforeSpill(DataSize.valueOf("100MB"))
+                .setAggregationOperatorUnspillMemoryLimit(DataSize.valueOf("100MB"))
                 .setSpillerSpillPaths("/tmp/custom/spill/path1,/tmp/custom/spill/path2")
                 .setSpillerThreads(42)
                 .setSpillMaxUsedSpaceThreshold(0.8)
+                .setMemoryRevokingThreshold(0.2)
+                .setMemoryRevokingTarget(0.8)
                 .setLegacyOrderBy(true)
                 .setExchangeCompressionEnabled(true)
-                .setEnableIntermediateAggregations(true);
+                .setEnableIntermediateAggregations(true)
+                .setForceSingleNodeOutput(false)
+                .setPagesIndexEagerCompactionEnabled(true);
 
         assertFullMapping(properties, expected);
-        assertDeprecatedEquivalence(FeaturesConfig.class, properties, propertiesLegacy);
     }
 }

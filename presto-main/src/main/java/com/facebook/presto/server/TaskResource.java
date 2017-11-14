@@ -187,7 +187,7 @@ public class TaskResource
         requireNonNull(taskId, "taskId is null");
 
         if (currentState == null || maxWait == null) {
-            TaskStatus taskStatus = taskManager.getTaskInfo(taskId).getTaskStatus();
+            TaskStatus taskStatus = taskManager.getTaskStatus(taskId);
             asyncResponse.resume(taskStatus);
             return;
         }
@@ -290,16 +290,12 @@ public class TaskResource
     @DELETE
     @Path("{taskId}/results/{bufferId}")
     @Produces(MediaType.APPLICATION_JSON)
-    public Response abortResults(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") OutputBufferId bufferId, @Context UriInfo uriInfo)
+    public void abortResults(@PathParam("taskId") TaskId taskId, @PathParam("bufferId") OutputBufferId bufferId, @Context UriInfo uriInfo)
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
 
-        TaskInfo taskInfo = taskManager.abortTaskResults(taskId, bufferId);
-        if (shouldSummarize(uriInfo)) {
-            taskInfo = taskInfo.summarize();
-        }
-        return Response.ok(taskInfo).build();
+        taskManager.abortTaskResults(taskId, bufferId);
     }
 
     @Managed

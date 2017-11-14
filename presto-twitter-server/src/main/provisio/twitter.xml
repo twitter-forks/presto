@@ -1,0 +1,16 @@
+<runtime>
+    <!-- Target -->
+    <archive name="${project.artifactId}-${project.version}.tar.gz" />
+
+    <artifactSet to="plugin/kafka07">
+        <artifact id="${project.groupId}:presto-kafka07:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
+
+    <artifactSet to="plugin/twitter-eventlistener-plugin">
+        <artifact id="${project.groupId}:twitter-eventlistener-plugin:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
+</runtime>

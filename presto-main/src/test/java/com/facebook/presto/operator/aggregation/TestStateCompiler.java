@@ -18,6 +18,7 @@ import com.facebook.presto.array.BooleanBigArray;
 import com.facebook.presto.array.ByteBigArray;
 import com.facebook.presto.array.DoubleBigArray;
 import com.facebook.presto.array.LongBigArray;
+import com.facebook.presto.array.ReferenceCountMap;
 import com.facebook.presto.array.SliceBigArray;
 import com.facebook.presto.bytecode.DynamicClassLoader;
 import com.facebook.presto.operator.aggregation.state.LongState;
@@ -27,14 +28,13 @@ import com.facebook.presto.operator.aggregation.state.VarianceState;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
-import com.facebook.presto.spi.block.InterleavedBlockBuilder;
 import com.facebook.presto.spi.function.AccumulatorState;
 import com.facebook.presto.spi.function.AccumulatorStateFactory;
 import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.function.GroupedAccumulatorState;
+import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.RowType;
 import com.facebook.presto.util.Reflection;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -54,6 +54,7 @@ import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.util.StructuralTestUtil.mapBlockOf;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.slice.Slices.wrappedDoubleArray;
@@ -218,12 +219,7 @@ public class TestStateCompiler
         singleState.setYetAnotherSlice(null);
         Block array = createLongsBlock(45);
         singleState.setBlock(array);
-
-        BlockBuilder mapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(BIGINT, VARCHAR), new BlockBuilderStatus(), 1);
-        BIGINT.writeLong(mapBlockBuilder, 123L);
-        VARCHAR.writeSlice(mapBlockBuilder, utf8Slice("testBlock"));
-        Block map = mapBlockBuilder.build();
-        singleState.setAnotherBlock(map);
+        singleState.setAnotherBlock(mapBlockOf(BIGINT, VARCHAR, ImmutableMap.of(123L, "testBlock")));
 
         BlockBuilder builder = new RowType(ImmutableList.of(BOOLEAN, TINYINT, DOUBLE, BIGINT, mapType, VARBINARY, arrayType, VARBINARY, VARBINARY), Optional.empty())
                 .createBlockBuilder(new BlockBuilderStatus(), 1);
@@ -244,15 +240,10 @@ public class TestStateCompiler
         assertEquals(deserializedState.getAnotherBlock().getSlice(1, 0, 9), singleState.getAnotherBlock().getSlice(1, 0, 9));
     }
 
-    //see SliceBigArray::getSize
-    private long getSize(Slice slice)
-    {
-        return slice.length() + SLICE_INSTANCE_SIZE;
-    }
-
     private long getComplexStateRetainedSize(TestComplexState state)
     {
         long retainedSize = ClassLayout.parseClass(state.getClass()).instanceSize();
+        // reflection is necessary because TestComplexState implementation is generated
         Field[] fields = state.getClass().getDeclaredFields();
         try {
             for (Field field : fields) {
@@ -271,6 +262,34 @@ public class TestStateCompiler
         return retainedSize;
     }
 
+    private static long getReferenceCountMapOverhead(TestComplexState state)
+    {
+        long overhead = 0;
+        // reflection is necessary because TestComplexState implementation is generated
+        Field[] stateFields = state.getClass().getDeclaredFields();
+        try {
+            for (Field stateField : stateFields) {
+                if (stateField.getType() != BlockBigArray.class && stateField.getType() != SliceBigArray.class) {
+                    continue;
+                }
+                stateField.setAccessible(true);
+                Field[] bigArrayFields = stateField.getType().getDeclaredFields();
+                for (Field bigArrayField : bigArrayFields) {
+                    if (bigArrayField.getType() != ReferenceCountMap.class) {
+                        continue;
+                    }
+                    bigArrayField.setAccessible(true);
+                    MethodHandle sizeOf = Reflection.methodHandle(bigArrayField.getType(), "sizeOf", null);
+                    overhead += (long) sizeOf.invokeWithArguments(bigArrayField.get(stateField.get(state)));
+                }
+            }
+        }
+        catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+        return overhead;
+    }
+
     @Test
     public void testComplexStateEstimatedSize()
     {
@@ -280,6 +299,9 @@ public class TestStateCompiler
         TestComplexState groupedState = factory.createGroupedState();
         long initialRetainedSize = getComplexStateRetainedSize(groupedState);
         assertEquals(groupedState.getEstimatedSize(), initialRetainedSize);
+        // BlockBigArray or SliceBigArray has an internal map that can grow in size when getting more blocks
+        // need to handle the map overhead separately
+        initialRetainedSize -= getReferenceCountMapOverhead(groupedState);
         for (int i = 0; i < 1000; i++) {
             long retainedSize = 0;
             ((GroupedAccumulatorState) groupedState).setGroupId(i);
@@ -288,22 +310,24 @@ public class TestStateCompiler
             groupedState.setDouble(2.0);
             groupedState.setByte((byte) 3);
             Slice slice = utf8Slice("test");
-            retainedSize += getSize(slice);
+            retainedSize += slice.getRetainedSize();
             groupedState.setSlice(slice);
             slice = wrappedDoubleArray(1.0, 2.0, 3.0);
-            retainedSize += getSize(slice);
+            retainedSize += slice.getRetainedSize();
             groupedState.setAnotherSlice(slice);
             groupedState.setYetAnotherSlice(null);
             Block array = createLongsBlock(45);
             retainedSize += array.getRetainedSizeInBytes();
             groupedState.setBlock(array);
-            BlockBuilder mapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(BIGINT, VARCHAR), new BlockBuilderStatus(), 1);
-            BIGINT.writeLong(mapBlockBuilder, 123L);
-            VARCHAR.writeSlice(mapBlockBuilder, utf8Slice("testBlock"));
+            BlockBuilder mapBlockBuilder = mapType(BIGINT, VARCHAR).createBlockBuilder(new BlockBuilderStatus(), 1);
+            BlockBuilder singleMapBlockWriter = mapBlockBuilder.beginBlockEntry();
+            BIGINT.writeLong(singleMapBlockWriter, 123L);
+            VARCHAR.writeSlice(singleMapBlockWriter, utf8Slice("testBlock"));
+            mapBlockBuilder.closeEntry();
             Block map = mapBlockBuilder.build();
             retainedSize += map.getRetainedSizeInBytes();
             groupedState.setAnotherBlock(map);
-            assertEquals(groupedState.getEstimatedSize(), initialRetainedSize + retainedSize * (i + 1));
+            assertEquals(groupedState.getEstimatedSize(), initialRetainedSize + retainedSize * (i + 1) + getReferenceCountMapOverhead(groupedState));
         }
 
         for (int i = 0; i < 1000; i++) {
@@ -314,22 +338,24 @@ public class TestStateCompiler
             groupedState.setDouble(2.0);
             groupedState.setByte((byte) 3);
             Slice slice = utf8Slice("test");
-            retainedSize += getSize(slice);
+            retainedSize += slice.getRetainedSize();
             groupedState.setSlice(slice);
             slice = wrappedDoubleArray(1.0, 2.0, 3.0);
-            retainedSize += getSize(slice);
+            retainedSize += slice.getRetainedSize();
             groupedState.setAnotherSlice(slice);
             groupedState.setYetAnotherSlice(null);
             Block array = createLongsBlock(45);
             retainedSize += array.getRetainedSizeInBytes();
             groupedState.setBlock(array);
-            BlockBuilder mapBlockBuilder = new InterleavedBlockBuilder(ImmutableList.of(BIGINT, VARCHAR), new BlockBuilderStatus(), 1);
-            BIGINT.writeLong(mapBlockBuilder, 123L);
-            VARCHAR.writeSlice(mapBlockBuilder, utf8Slice("testBlock"));
+            BlockBuilder mapBlockBuilder = mapType(BIGINT, VARCHAR).createBlockBuilder(new BlockBuilderStatus(), 1);
+            BlockBuilder singleMapBlockWriter = mapBlockBuilder.beginBlockEntry();
+            BIGINT.writeLong(singleMapBlockWriter, 123L);
+            VARCHAR.writeSlice(singleMapBlockWriter, utf8Slice("testBlock"));
+            mapBlockBuilder.closeEntry();
             Block map = mapBlockBuilder.build();
             retainedSize += map.getRetainedSizeInBytes();
             groupedState.setAnotherBlock(map);
-            assertEquals(groupedState.getEstimatedSize(), initialRetainedSize + retainedSize * 1000);
+            assertEquals(groupedState.getEstimatedSize(), initialRetainedSize + retainedSize * 1000 + getReferenceCountMapOverhead(groupedState));
         }
     }
 

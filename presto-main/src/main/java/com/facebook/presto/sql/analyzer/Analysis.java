@@ -114,6 +114,7 @@ public class Analysis
     private Map<String, Expression> createTableProperties = ImmutableMap.of();
     private boolean createTableAsSelectWithData = true;
     private boolean createTableAsSelectNoOp = false;
+    private Optional<List<Identifier>> createTableColumnAliases = Optional.empty();
     private Optional<String> createTableComment = Optional.empty();
 
     private Optional<Insert> insert = Optional.empty();
@@ -195,9 +196,9 @@ public class Analysis
 
     public Type getType(Expression expression)
     {
-        NodeRef<Expression> key = NodeRef.of(expression);
-        checkArgument(types.containsKey(key), "Expression not analyzed: %s", expression);
-        return types.get(key);
+        Type type = types.get(NodeRef.of(expression));
+        checkArgument(type != null, "Expression not analyzed: %s", expression);
+        return type;
     }
 
     public Type getTypeWithCoercions(Expression expression)
@@ -490,6 +491,16 @@ public class Analysis
     public Map<String, Expression> getCreateTableProperties()
     {
         return createTableProperties;
+    }
+
+    public Optional<List<Identifier>> getColumnAliases()
+    {
+        return createTableColumnAliases;
+    }
+
+    public void setCreateTableColumnAliases(List<Identifier> createTableColumnAliases)
+    {
+        this.createTableColumnAliases = Optional.of(createTableColumnAliases);
     }
 
     public void setCreateTableComment(Optional<String> createTableComment)

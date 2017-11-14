@@ -16,7 +16,6 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.sql.analyzer.Analysis;
-import com.facebook.presto.sql.planner.optimizations.Predicates;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
 import com.facebook.presto.sql.planner.plan.Assignments;
@@ -41,8 +40,10 @@ import com.facebook.presto.sql.tree.NodeRef;
 import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression;
 import com.facebook.presto.sql.tree.QuantifiedComparisonExpression.Quantifier;
+import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.SymbolReference;
+import com.facebook.presto.util.MorePredicates;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -230,12 +231,16 @@ class SubqueryPlanner
             subPlan.getTranslations().put(coercion, coercionSymbol);
         }
 
+        return appendLateralJoin(subPlan, subqueryPlan, scalarSubquery.getQuery(), correlationAllowed);
+    }
+
+    public PlanBuilder appendLateralJoin(PlanBuilder subPlan, PlanBuilder subqueryPlan, Query query, boolean correlationAllowed)
+    {
         PlanNode subqueryNode = subqueryPlan.getRoot();
         Map<Expression, Expression> correlation = extractCorrelation(subPlan, subqueryNode);
         if (!correlationAllowed && !correlation.isEmpty()) {
-            throw notSupportedException(scalarSubquery.getQuery(), "Correlated subquery in given context");
+            throw notSupportedException(query, "Correlated subquery in given context");
         }
-        subPlan = subPlan.appendProjections(correlation.keySet(), symbolAllocator, idAllocator);
         subqueryNode = replaceExpressionsWithSymbols(subqueryNode, correlation);
 
         return new PlanBuilder(
@@ -244,8 +249,9 @@ class SubqueryPlanner
                         idAllocator.getNextId(),
                         subPlan.getRoot(),
                         subqueryNode,
-                        ImmutableList.copyOf(DependencyExtractor.extractUnique(correlation.values())),
-                        LateralJoinNode.Type.INNER),
+                        ImmutableList.copyOf(SymbolsExtractor.extractUnique(correlation.values())),
+                        LateralJoinNode.Type.INNER,
+                        query),
                 analysis.getParameters());
     }
 
@@ -394,7 +400,7 @@ class SubqueryPlanner
     private static boolean isAggregationWithEmptyGroupBy(PlanNode planNode)
     {
         return searchFrom(planNode)
-                .skipOnlyWhen(Predicates.isInstanceOfAny(ProjectNode.class))
+                .recurseOnlyWhen(MorePredicates.isInstanceOfAny(ProjectNode.class))
                 .where(AggregationNode.class::isInstance)
                 .findFirst()
                 .map(AggregationNode.class::cast)
@@ -442,7 +448,8 @@ class SubqueryPlanner
                         root,
                         subqueryNode,
                         subqueryAssignments,
-                        ImmutableList.copyOf(DependencyExtractor.extractUnique(correlation.values()))),
+                        ImmutableList.copyOf(SymbolsExtractor.extractUnique(correlation.values())),
+                        subquery),
                 analysis.getParameters());
     }
 

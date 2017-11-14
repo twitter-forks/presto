@@ -72,6 +72,7 @@ public class HiveThriftFieldIdResolver
         this.root = root;
     }
 
+    @Override
     public short getThriftId(int hiveIndex)
     {
         if (root == null) {
@@ -97,6 +98,7 @@ public class HiveThriftFieldIdResolver
         }
     }
 
+    @Override
     public ThriftFieldIdResolver getNestedResolver(int hiveIndex)
     {
         if (root == null) {
