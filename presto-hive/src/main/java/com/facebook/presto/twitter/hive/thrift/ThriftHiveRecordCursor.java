@@ -165,12 +165,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             types[i] = typeManager.getType(column.getTypeSignature());
             hiveTypes[i] = column.getHiveType();
             hiveIndexs[i] = column.getHiveColumnIndex();
-            try {
-                thriftIds[i] = thriftFieldIdResolver.getThriftId(hiveIndexs[i]);
-            }
-            catch (PrestoException e) {
-                thriftIds[i] = NON_EXISTED_THRIFT_ID;
-            }
+            thriftIds[i] = getThriftIdWithFailOver(thriftFieldIdResolver, hiveIndexs[i]);
         }
     }
 
@@ -640,7 +635,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         BlockBuilder currentBuilder = builder.beginBlockEntry();
 
         for (int i = 0; i < typeParameters.size(); i++) {
-            Object fieldValue = structData.getFieldValueForThriftId(resolver.getThriftId(i));
+            Object fieldValue = structData.getFieldValueForThriftId(getThriftIdWithFailOver(resolver, i));
             if (fieldValue == null) {
                 currentBuilder.appendNull();
             }
@@ -706,6 +701,16 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
         else {
             throw new UnsupportedOperationException("Unsupported primitive type: " + type);
+        }
+    }
+
+    private static short getThriftIdWithFailOver(ThriftFieldIdResolver thriftFieldIdResolver, int hiveIndex)
+    {
+        try {
+            return thriftFieldIdResolver.getThriftId(hiveIndex);
+        }
+        catch (PrestoException e) {
+            return NON_EXISTED_THRIFT_ID;
         }
     }
 }
