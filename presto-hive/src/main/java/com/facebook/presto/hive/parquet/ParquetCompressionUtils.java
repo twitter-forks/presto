@@ -98,8 +98,8 @@ public final class ParquetCompressionUtils
         LzoCodec lzoCodec = new LzoCodec();
         lzoCodec.setConf(configuration);
         int decompressedSize = lzoCodec
-            .createInputStream(new ByteBufferInputStream(input.toByteBuffer()))
-            .read(output, 0, uncompressedSize);
+                        .createInputStream(new ByteBufferInputStream(input.toByteBuffer()))
+                        .read(output, 0, uncompressedSize);
         checkArgument(decompressedSize == uncompressedSize);
         return wrappedBuffer(output, 0, uncompressedSize);
     }

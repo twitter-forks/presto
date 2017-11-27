@@ -16,7 +16,6 @@ package com.facebook.presto.hive.parquet;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-
 /*
  * Implementation by https://github.com/google/mr4c
  */
