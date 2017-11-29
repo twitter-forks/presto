@@ -19,7 +19,8 @@ import java.nio.ByteBuffer;
 /*
  * Implementation by https://github.com/google/mr4c
  */
-public class ByteBufferInputStream extends InputStream
+public class ByteBufferInputStream
+        extends InputStream
 {
     ByteBuffer buf;
 
