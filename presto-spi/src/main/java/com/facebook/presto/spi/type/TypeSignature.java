@@ -42,6 +42,7 @@ public class TypeSignature
 
     static {
         BASE_NAME_ALIAS_TO_CANONICAL.put("int", StandardTypes.INTEGER);
+        BASE_NAME_ALIAS_TO_CANONICAL.put("", "unknown");
     }
 
     public TypeSignature(String base, TypeSignatureParameter... parameters)
