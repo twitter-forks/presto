@@ -80,6 +80,11 @@ public class TestTypeSignature
                 ImmutableSet.of("p1", "s1", "p2", "s2"),
                 rowSignature(namedParameter("a", decimal("p1", "s1")), namedParameter("b", decimal("p2", "s2"))));
         assertEquals(parseTypeSignature("row(a Int(p1))"), parseTypeSignature("row(a integer(p1))"));
+        assertRowSignature(
+                "row()",
+                "row",
+                ImmutableList.of("field0 unknown"),
+                "row(field0 unknown)");
 
         // TODO: remove the following tests when the old style row type has been completely dropped
         assertOldRowSignature(
@@ -177,9 +182,9 @@ public class TestTypeSignature
                 "map",
                 ImmutableList.of("bigint", "map(bigint,map(varchar,bigint))"));
 
-        assertSignatureFail("blah()");
-        assertSignatureFail("array()");
-        assertSignatureFail("map()");
+        assertSignature("blah()", "blah", ImmutableList.of("unknown"), "blah(unknown)");
+        assertSignature("array()", "array", ImmutableList.of("unknown"), "array(unknown)");
+        assertSignature("map()", "map", ImmutableList.of("unknown"), "map(unknown)");
         assertSignatureFail("x", ImmutableSet.of("x"));
 
         // ensure this is not treated as a row type
