@@ -167,6 +167,11 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             hiveIndexs[i] = column.getHiveColumnIndex();
             thriftIds[i] = getThriftIdWithFailOver(thriftFieldIdResolver, hiveIndexs[i]);
         }
+
+        // close immediately if the totalBytes are zero
+        if (totalBytes <= 0) {
+            close();
+        }
     }
 
     @Override

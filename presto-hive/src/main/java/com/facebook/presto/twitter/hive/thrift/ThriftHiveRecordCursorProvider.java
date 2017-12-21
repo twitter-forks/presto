@@ -101,11 +101,17 @@ public class ThriftHiveRecordCursorProvider
                 // ignored
             }
             if (index.isEmpty()) {
-                length = start == 0 ? fileSize : 0;
+                if (start != 0) {
+                    start = 0;
+                    length = 0;
+                }
+                else {
+                    length = fileSize;
+                }
             }
             else {
-                start = index.alignSliceEndToIndex(start, fileSize);
-                length = index.alignSliceEndToIndex(start + length, fileSize) - start;
+                start = index.alignSliceStartToIndex(start, start + length);
+                length = Math.min(index.alignSliceEndToIndex(start + length, fileSize), fileSize) - start;
             }
         }
 
