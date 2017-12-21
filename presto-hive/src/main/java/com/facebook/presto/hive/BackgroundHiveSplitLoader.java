@@ -508,7 +508,6 @@ public class BackgroundHiveSplitLoader
 
         boolean forceLocalScheduling = HiveSessionProperties.isForceLocalScheduling(session);
 
-
         // For empty files, some filesystem (e.g. LocalFileSystem) produce one empty block
         // while others (e.g. hdfs.DistributedFileSystem) produces no block.
         // Synthesize an empty block if one does not already exist.

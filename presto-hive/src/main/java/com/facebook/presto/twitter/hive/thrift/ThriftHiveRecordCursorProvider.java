@@ -96,12 +96,14 @@ public class ThriftHiveRecordCursorProvider
             LzoIndex index = new LzoIndex();
             try {
                 index = LzoIndex.readIndex(hdfsEnvironment.getFileSystem(session.getUser(), getLzopIndexPath(path), configuration), path);
-            } catch (IOException ignored) {
+            }
+            catch (IOException ignored) {
                 // ignored
             }
             if (index.isEmpty()) {
                 length = start == 0 ? fileSize : 0;
-            } else {
+            }
+            else {
                 start = index.alignSliceEndToIndex(start, fileSize);
                 length = index.alignSliceEndToIndex(start + length, fileSize) - start;
             }

@@ -21,17 +21,16 @@ import com.facebook.presto.twitter.hive.MetastoreZkDiscoveryBasedModule;
 import com.facebook.presto.twitter.hive.PooledHiveMetastoreClientFactory;
 import com.facebook.presto.twitter.hive.ZookeeperServersetMetastoreConfig;
 import com.google.inject.Binder;
-import com.google.inject.Module;
 import com.google.inject.Scopes;
+import io.airlift.configuration.AbstractConfigurationAwareModule;
 
 import static io.airlift.configuration.ConditionalModule.installModuleIf;
-import static io.airlift.configuration.ConfigBinder.configBinder;
 import static java.util.Objects.requireNonNull;
 import static org.weakref.jmx.ObjectNames.generatedNameOf;
 import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
 public class ThriftMetastoreModule
-        implements Module
+        extends AbstractConfigurationAwareModule
 {
     private final String connectorId;
 
@@ -41,7 +40,7 @@ public class ThriftMetastoreModule
     }
 
     @Override
-    public void configure(Binder binder)
+    public void setup(Binder binder)
     {
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
         binder.bind(PooledHiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
@@ -58,13 +57,13 @@ public class ThriftMetastoreModule
 
     private void bindMetastoreClusterModule()
     {
-        installModuleIf(
+        install(installModuleIf(
                 ZookeeperServersetMetastoreConfig.class,
                 zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() == null,
-                new MetastoreStaticClusterModule());
-        installModuleIf(
+                new MetastoreStaticClusterModule()));
+        install(installModuleIf(
                 ZookeeperServersetMetastoreConfig.class,
                 zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() != null,
-                new MetastoreZkDiscoveryBasedModule());
+                new MetastoreZkDiscoveryBasedModule()));
     }
 }
