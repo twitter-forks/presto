@@ -22,9 +22,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
-import javax.validation.constraints.NotNull;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -42,6 +42,7 @@ import static com.facebook.presto.spi.type.StandardTypes.CHAR;
 import static com.facebook.presto.spi.type.StandardTypes.DATE;
 import static com.facebook.presto.spi.type.StandardTypes.DECIMAL;
 import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
+import static com.facebook.presto.spi.type.StandardTypes.GEOMETRY;
 import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
 import static com.facebook.presto.spi.type.StandardTypes.INTERVAL_DAY_TO_SECOND;
 import static com.facebook.presto.spi.type.StandardTypes.INTERVAL_YEAR_TO_MONTH;
@@ -67,6 +68,7 @@ import static java.util.stream.Collectors.toList;
 
 @Immutable
 public class QueryResults
+        implements QueryStatusInfo, QueryData
 {
     private final String id;
     private final URI infoUri;
@@ -120,15 +122,17 @@ public class QueryResults
         this.updateCount = updateCount;
     }
 
-    @NotNull
+    @Nonnull
     @JsonProperty
+    @Override
     public String getId()
     {
         return id;
     }
 
-    @NotNull
+    @Nonnull
     @JsonProperty
+    @Override
     public URI getInfoUri()
     {
         return infoUri;
@@ -136,6 +140,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public URI getPartialCancelUri()
     {
         return partialCancelUri;
@@ -143,6 +148,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public URI getNextUri()
     {
         return nextUri;
@@ -150,6 +156,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public List<Column> getColumns()
     {
         return columns;
@@ -157,13 +164,15 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public Iterable<List<Object>> getData()
     {
         return data;
     }
 
-    @NotNull
+    @Nonnull
     @JsonProperty
+    @Override
     public StatementStats getStats()
     {
         return stats;
@@ -171,6 +180,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public QueryError getError()
     {
         return error;
@@ -178,6 +188,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public String getUpdateType()
     {
         return updateType;
@@ -185,6 +196,7 @@ public class QueryResults
 
     @Nullable
     @JsonProperty
+    @Override
     public Long getUpdateCount()
     {
         return updateCount;
@@ -318,6 +330,7 @@ public class QueryResults
             case IPADDRESS:
             case DECIMAL:
             case CHAR:
+            case GEOMETRY:
                 return String.class.cast(value);
             default:
                 // for now we assume that only the explicit types above are passed

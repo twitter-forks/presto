@@ -67,6 +67,13 @@ public class AggregationNode
         requireNonNull(groupingSets, "groupingSets is null");
         checkArgument(!groupingSets.isEmpty(), "grouping sets list cannot be empty");
         this.groupingSets = listOfListsCopy(groupingSets);
+
+        boolean hasOrderBy = aggregations.values().stream()
+                .map(Aggregation::getCall)
+                .map(FunctionCall::getOrderBy)
+                .noneMatch(Optional::isPresent);
+        checkArgument(hasOrderBy || step == SINGLE, "ORDER BY does not support distributed aggregation");
+
         this.step = step;
         this.hashSymbol = hashSymbol;
         this.groupIdSymbol = requireNonNull(groupIdSymbol);
@@ -161,6 +168,14 @@ public class AggregationNode
         return groupIdSymbol;
     }
 
+    public boolean hasOrderings()
+    {
+        return aggregations.values().stream()
+                .map(Aggregation::getCall)
+                .map(FunctionCall::getOrderBy)
+                .anyMatch(Optional::isPresent);
+    }
+
     @Override
     public <R, C> R accept(PlanVisitor<R, C> visitor, C context)
     {
@@ -175,9 +190,11 @@ public class AggregationNode
 
     public boolean isDecomposable(FunctionRegistry functionRegistry)
     {
-        return getAggregations().entrySet().stream()
+        return (getAggregations().entrySet().stream()
                 .map(entry -> functionRegistry.getAggregateFunctionImplementation(entry.getValue().getSignature()))
-                .allMatch(InternalAggregationFunction::isDecomposable);
+                .allMatch(InternalAggregationFunction::isDecomposable)) &&
+                getAggregations().entrySet().stream()
+                        .allMatch(entry -> !entry.getValue().getCall().getOrderBy().isPresent());
     }
 
     public enum Step

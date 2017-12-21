@@ -92,14 +92,6 @@ public class HiveConnectorFactory
                     new EventModule(),
                     new MBeanModule(),
                     new JsonModule(),
-                    installModuleIf(
-                            ZookeeperServersetMetastoreConfig.class,
-                            zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() == null,
-                            new MetastoreStaticClusterModule()),
-                    installModuleIf(
-                            ZookeeperServersetMetastoreConfig.class,
-                            zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() != null,
-                            new MetastoreZkDiscoveryBasedModule()),
                     new HiveClientModule(
                             connectorId,
                             context.getTypeManager(),

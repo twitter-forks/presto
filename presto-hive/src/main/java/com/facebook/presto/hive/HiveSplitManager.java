@@ -57,6 +57,7 @@ import static com.facebook.presto.hive.HivePartition.UNPARTITIONED_ID;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.makePartName;
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_SHUTTING_DOWN;
+import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy.GROUPED_SCHEDULING;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.collect.Iterables.concat;
@@ -73,7 +74,6 @@ public class HiveSplitManager
 {
     public static final String PRESTO_OFFLINE = "presto_offline";
 
-    private final String connectorId;
     private final Function<HiveTransactionHandle, SemiTransactionalHiveMetastore> metastoreProvider;
     private final NamenodeStats namenodeStats;
     private final HdfsEnvironment hdfsEnvironment;
@@ -81,15 +81,16 @@ public class HiveSplitManager
     private final Executor executor;
     private final CoercionPolicy coercionPolicy;
     private final int maxOutstandingSplits;
+    private final DataSize maxOutstandingSplitsSize;
     private final int minPartitionBatchSize;
     private final int maxPartitionBatchSize;
     private final int maxInitialSplits;
+    private final int splitLoaderConcurrency;
     private final boolean recursiveDfsWalkerEnabled;
     private final CounterStat highMemorySplitSourceCounter;
 
     @Inject
     public HiveSplitManager(
-            HiveConnectorId connectorId,
             HiveClientConfig hiveClientConfig,
             Function<HiveTransactionHandle, SemiTransactionalHiveMetastore> metastoreProvider,
             NamenodeStats namenodeStats,
@@ -98,7 +99,7 @@ public class HiveSplitManager
             @ForHiveClient ExecutorService executorService,
             CoercionPolicy coercionPolicy)
     {
-        this(connectorId,
+        this(
                 metastoreProvider,
                 namenodeStats,
                 hdfsEnvironment,
@@ -107,14 +108,15 @@ public class HiveSplitManager
                 coercionPolicy,
                 new CounterStat(),
                 hiveClientConfig.getMaxOutstandingSplits(),
+                hiveClientConfig.getMaxOutstandingSplitsSize(),
                 hiveClientConfig.getMinPartitionBatchSize(),
                 hiveClientConfig.getMaxPartitionBatchSize(),
                 hiveClientConfig.getMaxInitialSplits(),
+                hiveClientConfig.getSplitLoaderConcurrency(),
                 hiveClientConfig.getRecursiveDirWalkerEnabled());
     }
 
     public HiveSplitManager(
-            HiveConnectorId connectorId,
             Function<HiveTransactionHandle, SemiTransactionalHiveMetastore> metastoreProvider,
             NamenodeStats namenodeStats,
             HdfsEnvironment hdfsEnvironment,
@@ -123,12 +125,13 @@ public class HiveSplitManager
             CoercionPolicy coercionPolicy,
             CounterStat highMemorySplitSourceCounter,
             int maxOutstandingSplits,
+            DataSize maxOutstandingSplitsSize,
             int minPartitionBatchSize,
             int maxPartitionBatchSize,
             int maxInitialSplits,
+            int splitLoaderConcurrency,
             boolean recursiveDfsWalkerEnabled)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.metastoreProvider = requireNonNull(metastoreProvider, "metastore is null");
         this.namenodeStats = requireNonNull(namenodeStats, "namenodeStats is null");
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
@@ -138,14 +141,16 @@ public class HiveSplitManager
         this.highMemorySplitSourceCounter = requireNonNull(highMemorySplitSourceCounter, "highMemorySplitSourceCounter is null");
         checkArgument(maxOutstandingSplits >= 1, "maxOutstandingSplits must be at least 1");
         this.maxOutstandingSplits = maxOutstandingSplits;
+        this.maxOutstandingSplitsSize = maxOutstandingSplitsSize;
         this.minPartitionBatchSize = minPartitionBatchSize;
         this.maxPartitionBatchSize = maxPartitionBatchSize;
         this.maxInitialSplits = maxInitialSplits;
+        this.splitLoaderConcurrency = splitLoaderConcurrency;
         this.recursiveDfsWalkerEnabled = recursiveDfsWalkerEnabled;
     }
 
     @Override
-    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorTableLayoutHandle layoutHandle)
+    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorTableLayoutHandle layoutHandle, SplitSchedulingStrategy splitSchedulingStrategy)
     {
         HiveTableLayoutHandle layout = (HiveTableLayoutHandle) layoutHandle;
 
@@ -158,6 +163,7 @@ public class HiveSplitManager
         SchemaTableName tableName = partition.getTableName();
         List<HiveBucketing.HiveBucket> buckets = partition.getBuckets();
         Optional<HiveBucketHandle> bucketHandle = layout.getBucketHandle();
+        checkArgument(splitSchedulingStrategy != GROUPED_SCHEDULING || bucketHandle.isPresent(), "SchedulingPolicy is bucketed, but BucketHandle is not present");
 
         // sort partitions
         partitions = Ordering.natural().onResultOf(HivePartition::getPartitionId).reverse().sortedCopy(partitions);
@@ -170,7 +176,6 @@ public class HiveSplitManager
         Iterable<HivePartitionMetadata> hivePartitions = getPartitionMetadata(metastore, table.get(), tableName, partitions, bucketHandle.map(HiveBucketHandle::toBucketProperty));
 
         HiveSplitLoader hiveSplitLoader = new BackgroundHiveSplitLoader(
-                connectorId,
                 table.get(),
                 hivePartitions,
                 layout.getCompactEffectivePredicate(),
@@ -181,21 +186,40 @@ public class HiveSplitManager
                 namenodeStats,
                 directoryLister,
                 executor,
-                maxPartitionBatchSize,
-                maxInitialSplits,
+                splitLoaderConcurrency,
                 recursiveDfsWalkerEnabled);
 
-        HiveSplitSource splitSource = new HiveSplitSource(
-                connectorId,
-                session.getQueryId(),
-                table.get().getDatabaseName(),
-                table.get().getTableName(),
-                layout.getCompactEffectivePredicate(),
-                maxOutstandingSplits,
-                new DataSize(32, MEGABYTE),
-                hiveSplitLoader,
-                executor,
-                highMemorySplitSourceCounter);
+        HiveSplitSource splitSource;
+        switch (splitSchedulingStrategy) {
+            case UNGROUPED_SCHEDULING:
+                splitSource = HiveSplitSource.allAtOnce(
+                        session,
+                        table.get().getDatabaseName(),
+                        table.get().getTableName(),
+                        layout.getCompactEffectivePredicate(),
+                        maxInitialSplits,
+                        maxOutstandingSplits,
+                        maxOutstandingSplitsSize,
+                        hiveSplitLoader,
+                        executor,
+                        new CounterStat());
+                break;
+            case GROUPED_SCHEDULING:
+                splitSource = HiveSplitSource.bucketed(
+                        session,
+                        table.get().getDatabaseName(),
+                        table.get().getTableName(),
+                        layout.getCompactEffectivePredicate(),
+                        maxInitialSplits,
+                        maxOutstandingSplits,
+                        new DataSize(32, MEGABYTE),
+                        hiveSplitLoader,
+                        executor,
+                        new CounterStat());
+                break;
+            default:
+                throw new IllegalArgumentException("Unknown splitSchedulingStrategy: " + splitSchedulingStrategy);
+        }
         hiveSplitLoader.start(splitSource);
 
         return splitSource;

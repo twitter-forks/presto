@@ -122,6 +122,11 @@ public class OptimizeMixedDistinctAggregations
                 return context.defaultRewrite(node, Optional.empty());
             }
 
+            if (node.hasOrderings()) {
+                // Skip if any aggregation contains a order by
+                return context.defaultRewrite(node, Optional.empty());
+            }
+
             AggregateInfo aggregateInfo = new AggregateInfo(
                     node.getGroupingKeys(),
                     Iterables.getOnlyElement(uniqueMasks),

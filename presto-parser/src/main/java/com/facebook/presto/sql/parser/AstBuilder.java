@@ -175,6 +175,12 @@ class AstBuilder
         extends SqlBaseBaseVisitor<Node>
 {
     private int parameterPosition = 0;
+    private final ParsingOptions parsingOptions;
+
+    AstBuilder(ParsingOptions parsingOptions)
+    {
+        this.parsingOptions = requireNonNull(parsingOptions, "parsingOptions is null");
+    }
 
     @Override
     public Node visitSingleStatement(SqlBaseParser.SingleStatementContext context)
@@ -1305,6 +1311,11 @@ class AstBuilder
         Optional<Expression> filter = visitIfPresent(context.filter(), Expression.class);
         Optional<Window> window = visitIfPresent(context.over(), Window.class);
 
+        Optional<OrderBy> orderBy = Optional.empty();
+        if (context.ORDER() != null) {
+            orderBy = Optional.of(new OrderBy(visit(context.sortItem(), SortItem.class)));
+        }
+
         QualifiedName name = getQualifiedName(context.qualifiedName());
 
         boolean distinct = isDistinct(context.setQuantifier());
@@ -1375,6 +1386,7 @@ class AstBuilder
                 getQualifiedName(context.qualifiedName()),
                 window,
                 filter,
+                orderBy,
                 distinct,
                 visit(context.expression(), Expression.class));
     }
@@ -1566,6 +1578,20 @@ class AstBuilder
 
     @Override
     public Node visitDecimalLiteral(SqlBaseParser.DecimalLiteralContext context)
+    {
+        switch (parsingOptions.getDecimalLiteralTreatment()) {
+            case AS_DOUBLE:
+                return new DoubleLiteral(getLocation(context), context.getText());
+            case AS_DECIMAL:
+                return new DecimalLiteral(getLocation(context), context.getText());
+            case REJECT:
+                throw new ParsingException("Unexpected decimal literal: " + context.getText());
+        }
+        throw new AssertionError("Unreachable");
+    }
+
+    @Override
+    public Node visitDoubleLiteral(SqlBaseParser.DoubleLiteralContext context)
     {
         return new DoubleLiteral(getLocation(context), context.getText());
     }
@@ -2018,6 +2044,11 @@ class AstBuilder
             }
             builder.append(")");
             return "ROW" + builder.toString();
+        }
+
+        if (type.INTERVAL() != null) {
+            return "INTERVAL " + getIntervalFieldType((Token) type.from.getChild(0).getPayload()) +
+                    " TO " + getIntervalFieldType((Token) type.to.getChild(0).getPayload());
         }
 
         throw new IllegalArgumentException("Unsupported type specification: " + type.getText());

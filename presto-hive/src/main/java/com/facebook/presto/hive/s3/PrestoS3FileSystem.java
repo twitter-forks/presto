@@ -79,6 +79,7 @@ import java.io.FilterOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Date;
@@ -579,7 +580,7 @@ public class PrestoS3FileSystem
         }
         catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw Throwables.propagate(e);
+            throw new RuntimeException(e);
         }
         catch (Exception e) {
             throwIfInstanceOf(e, IOException.class);
@@ -599,7 +600,7 @@ public class PrestoS3FileSystem
             return new LocatedFileStatus(status, fakeLocation);
         }
         catch (IOException e) {
-            throw Throwables.propagate(e);
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -835,7 +836,7 @@ public class PrestoS3FileSystem
             }
             catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw Throwables.propagate(e);
+                throw new RuntimeException(e);
             }
             catch (Exception e) {
                 throwIfInstanceOf(e, IOException.class);
@@ -901,7 +902,7 @@ public class PrestoS3FileSystem
                         .onRetry(STATS::newGetObjectRetry)
                         .run("getS3Object", () -> {
                             try {
-                                GetObjectRequest request = new GetObjectRequest(host, keyFromPath(path)).withRange(start, Long.MAX_VALUE);
+                                GetObjectRequest request = new GetObjectRequest(host, keyFromPath(path)).withRange(start);
                                 return s3.getObject(request).getObjectContent();
                             }
                             catch (RuntimeException e) {
@@ -917,13 +918,13 @@ public class PrestoS3FileSystem
                                             throw new UnrecoverableS3OperationException(path, e);
                                     }
                                 }
-                                throw Throwables.propagate(e);
+                                throw e;
                             }
                         });
             }
             catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw Throwables.propagate(e);
+                throw new RuntimeException(e);
             }
             catch (Exception e) {
                 throwIfInstanceOf(e, IOException.class);

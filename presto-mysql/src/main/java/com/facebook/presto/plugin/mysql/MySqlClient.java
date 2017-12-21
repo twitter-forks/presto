@@ -15,12 +15,13 @@ package com.facebook.presto.plugin.mysql;
 
 import com.facebook.presto.plugin.jdbc.BaseJdbcClient;
 import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
+import com.facebook.presto.plugin.jdbc.ConnectionFactory;
+import com.facebook.presto.plugin.jdbc.DriverConnectionFactory;
 import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.spi.type.Varchars;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableSet;
 import com.mysql.jdbc.Driver;
 import com.mysql.jdbc.Statement;
@@ -32,8 +33,10 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Properties;
 import java.util.Set;
 
+import static com.facebook.presto.plugin.jdbc.DriverConnectionFactory.basicConnectionProperties;
 import static java.util.Locale.ENGLISH;
 
 public class MySqlClient
@@ -43,7 +46,13 @@ public class MySqlClient
     public MySqlClient(JdbcConnectorId connectorId, BaseJdbcConfig config, MySqlConfig mySqlConfig)
             throws SQLException
     {
-        super(connectorId, config, "`", new Driver());
+        super(connectorId, config, "`", connectionFactory(config, mySqlConfig));
+    }
+
+    private static ConnectionFactory connectionFactory(BaseJdbcConfig config, MySqlConfig mySqlConfig)
+            throws SQLException
+    {
+        Properties connectionProperties = basicConnectionProperties(config);
         connectionProperties.setProperty("nullCatalogMeansCurrent", "false");
         connectionProperties.setProperty("useUnicode", "true");
         connectionProperties.setProperty("characterEncoding", "utf8");
@@ -55,13 +64,15 @@ public class MySqlClient
         if (mySqlConfig.getConnectionTimeout() != null) {
             connectionProperties.setProperty("connectTimeout", String.valueOf(mySqlConfig.getConnectionTimeout().toMillis()));
         }
+
+        return new DriverConnectionFactory(new Driver(), config.getConnectionUrl(), connectionProperties);
     }
 
     @Override
     public Set<String> getSchemaNames()
     {
         // for MySQL, we need to list catalogs instead of schemas
-        try (Connection connection = driver.connect(connectionUrl, connectionProperties);
+        try (Connection connection = connectionFactory.openConnection();
                 ResultSet resultSet = connection.getMetaData().getCatalogs()) {
             ImmutableSet.Builder<String> schemaNames = ImmutableSet.builder();
             while (resultSet.next()) {
@@ -74,7 +85,7 @@ public class MySqlClient
             return schemaNames.build();
         }
         catch (SQLException e) {
-            throw Throwables.propagate(e);
+            throw new RuntimeException(e);
         }
     }
 

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.verifier;
 
+import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.parser.SqlParserOptions;
 import com.facebook.presto.sql.tree.AddColumn;
@@ -48,7 +49,9 @@ import io.airlift.bootstrap.Bootstrap;
 import io.airlift.bootstrap.LifeCycleManager;
 import io.airlift.event.client.EventClient;
 import io.airlift.log.Logger;
-import org.skife.jdbi.v2.DBI;
+import org.jdbi.v3.core.ConnectionFactory;
+import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 
 import java.io.File;
 import java.net.MalformedURLException;
@@ -63,6 +66,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+import static com.facebook.presto.sql.parser.ParsingOptions.DecimalLiteralTreatment.AS_DOUBLE;
 import static com.facebook.presto.verifier.QueryType.CREATE;
 import static com.facebook.presto.verifier.QueryType.MODIFY;
 import static com.facebook.presto.verifier.QueryType.READ;
@@ -108,7 +112,9 @@ public class PrestoVerifier
             }
             Set<EventClient> eventClients = injector.getInstance(Key.get(new TypeLiteral<Set<EventClient>>() {}));
 
-            VerifierDao dao = getQueryDatabase(injector).onDemand(VerifierDao.class);
+            VerifierDao dao = Jdbi.create(getQueryDatabase(injector))
+                    .installPlugin(new SqlObjectPlugin())
+                    .onDemand(VerifierDao.class);
 
             ImmutableList.Builder<QueryPair> queriesBuilder = ImmutableList.builder();
             for (String suite : config.getSuites()) {
@@ -191,10 +197,10 @@ public class PrestoVerifier
     /**
      * Override this method to use a different method of acquiring a database connection.
      */
-    protected DBI getQueryDatabase(Injector injector)
+    protected ConnectionFactory getQueryDatabase(Injector injector)
     {
         VerifierConfig config = injector.getInstance(VerifierConfig.class);
-        return new DBI(config.getQueryDatabase());
+        return () -> DriverManager.getConnection(config.getQueryDatabase());
     }
 
     /**
@@ -283,7 +289,7 @@ public class PrestoVerifier
     static QueryType statementToQueryType(SqlParser parser, String sql)
     {
         try {
-            return statementToQueryType(parser.createStatement(sql));
+            return statementToQueryType(parser.createStatement(sql, new ParsingOptions(AS_DOUBLE /* anything */)));
         }
         catch (RuntimeException e) {
             throw new UnsupportedOperationException();

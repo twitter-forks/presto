@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>74</version>
+        <version>75</version>
     </parent>
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.188</version>
+    <version>0.191</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -30,7 +30,7 @@
     <scm>
         <connection>scm:git:git://github.com/twitter-forks/presto.git</connection>
         <url>https://github.com/twitter-forks/presto</url>
-        <tag>0.188</tag>
+        <tag>0.191</tag>
     </scm>
 
     <properties>
@@ -47,15 +47,17 @@
         <air.maven.version>3.3.9</air.maven.version>
 
         <dep.antlr.version>4.6</dep.antlr.version>
-        <dep.airlift.version>0.155</dep.airlift.version>
+        <dep.airlift.version>0.158</dep.airlift.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.32</dep.slice.version>
         <dep.aws-sdk.version>1.11.165</dep.aws-sdk.version>
         <dep.okhttp.version>3.9.0</dep.okhttp.version>
-        <dep.tempto.version>1.36</dep.tempto.version>
+        <dep.jdbi3.version>3.0.0</dep.jdbi3.version>
+        <dep.tempto.version>1.37</dep.tempto.version>
         <dep.testng.version>6.10</dep.testng.version>
+        <dep.assertj-core.version>3.8.0</dep.assertj-core.version>
         <dep.nifty.version>0.15.1</dep.nifty.version>
-        <dep.swift.version>0.15.2</dep.swift.version>
+        <dep.swift.version>0.15.6</dep.swift.version>
 
         <!-- use a fractional hour timezone offset for tests -->
         <air.test.timezone>Asia/Katmandu</air.test.timezone>
@@ -100,6 +102,7 @@
         <module>presto-main</module>
         <module>presto-ml</module>
         <module>presto-geospatial</module>
+        <module>presto-geospatial-toolkit</module>
         <module>presto-benchmark</module>
         <module>presto-tests</module>
         <module>presto-product-tests</module>
@@ -123,6 +126,18 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>com.esri.geometry</groupId>
+                <artifactId>esri-geometry-api</artifactId>
+                <version>1.2.1</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.codehaus.jackson</groupId>
+                        <artifactId>jackson-core-asl</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-spi</artifactId>
@@ -187,6 +202,12 @@
 
             <dependency>
                 <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-hive-hadoop2</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-example-http</artifactId>
                 <version>${project.version}</version>
                 <type>zip</type>
@@ -244,6 +265,12 @@
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-geospatial</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-geospatial-toolkit</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -416,6 +443,12 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>json</artifactId>
+                <version>${dep.airlift.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.airlift</groupId>
+                <artifactId>security</artifactId>
                 <version>${dep.airlift.version}</version>
             </dependency>
 
@@ -659,6 +692,18 @@
                 <groupId>org.jdbi</groupId>
                 <artifactId>jdbi</artifactId>
                 <version>2.78</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jdbi</groupId>
+                <artifactId>jdbi3-core</artifactId>
+                <version>${dep.jdbi3.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.jdbi</groupId>
+                <artifactId>jdbi3-sqlobject</artifactId>
+                <version>${dep.jdbi3.version}</version>
             </dependency>
 
             <dependency>
