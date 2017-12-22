@@ -168,8 +168,8 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             thriftIds[i] = getThriftIdWithFailOver(thriftFieldIdResolver, hiveIndexs[i]);
         }
 
-        // close immediately if the totalBytes are zero
-        if (totalBytes <= 0) {
+        // close immediately if the number of totalBytes is zero
+        if (totalBytes == 0) {
             close();
         }
     }

@@ -100,18 +100,27 @@ public class ThriftHiveRecordCursorProvider
             catch (IOException ignored) {
                 // ignored
             }
-            if (index.isEmpty()) {
-                if (start != 0) {
-                    start = 0;
-                    length = 0;
-                }
-                else {
-                    length = fileSize;
-                }
+
+            // re-align split start
+            if (index.isEmpty() && start != 0) {
+                // empty index and split not start from beginning
+                start = LzoIndex.NOT_FOUND;
+            }
+            if (!index.isEmpty()) {
+                // align start based on index
+                start = index.alignSliceStartToIndex(start, start + length);
+            }
+
+            // re-align split end
+            if (start == LzoIndex.NOT_FOUND) {
+                // split start cannot be find, then we should skip this split
+                start = 0;
+                length = 0;
             }
             else {
-                start = index.alignSliceStartToIndex(start, start + length);
-                length = Math.min(index.alignSliceEndToIndex(start + length, fileSize), fileSize) - start;
+                // if index is empty but start is not NOT_FOUND, read the whole file, otherwise align split end.
+                length = index.isEmpty() ? fileSize :
+                        (Math.min(index.alignSliceEndToIndex(start + length, fileSize), fileSize) - start);
             }
         }
 
