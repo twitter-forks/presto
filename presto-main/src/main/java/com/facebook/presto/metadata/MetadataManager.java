@@ -85,6 +85,7 @@ import static com.facebook.presto.metadata.QualifiedObjectName.convertFromSchema
 import static com.facebook.presto.metadata.TableLayout.fromConnectorLayout;
 import static com.facebook.presto.metadata.ViewDefinition.ViewColumn;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_VIEW;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.SYNTAX_ERROR;
 import static com.facebook.presto.spi.function.OperatorType.BETWEEN;
 import static com.facebook.presto.spi.function.OperatorType.EQUAL;
@@ -255,6 +256,12 @@ public class MetadataManager
     }
 
     @Override
+    public boolean catalogExists(Session session, String catalogName)
+    {
+        return getOptionalCatalogMetadata(session, catalogName).isPresent();
+    }
+
+    @Override
     public List<String> listSchemaNames(Session session, String catalogName)
     {
         Optional<CatalogMetadata> catalog = getOptionalCatalogMetadata(session, catalogName);
@@ -336,6 +343,9 @@ public class MetadataManager
         ConnectorId connectorId = tableHandle.getConnectorId();
         ConnectorMetadata metadata = getMetadata(session, connectorId);
         ConnectorTableMetadata tableMetadata = metadata.getTableMetadata(session.toConnectorSession(connectorId), tableHandle.getConnectorHandle());
+        if (tableMetadata.getColumns().isEmpty()) {
+            throw new PrestoException(NOT_SUPPORTED, "Table has no columns: " + tableHandle);
+        }
 
         return new TableMetadata(connectorId, tableMetadata);
     }

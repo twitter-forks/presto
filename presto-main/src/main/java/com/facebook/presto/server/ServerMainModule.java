@@ -198,6 +198,10 @@ public class ServerMainModule
         }
         else {
             binder.bind(new TypeLiteral<Optional<QueryPerformanceFetcher>>() {}).toInstance(Optional.empty());
+
+            // Install no-op session supplier on workers, since only coordinators create sessions.
+            binder.bind(SessionSupplier.class).to(NoOpSessionSupplier.class).in(Scopes.SINGLETON);
+
             // Install no-op resource group manager on workers, since only coordinators manage resource groups.
             binder.bind(ResourceGroupManager.class).to(NoOpResourceGroupManager.class).in(Scopes.SINGLETON);
 
@@ -276,12 +280,6 @@ public class ServerMainModule
 
         // memory revoking scheduler
         binder.bind(MemoryRevokingScheduler.class).in(Scopes.SINGLETON);
-
-        // workaround for CodeCache GC issue
-        if (JavaVersion.current().getMajor() == 8) {
-            configBinder(binder).bindConfig(CodeCacheGcConfig.class);
-            binder.bind(CodeCacheGcTrigger.class).in(Scopes.SINGLETON);
-        }
 
         // Add monitoring for JVM pauses
         binder.bind(PauseMeter.class).in(Scopes.SINGLETON);

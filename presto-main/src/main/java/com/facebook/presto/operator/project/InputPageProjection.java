@@ -13,15 +13,13 @@
  */
 package com.facebook.presto.operator.project;
 
+import com.facebook.presto.operator.CompletedWork;
 import com.facebook.presto.operator.DriverYieldSignal;
+import com.facebook.presto.operator.Work;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
-import com.google.common.primitives.Ints;
-
-import java.util.List;
-import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
@@ -56,32 +54,18 @@ public class InputPageProjection
     }
 
     @Override
-    public PageProjectionOutput project(ConnectorSession session, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
+    public Work<Block> project(ConnectorSession session, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
     {
-        return new InputPageProjectionOutput(page, selectedPositions);
-    }
+        Block block = requireNonNull(page, "page is null").getBlock(0);
+        requireNonNull(selectedPositions, "selectedPositions is null");
 
-    private class InputPageProjectionOutput
-            implements PageProjectionOutput
-    {
-        private final Block block;
-        private final SelectedPositions selectedPositions;
-
-        public InputPageProjectionOutput(Page page, SelectedPositions selectedPositions)
-        {
-            this.block = requireNonNull(page, "page is null").getBlock(0);
-            this.selectedPositions = requireNonNull(selectedPositions, "selectedPositions is null");
+        Block result;
+        if (selectedPositions.isList()) {
+            result = block.copyPositions(selectedPositions.getPositions(), selectedPositions.getOffset(), selectedPositions.size());
         }
-
-        @Override
-        public Optional<Block> compute()
-        {
-            if (selectedPositions.isList()) {
-                List<Integer> positionList = Ints.asList(selectedPositions.getPositions())
-                        .subList(selectedPositions.getOffset(), selectedPositions.getOffset() + selectedPositions.size());
-                return Optional.of(block.copyPositions(positionList));
-            }
-            return Optional.of(block.getRegion(selectedPositions.getOffset(), selectedPositions.size()));
+        else {
+            result = block.getRegion(selectedPositions.getOffset(), selectedPositions.size());
         }
+        return new CompletedWork<>(result);
     }
 }

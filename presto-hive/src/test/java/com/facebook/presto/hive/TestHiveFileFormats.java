@@ -715,7 +715,6 @@ public class TestHiveFileFormats
         Optional<ConnectorPageSource> pageSource = HivePageSourceProvider.createHivePageSource(
                 ImmutableSet.of(cursorProvider),
                 ImmutableSet.of(),
-                "test",
                 configuration,
                 SESSION,
                 split.getPath(),
@@ -760,7 +759,6 @@ public class TestHiveFileFormats
         Optional<ConnectorPageSource> pageSource = HivePageSourceProvider.createHivePageSource(
                 ImmutableSet.of(),
                 ImmutableSet.of(sourceFactory),
-                "test",
                 new Configuration(),
                 session,
                 split.getPath(),

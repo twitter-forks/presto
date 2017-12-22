@@ -18,6 +18,8 @@ import com.twitter.elephantbird.mapred.input.DeprecatedFileInputFormatWrapper;
 import com.twitter.elephantbird.mapreduce.input.MultiInputFormat;
 import com.twitter.elephantbird.mapreduce.io.BinaryWritable;
 import com.twitter.elephantbird.util.TypeRef;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapred.FileSplit;
 import org.apache.hadoop.mapred.InputSplit;
@@ -29,13 +31,17 @@ import java.io.IOException;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
+import static com.facebook.presto.hive.HiveUtil.getLzopIndexPath;
+import static com.facebook.presto.hive.HiveUtil.isLzopCompressedFile;
 import static java.lang.String.format;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 /**
  * Mirror of com.twitter.elephantbird.mapred.input.HiveMultiInputFormat allows to pass the thriftClassName
- * directly as a property of JobConfig.
- * PR for twitter/elephant-bird: https://github.com/twitter/elephant-bird/pull/481
+ * directly as a property of JobConfig and check lzo index existence when check splitability.
+ * PR for twitter/elephant-bird:
+ *      https://github.com/twitter/elephant-bird/pull/481
+ *      https://github.com/twitter/elephant-bird/pull/485
  * Remove the class once #481 is included in a release
  */
 @SuppressWarnings("deprecation")
@@ -59,6 +65,21 @@ public class ThriftGeneralInputFormat
         catch (ClassNotFoundException e) {
             throw new PrestoException(HIVE_INVALID_METADATA, format("Failed getting class for %s", thriftClassName));
         }
+    }
+
+    @Override
+    public boolean isSplitable(FileSystem fs, Path filename)
+    {
+        if (isLzopCompressedFile(filename)) {
+            Path indexFile = getLzopIndexPath(filename);
+            try {
+                return fs.exists(indexFile);
+            }
+            catch (IOException e) {
+                return false;
+            }
+        }
+        return super.isSplitable(fs, filename);
     }
 
     @Override

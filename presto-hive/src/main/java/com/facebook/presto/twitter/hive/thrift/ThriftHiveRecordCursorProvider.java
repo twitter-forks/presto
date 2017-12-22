@@ -21,6 +21,7 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableSet;
+import com.hadoop.compression.lzo.LzoIndex;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Writable;
@@ -29,6 +30,7 @@ import org.joda.time.DateTimeZone;
 
 import javax.inject.Inject;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -39,6 +41,8 @@ import static com.facebook.presto.hive.HiveStorageFormat.THRIFTBINARY;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.createRecordReader;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
+import static com.facebook.presto.hive.HiveUtil.getLzopIndexPath;
+import static com.facebook.presto.hive.HiveUtil.isLzopCompressedFile;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
@@ -62,7 +66,6 @@ public class ThriftHiveRecordCursorProvider
 
     @Override
     public Optional<RecordCursor> createRecordCursor(
-            String clientId,
             Configuration configuration,
             ConnectorSession session,
             Path path,
@@ -88,8 +91,43 @@ public class ThriftHiveRecordCursorProvider
         setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.check.only.in.close", Boolean.toString(false));
         setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.threshold", Float.toString(0.0f));
 
+        // re-align split range
+        if (isLzopCompressedFile(path)) {
+            LzoIndex index = new LzoIndex();
+            try {
+                index = LzoIndex.readIndex(hdfsEnvironment.getFileSystem(session.getUser(), getLzopIndexPath(path), configuration), path);
+            }
+            catch (IOException ignored) {
+                // ignored
+            }
+
+            // re-align split start
+            if (index.isEmpty() && start != 0) {
+                // empty index and split not start from beginning
+                start = LzoIndex.NOT_FOUND;
+            }
+            if (!index.isEmpty()) {
+                // align start based on index
+                start = index.alignSliceStartToIndex(start, start + length);
+            }
+
+            // re-align split end
+            if (start == LzoIndex.NOT_FOUND) {
+                // split start cannot be find, then we should skip this split
+                start = 0;
+                length = 0;
+            }
+            else {
+                // if index is empty but start is not NOT_FOUND, read the whole file, otherwise align split end.
+                length = index.isEmpty() ? fileSize :
+                        (Math.min(index.alignSliceEndToIndex(start + length, fileSize), fileSize) - start);
+            }
+        }
+
+        long finalStart = start;
+        long finalLength = length;
         RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
-                () -> createRecordReader(configuration, path, start, length, schema, columns));
+                () -> createRecordReader(configuration, path, finalStart, finalLength, schema, columns));
 
         return Optional.of(new ThriftHiveRecordCursor<>(
                 genericRecordReader(recordReader),

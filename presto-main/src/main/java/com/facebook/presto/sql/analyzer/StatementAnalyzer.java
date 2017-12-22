@@ -144,6 +144,7 @@ import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.NodeUtils.getSortItemsFromOrderBy;
 import static com.facebook.presto.sql.NodeUtils.mapFromProperties;
+import static com.facebook.presto.sql.ParsingUtil.createParsingOptions;
 import static com.facebook.presto.sql.analyzer.AggregationAnalyzer.verifyOrderByAggregations;
 import static com.facebook.presto.sql.analyzer.AggregationAnalyzer.verifySourceAggregations;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.createConstantAnalyzer;
@@ -1287,6 +1288,10 @@ class StatementAnalyzer
                     throw new SemanticException(NOT_SUPPORTED, node, "FILTER is not yet supported for window functions");
                 }
 
+                if (windowFunction.getOrderBy().isPresent()) {
+                    throw new SemanticException(NOT_SUPPORTED, windowFunction, "Window function with ORDER BY is not supported");
+                }
+
                 Window window = windowFunction.getWindow().get();
 
                 ImmutableList.Builder<Node> toExtract = ImmutableList.builder();
@@ -1356,6 +1361,13 @@ class StatementAnalyzer
                 Expression predicate = node.getHaving().get();
 
                 ExpressionAnalysis expressionAnalysis = analyzeExpression(predicate, scope);
+
+                expressionAnalysis.getWindowFunctions().stream()
+                        .findFirst()
+                        .ifPresent(function -> {
+                            throw new SemanticException(NESTED_WINDOW, function.getNode(), "HAVING clause cannot contain window functions");
+                        });
+
                 analysis.recordSubqueries(node, expressionAnalysis);
 
                 Type predicateType = expressionAnalysis.getType(predicate);
@@ -1673,7 +1685,7 @@ class StatementAnalyzer
                     .filter(expression -> hasReferencesToScope(expression, analysis, outputScope))
                     .collect(toImmutableList());
             List<Expression> orderByAggregationExpressions = orderByAggregationExpressionsBuilder.build().stream()
-                    .filter(expression -> !orderByExpressionsReferencingOutputScope.contains(expression) || analysis.getColumnReferences().contains(NodeRef.of(expression)))
+                    .filter(expression -> !orderByExpressionsReferencingOutputScope.contains(expression) || analysis.isColumnReference(expression))
                     .collect(toImmutableList());
 
             // generate placeholder fields
@@ -1717,7 +1729,10 @@ class StatementAnalyzer
                         if (starPrefix.isPresent()) {
                             throw new SemanticException(MISSING_TABLE, item, "Table '%s' not found", starPrefix.get());
                         }
-                        throw new SemanticException(WILDCARD_WITHOUT_FROM, item, "SELECT * not allowed in queries without FROM clause");
+                        if (!node.getFrom().isPresent()) {
+                            throw new SemanticException(WILDCARD_WITHOUT_FROM, item, "SELECT * not allowed in queries without FROM clause");
+                        }
+                        throw new SemanticException(COLUMN_NAME_NOT_SPECIFIED, item, "SELECT * not allowed from relation that has no columns");
                     }
 
                     for (Field field : fields) {
@@ -1895,7 +1910,7 @@ class StatementAnalyzer
         private Query parseView(String view, QualifiedObjectName name, Node node)
         {
             try {
-                return (Query) sqlParser.createStatement(view);
+                return (Query) sqlParser.createStatement(view, createParsingOptions(session));
             }
             catch (ParsingException e) {
                 throw new SemanticException(VIEW_PARSE_ERROR, node, "Failed parsing stored view '%s': %s", name, e.getMessage());

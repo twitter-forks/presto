@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.InternalHiveSplit.InternalHiveBlock;
 import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
@@ -31,6 +32,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import static com.facebook.presto.hive.HiveTestUtils.SESSION;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.testing.Assertions.assertContains;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
@@ -45,14 +47,14 @@ public class TestHiveSplitSource
     public void testOutstandingSplitCount()
             throws Exception
     {
-        HiveSplitSource hiveSplitSource = new HiveSplitSource(
-                "client-id",
-                "query-id",
+        HiveSplitSource hiveSplitSource = HiveSplitSource.allAtOnce(
+                SESSION,
                 "database",
                 "table",
                 TupleDomain.all(),
                 10,
-                new DataSize(32, MEGABYTE),
+                10,
+                new DataSize(1, MEGABYTE),
                 new TestingHiveSplitLoader(),
                 Executors.newFixedThreadPool(5),
                 new CounterStat());
@@ -60,34 +62,34 @@ public class TestHiveSplitSource
         // add 10 splits
         for (int i = 0; i < 10; i++) {
             hiveSplitSource.addToQueue(new TestSplit(i));
-            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+            assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
         }
 
         // remove 1 split
         assertEquals(getFutureValue(hiveSplitSource.getNextBatch(1)).size(), 1);
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 9);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 9);
 
         // remove 4 splits
         assertEquals(getFutureValue(hiveSplitSource.getNextBatch(4)).size(), 4);
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 5);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 5);
 
         // try to remove 20 splits, and verify we only got 5
         assertEquals(getFutureValue(hiveSplitSource.getNextBatch(20)).size(), 5);
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 0);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 0);
     }
 
     @Test
     public void testFail()
             throws Exception
     {
-        HiveSplitSource hiveSplitSource = new HiveSplitSource(
-                "client-id",
-                "query-id",
+        HiveSplitSource hiveSplitSource = HiveSplitSource.allAtOnce(
+                SESSION,
                 "database",
                 "table",
                 TupleDomain.all(),
                 10,
-                new DataSize(32, MEGABYTE),
+                10,
+                new DataSize(1, MEGABYTE),
                 new TestingHiveSplitLoader(),
                 Executors.newFixedThreadPool(5),
                 new CounterStat());
@@ -95,16 +97,16 @@ public class TestHiveSplitSource
         // add some splits
         for (int i = 0; i < 5; i++) {
             hiveSplitSource.addToQueue(new TestSplit(i));
-            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+            assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
         }
 
         // remove a split and verify
         assertEquals(getFutureValue(hiveSplitSource.getNextBatch(1)).size(), 1);
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 4);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4);
 
         // fail source
         hiveSplitSource.fail(new RuntimeException("test"));
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 4);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4);
 
         // try to remove a split and verify we got the expected exception
         try {
@@ -114,15 +116,15 @@ public class TestHiveSplitSource
         catch (RuntimeException e) {
             assertEquals(e.getMessage(), "test");
         }
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 3);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4); // 3 splits + poison
 
         // attempt to add another split and verify it does not work
         hiveSplitSource.addToQueue(new TestSplit(99));
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 3);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4); // 3 splits + poison
 
         // fail source again
         hiveSplitSource.fail(new RuntimeException("another failure"));
-        assertEquals(hiveSplitSource.getOutstandingSplitCount(), 3);
+        assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), 4); // 3 splits + poison
 
         // try to remove a split and verify we got the first exception
         try {
@@ -138,12 +140,12 @@ public class TestHiveSplitSource
     public void testReaderWaitsForSplits()
             throws Exception
     {
-        final HiveSplitSource hiveSplitSource = new HiveSplitSource(
-                "client-id",
-                "query-id",
+        final HiveSplitSource hiveSplitSource = HiveSplitSource.allAtOnce(
+                SESSION,
                 "database",
                 "table",
                 TupleDomain.all(),
+                10,
                 10,
                 new DataSize(1, MEGABYTE),
                 new TestingHiveSplitLoader(),
@@ -198,12 +200,12 @@ public class TestHiveSplitSource
             throws Exception
     {
         DataSize maxOutstandingSplitsSize = new DataSize(1, MEGABYTE);
-        HiveSplitSource hiveSplitSource = new HiveSplitSource(
-                "client-id",
-                "query-id",
+        HiveSplitSource hiveSplitSource = HiveSplitSource.allAtOnce(
+                SESSION,
                 "database",
                 "table",
                 TupleDomain.all(),
+                10,
                 10000,
                 maxOutstandingSplitsSize,
                 new TestingHiveSplitLoader(),
@@ -217,8 +219,9 @@ public class TestHiveSplitSource
                 100,
                 new Properties(),
                 ImmutableList.of(new HivePartitionKey("pk_col", "pk_value")),
-                ImmutableList.of(HostAddress.fromString("localhost")),
+                ImmutableList.of(new InternalHiveBlock(0, 100, ImmutableList.of(HostAddress.fromString("localhost")))),
                 OptionalInt.empty(),
+                true,
                 false,
                 ImmutableMap.of());
         int testSplitSizeInBytes = testSplit.getEstimatedSizeInBytes();
@@ -226,14 +229,14 @@ public class TestHiveSplitSource
         int maxSplitCount = toIntExact(maxOutstandingSplitsSize.toBytes()) / testSplitSizeInBytes;
         for (int i = 0; i < maxSplitCount; i++) {
             hiveSplitSource.addToQueue(testSplit);
-            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+            assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
         }
 
         assertEquals(getFutureValue(hiveSplitSource.getNextBatch(maxSplitCount)).size(), maxSplitCount);
 
         for (int i = 0; i < maxSplitCount; i++) {
             hiveSplitSource.addToQueue(testSplit);
-            assertEquals(hiveSplitSource.getOutstandingSplitCount(), i + 1);
+            assertEquals(hiveSplitSource.getBufferedInternalSplitCount(), i + 1);
         }
         try {
             hiveSplitSource.addToQueue(testSplit);
@@ -271,8 +274,9 @@ public class TestHiveSplitSource
                     100,
                     properties("id", String.valueOf(id)),
                     ImmutableList.of(),
-                    ImmutableList.of(),
+                    ImmutableList.of(new InternalHiveBlock(0, 100, ImmutableList.of())),
                     OptionalInt.empty(),
+                    true,
                     false,
                     ImmutableMap.of());
         }

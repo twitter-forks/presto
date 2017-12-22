@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.twitter.hive;
 
-import com.facebook.presto.hive.HiveCluster;
+import com.facebook.presto.hive.metastore.thrift.HiveCluster;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;

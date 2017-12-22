@@ -43,7 +43,7 @@ import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -53,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
-import java.util.stream.Collectors;
 
 import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INSUFFICIENT_RESOURCES;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
@@ -90,6 +89,7 @@ import static java.lang.Float.intBitsToFloat;
 import static java.lang.Math.toIntExact;
 import static java.lang.String.format;
 import static java.math.RoundingMode.HALF_UP;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 
 public final class JsonUtil
@@ -108,7 +108,9 @@ public final class JsonUtil
     public static JsonParser createJsonParser(JsonFactory factory, Slice json)
             throws IOException
     {
-        return factory.createParser((InputStream) json.getInput());
+        // Jackson tries to detect the character encoding automatically when using InputStream
+        // so we pass an InputStreamReader instead.
+        return factory.createParser(new InputStreamReader(json.getInput(), UTF_8));
     }
 
     public static JsonGenerator createJsonGenerator(JsonFactory factory, SliceOutput output)
@@ -1273,11 +1275,11 @@ public final class JsonUtil
             }
 
             if (numFieldsWritten != fieldAppenders.length) {
-                String missingFieldNames = fieldNameToIndex.get().entrySet().stream()
-                        .filter(entry -> !fieldWritten[entry.getValue()])
-                        .map(Map.Entry::getKey)
-                        .collect(Collectors.joining(", "));
-                throw new JsonCastException("Missing fields: " + missingFieldNames);
+                for (int i = 0; i < fieldWritten.length; i++) {
+                    if (!fieldWritten[i]) {
+                        singleRowBlockWriter.getFieldBlockBuilder(i).appendNull();
+                    }
+                }
             }
         }
     }

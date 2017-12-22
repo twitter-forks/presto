@@ -20,10 +20,12 @@ import io.airlift.configuration.ConfigDescription;
 import io.airlift.configuration.DefunctConfig;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
+import io.airlift.units.MaxDataSize;
 
 import javax.validation.constraints.DecimalMax;
 import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -31,6 +33,7 @@ import java.util.List;
 
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.airlift.units.DataSize.Unit.KILOBYTE;
 import static java.util.concurrent.TimeUnit.MINUTES;
 
 @DefunctConfig({
@@ -42,10 +45,13 @@ public class FeaturesConfig
 {
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
+    private boolean dictionaryProcessingJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
     private boolean fastInequalityJoins = true;
     private boolean reorderJoins = true;
     private boolean redistributeWrites = true;
+    private boolean scaleWriters;
+    private DataSize writerMinSize = new DataSize(32, DataSize.Unit.MEGABYTE);
     private boolean optimizeMetadataQueries;
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
@@ -74,8 +80,12 @@ public class FeaturesConfig
     private boolean pushAggregationThroughJoin = true;
     private double memoryRevokingTarget = 0.5;
     private double memoryRevokingThreshold = 0.9;
+    private boolean parseDecimalLiteralsAsDouble = true;
 
     private Duration iterativeOptimizerTimeout = new Duration(3, MINUTES); // by default let optimizer wait a long time in case it retrieves some data from ConnectorMetadata
+
+    private DataSize filterAndProjectMinOutputPageSize = new DataSize(25, KILOBYTE);
+    private int filterAndProjectMinOutputPageRowCount = 256;
 
     public boolean isResourceGroupsEnabled()
     {
@@ -104,6 +114,18 @@ public class FeaturesConfig
     public boolean isDistributedJoinsEnabled()
     {
         return distributedJoinsEnabled;
+    }
+
+    @Config("dictionary-processing-joins-enabled")
+    public FeaturesConfig setDictionaryProcessingJoinsEnabled(boolean dictionaryProcessingJoinsEnabled)
+    {
+        this.dictionaryProcessingJoinsEnabled = dictionaryProcessingJoinsEnabled;
+        return this;
+    }
+
+    public boolean isDictionaryProcessingJoinsEnabled()
+    {
+        return dictionaryProcessingJoinsEnabled;
     }
 
     @Config("deprecated.legacy-array-agg")
@@ -197,6 +219,32 @@ public class FeaturesConfig
     public FeaturesConfig setRedistributeWrites(boolean redistributeWrites)
     {
         this.redistributeWrites = redistributeWrites;
+        return this;
+    }
+
+    public boolean isScaleWriters()
+    {
+        return scaleWriters;
+    }
+
+    @Config("scale-writers")
+    public FeaturesConfig setScaleWriters(boolean scaleWriters)
+    {
+        this.scaleWriters = scaleWriters;
+        return this;
+    }
+
+    @NotNull
+    public DataSize getWriterMinSize()
+    {
+        return writerMinSize;
+    }
+
+    @Config("writer-min-size")
+    @ConfigDescription("Target minimum size of writer output when scaling writers")
+    public FeaturesConfig setWriterMinSize(DataSize writerMinSize)
+    {
+        this.writerMinSize = writerMinSize;
         return this;
     }
 
@@ -461,6 +509,18 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isParseDecimalLiteralsAsDouble()
+    {
+        return parseDecimalLiteralsAsDouble;
+    }
+
+    @Config("parse-decimal-literals-as-double")
+    public FeaturesConfig setParseDecimalLiteralsAsDouble(boolean parseDecimalLiteralsAsDouble)
+    {
+        this.parseDecimalLiteralsAsDouble = parseDecimalLiteralsAsDouble;
+        return this;
+    }
+
     public boolean isForceSingleNodeOutput()
     {
         return forceSingleNodeOutput;
@@ -482,6 +542,32 @@ public class FeaturesConfig
     public FeaturesConfig setPagesIndexEagerCompactionEnabled(boolean pagesIndexEagerCompactionEnabled)
     {
         this.pagesIndexEagerCompactionEnabled = pagesIndexEagerCompactionEnabled;
+        return this;
+    }
+
+    @MaxDataSize("1MB")
+    public DataSize getFilterAndProjectMinOutputPageSize()
+    {
+        return filterAndProjectMinOutputPageSize;
+    }
+
+    @Config("experimental.filter-and-project-min-output-page-size")
+    public FeaturesConfig setFilterAndProjectMinOutputPageSize(DataSize filterAndProjectMinOutputPageSize)
+    {
+        this.filterAndProjectMinOutputPageSize = filterAndProjectMinOutputPageSize;
+        return this;
+    }
+
+    @Min(0)
+    public int getFilterAndProjectMinOutputPageRowCount()
+    {
+        return filterAndProjectMinOutputPageRowCount;
+    }
+
+    @Config("experimental.filter-and-project-min-output-page-row-count")
+    public FeaturesConfig setFilterAndProjectMinOutputPageRowCount(int filterAndProjectMinOutputPageRowCount)
+    {
+        this.filterAndProjectMinOutputPageRowCount = filterAndProjectMinOutputPageRowCount;
         return this;
     }
 }

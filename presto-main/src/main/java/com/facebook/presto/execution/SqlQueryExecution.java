@@ -28,6 +28,7 @@ import com.facebook.presto.failureDetector.FailureDetector;
 import com.facebook.presto.memory.VersionedMemoryPoolId;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.TableHandle;
+import com.facebook.presto.operator.ForScheduler;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.QueryId;
@@ -74,10 +75,7 @@ import com.facebook.presto.sql.tree.ShowTables;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -91,7 +89,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static com.facebook.presto.OutputBuffers.BROADCAST_PARTITION_ID;
 import static com.facebook.presto.OutputBuffers.createInitialEmptyOutputBuffers;
@@ -128,6 +128,7 @@ public final class SqlQueryExecution
     private final LocationFactory locationFactory;
     private final int scheduleSplitBatchSize;
     private final ExecutorService queryExecutor;
+    private final ScheduledExecutorService schedulerExecutor;
     private final FailureDetector failureDetector;
 
     private final QueryExplainer queryExplainer;
@@ -139,7 +140,6 @@ public final class SqlQueryExecution
     private final ExecutionPolicy executionPolicy;
     private final List<Expression> parameters;
     private final SplitSchedulerStats schedulerStats;
-    private final SettableFuture<QueryOutputInfo> outputInfo = SettableFuture.create();
 
     public SqlQueryExecution(QueryId queryId,
             String query,
@@ -159,6 +159,7 @@ public final class SqlQueryExecution
             LocationFactory locationFactory,
             int scheduleSplitBatchSize,
             ExecutorService queryExecutor,
+            ScheduledExecutorService schedulerExecutor,
             FailureDetector failureDetector,
             NodeTaskMap nodeTaskMap,
             QueryExplainer queryExplainer,
@@ -179,6 +180,7 @@ public final class SqlQueryExecution
             this.planOptimizers = requireNonNull(planOptimizers, "planOptimizers is null");
             this.locationFactory = requireNonNull(locationFactory, "locationFactory is null");
             this.queryExecutor = requireNonNull(queryExecutor, "queryExecutor is null");
+            this.schedulerExecutor = requireNonNull(schedulerExecutor, "schedulerExecutor is null");
             this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
             this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
             this.executionPolicy = requireNonNull(executionPolicy, "executionPolicy is null");
@@ -375,7 +377,7 @@ public final class SqlQueryExecution
         stateMachine.setOutput(output);
 
         // fragment the plan
-        SubPlan fragmentedPlan = PlanFragmenter.createSubPlans(stateMachine.getSession(), metadata, plan);
+        SubPlan fragmentedPlan = PlanFragmenter.createSubPlans(stateMachine.getSession(), metadata, nodePartitioningManager, plan, false);
         stateMachine.setPlan(planFlattener.flatten(fragmentedPlan, stateMachine.getSession()));
 
         // record analysis time
@@ -423,8 +425,8 @@ public final class SqlQueryExecution
             return;
         }
 
-        // record field names
-        stateMachine.setOutputFieldNames(outputStageExecutionPlan.getFieldNames());
+        // record output field
+        stateMachine.setColumns(outputStageExecutionPlan.getFieldNames(), outputStageExecutionPlan.getFragment().getTypes());
 
         PartitioningHandle partitioningHandle = plan.getRoot().getFragment().getPartitioningScheme().getPartitioning().getHandle();
         OutputBuffers rootOutputBuffers = createInitialEmptyOutputBuffers(partitioningHandle)
@@ -443,6 +445,7 @@ public final class SqlQueryExecution
                 plan.isSummarizeTaskInfos(),
                 scheduleSplitBatchSize,
                 queryExecutor,
+                schedulerExecutor,
                 failureDetector,
                 rootOutputBuffers,
                 nodeTaskMap,
@@ -450,20 +453,6 @@ public final class SqlQueryExecution
                 schedulerStats);
 
         queryScheduler.set(scheduler);
-
-        Futures.addCallback(scheduler.getRootStageOutputBufferLocations(), new FutureCallback<QueryOutputInfo>()
-        {
-            @Override
-            public void onSuccess(QueryOutputInfo result)
-            {
-                outputInfo.set(result);
-            }
-
-            @Override
-            public void onFailure(Throwable t)
-            {
-            }
-        });
 
         // if query was canceled during scheduler creation, abort the scheduler
         // directly since the callback may have already fired
@@ -517,9 +506,9 @@ public final class SqlQueryExecution
     }
 
     @Override
-    public ListenableFuture<QueryOutputInfo> getOutputInfo()
+    public void addOutputInfoListener(Consumer<QueryOutputInfo> listener)
     {
-        return Futures.nonCancellationPropagating(outputInfo);
+        stateMachine.addOutputInfoListener(listener);
     }
 
     @Override
@@ -650,7 +639,8 @@ public final class SqlQueryExecution
         private final QueryExplainer queryExplainer;
         private final PlanFlattener planFlattener;
         private final LocationFactory locationFactory;
-        private final ExecutorService executor;
+        private final ExecutorService queryExecutor;
+        private final ScheduledExecutorService schedulerExecutor;
         private final FailureDetector failureDetector;
         private final NodeTaskMap nodeTaskMap;
         private final Map<String, ExecutionPolicy> executionPolicies;
@@ -669,7 +659,8 @@ public final class SqlQueryExecution
                 PlanOptimizers planOptimizers,
                 RemoteTaskFactory remoteTaskFactory,
                 TransactionManager transactionManager,
-                @ForQueryExecution ExecutorService executor,
+                @ForQueryExecution ExecutorService queryExecutor,
+                @ForScheduler ScheduledExecutorService schedulerExecutor,
                 FailureDetector failureDetector,
                 NodeTaskMap nodeTaskMap,
                 QueryExplainer queryExplainer,
@@ -691,7 +682,8 @@ public final class SqlQueryExecution
             this.remoteTaskFactory = requireNonNull(remoteTaskFactory, "remoteTaskFactory is null");
             this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
             requireNonNull(featuresConfig, "featuresConfig is null");
-            this.executor = requireNonNull(executor, "executor is null");
+            this.queryExecutor = requireNonNull(queryExecutor, "queryExecutor is null");
+            this.schedulerExecutor = requireNonNull(schedulerExecutor, "schedulerExecutor is null");
             this.failureDetector = requireNonNull(failureDetector, "failureDetector is null");
             this.nodeTaskMap = requireNonNull(nodeTaskMap, "nodeTaskMap is null");
             this.queryExplainer = requireNonNull(queryExplainer, "queryExplainer is null");
@@ -727,7 +719,8 @@ public final class SqlQueryExecution
                     remoteTaskFactory,
                     locationFactory,
                     scheduleSplitBatchSize,
-                    executor,
+                    queryExecutor,
+                    schedulerExecutor,
                     failureDetector,
                     nodeTaskMap,
                     queryExplainer,
