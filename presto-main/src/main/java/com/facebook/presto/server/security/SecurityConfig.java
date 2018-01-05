@@ -33,6 +33,8 @@ public class SecurityConfig
 
     private Set<AuthenticationType> authenticationTypes = ImmutableSet.of();
 
+    private String httpAuthenticationPathRegex = "^\b$";
+
     public enum AuthenticationType
     {
         CERTIFICATE,
@@ -64,6 +66,20 @@ public class SecurityConfig
         authenticationTypes = stream(SPLITTER.split(types))
                 .map(AuthenticationType::valueOf)
                 .collect(toImmutableSet());
+        return this;
+    }
+
+    @NotNull
+    public String getHttpAuthenticationPathRegex()
+    {
+        return httpAuthenticationPathRegex;
+    }
+
+    @Config("http-server.http.authentication.path.regex")
+    @ConfigDescription("Regex of path that needs to be authenticated for non-secured http request")
+    public SecurityConfig setHttpAuthenticationPathRegex(String regex)
+    {
+        httpAuthenticationPathRegex = regex;
         return this;
     }
 }
