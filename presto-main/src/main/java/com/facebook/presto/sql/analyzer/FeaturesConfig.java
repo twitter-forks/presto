@@ -45,7 +45,6 @@ public class FeaturesConfig
 {
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
-    private boolean dictionaryProcessingJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
     private boolean fastInequalityJoins = true;
     private boolean reorderJoins = true;
@@ -60,6 +59,7 @@ public class FeaturesConfig
     private boolean exchangeCompressionEnabled;
     private boolean legacyArrayAgg;
     private boolean legacyOrderBy;
+    private boolean legacyTimestamp = true;
     private boolean legacyMapSubscript;
     private boolean optimizeMixedDistinctAggregations;
     private boolean forceSingleNodeOutput = true;
@@ -116,18 +116,6 @@ public class FeaturesConfig
         return distributedJoinsEnabled;
     }
 
-    @Config("dictionary-processing-joins-enabled")
-    public FeaturesConfig setDictionaryProcessingJoinsEnabled(boolean dictionaryProcessingJoinsEnabled)
-    {
-        this.dictionaryProcessingJoinsEnabled = dictionaryProcessingJoinsEnabled;
-        return this;
-    }
-
-    public boolean isDictionaryProcessingJoinsEnabled()
-    {
-        return dictionaryProcessingJoinsEnabled;
-    }
-
     @Config("deprecated.legacy-array-agg")
     public FeaturesConfig setLegacyArrayAgg(boolean legacyArrayAgg)
     {
@@ -150,6 +138,18 @@ public class FeaturesConfig
     public boolean isLegacyOrderBy()
     {
         return legacyOrderBy;
+    }
+
+    @Config("deprecated.legacy-timestamp")
+    public FeaturesConfig setLegacyTimestamp(boolean value)
+    {
+        this.legacyTimestamp = value;
+        return this;
+    }
+
+    public boolean isLegacyTimestamp()
+    {
+        return legacyTimestamp;
     }
 
     @Config("deprecated.legacy-map-subscript")

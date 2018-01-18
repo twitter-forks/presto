@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.operator;
 
-import com.facebook.presto.annotation.UsedByGeneratedCode;
 import com.facebook.presto.execution.Lifespan;
+import com.facebook.presto.operator.JoinProbe.JoinProbeFactory;
 import com.facebook.presto.operator.LookupJoinOperators.JoinType;
 import com.facebook.presto.operator.LookupOuterOperator.LookupOuterOperatorFactory;
 import com.facebook.presto.spi.type.Type;
@@ -56,7 +56,6 @@ public class LookupJoinOperatorFactory
 
     private boolean closed;
 
-    @UsedByGeneratedCode
     public LookupJoinOperatorFactory(
             int operatorId,
             PlanNodeId planNodeId,

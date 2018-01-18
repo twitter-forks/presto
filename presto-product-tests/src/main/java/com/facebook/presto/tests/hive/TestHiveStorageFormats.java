@@ -55,7 +55,8 @@ public class TestHiveStorageFormats
                 {storageFormat("RCTEXT", ImmutableMap.of("hive.rcfile_optimized_writer_enabled", "false", "hive.rcfile_optimized_writer_validate", "false"))},
                 {storageFormat("RCTEXT", ImmutableMap.of("hive.rcfile_optimized_writer_enabled", "true", "hive.rcfile_optimized_writer_validate", "true"))},
                 {storageFormat("SEQUENCEFILE")},
-                {storageFormat("TEXTFILE")}
+                {storageFormat("TEXTFILE")},
+                {storageFormat("AVRO")}
         };
     }
 

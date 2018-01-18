@@ -43,7 +43,6 @@ public final class SystemSessionProperties
     public static final String OPTIMIZE_HASH_GENERATION = "optimize_hash_generation";
     public static final String DISTRIBUTED_JOIN = "distributed_join";
     public static final String DISTRIBUTED_INDEX_JOIN = "distributed_index_join";
-    public static final String DICTIONARY_PROCESSING_JOIN = "dictionary_processing_join";
     public static final String HASH_PARTITION_COUNT = "hash_partition_count";
     public static final String PREFER_STREAMING_OPERATORS = "prefer_streaming_operators";
     public static final String TASK_WRITER_COUNT = "task_writer_count";
@@ -76,6 +75,7 @@ public final class SystemSessionProperties
     public static final String ITERATIVE_OPTIMIZER = "iterative_optimizer_enabled";
     public static final String ITERATIVE_OPTIMIZER_TIMEOUT = "iterative_optimizer_timeout";
     public static final String EXCHANGE_COMPRESSION = "exchange_compression";
+    public static final String LEGACY_TIMESTAMP = "legacy_timestamp";
     public static final String ENABLE_INTERMEDIATE_AGGREGATIONS = "enable_intermediate_aggregations";
     public static final String PUSH_AGGREGATION_THROUGH_JOIN = "push_aggregation_through_join";
     public static final String PUSH_PARTIAL_AGGREGATION_THROUGH_JOIN = "push_partial_aggregation_through_join";
@@ -118,11 +118,6 @@ public final class SystemSessionProperties
                         DISTRIBUTED_INDEX_JOIN,
                         "Distribute index joins on join keys instead of executing inline",
                         featuresConfig.isDistributedIndexJoinsEnabled(),
-                        false),
-                booleanSessionProperty(
-                        DICTIONARY_PROCESSING_JOIN,
-                        "Use dictionary index to avoid copy of data during join",
-                        featuresConfig.isDictionaryProcessingJoinsEnabled(),
                         false),
                 integerSessionProperty(
                         HASH_PARTITION_COUNT,
@@ -348,6 +343,11 @@ public final class SystemSessionProperties
                         featuresConfig.isExchangeCompressionEnabled(),
                         false),
                 booleanSessionProperty(
+                        LEGACY_TIMESTAMP,
+                        "Use legacy TIME & TIMESTAMP semantics",
+                        featuresConfig.isLegacyTimestamp(),
+                        true),
+                booleanSessionProperty(
                         ENABLE_INTERMEDIATE_AGGREGATIONS,
                         "Enable the use of intermediate aggregations",
                         featuresConfig.isEnableIntermediateAggregations(),
@@ -411,11 +411,6 @@ public final class SystemSessionProperties
     public static boolean isDistributedIndexJoinEnabled(Session session)
     {
         return session.getSystemProperty(DISTRIBUTED_INDEX_JOIN, Boolean.class);
-    }
-
-    public static boolean isDictionaryProcessingJoinEnabled(Session session)
-    {
-        return session.getSystemProperty(DICTIONARY_PROCESSING_JOIN, Boolean.class);
     }
 
     public static int getHashPartitionCount(Session session)
@@ -572,6 +567,12 @@ public final class SystemSessionProperties
     public static boolean isNewOptimizerEnabled(Session session)
     {
         return session.getSystemProperty(ITERATIVE_OPTIMIZER, Boolean.class);
+    }
+
+    @Deprecated
+    public static boolean isLegacyTimestamp(Session session)
+    {
+        return session.getSystemProperty(LEGACY_TIMESTAMP, Boolean.class);
     }
 
     public static Duration getOptimizerTimeout(Session session)
