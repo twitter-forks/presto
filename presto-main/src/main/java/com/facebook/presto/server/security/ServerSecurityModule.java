@@ -38,6 +38,7 @@ public class ServerSecurityModule
     {
         newSetBinder(binder, Filter.class, TheServlet.class).addBinding()
                 .to(AuthenticationFilter.class).in(Scopes.SINGLETON);
+        configBinder(binder).bindConfig(SecurityConfig.class);
 
         Set<AuthenticationType> authTypes = buildConfigObject(SecurityConfig.class).getAuthenticationTypes();
         Multibinder<Authenticator> authBinder = newSetBinder(binder, Authenticator.class);

@@ -36,17 +36,20 @@ import java.util.Set;
 import static com.google.common.io.ByteStreams.copy;
 import static com.google.common.io.ByteStreams.nullOutputStream;
 import static com.google.common.net.HttpHeaders.WWW_AUTHENTICATE;
+import static java.util.Objects.requireNonNull;
 import static javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED;
 
 public class AuthenticationFilter
         implements Filter
 {
     private final Set<Authenticator> authenticators;
+    private final String httpAuthenticationPathRegex;
 
     @Inject
-    public AuthenticationFilter(Set<Authenticator> authenticators)
+    public AuthenticationFilter(Set<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableSet.copyOf(authenticators);
+        this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
     }
 
     @Override
@@ -62,8 +65,8 @@ public class AuthenticationFilter
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-        // skip authentication if non-secure or not configured
-        if (!request.isSecure() || authenticators.isEmpty()) {
+        // skip authentication if (not configured) or (non-secure and not match httpAuthenticationPathRegex)
+        if (authenticators.isEmpty() || (!request.isSecure() && !request.getPathInfo().matches(httpAuthenticationPathRegex))) {
             nextFilter.doFilter(request, response);
             return;
         }
