@@ -144,10 +144,11 @@ public class TestHiveCoercion
         String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
         String floatToDoubleType = tableName.toLowerCase(Locale.ENGLISH).contains("parquet") ? "DOUBLE" : "FLOAT";
         return tableDefinition.getCreateTableDDL(format(dummyTableNameFormat, tableName), Optional.empty())
-                    .replace(format("    float_to_double            %s,", floatToDoubleType), format("    float_to_double            %s", floatToDoubleType))
-                    .replace(format("    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s >,", floatToDoubleType), "")
-                    .replace(format("    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >,", floatToDoubleType), "")
-                    .replace(format("    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >", floatToDoubleType), "");
+                .replace(format("    float_to_double            %s,", floatToDoubleType), format("    float_to_double            %s", floatToDoubleType))
+                .replace(format("    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s >,", floatToDoubleType), "")
+                .replace(format("    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >,", floatToDoubleType), "")
+                .replace(format("    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >", floatToDoubleType), "");
+    }
 
     private static HiveTableDefinition.HiveTableDefinitionBuilder avroTableDefinitionBuilder()
     {

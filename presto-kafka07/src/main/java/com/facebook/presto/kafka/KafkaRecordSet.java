@@ -125,7 +125,7 @@ public class KafkaRecordSet
         private long totalMessages;
         private long cursorOffset = split.getStart();
         private Iterator<MessageAndOffset> messageAndOffsetIterator;
-        private long fetchedSize = 0L;
+        private long fetchedSize;
         private final AtomicBoolean reported = new AtomicBoolean();
 
         private final long startTs;

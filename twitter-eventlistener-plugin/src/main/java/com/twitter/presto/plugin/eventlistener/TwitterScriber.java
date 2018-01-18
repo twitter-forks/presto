@@ -17,7 +17,6 @@ import com.twitter.logging.BareFormatter$;
 import com.twitter.logging.Level;
 import com.twitter.logging.QueueingHandler;
 import com.twitter.logging.ScribeHandler;
-
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TSerializer;

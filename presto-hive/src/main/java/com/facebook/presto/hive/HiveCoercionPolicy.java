@@ -32,7 +32,6 @@ import static com.facebook.presto.hive.HiveType.HIVE_FLOAT;
 import static com.facebook.presto.hive.HiveType.HIVE_INT;
 import static com.facebook.presto.hive.HiveType.HIVE_LONG;
 import static com.facebook.presto.hive.HiveType.HIVE_SHORT;
-
 import static java.util.Objects.requireNonNull;
 
 public class HiveCoercionPolicy
