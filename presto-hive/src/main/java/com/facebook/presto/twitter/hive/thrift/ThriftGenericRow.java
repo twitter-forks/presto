@@ -42,9 +42,9 @@ public class ThriftGenericRow
 {
     private static final Logger log = Logger.get(ThriftGenericRow.class);
     private final Map<Short, Object> values = new HashMap<>();
-    private byte[] buf = null;
-    private int off = 0;
-    private int len = 0;
+    private byte[] buf;
+    private int off;
+    private int len;
 
     public ThriftGenericRow()
     {

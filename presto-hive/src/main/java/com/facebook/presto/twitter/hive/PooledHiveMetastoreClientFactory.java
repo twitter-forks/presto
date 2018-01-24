@@ -14,7 +14,6 @@
 package com.facebook.presto.twitter.hive;
 
 import com.facebook.presto.hive.HiveClientConfig;
-
 import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
 import com.facebook.presto.hive.metastore.thrift.HiveMetastoreClient;
 import com.facebook.presto.hive.metastore.thrift.ThriftHiveMetastoreClient;

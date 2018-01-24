@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static com.facebook.presto.spi.block.DictionaryId.randomDictionaryId;
 import static java.lang.Math.min;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class Page
@@ -109,7 +110,7 @@ public class Page
     public Page getRegion(int positionOffset, int length)
     {
         if (positionOffset < 0 || length < 0 || positionOffset + length > positionCount) {
-            throw new IndexOutOfBoundsException("Invalid position " + positionOffset + " in page with " + positionCount + " positions");
+            throw new IndexOutOfBoundsException(format("Invalid position %s and length %s in page with %s positions", positionOffset, length, positionCount));
         }
 
         int channelCount = getChannelCount();
@@ -262,14 +263,14 @@ public class Page
         return blocks[0].getPositionCount();
     }
 
-    public Page getPositions(int[] retainedPositions)
+    public Page getPositions(int[] retainedPositions, int offset, int length)
     {
         requireNonNull(retainedPositions, "retainedPositions is null");
 
         Block[] blocks = Arrays.stream(getBlocks())
-                .map(block -> block.getPositions(retainedPositions))
+                .map(block -> block.getPositions(retainedPositions, offset, length))
                 .toArray(Block[]::new);
-        return new Page(retainedPositions.length, blocks);
+        return new Page(length, blocks);
     }
 
     private static class DictionaryBlockIndexes

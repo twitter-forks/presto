@@ -14,7 +14,6 @@
 package com.facebook.presto.twitter.hive;
 
 import com.google.common.net.HostAndPort;
-
 import io.airlift.log.Logger;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;

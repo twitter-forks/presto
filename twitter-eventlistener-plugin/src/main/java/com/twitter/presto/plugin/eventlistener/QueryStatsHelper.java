@@ -15,10 +15,8 @@ package com.twitter.presto.plugin.eventlistener;
 
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
-
 import com.twitter.presto.thriftjava.OperatorStats;
 import com.twitter.presto.thriftjava.QueryStageInfo;
-
 import io.airlift.log.Logger;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;

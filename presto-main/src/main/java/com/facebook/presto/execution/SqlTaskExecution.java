@@ -241,9 +241,9 @@ public class SqlTaskExecution
             // don't register the task if it is already completed (most likely failed during planning above)
             if (!taskStateMachine.getState().isDone()) {
                 taskHandle = taskExecutor.addTask(taskId, outputBuffer::getUtilization, getInitialSplitsPerNode(taskContext.getSession()), getSplitConcurrencyAdjustmentInterval(taskContext.getSession()));
-                taskStateMachine.addStateChangeListener(new RemoveTaskHandleWhenDone(taskExecutor, taskHandle));
                 taskStateMachine.addStateChangeListener(state -> {
                     if (state.isDone()) {
+                        taskExecutor.removeTask(taskHandle);
                         for (DriverFactory factory : localExecutionPlan.getDriverFactories()) {
                             factory.noMoreDrivers();
                         }
@@ -590,21 +590,6 @@ public class SqlTaskExecution
         taskStateMachine.finished();
     }
 
-    public void cancel()
-    {
-        // todo this should finish all input sources and let the task finish naturally
-        try (SetThreadName ignored = new SetThreadName("Task-%s", taskId)) {
-            taskStateMachine.cancel();
-        }
-    }
-
-    public void fail(Throwable cause)
-    {
-        try (SetThreadName ignored = new SetThreadName("Task-%s", taskId)) {
-            taskStateMachine.failed(cause);
-        }
-    }
-
     @Override
     public String toString()
     {
@@ -765,7 +750,7 @@ public class SqlTaskExecution
             Iterator<SchedulingLifespan> lifespansIterator = lifespans.values().iterator();
             return new AbstractIterator<SchedulingLifespan>()
             {
-                SchedulingLifespan lastSchedulingLifespan = null;
+                SchedulingLifespan lastSchedulingLifespan;
 
                 @Override
                 protected SchedulingLifespan computeNext()
@@ -1007,27 +992,6 @@ public class SqlTaskExecution
 
             if (driver != null) {
                 driver.close();
-            }
-        }
-    }
-
-    private static final class RemoveTaskHandleWhenDone
-            implements StateChangeListener<TaskState>
-    {
-        private final TaskExecutor taskExecutor;
-        private final TaskHandle taskHandle;
-
-        private RemoveTaskHandleWhenDone(TaskExecutor taskExecutor, TaskHandle taskHandle)
-        {
-            this.taskExecutor = requireNonNull(taskExecutor, "taskExecutor is null");
-            this.taskHandle = requireNonNull(taskHandle, "taskHandle is null");
-        }
-
-        @Override
-        public void stateChanged(TaskState newState)
-        {
-            if (newState.isDone()) {
-                taskExecutor.removeTask(taskHandle);
             }
         }
     }

@@ -29,7 +29,6 @@ import com.teradata.tempto.fulfillment.table.TableInstance;
 import com.teradata.tempto.fulfillment.table.hive.HiveTableDefinition;
 import com.teradata.tempto.query.QueryExecutor;
 import com.teradata.tempto.query.QueryResult;
-import com.teradata.tempto.query.QueryType;
 import org.testng.annotations.Test;
 
 import java.sql.Connection;
@@ -44,6 +43,7 @@ import java.util.stream.Collectors;
 
 import static com.facebook.presto.tests.TestGroups.HIVE_COERCION;
 import static com.facebook.presto.tests.TestGroups.HIVE_CONNECTOR;
+import static com.facebook.presto.tests.TestGroups.JDBC;
 import static com.facebook.presto.tests.utils.JdbcDriverUtils.usingPrestoJdbcDriver;
 import static com.facebook.presto.tests.utils.JdbcDriverUtils.usingTeradataJdbcDriver;
 import static com.teradata.tempto.assertions.QueryAssert.Row.row;
@@ -76,6 +76,10 @@ public class TestHiveCoercion
             .build();
 
     public static final HiveTableDefinition HIVE_COERCION_PARQUET = parquetTableDefinitionBuilder()
+            .setNoData()
+            .build();
+
+    public static final HiveTableDefinition HIVE_COERCION_AVRO = avroTableDefinitionBuilder()
             .setNoData()
             .build();
 
@@ -140,10 +144,22 @@ public class TestHiveCoercion
         String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
         String floatToDoubleType = tableName.toLowerCase(Locale.ENGLISH).contains("parquet") ? "DOUBLE" : "FLOAT";
         return tableDefinition.getCreateTableDDL(format(dummyTableNameFormat, tableName), Optional.empty())
-                    .replace(format("    float_to_double            %s,", floatToDoubleType), format("    float_to_double            %s", floatToDoubleType))
-                    .replace(format("    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s >,", floatToDoubleType), "")
-                    .replace(format("    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >,", floatToDoubleType), "")
-                    .replace(format("    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >", floatToDoubleType), "");
+                .replace(format("    float_to_double            %s,", floatToDoubleType), format("    float_to_double            %s", floatToDoubleType))
+                .replace(format("    row_to_row                 STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s >,", floatToDoubleType), "")
+                .replace(format("    list_to_list               ARRAY < STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >,", floatToDoubleType), "")
+                .replace(format("    map_to_map                 MAP < TINYINT, STRUCT < tinyint_to_smallint : TINYINT, tinyint_to_int : TINYINT, tinyint_to_bigint : TINYINT, smallint_to_int : SMALLINT, smallint_to_bigint : SMALLINT, int_to_bigint : INT, bigint_to_varchar : BIGINT, float_to_double : %s > >", floatToDoubleType), "");
+    }
+
+    private static HiveTableDefinition.HiveTableDefinitionBuilder avroTableDefinitionBuilder()
+    {
+        return HiveTableDefinition.builder("avro_hive_coercion")
+                .setCreateTableDDLTemplate("" +
+                        "CREATE TABLE %NAME%(" +
+                        "    int_to_bigint              INT," +
+                        "    float_to_double            DOUBLE" +
+                        ") " +
+                        "PARTITIONED BY (id BIGINT) " +
+                        "STORED AS AVRO");
     }
 
     public static final class TextRequirements
@@ -196,8 +212,18 @@ public class TestHiveCoercion
         }
     }
 
+    public static final class AvroRequirements
+            implements RequirementsProvider
+    {
+        @Override
+        public Requirement getRequirements(Configuration configuration)
+        {
+            return MutableTableRequirement.builder(HIVE_COERCION_AVRO).withState(CREATED).build();
+        }
+    }
+
     @Requires(TextRequirements.class)
-    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR})
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
     public void testHiveCoercionTextFile()
             throws SQLException
     {
@@ -205,7 +231,7 @@ public class TestHiveCoercion
     }
 
     @Requires(OrcRequirements.class)
-    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR})
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
     public void testHiveCoercionOrc()
             throws SQLException
     {
@@ -213,7 +239,7 @@ public class TestHiveCoercion
     }
 
     @Requires(RcTextRequirements.class)
-    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR})
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
     public void testHiveCoercionRcText()
             throws SQLException
     {
@@ -221,7 +247,7 @@ public class TestHiveCoercion
     }
 
     @Requires(RcBinaryRequirements.class)
-    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR})
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
     public void testHiveCoercionRcBinary()
             throws SQLException
     {
@@ -229,11 +255,42 @@ public class TestHiveCoercion
     }
 
     @Requires(ParquetRequirements.class)
-    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR})
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
     public void testHiveCoercionParquet()
             throws SQLException
     {
         doTestHiveCoercion(HIVE_COERCION_PARQUET);
+    }
+
+    @Requires(AvroRequirements.class)
+    @Test(groups = {HIVE_COERCION, HIVE_CONNECTOR, JDBC})
+    public void testHiveCoercionAvro()
+            throws SQLException
+    {
+        HiveTableDefinition tableDefinition = HIVE_COERCION_AVRO;
+        String tableName = mutableTableInstanceOf(tableDefinition).getNameInDatabase();
+
+        executeHiveQuery(format("INSERT INTO TABLE %s " +
+                        "PARTITION (id=1) " +
+                        "VALUES" +
+                        "(2323, 0.5)," +
+                        "(-2323, -1.5)",
+                tableName));
+
+        executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN int_to_bigint int_to_bigint bigint", tableName));
+        executeHiveQuery(format("ALTER TABLE %s CHANGE COLUMN float_to_double float_to_double double", tableName));
+
+        assertThat(query("SHOW COLUMNS FROM " + tableName).project(1, 2)).containsExactly(
+                row("int_to_bigint", "bigint"),
+                row("float_to_double", "double"),
+                row("id", "bigint"));
+
+        QueryResult queryResult = query(format("SELECT * FROM " + tableName));
+        assertThat(queryResult).hasColumns(BIGINT, DOUBLE, BIGINT);
+
+        assertThat(queryResult).containsOnly(
+                row(2323L, 0.5, 1),
+                row(-2323L, -1.5, 1));
     }
 
     private void doTestHiveCoercion(HiveTableDefinition tableDefinition)
@@ -304,7 +361,7 @@ public class TestHiveCoercion
 
     private void assertProperAlteredTableSchema(String tableName)
     {
-        assertThat(query("SHOW COLUMNS FROM " + tableName, QueryType.SELECT).project(1, 2)).containsExactly(
+        assertThat(query("SHOW COLUMNS FROM " + tableName).project(1, 2)).containsExactly(
                 row("tinyint_to_smallint", "smallint"),
                 row("tinyint_to_int", "integer"),
                 row("tinyint_to_bigint", "bigint"),

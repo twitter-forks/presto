@@ -15,7 +15,6 @@ package com.twitter.presto.plugin.eventlistener;
 
 import com.facebook.presto.spi.Plugin;
 import com.facebook.presto.spi.eventlistener.EventListenerFactory;
-
 import com.google.common.collect.ImmutableList;
 
 public class TwitterEventListenerPlugin
