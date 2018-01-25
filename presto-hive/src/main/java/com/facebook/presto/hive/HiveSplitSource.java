@@ -330,7 +330,13 @@ class HiveSplitSource
                 noMoreSplits = true;
                 break;
             case FAILED:
-                return failedFuture(state.getThrowable());
+                if (state.getThrowable() instanceof FileNotFoundException) {
+                    noMoreSplits = true;
+                    break;
+                }
+                else {
+                    return failedFuture(state.getThrowable());
+                }
             case CLOSED:
                 throw new IllegalStateException("HiveSplitSource is already closed");
             default:
@@ -425,7 +431,12 @@ class HiveSplitSource
             case NO_MORE_SPLITS:
                 return bufferedInternalSplitCount.get() == 0;
             case FAILED:
-                throw propagatePrestoException(state.getThrowable());
+                if (state.getThrowable() instanceof FileNotFoundException) {
+                    return true;
+                }
+                else {
+                    throw propagatePrestoException(state.getThrowable());
+                }
             case CLOSED:
                 throw new IllegalStateException("HiveSplitSource is already closed");
             default:
