@@ -93,7 +93,15 @@ public class HiveFileIterator
             if (paths.isEmpty()) {
                 return endOfData();
             }
-            remoteIterator = getLocatedFileStatusRemoteIterator(paths.removeFirst(), pathFilter);
+
+            try {
+                remoteIterator = getLocatedFileStatusRemoteIterator(paths.removeFirst(), pathFilter);
+            }
+            catch (PrestoException e) {
+                if (!e.getErrorCode().equals(HIVE_FILE_NOT_FOUND.toErrorCode())) {
+                    throw e;
+                }
+            }
         }
     }
 
