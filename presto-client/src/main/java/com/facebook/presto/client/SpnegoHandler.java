@@ -75,6 +75,7 @@ public class SpnegoHandler
     private static final Oid KERBEROS_OID = createOid("1.2.840.113554.1.2.2");
 
     private final String remoteServiceName;
+    private final boolean isCompleteServicePrinciple;
     private final boolean useCanonicalHostname;
     private final Optional<String> principal;
     private final Optional<File> keytab;
@@ -92,6 +93,7 @@ public class SpnegoHandler
             Optional<File> credentialCache)
     {
         this.remoteServiceName = requireNonNull(remoteServiceName, "remoteServiceName is null");
+        this.isCompleteServicePrinciple = remoteServiceName.contains("@");
         this.useCanonicalHostname = useCanonicalHostname;
         this.principal = requireNonNull(principal, "principal is null");
         this.keytab = requireNonNull(keytab, "keytab is null");
@@ -134,7 +136,7 @@ public class SpnegoHandler
     private Request authenticate(Request request)
     {
         String hostName = request.url().host();
-        String principal = makeServicePrincipal(remoteServiceName, hostName, useCanonicalHostname);
+        String principal = isCompleteServicePrinciple ? remoteServiceName : makeServicePrincipal(remoteServiceName, hostName, useCanonicalHostname);
         byte[] token = generateToken(principal);
 
         String credential = format("%s %s", NEGOTIATE, Base64.getEncoder().encodeToString(token));
@@ -150,7 +152,7 @@ public class SpnegoHandler
             Session session = getSession();
             context = doAs(session.getLoginContext().getSubject(), () -> {
                 GSSContext result = GSS_MANAGER.createContext(
-                        GSS_MANAGER.createName(servicePrincipal, NT_HOSTBASED_SERVICE),
+                        GSS_MANAGER.createName(servicePrincipal, isCompleteServicePrinciple ? NT_USER_NAME : NT_HOSTBASED_SERVICE),
                         SPNEGO_OID,
                         session.getClientCredential(),
                         INDEFINITE_LIFETIME);
