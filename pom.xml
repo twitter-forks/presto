@@ -1092,6 +1092,11 @@
                 <version>3.1.4-1</version>
             </dependency>
 
+            <dependency>
+                <groupId>com.hadoop.gplcompression</groupId>
+                <artifactId>hadoop-lzo</artifactId>
+                <version>0.4.16</version>
+            </dependency>
             <!-- force newer version to be used for dependencies -->
             <dependency>
                 <groupId>org.javassist</groupId>

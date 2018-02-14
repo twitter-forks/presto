@@ -15,19 +15,20 @@ package com.facebook.presto.hive.parquet.reader;
 
 import com.facebook.presto.hive.parquet.RichColumnDescriptor;
 import com.facebook.presto.spi.type.DecimalType;
+import org.apache.hadoop.conf.Configuration;
 
 public final class ParquetDecimalColumnReaderFactory
 {
     private ParquetDecimalColumnReaderFactory() {}
 
-    public static ParquetColumnReader createReader(RichColumnDescriptor descriptor, int precision, int scale)
+    public static ParquetColumnReader createReader(RichColumnDescriptor descriptor, int precision, int scale, Configuration configuration)
     {
         DecimalType decimalType = DecimalType.createDecimalType(precision, scale);
         if (decimalType.isShort()) {
-            return new ParquetShortDecimalColumnReader(descriptor);
+            return new ParquetShortDecimalColumnReader(descriptor, configuration);
         }
         else {
-            return new ParquetLongDecimalColumnReader(descriptor);
+            return new ParquetLongDecimalColumnReader(descriptor, configuration);
         }
     }
 }

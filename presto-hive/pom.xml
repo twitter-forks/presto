@@ -278,6 +278,13 @@
             <artifactId>jackson-annotations</artifactId>
         </dependency>
 
+        <!--
+        <dependency>
+            <groupId>com.hadoop.gplcompression</groupId>
+            <artifactId>hadoop-lzo</artifactId>
+        </dependency>
+        -->
+
         <!-- for testing -->
         <dependency>
             <groupId>org.apache.curator</groupId>

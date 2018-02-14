@@ -17,6 +17,7 @@ import com.facebook.presto.hive.parquet.ParquetDataPage;
 import com.facebook.presto.hive.parquet.ParquetDataPageV1;
 import com.facebook.presto.hive.parquet.ParquetDataPageV2;
 import com.facebook.presto.hive.parquet.ParquetDictionaryPage;
+import org.apache.hadoop.conf.Configuration;
 import parquet.hadoop.metadata.CompressionCodecName;
 
 import java.io.IOException;
@@ -28,6 +29,7 @@ import static java.lang.Math.toIntExact;
 
 class ParquetPageReader
 {
+    private Configuration configuration;
     private final CompressionCodecName codec;
     private final long valueCount;
     private final List<ParquetDataPage> compressedPages;
@@ -47,6 +49,11 @@ class ParquetPageReader
         this.valueCount = count;
     }
 
+    public void setConfiguration(Configuration configuration)
+    {
+        this.configuration = configuration;
+    }
+
     public long getTotalValueCount()
     {
         return valueCount;
@@ -62,7 +69,7 @@ class ParquetPageReader
             if (compressedPage instanceof ParquetDataPageV1) {
                 ParquetDataPageV1 dataPageV1 = (ParquetDataPageV1) compressedPage;
                 return new ParquetDataPageV1(
-                        decompress(codec, dataPageV1.getSlice(), dataPageV1.getUncompressedSize()),
+                        decompress(codec, dataPageV1.getSlice(), dataPageV1.getUncompressedSize(), configuration),
                         dataPageV1.getValueCount(),
                         dataPageV1.getUncompressedSize(),
                         dataPageV1.getStatistics(),
@@ -85,7 +92,7 @@ class ParquetPageReader
                         dataPageV2.getRepetitionLevels(),
                         dataPageV2.getDefinitionLevels(),
                         dataPageV2.getDataEncoding(),
-                        decompress(codec, dataPageV2.getSlice(), uncompressedSize),
+                        decompress(codec, dataPageV2.getSlice(), uncompressedSize, configuration),
                         dataPageV2.getUncompressedSize(),
                         dataPageV2.getStatistics(),
                         false);
@@ -103,7 +110,7 @@ class ParquetPageReader
         }
         try {
             return new ParquetDictionaryPage(
-                    decompress(codec, compressedDictionaryPage.getSlice(), compressedDictionaryPage.getUncompressedSize()),
+                    decompress(codec, compressedDictionaryPage.getSlice(), compressedDictionaryPage.getUncompressedSize(), configuration),
                     compressedDictionaryPage.getDictionarySize(),
                     compressedDictionaryPage.getEncoding());
         }

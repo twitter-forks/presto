@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import io.airlift.slice.Slice;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 import parquet.column.Encoding;
 import parquet.column.statistics.Statistics;
@@ -103,14 +104,14 @@ public final class ParquetPredicateUtils
         return new TupleDomainParquetPredicate(parquetTupleDomain, columnReferences.build());
     }
 
-    public static boolean predicateMatches(ParquetPredicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, MessageType fileSchema, MessageType requestedSchema, TupleDomain<ColumnDescriptor> parquetTupleDomain)
+    public static boolean predicateMatches(ParquetPredicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, MessageType fileSchema, MessageType requestedSchema, TupleDomain<ColumnDescriptor> parquetTupleDomain, Configuration configuration)
     {
         Map<ColumnDescriptor, Statistics<?>> columnStatistics = getStatistics(block, fileSchema, requestedSchema);
         if (!parquetPredicate.matches(block.getRowCount(), columnStatistics)) {
             return false;
         }
 
-        Map<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = getDictionaries(block, dataSource, fileSchema, requestedSchema, parquetTupleDomain);
+        Map<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = getDictionaries(block, dataSource, fileSchema, requestedSchema, parquetTupleDomain, configuration);
         return parquetPredicate.matches(dictionaries);
     }
 
@@ -129,7 +130,7 @@ public final class ParquetPredicateUtils
         return statistics.build();
     }
 
-    private static Map<ColumnDescriptor, ParquetDictionaryDescriptor> getDictionaries(BlockMetaData blockMetadata, ParquetDataSource dataSource, MessageType fileSchema, MessageType requestedSchema, TupleDomain<ColumnDescriptor> parquetTupleDomain)
+    private static Map<ColumnDescriptor, ParquetDictionaryDescriptor> getDictionaries(BlockMetaData blockMetadata, ParquetDataSource dataSource, MessageType fileSchema, MessageType requestedSchema, TupleDomain<ColumnDescriptor> parquetTupleDomain, Configuration configuration)
     {
         ImmutableMap.Builder<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = ImmutableMap.builder();
         for (ColumnChunkMetaData columnMetaData : blockMetadata.getColumns()) {
@@ -141,7 +142,7 @@ public final class ParquetPredicateUtils
                         int totalSize = toIntExact(columnMetaData.getTotalSize());
                         byte[] buffer = new byte[totalSize];
                         dataSource.readFully(columnMetaData.getStartingPos(), buffer);
-                        Optional<ParquetDictionaryPage> dictionaryPage = readDictionaryPage(buffer, columnMetaData.getCodec());
+                        Optional<ParquetDictionaryPage> dictionaryPage = readDictionaryPage(buffer, columnMetaData.getCodec(), configuration);
                         dictionaries.put(columnDescriptor, new ParquetDictionaryDescriptor(columnDescriptor, dictionaryPage));
                     }
                     catch (IOException ignored) {
@@ -153,7 +154,7 @@ public final class ParquetPredicateUtils
         return dictionaries.build();
     }
 
-    private static Optional<ParquetDictionaryPage> readDictionaryPage(byte[] data, CompressionCodecName codecName)
+    private static Optional<ParquetDictionaryPage> readDictionaryPage(byte[] data, CompressionCodecName codecName, Configuration configuration)
     {
         try {
             ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
@@ -168,7 +169,7 @@ public final class ParquetPredicateUtils
             ParquetEncoding encoding = getParquetEncoding(Encoding.valueOf(dicHeader.getEncoding().name()));
             int dictionarySize = dicHeader.getNum_values();
 
-            return Optional.of(new ParquetDictionaryPage(decompress(codecName, compressedData, pageHeader.getUncompressed_page_size()), dictionarySize, encoding));
+            return Optional.of(new ParquetDictionaryPage(decompress(codecName, compressedData, pageHeader.getUncompressed_page_size(), configuration), dictionarySize, encoding));
         }
         catch (IOException ignored) {
             return Optional.empty();

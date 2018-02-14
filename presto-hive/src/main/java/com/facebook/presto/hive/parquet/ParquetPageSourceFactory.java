@@ -170,7 +170,7 @@ public class ParquetPageSourceFactory
                 ParquetPredicate parquetPredicate = buildParquetPredicate(requestedSchema, parquetTupleDomain, fileMetaData.getSchema());
                 final ParquetDataSource finalDataSource = dataSource;
                 blocks = blocks.stream()
-                        .filter(block -> predicateMatches(parquetPredicate, block, finalDataSource, fileSchema, requestedSchema, parquetTupleDomain))
+                        .filter(block -> predicateMatches(parquetPredicate, block, finalDataSource, fileSchema, requestedSchema, parquetTupleDomain, configuration))
                         .collect(toList());
             }
 
@@ -180,7 +180,8 @@ public class ParquetPageSourceFactory
                     blocks,
                     dataSource,
                     typeManager,
-                    systemMemoryContext);
+                    systemMemoryContext,
+                    configuration);
 
             return new ParquetPageSource(
                     parquetReader,

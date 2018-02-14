@@ -15,6 +15,7 @@ package com.facebook.presto.hive.parquet.reader;
 
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 import parquet.io.api.Binary;
 
@@ -23,9 +24,9 @@ import static com.facebook.presto.hive.parquet.ParquetTimestampUtils.getTimestam
 public class ParquetTimestampColumnReader
         extends ParquetColumnReader
 {
-    public ParquetTimestampColumnReader(ColumnDescriptor descriptor)
+    public ParquetTimestampColumnReader(ColumnDescriptor descriptor, Configuration configuration)
     {
-        super(descriptor);
+        super(descriptor, configuration);
     }
 
     @Override

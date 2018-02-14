@@ -15,6 +15,7 @@ package com.facebook.presto.hive.parquet.reader;
 
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
+import org.apache.hadoop.conf.Configuration;
 import parquet.column.ColumnDescriptor;
 
 import static com.facebook.presto.hive.util.DecimalUtils.getShortDecimalValue;
@@ -24,9 +25,9 @@ import static parquet.schema.PrimitiveType.PrimitiveTypeName.INT64;
 public class ParquetShortDecimalColumnReader
         extends ParquetColumnReader
 {
-    ParquetShortDecimalColumnReader(ColumnDescriptor descriptor)
+    ParquetShortDecimalColumnReader(ColumnDescriptor descriptor, Configuration configuration)
     {
-        super(descriptor);
+        super(descriptor, configuration);
     }
 
     @Override
