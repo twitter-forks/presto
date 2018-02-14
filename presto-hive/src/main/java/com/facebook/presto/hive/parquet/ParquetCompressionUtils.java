@@ -19,14 +19,11 @@ import io.airlift.compress.snappy.SnappyDecompressor;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.conf.Configuration;
-import parquet.bytes.BytesInput;
 import parquet.hadoop.metadata.CompressionCodecName;
 
-import java.io.ByteArrayOutputStream;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
 import java.util.zip.GZIPInputStream;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -93,21 +90,24 @@ public final class ParquetCompressionUtils
     private static Slice decompressLZO(Slice input, int uncompressedSize)
             throws IOException
     {
-        final BytesInput decompressed;
+        byte[] output = new byte[uncompressedSize];
         LzoCodec codec = new LzoCodec();
         codec.setConf(new Configuration());
-        org.apache.hadoop.io.compress.Decompressor decompressor = codec.createDecompressor();
 
         // input data
         byte[] byteArray = (byte[]) input.getBase();
         int inputOffset = (int) input.getAddress() - ARRAY_BYTE_BASE_OFFSET;
-        ByteArrayBytesInput bytes = new ByteArrayBytesInput(byteArray, inputOffset, input.length());
 
-        decompressor.reset();
-        InputStream is = codec.createInputStream(toInputStream(bytes), decompressor);
-        decompressed = BytesInput.from(is, uncompressedSize);
-        checkArgument(decompressed.size() == uncompressedSize);
-        return wrappedBuffer(decompressed.toByteArray(), 0, uncompressedSize);
+        InputStream is = new ByteArrayInputStream(byteArray, inputOffset, input.length());
+        is = codec.createInputStream(is);
+
+        int decompressionSize = 0;
+        while (decompressionSize < uncompressedSize) {
+            decompressionSize += is.read(output, decompressionSize, uncompressedSize - decompressionSize);
+        }
+
+        checkArgument(decompressionSize == uncompressedSize);
+        return wrappedBuffer(output, 0, uncompressedSize);
     }
 
     private static int decompress(Decompressor decompressor, Slice input, int inputOffset, int inputLength, byte[] output, int outputOffset)
@@ -116,68 +116,5 @@ public final class ParquetCompressionUtils
         int byteArrayOffset = inputOffset + (int) (input.getAddress() - ARRAY_BYTE_BASE_OFFSET);
         int size = decompressor.decompress(byteArray, byteArrayOffset, inputLength, output, outputOffset, output.length - outputOffset);
         return size;
-    }
-
-    // helper class and helper functions from org.apache.parquet.bytes
-    private static class ByteArrayBytesInput
-            extends BytesInput
-    {
-        private final byte[] in;
-        private final int offset;
-        private final int length;
-
-        private ByteArrayBytesInput(byte[] in, int offset, int length)
-        {
-            this.in = in;
-            this.offset = offset;
-            this.length = length;
-        }
-
-        @Override
-        public void writeAllTo(OutputStream out)
-                throws IOException
-        {
-            out.write(in, offset, length);
-        }
-
-        @Override
-        public long size()
-        {
-            return length;
-        }
-    }
-
-    private static final class BAOS
-            extends ByteArrayOutputStream
-    {
-        private BAOS(int size)
-        {
-            super(size);
-        }
-
-        public byte[] getBuf()
-        {
-            return this.buf;
-        }
-    }
-
-    private static byte[] toByteArray(BytesInput bytes)
-            throws IOException
-    {
-        BAOS baos = new BAOS((int) bytes.size());
-        bytes.writeAllTo(baos);
-        return baos.getBuf();
-    }
-
-    private static InputStream toInputStream(BytesInput bytes)
-            throws IOException
-    {
-        return new ByteBufferInputStream(toByteBuffer(bytes));
-    }
-
-    private static ByteBuffer toByteBuffer(BytesInput bytes)
-            throws IOException
-    {
-        return ByteBuffer.wrap(toByteArray(bytes));
     }
 }
