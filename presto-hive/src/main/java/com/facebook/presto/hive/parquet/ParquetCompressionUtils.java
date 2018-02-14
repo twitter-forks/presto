@@ -27,8 +27,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.WritableByteChannel;
 import java.util.zip.GZIPInputStream;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -102,7 +100,7 @@ public final class ParquetCompressionUtils
 
         // input data
         byte[] byteArray = (byte[]) input.getBase();
-        int inputOffset = (int)input.getAddress() - ARRAY_BYTE_BASE_OFFSET;
+        int inputOffset = (int) input.getAddress() - ARRAY_BYTE_BASE_OFFSET;
         ByteArrayBytesInput bytes = new ByteArrayBytesInput(byteArray, inputOffset, input.length());
 
         decompressor.reset();
