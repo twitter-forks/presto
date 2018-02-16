@@ -14,7 +14,6 @@
 package com.facebook.presto.hive.parquet;
 
 import io.airlift.compress.Decompressor;
-import io.airlift.compress.lzo.LzoDecompressor;
 import io.airlift.compress.snappy.SnappyDecompressor;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
@@ -88,7 +87,7 @@ public final class ParquetCompressionUtils
 
     private static Slice decompressLZO(Slice input, int uncompressedSize)
     {
-        LzoDecompressor lzoDecompressor = new LzoDecompressor();
+        Decompressor lzoDecompressor = new HadoopLzoDecompressor();
         long totalDecompressedCount = 0;
         // over allocate buffer which makes decompression easier
         byte[] output = new byte[uncompressedSize + SIZE_OF_LONG];
