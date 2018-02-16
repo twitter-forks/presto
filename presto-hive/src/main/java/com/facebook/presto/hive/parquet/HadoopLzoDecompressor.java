@@ -22,6 +22,8 @@ import org.apache.hadoop.conf.Configuration;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
+import static com.google.common.base.Preconditions.checkArgument;
+
 // HadoopLzoDecompressor from aircompressor
 public class HadoopLzoDecompressor
         implements Decompressor
@@ -54,7 +56,7 @@ public class HadoopLzoDecompressor
                 throw new RuntimeException(e);
             }
         }
-
+        checkArgument(decompressor.getRemaining() == 0);
         return offset - outputOffset;
     }
 
