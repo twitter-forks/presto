@@ -41,6 +41,7 @@ public class HadoopLzoDecompressor
     public int decompress(byte[] input, int inputOffset, int inputLength, byte[] output, int outputOffset, int maxOutputLength)
             throws MalformedInputException
     {
+        decompressor.reset();
         decompressor.setInput(input, inputOffset, inputLength);
 
         int offset = outputOffset;
