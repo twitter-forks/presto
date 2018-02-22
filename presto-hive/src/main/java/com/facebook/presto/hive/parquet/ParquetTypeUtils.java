@@ -169,6 +169,35 @@ public final class ParquetTypeUtils
         return type;
     }
 
+    // Find the column index by name following the same logic as findParquetTypeByName
+    public static int findFieldIndexByName(MessageType fileSchema, String name)
+    {
+        try {
+            return fileSchema.getFieldIndex(name);
+        }
+        catch (InvalidRecordException e) {
+            for (parquet.schema.Type type : fileSchema.getFields()) {
+                if (type.getName().equalsIgnoreCase(name)) {
+                    return fileSchema.getFieldIndex(type.getName());
+                }
+            }
+
+            // when a parquet field is a hive keyword we append an _ to it in hive. When doing
+            // a name-based lookup, we need to strip it off again if we didn't get a direct match.
+            if (name.endsWith("_")) {
+                String alternativeName = name.substring(0, name.length() - 1);
+                for (parquet.schema.Type type : fileSchema.getFields()) {
+                    if (type.getName().equalsIgnoreCase(alternativeName)) {
+                        return fileSchema.getFieldIndex(type.getName());
+                    }
+                }
+            }
+
+            // field not found
+            return -1;
+        }
+    }
+
     public static ParquetEncoding getParquetEncoding(Encoding encoding)
     {
         switch (encoding) {
