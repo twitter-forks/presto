@@ -77,7 +77,7 @@ public final class ParquetTypeUtils
         int index = -1;
         for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
             ColumnIO[] fields = columns.get(columnIndex).getPath();
-            if (fields.length <= maxLevel) {
+            if (fields.length != maxLevel + 1) {
                 continue;
             }
             if (fields[maxLevel].getName().equalsIgnoreCase(path.get(maxLevel - 1))) {
