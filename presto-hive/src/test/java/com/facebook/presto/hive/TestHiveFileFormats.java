@@ -24,7 +24,6 @@ import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordPageSource;
-import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.testing.TestingConnectorSession;
@@ -496,7 +495,7 @@ public class TestHiveFileFormats
         File file = new File(this.getClass().getClassLoader().getResource("addressbook.parquet").getPath());
         FileSplit split = new FileSplit(new Path(file.getAbsolutePath()), 0, file.length(), new String[0]);
         HiveRecordCursorProvider cursorProvider = new ParquetRecordCursorProvider(false, HDFS_ENVIRONMENT);
-        testCursorProvider(cursorProvider, split, PARQUET, testColumns, 1);
+        testCursorProvider(cursorProvider, split, PARQUET, testColumns, SESSION, 1);
     }
 
     @Test(dataProvider = "rowCount")
@@ -534,7 +533,7 @@ public class TestHiveFileFormats
         File file = new File(this.getClass().getClassLoader().getResource("addressbook.thrift.lzo").getPath());
         FileSplit split = new FileSplit(new Path(file.getAbsolutePath()), 0, file.length(), new String[0]);
         HiveRecordCursorProvider cursorProvider = new ThriftHiveRecordCursorProvider(HDFS_ENVIRONMENT, new HiveThriftFieldIdResolverFactory());
-        testCursorProvider(cursorProvider, split, THRIFTBINARY, testColumns, 1);
+        testCursorProvider(cursorProvider, split, THRIFTBINARY, testColumns, SESSION, 1);
     }
 
     @Test(dataProvider = "rowCount")
@@ -692,6 +691,7 @@ public class TestHiveFileFormats
             FileSplit split,
             HiveStorageFormat storageFormat,
             List<TestColumn> testColumns,
+            ConnectorSession session,
             int rowCount)
             throws IOException
     {
@@ -713,18 +713,21 @@ public class TestHiveFileFormats
         if (storageFormat.equals(THRIFTBINARY)) {
             configuration.set("io.compression.codecs", "com.hadoop.compression.lzo.LzoCodec,com.hadoop.compression.lzo.LzopCodec");
         }
+        List<TestColumn> predicateColumns = TEST_COLUMNS.stream()
+                .filter(column -> ImmutableSet.of("t_bigint", "t_complex", "t_struct_nested").contains(column.getName()))
+                .collect(toList());
         Optional<ConnectorPageSource> pageSource = HivePageSourceProvider.createHivePageSource(
                 ImmutableSet.of(cursorProvider),
                 ImmutableSet.of(),
                 configuration,
-                SESSION,
+                session,
                 split.getPath(),
                 OptionalInt.empty(),
                 split.getStart(),
                 split.getLength(),
                 split.getLength(),
                 splitProperties,
-                TupleDomain.all(),
+                createEffectivePredicate(predicateColumns),
                 getColumnHandles(testColumns),
                 partitionKeys,
                 DateTimeZone.getDefault(),
@@ -756,7 +759,9 @@ public class TestHiveFileFormats
                 .collect(toList());
 
         List<HiveColumnHandle> columnHandles = getColumnHandles(testColumns);
-
+        List<TestColumn> predicateColumns = TEST_COLUMNS.stream()
+                .filter(column -> ImmutableSet.of("t_bigint", "t_complex", "t_struct_nested").contains(column.getName()))
+                .collect(toList());
         Optional<ConnectorPageSource> pageSource = HivePageSourceProvider.createHivePageSource(
                 ImmutableSet.of(),
                 ImmutableSet.of(sourceFactory),
@@ -768,7 +773,7 @@ public class TestHiveFileFormats
                 split.getLength(),
                 split.getLength(),
                 splitProperties,
-                TupleDomain.all(),
+                createEffectivePredicate(predicateColumns),
                 columnHandles,
                 partitionKeys,
                 DateTimeZone.getDefault(),
@@ -954,7 +959,7 @@ public class TestHiveFileFormats
                     testPageSourceFactory(pageSourceFactory.get(), split, storageFormat, readColumns, session, rowsCount);
                 }
                 if (cursorProvider.isPresent()) {
-                    testCursorProvider(cursorProvider.get(), split, storageFormat, readColumns, rowsCount);
+                    testCursorProvider(cursorProvider.get(), split, storageFormat, readColumns, session, rowsCount);
                 }
             }
             finally {

@@ -96,6 +96,43 @@ public final class ParquetTypeUtils
         return index;
     }
 
+    // find the path that strictly matches in the columns
+    // TODO: remove duplicate code
+    private static int getStrictPathIndex(MessageType fileSchema, MessageType requestedSchema, List<String> path)
+    {
+        int maxLevel = path.size();
+        List<PrimitiveColumnIO> columns = getColumns(fileSchema, requestedSchema);
+        int index = -1;
+        for (int columnIndex = 0; columnIndex < columns.size(); columnIndex++) {
+            ColumnIO[] fields = columns.get(columnIndex).getPath();
+            if (fields.length != maxLevel + 1) {
+                continue;
+            }
+            if (fields[maxLevel].getName().equalsIgnoreCase(path.get(maxLevel - 1))) {
+                boolean match = true;
+                for (int level = 0; level < maxLevel - 1; level++) {
+                    if (!fields[level + 1].getName().equalsIgnoreCase(path.get(level))) {
+                        match = false;
+                    }
+                }
+
+                if (match) {
+                    index = columnIndex;
+                }
+            }
+        }
+        return index;
+    }
+
+    // find the path that strictly matches in the columns
+    // TODO: remove duplicate code
+    public static Optional<RichColumnDescriptor> getStrictDescriptor(MessageType fileSchema, MessageType requestedSchema, List<String> path)
+    {
+        checkArgument(path.size() >= 1, "Parquet nested path should have at least one component");
+        int index = getStrictPathIndex(fileSchema, requestedSchema, path);
+        return getDescriptor(fileSchema, requestedSchema, index);
+    }
+
     public static Type getPrestoType(RichColumnDescriptor descriptor)
     {
         switch (descriptor.getType()) {
