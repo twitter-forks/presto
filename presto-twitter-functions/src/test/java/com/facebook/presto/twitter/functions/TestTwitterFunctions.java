@@ -15,11 +15,16 @@ package com.facebook.presto.twitter.functions;
 
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
 import com.facebook.presto.spi.type.ArrayType;
+import com.facebook.presto.spi.type.SqlTimestamp;
 import com.google.common.collect.ImmutableList;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.facebook.presto.metadata.FunctionExtractor.extractFunctions;
+import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
+import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 
 public class TestTwitterFunctions
@@ -45,5 +50,33 @@ public class TestTwitterFunctions
         // Test argument limit
         assertFunction("SPLIT_EVERY('a.b.c', 2, 1)", new ArrayType(createVarcharType(5)), ImmutableList.of("a.b.c"));
         assertFunction("SPLIT_EVERY('a.b.c', 2, 2)", new ArrayType(createVarcharType(5)), ImmutableList.of("a.", "b.c"));
+    }
+
+    private static SqlTimestamp toTimestampUTC(long millis)
+    {
+        return new SqlTimestamp(millis, UTC_KEY);
+    }
+
+    @Test
+    public void testSnowflake()
+    {
+        assertFunction("IS_SNOWFLAKE(1000)", BOOLEAN, false);
+        assertFunction("IS_SNOWFLAKE(265605588183052288)", BOOLEAN, true);
+        assertFunction("IS_SNOWFLAKE(-265605588183052288)", BOOLEAN, false);
+
+        assertFunction("FIRST_SNOWFLAKE_FOR(from_unixtime(1352160281.593))", BIGINT, 265605588182892544L);
+        assertInvalidFunction("FIRST_SNOWFLAKE_FOR(from_unixtime(1000))", "Invalid UnixTimeMillis: UnixTimeMillis[1000000] >= FirstSnowflakeIdUnixTime");
+
+        assertFunction("TIMESTAMP_FROM_SNOWFLAKE(265605588183052288)", TIMESTAMP, toTimestampUTC(1352160281593L));
+        assertInvalidFunction("TIMESTAMP_FROM_SNOWFLAKE(1000)", "Not a Snowflake Id: 1000");
+
+        assertFunction("CLUSTER_ID_FROM_SNOWFLAKE(265605588183052288)", BIGINT, 1L);
+        assertInvalidFunction("CLUSTER_ID_FROM_SNOWFLAKE(1000)", "Not a Snowflake Id: 1000");
+
+        assertFunction("INSTANCE_ID_FROM_SNOWFLAKE(265605588183052288)", BIGINT, 7L);
+        assertInvalidFunction("INSTANCE_ID_FROM_SNOWFLAKE(1000)", "Not a Snowflake Id: 1000");
+
+        assertFunction("SEQUENCE_NUM_FROM_SNOWFLAKE(265605588183052288)", BIGINT, 0L);
+        assertInvalidFunction("SEQUENCE_NUM_FROM_SNOWFLAKE(1000)", "Not a Snowflake Id: 1000");
     }
 }
