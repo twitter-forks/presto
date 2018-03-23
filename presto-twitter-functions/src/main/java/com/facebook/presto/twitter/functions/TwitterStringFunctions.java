@@ -18,6 +18,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.function.Description;
 import com.facebook.presto.spi.function.LiteralParameters;
 import com.facebook.presto.spi.function.ScalarFunction;
 import com.facebook.presto.spi.function.SqlType;
@@ -37,6 +38,7 @@ public class TwitterStringFunctions
     }
 
     @ScalarFunction("split_every")
+    @Description("Splits the string on every character and returns an array")
     @LiteralParameters({"x"})
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8)
@@ -45,6 +47,7 @@ public class TwitterStringFunctions
     }
 
     @ScalarFunction("split_every")
+    @Description("Splits the string on every given length of characters and returns an array")
     @LiteralParameters({"x"})
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long length)
@@ -53,6 +56,7 @@ public class TwitterStringFunctions
     }
 
     @ScalarFunction("split_every")
+    @Description("Splits the string on every given length of characters and returns an array with the size at most of the given limit")
     @LiteralParameters({"x"})
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long length, @SqlType(StandardTypes.BIGINT) long limit)

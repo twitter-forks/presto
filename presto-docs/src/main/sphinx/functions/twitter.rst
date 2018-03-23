@@ -4,6 +4,23 @@ Twitter Functions
 
 These functions provide some convenience functionality commonly used at Twitter.
 
+String Functions
+-----------------
+
+.. function:: split_every(string) -> array
+
+    Splits ``string`` on every character and returns an array.
+
+.. function:: split_every(string, length) -> array
+
+    Splits ``string`` on every ``length`` characters and returns an array.
+    length must be a positive number.
+
+.. function:: split_every(string, length, limit) -> array
+
+    Splits ``string`` on every ``length`` characters and returns an array of size at most ``limit``.
+    The last element in the array always contains everything left in the string. ``limit`` must be a positive number.
+
 Twitter IDs(Snowflake) Functions
 ---------------------------------
 
