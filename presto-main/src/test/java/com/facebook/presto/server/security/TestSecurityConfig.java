@@ -37,7 +37,7 @@ public class TestSecurityConfig
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
-            .put("http-server.authentication.type", "KERBEROS,PASSWORD")
+                .put("http-server.authentication.type", "KERBEROS,PASSWORD")
                 .put("http-server.http.authentication.path.regex", "^/v1/statement")
                 .build();
 
