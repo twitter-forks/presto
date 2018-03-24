@@ -134,7 +134,7 @@ public class KerberosAuthenticator
                         return principal.get();
                     }
                 }
-                catch (GSSException | RuntimeException e) {
+                catch (RuntimeException e) {
                     throw new RuntimeException("Authentication error for token: " + parts[1], e);
                 }
             }
@@ -148,7 +148,6 @@ public class KerberosAuthenticator
     }
 
     private Optional<Principal> authenticate(String token)
-            throws GSSException
     {
         GSSContext context = doAs(loginContext.getSubject(), () -> gssManager.createContext(serverCredential));
 

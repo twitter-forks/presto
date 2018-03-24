@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner;
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.cost.CostCalculator;
+import com.facebook.presto.cost.StatsCalculator;
 import com.facebook.presto.execution.QueryPerformanceFetcher;
 import com.facebook.presto.execution.StageId;
 import com.facebook.presto.execution.TaskManagerConfig;
@@ -79,12 +80,7 @@ import com.facebook.presto.operator.index.IndexJoinLookupStats;
 import com.facebook.presto.operator.index.IndexLookupSourceFactory;
 import com.facebook.presto.operator.index.IndexSourceOperator;
 import com.facebook.presto.operator.project.CursorProcessor;
-import com.facebook.presto.operator.project.InterpretedCursorProcessor;
-import com.facebook.presto.operator.project.InterpretedPageFilter;
-import com.facebook.presto.operator.project.InterpretedPageProjection;
-import com.facebook.presto.operator.project.PageFilter;
 import com.facebook.presto.operator.project.PageProcessor;
-import com.facebook.presto.operator.project.PageProjection;
 import com.facebook.presto.operator.window.FrameInfo;
 import com.facebook.presto.operator.window.WindowFunctionSupplier;
 import com.facebook.presto.spi.ColumnHandle;
@@ -241,6 +237,7 @@ public class LocalExecutionPlanner
 
     private final Metadata metadata;
     private final SqlParser sqlParser;
+    private final StatsCalculator statsCalculator;
     private final CostCalculator costCalculator;
 
     private final Optional<QueryPerformanceFetcher> queryPerformanceFetcher;
@@ -252,7 +249,6 @@ public class LocalExecutionPlanner
     private final ExpressionCompiler expressionCompiler;
     private final PageFunctionCompiler pageFunctionCompiler;
     private final JoinFilterFunctionCompiler joinFilterFunctionCompiler;
-    private final boolean interpreterEnabled;
     private final DataSize maxIndexMemorySize;
     private final IndexJoinLookupStats indexJoinLookupStats;
     private final DataSize maxPartialAggregationMemorySize;
@@ -269,6 +265,7 @@ public class LocalExecutionPlanner
     public LocalExecutionPlanner(
             Metadata metadata,
             SqlParser sqlParser,
+            StatsCalculator statsCalculator,
             CostCalculator costCalculator,
             Optional<QueryPerformanceFetcher> queryPerformanceFetcher,
             PageSourceProvider pageSourceProvider,
@@ -280,7 +277,6 @@ public class LocalExecutionPlanner
             PageFunctionCompiler pageFunctionCompiler,
             JoinFilterFunctionCompiler joinFilterFunctionCompiler,
             IndexJoinLookupStats indexJoinLookupStats,
-            CompilerConfig compilerConfig,
             TaskManagerConfig taskManagerConfig,
             SpillerFactory spillerFactory,
             SingleStreamSpillerFactory singleStreamSpillerFactory,
@@ -290,7 +286,6 @@ public class LocalExecutionPlanner
             JoinCompiler joinCompiler,
             LookupJoinOperators lookupJoinOperators)
     {
-        requireNonNull(compilerConfig, "compilerConfig is null");
         this.queryPerformanceFetcher = requireNonNull(queryPerformanceFetcher, "queryPerformanceFetcher is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
         this.indexManager = requireNonNull(indexManager, "indexManager is null");
@@ -298,6 +293,7 @@ public class LocalExecutionPlanner
         this.exchangeClientSupplier = exchangeClientSupplier;
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
+        this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
         this.costCalculator = requireNonNull(costCalculator, "costCalculator is null");
         this.pageSinkManager = requireNonNull(pageSinkManager, "pageSinkManager is null");
         this.expressionCompiler = requireNonNull(expressionCompiler, "compiler is null");
@@ -314,8 +310,6 @@ public class LocalExecutionPlanner
         this.pagesIndexFactory = requireNonNull(pagesIndexFactory, "pagesIndexFactory is null");
         this.joinCompiler = requireNonNull(joinCompiler, "joinCompiler is null");
         this.lookupJoinOperators = requireNonNull(lookupJoinOperators, "lookupJoinOperators is null");
-
-        interpreterEnabled = compilerConfig.isInterpreterEnabled();
     }
 
     public LocalExecutionPlan plan(
@@ -665,7 +659,14 @@ public class LocalExecutionPlanner
             checkState(queryPerformanceFetcher.isPresent(), "ExplainAnalyze can only run on coordinator");
             PhysicalOperation source = node.getSource().accept(this, context);
 
-            OperatorFactory operatorFactory = new ExplainAnalyzeOperatorFactory(context.getNextOperatorId(), node.getId(), queryPerformanceFetcher.get(), metadata, costCalculator, node.isVerbose());
+            OperatorFactory operatorFactory = new ExplainAnalyzeOperatorFactory(
+                    context.getNextOperatorId(),
+                    node.getId(),
+                    queryPerformanceFetcher.get(),
+                    metadata,
+                    statsCalculator,
+                    costCalculator,
+                    node.isVerbose());
             return new PhysicalOperation(operatorFactory, makeLayout(node), source);
         }
 
@@ -726,10 +727,10 @@ public class LocalExecutionPlanner
                     .map(channel -> source.getTypes().get(channel))
                     .collect(toImmutableList());
 
-            List<Symbol> orderBySymbols = node.getOrderBy();
+            List<Symbol> orderBySymbols = node.getOrderingScheme().getOrderBy();
             List<Integer> sortChannels = getChannelsForSymbols(orderBySymbols, source.getLayout());
             List<SortOrder> sortOrder = orderBySymbols.stream()
-                    .map(symbol -> node.getOrderings().get(symbol))
+                    .map(symbol -> node.getOrderingScheme().getOrdering(symbol))
                     .collect(toImmutableList());
 
             ImmutableList.Builder<Integer> outputChannels = ImmutableList.builder();
@@ -772,14 +773,17 @@ public class LocalExecutionPlanner
             PhysicalOperation source = node.getSource().accept(this, context);
 
             List<Symbol> partitionBySymbols = node.getPartitionBy();
-            List<Symbol> orderBySymbols = node.getOrderBy();
             List<Integer> partitionChannels = ImmutableList.copyOf(getChannelsForSymbols(partitionBySymbols, source.getLayout()));
             List<Integer> preGroupedChannels = ImmutableList.copyOf(getChannelsForSymbols(ImmutableList.copyOf(node.getPrePartitionedInputs()), source.getLayout()));
 
-            List<Integer> sortChannels = getChannelsForSymbols(orderBySymbols, source.getLayout());
-            List<SortOrder> sortOrder = orderBySymbols.stream()
-                    .map(symbol -> node.getOrderings().get(symbol))
-                    .collect(toImmutableList());
+            List<Integer> sortChannels = ImmutableList.of();
+            List<SortOrder> sortOrder = ImmutableList.of();
+
+            if (node.getOrderingScheme().isPresent()) {
+                OrderingScheme orderingScheme = node.getOrderingScheme().get();
+                sortChannels = getChannelsForSymbols(orderingScheme.getOrderBy(), source.getLayout());
+                sortOrder = orderingScheme.getOrderingList();
+            }
 
             ImmutableList.Builder<Integer> outputChannels = ImmutableList.builder();
             for (int i = 0; i < source.getTypes().size(); i++) {
@@ -853,13 +857,13 @@ public class LocalExecutionPlanner
         {
             PhysicalOperation source = node.getSource().accept(this, context);
 
-            List<Symbol> orderBySymbols = node.getOrderBy();
+            List<Symbol> orderBySymbols = node.getOrderingScheme().getOrderBy();
 
             List<Integer> sortChannels = new ArrayList<>();
             List<SortOrder> sortOrders = new ArrayList<>();
             for (Symbol symbol : orderBySymbols) {
                 sortChannels.add(source.getLayout().get(symbol));
-                sortOrders.add(node.getOrderings().get(symbol));
+                sortOrders.add(node.getOrderingScheme().getOrdering(symbol));
             }
 
             OperatorFactory operator = new TopNOperatorFactory(
@@ -878,13 +882,13 @@ public class LocalExecutionPlanner
         {
             PhysicalOperation source = node.getSource().accept(this, context);
 
-            List<Symbol> orderBySymbols = node.getOrderBy();
+            List<Symbol> orderBySymbols = node.getOrderingScheme().getOrderBy();
 
             List<Integer> orderByChannels = getChannelsForSymbols(orderBySymbols, source.getLayout());
 
             ImmutableList.Builder<SortOrder> sortOrder = ImmutableList.builder();
             for (Symbol symbol : orderBySymbols) {
-                sortOrder.add(node.getOrderings().get(symbol));
+                sortOrder.add(node.getOrderingScheme().getOrdering(symbol));
             }
 
             ImmutableList.Builder<Integer> outputChannels = ImmutableList.builder();
@@ -1156,72 +1160,8 @@ public class LocalExecutionPlanner
                 }
             }
             catch (RuntimeException e) {
-                if (!interpreterEnabled) {
-                    throw new PrestoException(COMPILER_ERROR, "Compiler failed and interpreter is disabled", e);
-                }
-
-                // compilation failed, use interpreter
-                log.error(e, "Compile failed for filter=%s projections=%s sourceTypes=%s error=%s", filterExpression, assignments, sourceTypes, e);
+                throw new PrestoException(COMPILER_ERROR, "Compiler failed", e);
             }
-
-            PageProcessor pageProcessor = createInterpretedColumnarPageProcessor(
-                    filterExpression,
-                    outputSymbols.stream()
-                            .map(assignments::get)
-                            .collect(toImmutableList()),
-                    context.getTypes(),
-                    sourceLayout,
-                    context.getSession());
-            if (columns != null) {
-                InterpretedCursorProcessor cursorProcessor = new InterpretedCursorProcessor(
-                        filterExpression,
-                        outputSymbols.stream()
-                                .map(assignments::get)
-                                .collect(toImmutableList()),
-                        context.getTypes(),
-                        sourceLayout,
-                        metadata,
-                        sqlParser,
-                        context.getSession());
-                OperatorFactory operatorFactory = new ScanFilterAndProjectOperatorFactory(
-                        context.getNextOperatorId(),
-                        planNodeId,
-                        sourceNode.getId(),
-                        pageSourceProvider,
-                        () -> cursorProcessor,
-                        () -> pageProcessor,
-                        columns,
-                        getTypes(rewrittenProjections, expressionTypes),
-                        getFilterAndProjectMinOutputPageSize(session),
-                        getFilterAndProjectMinOutputPageRowCount(session));
-
-                return new PhysicalOperation(operatorFactory, outputMappings, groupEnumerable ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
-            }
-            else {
-                OperatorFactory operatorFactory = new FilterAndProjectOperator.FilterAndProjectOperatorFactory(
-                        context.getNextOperatorId(),
-                        planNodeId,
-                        () -> pageProcessor,
-                        getTypes(rewrittenProjections, expressionTypes),
-                        getFilterAndProjectMinOutputPageSize(session),
-                        getFilterAndProjectMinOutputPageRowCount(session));
-                return new PhysicalOperation(operatorFactory, outputMappings, source);
-            }
-        }
-
-        private PageProcessor createInterpretedColumnarPageProcessor(
-                Optional<Expression> filter,
-                List<Expression> projections,
-                Map<Symbol, Type> symbolTypes,
-                Map<Symbol, Integer> symbolToInputMappings,
-                Session session)
-        {
-            Optional<PageFilter> pageFilter = filter
-                    .map(expression -> new InterpretedPageFilter(expression, symbolTypes, symbolToInputMappings, metadata, sqlParser, session));
-            List<PageProjection> pageProjections = projections.stream()
-                    .map(expression -> new InterpretedPageProjection(expression, symbolTypes, symbolToInputMappings, metadata, sqlParser, session))
-                    .collect(toImmutableList());
-            return new PageProcessor(pageFilter, pageProjections);
         }
 
         private RowExpression toRowExpression(Expression expression, Map<NodeRef<Expression>, Type> types)

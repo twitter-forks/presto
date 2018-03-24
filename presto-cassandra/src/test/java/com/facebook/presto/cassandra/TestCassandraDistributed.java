@@ -28,7 +28,6 @@ public class TestCassandraDistributed
         extends AbstractTestDistributedQueries
 {
     public TestCassandraDistributed()
-            throws Exception
     {
         super(CassandraQueryRunner::createCassandraQueryRunner);
     }
@@ -41,18 +40,6 @@ public class TestCassandraDistributed
 
     @Override
     public void testJoinWithLessThanOnDatesInJoinClause()
-    {
-        // Cassandra does not support DATE
-    }
-
-    @Override
-    public void testGroupingSetMixedExpressionAndColumn()
-    {
-        // Cassandra does not support DATE
-    }
-
-    @Override
-    public void testGroupingSetMixedExpressionAndOrdinal()
     {
         // Cassandra does not support DATE
     }

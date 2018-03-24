@@ -36,7 +36,6 @@ public class TestTypeSignature
 {
     @Test
     public void parseSignatureWithLiterals()
-            throws Exception
     {
         TypeSignature result = parseTypeSignature("decimal(X,42)", ImmutableSet.of("X"));
         assertEquals(result.getParameters().size(), 2);
@@ -46,7 +45,6 @@ public class TestTypeSignature
 
     @Test
     public void parseRowSignature()
-            throws Exception
     {
         assertRowSignature(
                 "row(a bigint,b varchar)",
@@ -153,7 +151,6 @@ public class TestTypeSignature
 
     @Test
     public void parseSignature()
-            throws Exception
     {
         assertSignature("bigint", "bigint", ImmutableList.of());
         assertSignature("boolean", "boolean", ImmutableList.of());
@@ -200,7 +197,6 @@ public class TestTypeSignature
 
     @Test
     public void testVarchar()
-            throws Exception
     {
         assertEquals(VARCHAR.getTypeSignature().toString(), "varchar");
         assertEquals(createVarcharType(42).getTypeSignature().toString(), "varchar(42)");
@@ -212,7 +208,6 @@ public class TestTypeSignature
 
     @Test
     public void testIsCalculated()
-            throws Exception
     {
         assertFalse(parseTypeSignature("bigint").isCalculated());
         assertTrue(parseTypeSignature("decimal(p, s)", ImmutableSet.of("p", "s")).isCalculated());

@@ -13,8 +13,7 @@
  */
 package com.facebook.presto.operator;
 
-import com.facebook.presto.execution.SystemMemoryUsageListener;
-import io.airlift.concurrent.BoundedExecutor;
+import com.facebook.presto.memory.context.LocalMemoryContext;
 import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.http.client.HttpClient;
 import io.airlift.units.DataSize;
@@ -25,7 +24,6 @@ import org.weakref.jmx.Nested;
 import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -41,14 +39,13 @@ public class ExchangeClientFactory
 {
     private final DataSize maxBufferedBytes;
     private final int concurrentRequestMultiplier;
-    private final Duration minErrorDuration;
     private final Duration maxErrorDuration;
     private final HttpClient httpClient;
     private final DataSize maxResponseSize;
+    private final boolean acknowledgePages;
     private final ScheduledExecutorService scheduler;
     private final ThreadPoolExecutorMBean executorMBean;
     private final ExecutorService pageBufferClientCallbackExecutor;
-    private final Executor boundedExecutor;
 
     @Inject
     public ExchangeClientFactory(
@@ -60,8 +57,8 @@ public class ExchangeClientFactory
                 config.getMaxBufferSize(),
                 config.getMaxResponseSize(),
                 config.getConcurrentRequestMultiplier(),
-                config.getMinErrorDuration(),
                 config.getMaxErrorDuration(),
+                config.isAcknowledgePages(),
                 config.getPageBufferClientMaxCallbackThreads(),
                 httpClient,
                 scheduler);
@@ -71,16 +68,16 @@ public class ExchangeClientFactory
             DataSize maxBufferedBytes,
             DataSize maxResponseSize,
             int concurrentRequestMultiplier,
-            Duration minErrorDuration,
             Duration maxErrorDuration,
+            boolean acknowledgePages,
             int pageBufferClientMaxCallbackThreads,
             HttpClient httpClient,
             ScheduledExecutorService scheduler)
     {
         this.maxBufferedBytes = requireNonNull(maxBufferedBytes, "maxBufferedBytes is null");
         this.concurrentRequestMultiplier = concurrentRequestMultiplier;
-        this.minErrorDuration = requireNonNull(minErrorDuration, "minErrorDuration is null");
         this.maxErrorDuration = requireNonNull(maxErrorDuration, "maxErrorDuration is null");
+        this.acknowledgePages = acknowledgePages;
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
 
         // Use only 0.75 of the maxResponseSize to leave room for additional bytes from the encoding
@@ -92,7 +89,6 @@ public class ExchangeClientFactory
         this.scheduler = requireNonNull(scheduler, "scheduler is null");
 
         this.pageBufferClientCallbackExecutor = newFixedThreadPool(pageBufferClientMaxCallbackThreads, daemonThreadsNamed("page-buffer-client-callback-%s"));
-        this.boundedExecutor = new BoundedExecutor(pageBufferClientCallbackExecutor, pageBufferClientMaxCallbackThreads);
         this.executorMBean = new ThreadPoolExecutorMBean((ThreadPoolExecutor) pageBufferClientCallbackExecutor);
 
         checkArgument(maxBufferedBytes.toBytes() > 0, "maxBufferSize must be at least 1 byte: %s", maxBufferedBytes);
@@ -114,17 +110,17 @@ public class ExchangeClientFactory
     }
 
     @Override
-    public ExchangeClient get(SystemMemoryUsageListener systemMemoryUsageListener)
+    public ExchangeClient get(LocalMemoryContext systemMemoryContext)
     {
         return new ExchangeClient(
                 maxBufferedBytes,
                 maxResponseSize,
                 concurrentRequestMultiplier,
-                minErrorDuration,
                 maxErrorDuration,
+                acknowledgePages,
                 httpClient,
                 scheduler,
-                systemMemoryUsageListener,
-                boundedExecutor);
+                systemMemoryContext,
+                pageBufferClientCallbackExecutor);
     }
 }

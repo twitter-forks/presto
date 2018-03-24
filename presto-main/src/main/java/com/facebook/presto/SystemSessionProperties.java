@@ -72,8 +72,10 @@ public final class SystemSessionProperties
     public static final String AGGREGATION_OPERATOR_UNSPILL_MEMORY_LIMIT = "aggregation_operator_unspill_memory_limit";
     public static final String OPTIMIZE_DISTINCT_AGGREGATIONS = "optimize_mixed_distinct_aggregations";
     public static final String LEGACY_ORDER_BY = "legacy_order_by";
+    public static final String LEGACY_JOIN_USING = "legacy_join_using";
     public static final String ITERATIVE_OPTIMIZER = "iterative_optimizer_enabled";
     public static final String ITERATIVE_OPTIMIZER_TIMEOUT = "iterative_optimizer_timeout";
+    public static final String ENABLE_NEW_STATS_CALCULATOR = "enable_new_stats_calculator";
     public static final String EXCHANGE_COMPRESSION = "exchange_compression";
     public static final String LEGACY_TIMESTAMP = "legacy_timestamp";
     public static final String ENABLE_INTERMEDIATE_AGGREGATIONS = "enable_intermediate_aggregations";
@@ -324,6 +326,11 @@ public final class SystemSessionProperties
                         featuresConfig.isLegacyOrderBy(),
                         false),
                 booleanSessionProperty(
+                        LEGACY_JOIN_USING,
+                        "Use legacy behavior for JOIN ... USING clause",
+                        featuresConfig.isLegacyJoinUsing(),
+                        false),
+                booleanSessionProperty(
                         ITERATIVE_OPTIMIZER,
                         "Experimental: enable iterative optimizer",
                         featuresConfig.isIterativeOptimizerEnabled(),
@@ -337,6 +344,11 @@ public final class SystemSessionProperties
                         false,
                         value -> Duration.valueOf((String) value),
                         Duration::toString),
+                booleanSessionProperty(
+                        ENABLE_NEW_STATS_CALCULATOR,
+                        "Use new experimental statistics calculator",
+                        featuresConfig.isEnableNewStatsCalculator(),
+                        true),
                 booleanSessionProperty(
                         EXCHANGE_COMPRESSION,
                         "Enable compression in exchanges",
@@ -564,6 +576,11 @@ public final class SystemSessionProperties
         return session.getSystemProperty(LEGACY_ORDER_BY, Boolean.class);
     }
 
+    public static boolean isLegacyJoinUsingEnabled(Session session)
+    {
+        return session.getSystemProperty(LEGACY_JOIN_USING, Boolean.class);
+    }
+
     public static boolean isNewOptimizerEnabled(Session session)
     {
         return session.getSystemProperty(ITERATIVE_OPTIMIZER, Boolean.class);
@@ -578,6 +595,11 @@ public final class SystemSessionProperties
     public static Duration getOptimizerTimeout(Session session)
     {
         return session.getSystemProperty(ITERATIVE_OPTIMIZER_TIMEOUT, Duration.class);
+    }
+
+    public static boolean isEnableNewStatsCalculator(Session session)
+    {
+        return session.getSystemProperty(ENABLE_NEW_STATS_CALCULATOR, Boolean.class);
     }
 
     public static boolean isExchangeCompressionEnabled(Session session)

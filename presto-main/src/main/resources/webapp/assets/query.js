@@ -360,7 +360,7 @@ let StageDetail = React.createClass({
                                                     Cumulative
                                                 </td>
                                                 <td className="stage-table-stat-text">
-                                                    { formatDataSizeBytes(stage.stageStats.cumulativeMemory / 1000) }
+                                                    { formatDataSizeBytes(stage.stageStats.cumulativeUserMemory / 1000) }
                                                 </td>
                                             </tr>
                                             <tr>
@@ -368,7 +368,7 @@ let StageDetail = React.createClass({
                                                     Current
                                                 </td>
                                                 <td className="stage-table-stat-text">
-                                                    { stage.stageStats.totalMemoryReservation }
+                                                    { stage.stageStats.userMemoryReservation }
                                                 </td>
                                             </tr>
                                             <tr>
@@ -384,7 +384,7 @@ let StageDetail = React.createClass({
                                                     Peak
                                                 </td>
                                                 <td className="stage-table-stat-text">
-                                                    { stage.stageStats.peakMemoryReservation }
+                                                    { stage.stageStats.peakUserMemoryReservation }
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -669,7 +669,7 @@ let QueryDetail = React.createClass({
                     cpuTimeRate: addToHistory(currentCpuTimeRate, this.state.cpuTimeRate),
                     rowInputRate: addToHistory(currentRowInputRate, this.state.rowInputRate),
                     byteInputRate: addToHistory(currentByteInputRate, this.state.byteInputRate),
-                    reservedMemory: addToHistory(parseDataSize(query.queryStats.totalMemoryReservation), this.state.reservedMemory),
+                    reservedMemory: addToHistory(parseDataSize(query.queryStats.userMemoryReservation), this.state.reservedMemory),
                 });
             }
             this.resetTimer();
@@ -1205,7 +1205,7 @@ let QueryDetail = React.createClass({
                                                 Peak Memory
                                             </td>
                                             <td className="info-text">
-                                                { query.queryStats.peakMemoryReservation }
+                                                { query.queryStats.peakUserMemoryReservation }
                                             </td>
                                         </tr>
                                         <tr>
@@ -1221,7 +1221,7 @@ let QueryDetail = React.createClass({
                                                 Cumulative Memory
                                             </td>
                                             <td className="info-text">
-                                                { formatDataSizeBytes(query.queryStats.cumulativeMemory / 1000.0, "") + " seconds" }
+                                                { formatDataSizeBytes(query.queryStats.cumulativeUserMemory / 1000.0, "") + " seconds" }
                                             </td>
                                         </tr>
                                         <tr>

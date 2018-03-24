@@ -14,6 +14,7 @@
 package com.facebook.presto.jdbc;
 
 import com.facebook.presto.client.ClientException;
+import com.facebook.presto.client.QueryStatusInfo;
 import com.facebook.presto.client.StatementClient;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Ints;
@@ -48,6 +49,7 @@ public class PrestoStatement
     private final AtomicReference<StatementClient> executingClient = new AtomicReference<>();
     private final AtomicReference<ResultSet> currentResult = new AtomicReference<>();
     private final AtomicLong currentUpdateCount = new AtomicLong(-1);
+    private final AtomicReference<String> currentUpdateType = new AtomicReference<>();
     private final AtomicReference<Optional<Consumer<QueryStats>>> progressCallback = new AtomicReference<>(Optional.empty());
     private final Consumer<QueryStats> progressConsumer = value -> progressCallback.get().ifPresent(callback -> callback.accept(value));
 
@@ -233,8 +235,11 @@ public class PrestoStatement
         ResultSet resultSet = null;
         try {
             client = connection().startQuery(sql, getStatementSessionProperties());
-            if (client.isFailed()) {
-                throw resultsException(client.finalStatusInfo());
+            if (client.isFinished()) {
+                QueryStatusInfo finalStatusInfo = client.finalStatusInfo();
+                if (finalStatusInfo.getError() != null) {
+                    throw resultsException(finalStatusInfo);
+                }
             }
             executingClient.set(client);
 
@@ -255,6 +260,7 @@ public class PrestoStatement
 
             Long updateCount = client.finalStatusInfo().getUpdateCount();
             currentUpdateCount.set((updateCount != null) ? updateCount : 0);
+            currentUpdateType.set(client.finalStatusInfo().getUpdateType());
 
             return false;
         }
@@ -281,6 +287,7 @@ public class PrestoStatement
     {
         currentResult.set(null);
         currentUpdateCount.set(-1);
+        currentUpdateType.set(null);
     }
 
     @Override
@@ -567,6 +574,13 @@ public class PrestoStatement
             throws SQLException
     {
         return iface.isInstance(this);
+    }
+
+    public String getUpdateType()
+            throws SQLException
+    {
+        checkOpen();
+        return currentUpdateType.get();
     }
 
     private void checkOpen()

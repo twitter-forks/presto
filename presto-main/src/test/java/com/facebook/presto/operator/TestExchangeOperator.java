@@ -98,7 +98,6 @@ public class TestExchangeOperator
     @SuppressWarnings("resource")
     @BeforeClass
     public void setUp()
-            throws Exception
     {
         scheduler = newScheduledThreadPool(4, daemonThreadsNamed("test-%s"));
         scheduledExecutor = newScheduledThreadPool(2, daemonThreadsNamed("test-scheduledExecutor-%s"));
@@ -110,7 +109,7 @@ public class TestExchangeOperator
                 new DataSize(10, MEGABYTE),
                 3,
                 new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                true,
                 httpClient,
                 scheduler,
                 systemMemoryUsageListener,
@@ -119,7 +118,6 @@ public class TestExchangeOperator
 
     @AfterClass(alwaysRun = true)
     public void tearDown()
-            throws Exception
     {
         httpClient.close();
         httpClient = null;
@@ -289,7 +287,7 @@ public class TestExchangeOperator
         List<Page> outputPages = new ArrayList<>();
 
         boolean greaterThanZero = false;
-        while (System.nanoTime() < endTime) {
+        while (System.nanoTime() - endTime < 0) {
             if (operator.isFinished()) {
                 break;
             }
@@ -342,7 +340,7 @@ public class TestExchangeOperator
     {
         // wait for finished or until 10 seconds has passed
         long endTime = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        while (System.nanoTime() < endTime) {
+        while (System.nanoTime() - endTime < 0) {
             assertEquals(operator.needsInput(), false);
             assertNull(operator.getOutput());
             if (operator.isFinished()) {

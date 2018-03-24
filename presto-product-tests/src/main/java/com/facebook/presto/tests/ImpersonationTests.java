@@ -15,12 +15,12 @@ package com.facebook.presto.tests;
 
 import com.google.inject.Inject;
 import com.google.inject.name.Named;
-import com.teradata.tempto.BeforeTestWithContext;
-import com.teradata.tempto.ProductTest;
-import com.teradata.tempto.Requires;
-import com.teradata.tempto.fulfillment.table.hive.tpch.ImmutableTpchTablesRequirements.ImmutableNationTable;
-import com.teradata.tempto.hadoop.hdfs.HdfsClient;
-import com.teradata.tempto.query.QueryExecutor;
+import io.prestodb.tempto.BeforeTestWithContext;
+import io.prestodb.tempto.ProductTest;
+import io.prestodb.tempto.Requires;
+import io.prestodb.tempto.fulfillment.table.hive.tpch.ImmutableTpchTablesRequirements.ImmutableNationTable;
+import io.prestodb.tempto.hadoop.hdfs.HdfsClient;
+import io.prestodb.tempto.query.QueryExecutor;
 import org.testng.annotations.Test;
 
 import static com.facebook.presto.tests.TestGroups.HDFS_IMPERSONATION;
@@ -63,7 +63,6 @@ public class ImpersonationTests
 
     @Test(groups = {HDFS_NO_IMPERSONATION, PROFILE_SPECIFIC_TESTS})
     public void testHdfsImpersonationDisabled()
-            throws Exception
     {
         String tableName = "check_hdfs_impersonation_disabled";
         checkTableOwner(tableName, configuredHdfsUser, aliceExecutor);
@@ -71,7 +70,6 @@ public class ImpersonationTests
 
     @Test(groups = {HDFS_IMPERSONATION, PROFILE_SPECIFIC_TESTS})
     public void testHdfsImpersonationEnabled()
-            throws Exception
     {
         String tableName = "check_hdfs_impersonation_enabled";
         checkTableOwner(tableName, aliceJdbcUser, aliceExecutor);

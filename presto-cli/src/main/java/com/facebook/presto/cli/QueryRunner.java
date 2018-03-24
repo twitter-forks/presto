@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 
 import static com.facebook.presto.client.ClientSession.stripTransactionId;
 import static com.facebook.presto.client.OkHttpUtil.basicAuth;
+import static com.facebook.presto.client.OkHttpUtil.setupCookieJar;
 import static com.facebook.presto.client.OkHttpUtil.setupHttpProxy;
 import static com.facebook.presto.client.OkHttpUtil.setupKerberos;
 import static com.facebook.presto.client.OkHttpUtil.setupSocksProxy;
@@ -40,11 +41,13 @@ public class QueryRunner
         implements Closeable
 {
     private final AtomicReference<ClientSession> session;
+    private final boolean debug;
     private final OkHttpClient httpClient;
     private final Consumer<OkHttpClient.Builder> sslSetup;
 
     public QueryRunner(
             ClientSession session,
+            boolean debug,
             Optional<HostAndPort> socksProxy,
             Optional<HostAndPort> httpProxy,
             Optional<String> keystorePath,
@@ -62,12 +65,14 @@ public class QueryRunner
             boolean kerberosEnabled)
     {
         this.session = new AtomicReference<>(requireNonNull(session, "session is null"));
+        this.debug = debug;
 
         this.sslSetup = builder -> setupSsl(builder, keystorePath, keystorePassword, truststorePath, truststorePassword);
 
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
 
         setupTimeouts(builder, 5, SECONDS);
+        setupCookieJar(builder);
         setupSocksProxy(builder, socksProxy);
         setupHttpProxy(builder, httpProxy);
         setupBasicAuth(builder, session, user, password);
@@ -96,9 +101,14 @@ public class QueryRunner
         this.session.set(requireNonNull(session, "session is null"));
     }
 
+    public boolean isDebug()
+    {
+        return debug;
+    }
+
     public Query startQuery(String query)
     {
-        return new Query(startInternalQuery(session.get(), query));
+        return new Query(startInternalQuery(session.get(), query), debug);
     }
 
     public StatementClient startInternalQuery(String query)

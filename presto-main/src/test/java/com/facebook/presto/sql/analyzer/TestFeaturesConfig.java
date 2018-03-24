@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.analyzer;
 
 import com.google.common.collect.ImmutableMap;
+import io.airlift.configuration.ConfigurationFactory;
 import io.airlift.configuration.testing.ConfigAssertions;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -21,6 +22,10 @@ import org.testng.annotations.Test;
 
 import java.util.Map;
 
+import static com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation.LEGACY;
+import static com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation.NEW;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILLER_SPILL_PATH;
+import static com.facebook.presto.sql.analyzer.FeaturesConfig.SPILL_ENABLED;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
 import static com.facebook.presto.sql.analyzer.RegexLibrary.RE2J;
 import static io.airlift.configuration.testing.ConfigAssertions.assertFullMapping;
@@ -37,6 +42,9 @@ public class TestFeaturesConfig
     public void testDefaults()
     {
         assertRecordedDefaults(ConfigAssertions.recordDefaults(FeaturesConfig.class)
+                .setCpuCostWeight(75)
+                .setMemoryCostWeight(10)
+                .setNetworkCostWeight(15)
                 .setResourceGroupsEnabled(false)
                 .setDistributedIndexJoinsEnabled(false)
                 .setDistributedJoinsEnabled(true)
@@ -67,27 +75,35 @@ public class TestFeaturesConfig
                 .setLegacyOrderBy(false)
                 .setIterativeOptimizerEnabled(true)
                 .setIterativeOptimizerTimeout(new Duration(3, MINUTES))
+                .setEnableNewStatsCalculator(false)
                 .setExchangeCompressionEnabled(false)
                 .setLegacyTimestamp(true)
+                .setLegacyJoinUsing(false)
                 .setEnableIntermediateAggregations(false)
                 .setPushAggregationThroughJoin(true)
                 .setParseDecimalLiteralsAsDouble(true)
                 .setForceSingleNodeOutput(true)
                 .setPagesIndexEagerCompactionEnabled(false)
                 .setFilterAndProjectMinOutputPageSize(new DataSize(25, KILOBYTE))
-                .setFilterAndProjectMinOutputPageRowCount(256));
+                .setFilterAndProjectMinOutputPageRowCount(256)
+                .setHistogramGroupImplementation(NEW));
     }
 
     @Test
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
+                .put("cpu-cost-weight", "0.4")
+                .put("memory-cost-weight", "0.3")
+                .put("network-cost-weight", "0.2")
                 .put("experimental.resource-groups-enabled", "true")
                 .put("experimental.iterative-optimizer-enabled", "false")
                 .put("experimental.iterative-optimizer-timeout", "10s")
+                .put("experimental.enable-new-stats-calculator", "true")
                 .put("deprecated.legacy-array-agg", "true")
                 .put("deprecated.legacy-order-by", "true")
                 .put("deprecated.legacy-map-subscript", "true")
+                .put("deprecated.legacy-join-using", "true")
                 .put("distributed-index-joins-enabled", "true")
                 .put("distributed-joins-enabled", "false")
                 .put("fast-inequality-joins", "false")
@@ -121,12 +137,17 @@ public class TestFeaturesConfig
                 .put("pages-index.eager-compaction-enabled", "true")
                 .put("experimental.filter-and-project-min-output-page-size", "1MB")
                 .put("experimental.filter-and-project-min-output-page-row-count", "2048")
+                .put("histogram.implemenation", "LEGACY")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
+                .setCpuCostWeight(0.4)
+                .setMemoryCostWeight(0.3)
+                .setNetworkCostWeight(0.2)
                 .setResourceGroupsEnabled(true)
                 .setIterativeOptimizerEnabled(false)
                 .setIterativeOptimizerTimeout(new Duration(10, SECONDS))
+                .setEnableNewStatsCalculator(true)
                 .setDistributedIndexJoinsEnabled(true)
                 .setDistributedJoinsEnabled(false)
                 .setFastInequalityJoins(false)
@@ -157,13 +178,21 @@ public class TestFeaturesConfig
                 .setLegacyOrderBy(true)
                 .setExchangeCompressionEnabled(true)
                 .setLegacyTimestamp(false)
+                .setLegacyJoinUsing(true)
                 .setEnableIntermediateAggregations(true)
                 .setParseDecimalLiteralsAsDouble(false)
                 .setForceSingleNodeOutput(false)
                 .setPagesIndexEagerCompactionEnabled(true)
                 .setFilterAndProjectMinOutputPageSize(new DataSize(1, MEGABYTE))
-                .setFilterAndProjectMinOutputPageRowCount(2048);
-
+                .setFilterAndProjectMinOutputPageRowCount(2048)
+                .setHistogramGroupImplementation(LEGACY);
         assertFullMapping(properties, expected);
+    }
+
+    @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*\\Q" + SPILLER_SPILL_PATH + " must be configured when " + SPILL_ENABLED + " is set to true\\E.*")
+    public void testValidateSpillConfiguredIfEnabled()
+    {
+        new ConfigurationFactory(ImmutableMap.of(SPILL_ENABLED, "true"))
+                .build(FeaturesConfig.class);
     }
 }

@@ -14,7 +14,9 @@
 package com.facebook.presto.server.security;
 
 import com.facebook.presto.server.security.SecurityConfig.AuthenticationType;
+import com.google.common.collect.ImmutableList;
 import com.google.inject.Binder;
+import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
@@ -22,11 +24,12 @@ import io.airlift.http.server.TheServlet;
 
 import javax.servlet.Filter;
 
+import java.util.List;
 import java.util.Set;
 
 import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.CERTIFICATE;
 import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.KERBEROS;
-import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.LDAP;
+import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.PASSWORD;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 
@@ -40,21 +43,31 @@ public class ServerSecurityModule
                 .to(AuthenticationFilter.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(SecurityConfig.class);
 
-        Set<AuthenticationType> authTypes = buildConfigObject(SecurityConfig.class).getAuthenticationTypes();
+        binder.bind(PasswordAuthenticatorManager.class).in(Scopes.SINGLETON);
+
+        List<AuthenticationType> authTypes = buildConfigObject(SecurityConfig.class).getAuthenticationTypes();
         Multibinder<Authenticator> authBinder = newSetBinder(binder, Authenticator.class);
 
-        if (authTypes.contains(CERTIFICATE)) {
-            authBinder.addBinding().to(CertificateAuthenticator.class).in(Scopes.SINGLETON);
+        for (AuthenticationType authType : authTypes) {
+            if (authType == CERTIFICATE) {
+                authBinder.addBinding().to(CertificateAuthenticator.class).in(Scopes.SINGLETON);
+            }
+            else if (authType == KERBEROS) {
+                configBinder(binder).bindConfig(KerberosConfig.class);
+                authBinder.addBinding().to(KerberosAuthenticator.class).in(Scopes.SINGLETON);
+            }
+            else if (authType == PASSWORD) {
+                authBinder.addBinding().to(PasswordAuthenticator.class).in(Scopes.SINGLETON);
+            }
+            else {
+                throw new AssertionError("Unhandled auth type: " + authType);
+            }
         }
+    }
 
-        if (authTypes.contains(KERBEROS)) {
-            configBinder(binder).bindConfig(KerberosConfig.class);
-            authBinder.addBinding().to(KerberosAuthenticator.class).in(Scopes.SINGLETON);
-        }
-
-        if (authTypes.contains(LDAP)) {
-            configBinder(binder).bindConfig(LdapConfig.class);
-            authBinder.addBinding().to(LdapAuthenticator.class).in(Scopes.SINGLETON);
-        }
+    @Provides
+    List<Authenticator> getAuthenticatorList(Set<Authenticator> authenticators)
+    {
+        return ImmutableList.copyOf(authenticators);
     }
 }

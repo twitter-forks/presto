@@ -239,7 +239,6 @@ public class TaskResource
             @PathParam("token") final long token,
             @HeaderParam(PRESTO_MAX_SIZE) DataSize maxSize,
             @Suspended AsyncResponse asyncResponse)
-            throws InterruptedException
     {
         requireNonNull(taskId, "taskId is null");
         requireNonNull(bufferId, "bufferId is null");
@@ -288,6 +287,18 @@ public class TaskResource
 
         responseFuture.addListener(() -> readFromOutputBufferTime.add(Duration.nanosSince(start)), directExecutor());
         asyncResponse.register((CompletionCallback) throwable -> resultsRequestTime.add(Duration.nanosSince(start)));
+    }
+
+    @GET
+    @Path("{taskId}/results/{bufferId}/{token}/acknowledge")
+    public void acknowledgeResults(@PathParam("taskId") TaskId taskId,
+            @PathParam("bufferId") OutputBufferId bufferId,
+            @PathParam("token") final long token)
+    {
+        requireNonNull(taskId, "taskId is null");
+        requireNonNull(bufferId, "bufferId is null");
+
+        taskManager.acknowledgeTaskResults(taskId, bufferId, token);
     }
 
     @DELETE

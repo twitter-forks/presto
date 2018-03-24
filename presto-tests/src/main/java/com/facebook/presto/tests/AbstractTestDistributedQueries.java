@@ -17,7 +17,6 @@ import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
 import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.execution.QueryManager;
-import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
@@ -740,7 +739,6 @@ public abstract class AbstractTestDistributedQueries
 
     @Test
     public void testQueryLoggingCount()
-            throws Exception
     {
         QueryManager queryManager = ((DistributedQueryRunner) getQueryRunner()).getCoordinator().getQueryManager();
         executeExclusively(() -> {
@@ -830,7 +828,6 @@ public abstract class AbstractTestDistributedQueries
 
     @Test
     public void testSymbolAliasing()
-            throws Exception
     {
         assertUpdate("CREATE TABLE test_symbol_aliasing AS SELECT 1 foo_1, 2 foo_2_4", 1);
         assertQuery("SELECT foo_1, foo_2_4 FROM test_symbol_aliasing", "SELECT 1, 2");
@@ -839,7 +836,6 @@ public abstract class AbstractTestDistributedQueries
 
     @Test
     public void testNonQueryAccessControl()
-            throws Exception
     {
         skipTestUnless(supportsViews());
 
@@ -867,7 +863,6 @@ public abstract class AbstractTestDistributedQueries
 
     @Test
     public void testViewAccessControl()
-            throws Exception
     {
         skipTestUnless(supportsViews());
 
@@ -966,7 +961,7 @@ public abstract class AbstractTestDistributedQueries
         String sql = "CREATE TABLE test_written_stats AS SELECT * FROM nation";
         DistributedQueryRunner distributedQueryRunner = (DistributedQueryRunner) getQueryRunner();
         ResultWithQueryId<MaterializedResult> resultResultWithQueryId = distributedQueryRunner.executeWithQueryId(getSession(), sql);
-        QueryInfo queryInfo = distributedQueryRunner.getQueryInfo(new QueryId(resultResultWithQueryId.getQueryId()));
+        QueryInfo queryInfo = distributedQueryRunner.getQueryInfo(resultResultWithQueryId.getQueryId());
 
         assertEquals(queryInfo.getQueryStats().getOutputPositions(), 1L);
         assertEquals(queryInfo.getQueryStats().getWrittenPositions(), 25L);
@@ -974,7 +969,7 @@ public abstract class AbstractTestDistributedQueries
 
         sql = "INSERT INTO test_written_stats SELECT * FROM nation LIMIT 10";
         resultResultWithQueryId = distributedQueryRunner.executeWithQueryId(getSession(), sql);
-        queryInfo = distributedQueryRunner.getQueryInfo(new QueryId(resultResultWithQueryId.getQueryId()));
+        queryInfo = distributedQueryRunner.getQueryInfo(resultResultWithQueryId.getQueryId());
 
         assertEquals(queryInfo.getQueryStats().getOutputPositions(), 1L);
         assertEquals(queryInfo.getQueryStats().getWrittenPositions(), 10L);

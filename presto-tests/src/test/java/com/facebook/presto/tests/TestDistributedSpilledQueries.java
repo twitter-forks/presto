@@ -28,12 +28,11 @@ public class TestDistributedSpilledQueries
         extends AbstractTestQueries
 {
     public TestDistributedSpilledQueries()
-            throws Exception
     {
         super(TestDistributedSpilledQueries::createQueryRunner);
     }
 
-    private static DistributedQueryRunner createQueryRunner()
+    public static DistributedQueryRunner createQueryRunner()
             throws Exception
     {
         Session defaultSession = testSessionBuilder()

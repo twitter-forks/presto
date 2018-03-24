@@ -13,15 +13,15 @@
  */
 package com.facebook.presto.server.security;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import io.airlift.configuration.testing.ConfigAssertions;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 
 import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.KERBEROS;
-import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.LDAP;
+import static com.facebook.presto.server.security.SecurityConfig.AuthenticationType.PASSWORD;
 
 public class TestSecurityConfig
 {
@@ -37,12 +37,12 @@ public class TestSecurityConfig
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
-                .put("http-server.authentication.type", "KERBEROS,LDAP")
+            .put("http-server.authentication.type", "KERBEROS,PASSWORD")
                 .put("http-server.http.authentication.path.regex", "^/v1/statement")
                 .build();
 
         SecurityConfig expected = new SecurityConfig()
-                .setAuthenticationTypes(ImmutableSet.of(KERBEROS, LDAP))
+                .setAuthenticationTypes(ImmutableList.of(KERBEROS, PASSWORD))
                 .setHttpAuthenticationPathRegex("^/v1/statement");
 
         ConfigAssertions.assertFullMapping(properties, expected);

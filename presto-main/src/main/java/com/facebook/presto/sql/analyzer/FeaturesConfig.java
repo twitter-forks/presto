@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.sql.analyzer;
 
+import com.facebook.presto.operator.aggregation.histogram.HistogramGroupImplementation;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
@@ -22,6 +24,7 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.airlift.units.MaxDataSize;
 
+import javax.validation.constraints.AssertTrue;
 import javax.validation.constraints.DecimalMax;
 import javax.validation.constraints.DecimalMin;
 import javax.validation.constraints.Min;
@@ -43,6 +46,14 @@ import static java.util.concurrent.TimeUnit.MINUTES;
         "optimizer.processing-optimization"})
 public class FeaturesConfig
 {
+    @VisibleForTesting
+    static final String SPILL_ENABLED = "experimental.spill-enabled";
+    @VisibleForTesting
+    static final String SPILLER_SPILL_PATH = "experimental.spiller-spill-path";
+
+    private double cpuCostWeight = 75;
+    private double memoryCostWeight = 10;
+    private double networkCostWeight = 15;
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
     private boolean colocatedJoinsEnabled;
@@ -61,6 +72,7 @@ public class FeaturesConfig
     private boolean legacyOrderBy;
     private boolean legacyTimestamp = true;
     private boolean legacyMapSubscript;
+    private boolean legacyJoinUsing;
     private boolean optimizeMixedDistinctAggregations;
     private boolean forceSingleNodeOutput = true;
     private boolean pagesIndexEagerCompactionEnabled;
@@ -71,12 +83,14 @@ public class FeaturesConfig
     private int re2JDfaStatesLimit = Integer.MAX_VALUE;
     private int re2JDfaRetries = 5;
     private RegexLibrary regexLibrary = JONI;
+    private HistogramGroupImplementation histogramGroupImplementation = HistogramGroupImplementation.NEW;
     private boolean spillEnabled;
     private DataSize aggregationOperatorUnspillMemoryLimit = new DataSize(4, DataSize.Unit.MEGABYTE);
     private List<Path> spillerSpillPaths = ImmutableList.of();
     private int spillerThreads = 4;
     private double spillMaxUsedSpaceThreshold = 0.9;
     private boolean iterativeOptimizerEnabled = true;
+    private boolean enableNewStatsCalculator;
     private boolean pushAggregationThroughJoin = true;
     private double memoryRevokingTarget = 0.5;
     private double memoryRevokingThreshold = 0.9;
@@ -86,6 +100,42 @@ public class FeaturesConfig
 
     private DataSize filterAndProjectMinOutputPageSize = new DataSize(25, KILOBYTE);
     private int filterAndProjectMinOutputPageRowCount = 256;
+
+    public double getCpuCostWeight()
+    {
+        return cpuCostWeight;
+    }
+
+    @Config("cpu-cost-weight")
+    public FeaturesConfig setCpuCostWeight(double cpuCostWeight)
+    {
+        this.cpuCostWeight = cpuCostWeight;
+        return this;
+    }
+
+    public double getMemoryCostWeight()
+    {
+        return memoryCostWeight;
+    }
+
+    @Config("memory-cost-weight")
+    public FeaturesConfig setMemoryCostWeight(double memoryCostWeight)
+    {
+        this.memoryCostWeight = memoryCostWeight;
+        return this;
+    }
+
+    public double getNetworkCostWeight()
+    {
+        return networkCostWeight;
+    }
+
+    @Config("network-cost-weight")
+    public FeaturesConfig setNetworkCostWeight(double networkCostWeight)
+    {
+        this.networkCostWeight = networkCostWeight;
+        return this;
+    }
 
     public boolean isResourceGroupsEnabled()
     {
@@ -114,6 +164,18 @@ public class FeaturesConfig
     public boolean isDistributedJoinsEnabled()
     {
         return distributedJoinsEnabled;
+    }
+
+    @Config("deprecated.legacy-join-using")
+    public FeaturesConfig setLegacyJoinUsing(boolean value)
+    {
+        this.legacyJoinUsing = value;
+        return this;
+    }
+
+    public boolean isLegacyJoinUsing()
+    {
+        return legacyJoinUsing;
     }
 
     @Config("deprecated.legacy-array-agg")
@@ -351,7 +413,7 @@ public class FeaturesConfig
         return spillEnabled;
     }
 
-    @Config("experimental.spill-enabled")
+    @Config(SPILL_ENABLED)
     public FeaturesConfig setSpillEnabled(boolean spillEnabled)
     {
         this.spillEnabled = spillEnabled;
@@ -382,6 +444,18 @@ public class FeaturesConfig
         return this;
     }
 
+    public boolean isEnableNewStatsCalculator()
+    {
+        return enableNewStatsCalculator;
+    }
+
+    @Config("experimental.enable-new-stats-calculator")
+    public FeaturesConfig setEnableNewStatsCalculator(boolean enableNewStatsCalculator)
+    {
+        this.enableNewStatsCalculator = enableNewStatsCalculator;
+        return this;
+    }
+
     public DataSize getAggregationOperatorUnspillMemoryLimit()
     {
         return aggregationOperatorUnspillMemoryLimit;
@@ -399,7 +473,7 @@ public class FeaturesConfig
         return spillerSpillPaths;
     }
 
-    @Config("experimental.spiller-spill-path")
+    @Config(SPILLER_SPILL_PATH)
     public FeaturesConfig setSpillerSpillPaths(String spillPaths)
     {
         List<String> spillPathsSplit = ImmutableList.copyOf(Splitter.on(",").trimResults().omitEmptyStrings().split(spillPaths));
@@ -407,6 +481,13 @@ public class FeaturesConfig
         return this;
     }
 
+    @AssertTrue(message = SPILLER_SPILL_PATH + " must be configured when " + SPILL_ENABLED + " is set to true")
+    public boolean isSpillerSpillPathsConfiguredIfSpillEnabled()
+    {
+        return !isSpillEnabled() || !spillerSpillPaths.isEmpty();
+    }
+
+    @Min(1)
     public int getSpillerThreads()
     {
         return spillerThreads;
@@ -569,5 +650,17 @@ public class FeaturesConfig
     {
         this.filterAndProjectMinOutputPageRowCount = filterAndProjectMinOutputPageRowCount;
         return this;
+    }
+
+    @Config("histogram.implemenation")
+    public FeaturesConfig setHistogramGroupImplementation(HistogramGroupImplementation groupByMode)
+    {
+        this.histogramGroupImplementation = groupByMode;
+        return this;
+    }
+
+    public HistogramGroupImplementation getHistogramGroupImplementation()
+    {
+        return histogramGroupImplementation;
     }
 }

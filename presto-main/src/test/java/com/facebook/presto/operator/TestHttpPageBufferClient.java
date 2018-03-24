@@ -105,7 +105,7 @@ public class TestHttpPageBufferClient
         HttpPageBufferClient client = new HttpPageBufferClient(new TestingHttpClient(processor, scheduler),
                 expectedMaxSize,
                 new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                true,
                 location,
                 callback,
                 scheduler,
@@ -190,7 +190,7 @@ public class TestHttpPageBufferClient
         HttpPageBufferClient client = new HttpPageBufferClient(new TestingHttpClient(processor, scheduler),
                 new DataSize(10, Unit.MEGABYTE),
                 new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                true,
                 location,
                 callback,
                 scheduler,
@@ -230,7 +230,7 @@ public class TestHttpPageBufferClient
         HttpPageBufferClient client = new HttpPageBufferClient(new TestingHttpClient(processor, scheduler),
                 new DataSize(10, Unit.MEGABYTE),
                 new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                true,
                 location,
                 callback,
                 scheduler,
@@ -298,7 +298,7 @@ public class TestHttpPageBufferClient
         HttpPageBufferClient client = new HttpPageBufferClient(new TestingHttpClient(processor, scheduler),
                 new DataSize(10, Unit.MEGABYTE),
                 new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                true,
                 location,
                 callback,
                 scheduler,
@@ -351,8 +351,8 @@ public class TestHttpPageBufferClient
         URI location = URI.create("http://localhost:8080");
         HttpPageBufferClient client = new HttpPageBufferClient(new TestingHttpClient(processor, scheduler),
                 new DataSize(10, Unit.MEGABYTE),
-                new Duration(1, TimeUnit.MINUTES),
-                new Duration(1, TimeUnit.MINUTES),
+                new Duration(30, TimeUnit.SECONDS),
+                true,
                 location,
                 callback,
                 scheduler,
@@ -394,13 +394,12 @@ public class TestHttpPageBufferClient
         assertEquals(callback.getFinishedBuffers(), 0);
         assertEquals(callback.getFailedBuffers(), 1);
         assertInstanceOf(callback.getFailure(), PageTransportTimeoutException.class);
-        assertContains(callback.getFailure().getMessage(), WORKER_NODE_ERROR + " (http://localhost:8080/0 - 3 failures, time since last success 61.00s)");
+        assertContains(callback.getFailure().getMessage(), WORKER_NODE_ERROR + " (http://localhost:8080/0 - 3 failures, failure duration 31.00s, total failed request time 31.00s)");
         assertStatus(client, location, "queued", 0, 3, 3, 3, "not scheduled");
     }
 
     @Test
     public void testErrorCodes()
-            throws Exception
     {
         assertEquals(new PageTooLargeException().getErrorCode(), PAGE_TOO_LARGE.toErrorCode());
         assertEquals(new PageTransportErrorException("").getErrorCode(), PAGE_TRANSPORT_ERROR.toErrorCode());

@@ -17,7 +17,7 @@ import com.facebook.presto.OutputBuffers;
 import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
-import com.facebook.presto.execution.SystemMemoryUsageListener;
+import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Sets.SetView;
@@ -34,6 +34,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 import static com.facebook.presto.OutputBuffers.BufferType.BROADCAST;
 import static com.facebook.presto.execution.buffer.BufferState.FAILED;
@@ -72,14 +73,14 @@ public class BroadcastOutputBuffer
             String taskInstanceId,
             StateMachine<BufferState> state,
             DataSize maxBufferSize,
-            SystemMemoryUsageListener systemMemoryUsageListener,
+            Supplier<LocalMemoryContext> systemMemoryContextSupplier,
             Executor notificationExecutor)
     {
         this.taskInstanceId = requireNonNull(taskInstanceId, "taskInstanceId is null");
         this.state = requireNonNull(state, "state is null");
         this.memoryManager = new OutputBufferMemoryManager(
                 requireNonNull(maxBufferSize, "maxBufferSize is null").toBytes(),
-                requireNonNull(systemMemoryUsageListener, "systemMemoryUsageListener is null"),
+                requireNonNull(systemMemoryContextSupplier, "systemMemoryContextSupplier is null"),
                 requireNonNull(notificationExecutor, "notificationExecutor is null"));
     }
 
@@ -104,7 +105,7 @@ public class BroadcastOutputBuffer
     @Override
     public boolean isOverutilized()
     {
-        return memoryManager.isFull();
+        return memoryManager.isOverutilized();
     }
 
     @Override
@@ -244,6 +245,15 @@ public class BroadcastOutputBuffer
         checkArgument(maxSize.toBytes() > 0, "maxSize must be at least 1 byte");
 
         return getBuffer(outputBufferId).getPages(startingSequenceId, maxSize);
+    }
+
+    @Override
+    public void acknowledge(OutputBufferId bufferId, long sequenceId)
+    {
+        checkState(!Thread.holdsLock(this), "Can not acknowledge pages while holding a lock on this");
+        requireNonNull(bufferId, "bufferId is null");
+
+        getBuffer(bufferId).acknowledgePages(sequenceId);
     }
 
     @Override
