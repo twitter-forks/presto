@@ -85,7 +85,7 @@ public class QueryCompletedEventScriber
         thriftEvent.queued_time_ms = eventStat.getQueuedTime().toMillis();
         thriftEvent.query_wall_time_ms = eventStat.getWallTime().toMillis();
         thriftEvent.cumulative_memory_bytesecond = eventStat.getCumulativeMemory();
-        thriftEvent.peak_memory_bytes = eventStat.getPeakMemoryBytes();
+        thriftEvent.peak_memory_bytes = eventStat.getPeakTotalNonRevocableMemoryBytes();
         thriftEvent.cpu_time_ms = eventStat.getCpuTime().toMillis();
         if (eventStat.getAnalysisTime().isPresent()) {
             thriftEvent.analysis_time_ms = eventStat.getAnalysisTime().get().toMillis();
