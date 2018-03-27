@@ -72,7 +72,6 @@ public class DwrfMetadataWriter
 
     @Override
     public int writeMetadata(SliceOutput output, Metadata metadata)
-            throws IOException
     {
         return 0;
     }
@@ -314,6 +313,8 @@ public class DwrfMetadataWriter
                 return DwrfProto.CompressionKind.ZLIB;
             case SNAPPY:
                 return DwrfProto.CompressionKind.SNAPPY;
+            case LZ4:
+                return DwrfProto.CompressionKind.LZ4;
         }
         throw new IllegalArgumentException("Unsupported compression kind: " + compressionKind);
     }

@@ -15,6 +15,7 @@ CREATE TABLE presto_test_types_textfile (
 , t_map MAP<STRING, STRING>
 , t_array_string ARRAY<STRING>
 , t_array_struct ARRAY<STRUCT<s_string: STRING, s_double:DOUBLE>>
+, t_struct STRUCT<s_string: STRING, s_double:DOUBLE>
 , t_complex MAP<INT, ARRAY<STRUCT<s_string: STRING, s_double:DOUBLE>>>
 )
 STORED AS TEXTFILE
@@ -40,6 +41,8 @@ SELECT
 , CASE WHEN n % 31 = 0 THEN NULL ELSE
      array(named_struct('s_string', 'test abc', 's_double', 0.1),
            named_struct('s_string' , 'test xyz', 's_double', 0.2)) END
+, CASE WHEN n % 31 = 0 THEN NULL ELSE
+     named_struct('s_string', 'test abc', 's_double', 0.1) END
 , CASE WHEN n % 33 = 0 THEN NULL ELSE
      map(1, array(named_struct('s_string', 'test abc', 's_double', 0.1),
                   named_struct('s_string' , 'test xyz', 's_double', 0.2))) END
@@ -99,13 +102,12 @@ CREATE TABLE presto_test_types_parquet (
 , t_array_string ARRAY<STRING>
 , t_array_struct ARRAY<STRUCT<s_string: STRING, s_double:DOUBLE>>
 , t_struct STRUCT<s_string: STRING, s_double:DOUBLE>
+, t_complex MAP<INT, ARRAY<STRUCT<s_string: STRING, s_double:DOUBLE>>>
 )
-PARTITIONED BY (dummy INT)
 STORED AS PARQUET
 ;
 
 INSERT INTO TABLE presto_test_types_parquet
-PARTITION (dummy=0)
 SELECT
   t_string
 , t_varchar
@@ -121,12 +123,11 @@ SELECT
 , t_map
 , t_array_string
 , t_array_struct
-, t_array_struct[0]
+, t_struct
+, t_complex
 FROM presto_test_types_textfile
 ;
 
-ALTER TABLE presto_test_types_parquet
-CHANGE COLUMN t_struct t_struct STRUCT<s_string:STRING, s_double:DOUBLE, s_boolean:BOOLEAN>;
 
 ALTER TABLE presto_test_types_textfile ADD COLUMNS (new_column INT);
 ALTER TABLE presto_test_types_sequencefile ADD COLUMNS (new_column INT);

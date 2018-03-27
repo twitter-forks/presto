@@ -121,7 +121,6 @@ public class TestHiveFileFormats
 
     @BeforeClass(alwaysRun = true)
     public void setUp()
-            throws Exception
     {
         // ensure the expected timezone is configured for this VM
         assertEquals(TimeZone.getDefault().getID(),
@@ -463,7 +462,6 @@ public class TestHiveFileFormats
 
     @Test(dataProvider = "rowCount")
     public void testParquetThrift(int rowCount)
-            throws Exception
     {
         RowType nameType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.empty());
         RowType phoneType = new RowType(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()), Optional.empty());
@@ -693,7 +691,6 @@ public class TestHiveFileFormats
             HiveStorageFormat storageFormat,
             List<TestColumn> testColumns,
             int rowCount)
-            throws IOException
     {
         Properties splitProperties = new Properties();
         splitProperties.setProperty(FILE_INPUT_FORMAT, storageFormat.getInputFormat());
@@ -821,7 +818,6 @@ public class TestHiveFileFormats
     }
 
     private FileFormatAssertion assertThatFileFormat(HiveStorageFormat hiveStorageFormat)
-            throws Exception
     {
         return new FileFormatAssertion(hiveStorageFormat.name())
                 .withStorageFormat(hiveStorageFormat);

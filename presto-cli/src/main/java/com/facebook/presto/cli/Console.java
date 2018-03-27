@@ -15,9 +15,6 @@ package com.facebook.presto.cli;
 
 import com.facebook.presto.cli.ClientOptions.OutputFormat;
 import com.facebook.presto.client.ClientSession;
-import com.facebook.presto.sql.parser.IdentifierSymbol;
-import com.facebook.presto.sql.parser.SqlParser;
-import com.facebook.presto.sql.parser.SqlParserOptions;
 import com.facebook.presto.sql.parser.StatementSplitter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
@@ -38,10 +35,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.io.UncheckedIOException;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
@@ -59,22 +56,20 @@ import static com.facebook.presto.sql.parser.StatementSplitter.isEmptyStatement;
 import static com.facebook.presto.sql.parser.StatementSplitter.squeezeStatement;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.io.ByteStreams.nullOutputStream;
+import static com.google.common.util.concurrent.Uninterruptibles.awaitUninterruptibly;
 import static java.lang.Integer.parseInt;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Locale.ENGLISH;
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static jline.internal.Configuration.getUserHome;
 
 @Command(name = "presto", description = "Presto interactive console")
 public class Console
-        implements Runnable
 {
     private static final String PROMPT_NAME = "presto";
     private static final Duration EXIT_DELAY = new Duration(3, SECONDS);
-
-    // create a parser with all identifier options enabled, since this is only used for USE statements
-    private static final SqlParser SQL_PARSER = new SqlParser(new SqlParserOptions().allowIdentifierSymbol(EnumSet.allOf(IdentifierSymbol.class)));
 
     private static final Pattern HISTORY_INDEX_PATTERN = Pattern.compile("!\\d+");
 
@@ -87,8 +82,7 @@ public class Console
     @Inject
     public ClientOptions clientOptions = new ClientOptions();
 
-    @Override
-    public void run()
+    public boolean run()
     {
         ClientSession session = clientOptions.toClientSession();
         boolean hasQuery = !Strings.isNullOrEmpty(clientOptions.execute);
@@ -118,11 +112,19 @@ public class Console
             }
         }
 
+        // abort any running query if the CLI is terminated
         AtomicBoolean exiting = new AtomicBoolean();
-        interruptThreadOnExit(Thread.currentThread(), exiting);
+        ThreadInterruptor interruptor = new ThreadInterruptor();
+        CountDownLatch exited = new CountDownLatch(1);
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            exiting.set(true);
+            interruptor.interrupt();
+            awaitUninterruptibly(exited, EXIT_DELAY.toMillis(), MILLISECONDS);
+        }));
 
         try (QueryRunner queryRunner = new QueryRunner(
                 session,
+                clientOptions.debug,
                 Optional.ofNullable(clientOptions.socksProxy),
                 Optional.ofNullable(clientOptions.httpProxy),
                 Optional.ofNullable(clientOptions.keystorePath),
@@ -139,11 +141,15 @@ public class Console
                 !clientOptions.krb5DisableRemoteServiceHostnameCanonicalization,
                 clientOptions.authenticationEnabled)) {
             if (hasQuery) {
-                executeCommand(queryRunner, query, clientOptions.outputFormat);
+                return executeCommand(queryRunner, query, clientOptions.outputFormat, clientOptions.ignoreErrors);
             }
-            else {
-                runConsole(queryRunner, exiting);
-            }
+
+            runConsole(queryRunner, exiting);
+            return true;
+        }
+        finally {
+            exited.countDown();
+            interruptor.close();
         }
     }
 
@@ -265,20 +271,28 @@ public class Console
         }
     }
 
-    private static void executeCommand(QueryRunner queryRunner, String query, OutputFormat outputFormat)
+    private static boolean executeCommand(QueryRunner queryRunner, String query, OutputFormat outputFormat, boolean ignoreErrors)
     {
+        boolean success = true;
         StatementSplitter splitter = new StatementSplitter(query);
         for (Statement split : splitter.getCompleteStatements()) {
             if (!isEmptyStatement(split.statement())) {
-                process(queryRunner, split.statement(), outputFormat, () -> {}, false);
+                if (!process(queryRunner, split.statement(), outputFormat, () -> {}, false)) {
+                    if (!ignoreErrors) {
+                        return false;
+                    }
+                    success = false;
+                }
             }
         }
         if (!isEmptyStatement(splitter.getPartialStatement())) {
             System.err.println("Non-terminated statement: " + splitter.getPartialStatement());
+            return false;
         }
+        return success;
     }
 
-    private static void process(QueryRunner queryRunner, String sql, OutputFormat outputFormat, Runnable schemaChanged, boolean interactive)
+    private static boolean process(QueryRunner queryRunner, String sql, OutputFormat outputFormat, Runnable schemaChanged, boolean interactive)
     {
         String finalSql;
         try {
@@ -289,14 +303,14 @@ public class Console
         }
         catch (QueryPreprocessorException e) {
             System.err.println(e.getMessage());
-            if (queryRunner.getSession().isDebug()) {
+            if (queryRunner.isDebug()) {
                 e.printStackTrace();
             }
-            return;
+            return false;
         }
 
         try (Query query = queryRunner.startQuery(finalSql)) {
-            query.renderOutput(System.out, outputFormat, interactive);
+            boolean success = query.renderOutput(System.out, outputFormat, interactive);
 
             ClientSession session = queryRunner.getSession();
 
@@ -333,12 +347,15 @@ public class Console
             }
 
             queryRunner.setSession(session);
+
+            return success;
         }
         catch (RuntimeException e) {
             System.err.println("Error running command: " + e.getMessage());
-            if (queryRunner.getSession().isDebug()) {
+            if (queryRunner.isDebug()) {
                 e.printStackTrace();
             }
+            return false;
         }
     }
 
@@ -389,18 +406,5 @@ public class Console
             System.setOut(out);
             System.setErr(err);
         }
-    }
-
-    private static void interruptThreadOnExit(Thread thread, AtomicBoolean exiting)
-    {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            exiting.set(true);
-            thread.interrupt();
-            try {
-                thread.join(EXIT_DELAY.toMillis());
-            }
-            catch (InterruptedException ignored) {
-            }
-        }));
     }
 }

@@ -14,11 +14,11 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.hive.HivePageSourceProvider.ColumnMapping;
+import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.VarcharType;
@@ -27,12 +27,8 @@ import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.hive.serde2.typeinfo.ListTypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
-import org.apache.hadoop.hive.serde2.typeinfo.StructTypeInfo;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.HiveType.HIVE_BYTE;
 import static com.facebook.presto.hive.HiveType.HIVE_DOUBLE;
@@ -40,9 +36,14 @@ import static com.facebook.presto.hive.HiveType.HIVE_FLOAT;
 import static com.facebook.presto.hive.HiveType.HIVE_INT;
 import static com.facebook.presto.hive.HiveType.HIVE_LONG;
 import static com.facebook.presto.hive.HiveType.HIVE_SHORT;
+import static com.facebook.presto.hive.HiveUtil.extractStructFieldTypes;
+import static com.facebook.presto.hive.HiveUtil.isArrayType;
+import static com.facebook.presto.hive.HiveUtil.isMapType;
+import static com.facebook.presto.hive.HiveUtil.isRowType;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.Float.intBitsToFloat;
+import static java.lang.Math.min;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -52,6 +53,7 @@ public class HiveCoercionRecordCursor
     private final RecordCursor delegate;
     private final List<ColumnMapping> columnMappings;
     private final Coercer[] coercers;
+    private final BridgingRecordCursor bridgingRecordCursor;
 
     public HiveCoercionRecordCursor(
             List<ColumnMapping> columnMappings,
@@ -60,6 +62,7 @@ public class HiveCoercionRecordCursor
     {
         requireNonNull(columnMappings, "columns is null");
         requireNonNull(typeManager, "typeManager is null");
+        this.bridgingRecordCursor = new BridgingRecordCursor();
 
         this.delegate = requireNonNull(delegate, "delegate is null");
         this.columnMappings = ImmutableList.copyOf(columnMappings);
@@ -72,7 +75,7 @@ public class HiveCoercionRecordCursor
             ColumnMapping columnMapping = columnMappings.get(columnIndex);
 
             if (columnMapping.getCoercionFrom().isPresent()) {
-                coercers[columnIndex] = createCoercer(typeManager, columnMapping.getCoercionFrom().get(), columnMapping.getHiveColumnHandle().getHiveType());
+                coercers[columnIndex] = createCoercer(typeManager, columnMapping.getCoercionFrom().get(), columnMapping.getHiveColumnHandle().getHiveType(), bridgingRecordCursor);
             }
         }
     }
@@ -275,7 +278,7 @@ public class HiveCoercionRecordCursor
         }
     }
 
-    private static Coercer createCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+    private static Coercer createCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType, BridgingRecordCursor bridgingRecordCursor)
     {
         Type fromType = typeManager.getType(fromHiveType.getTypeSignature());
         Type toType = typeManager.getType(toHiveType.getTypeSignature());
@@ -297,14 +300,14 @@ public class HiveCoercionRecordCursor
         else if (fromHiveType.equals(HIVE_FLOAT) && toHiveType.equals(HIVE_DOUBLE)) {
             return new FloatToDoubleCoercer();
         }
-        else if (HiveUtil.isArrayType(fromType) && HiveUtil.isArrayType(toType)) {
-            return new ListToListCoercer(typeManager, fromHiveType, toHiveType);
+        else if (isArrayType(fromType) && isArrayType(toType)) {
+            return new ListCoercer(typeManager, fromHiveType, toHiveType, bridgingRecordCursor);
         }
-        else if (HiveUtil.isMapType(fromType) && HiveUtil.isMapType(toType)) {
-            return new MapToMapCoercer(typeManager, fromHiveType, toHiveType);
+        else if (isMapType(fromType) && isMapType(toType)) {
+            return new MapCoercer(typeManager, fromHiveType, toHiveType, bridgingRecordCursor);
         }
-        else if (HiveUtil.isRowType(fromType) && HiveUtil.isRowType(toType)) {
-            return new StructToStructCoercer(typeManager, fromHiveType, toHiveType);
+        else if (isRowType(fromType) && isRowType(toType)) {
+            return new StructCoercer(typeManager, fromHiveType, toHiveType, bridgingRecordCursor);
         }
 
         throw new PrestoException(NOT_SUPPORTED, format("Unsupported coercion from %s to %s", fromHiveType, toHiveType));
@@ -387,24 +390,29 @@ public class HiveCoercionRecordCursor
         }
     }
 
-    private static class ListToListCoercer
+    private static class ListCoercer
             extends Coercer
     {
-        private final TypeManager typeManager;
-        private final HiveType fromHiveType;
-        private final HiveType toHiveType;
-        private final HiveType fromElementHiveType;
-        private final HiveType toElementHiveType;
+        private final Type fromElementType;
+        private final Type toType;
+        private final Type toElementType;
         private final Coercer elementCoercer;
+        private final BridgingRecordCursor bridgingRecordCursor;
+        private final PageBuilder pageBuilder;
 
-        public ListToListCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+        public ListCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType, BridgingRecordCursor bridgingRecordCursor)
         {
-            this.typeManager = requireNonNull(typeManager, "typeManage is null");
-            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
-            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
-            this.fromElementHiveType = HiveType.valueOf(((ListTypeInfo) fromHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
-            this.toElementHiveType = HiveType.valueOf(((ListTypeInfo) toHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
-            this.elementCoercer = fromElementHiveType.equals(toElementHiveType) ? null : createCoercer(typeManager, fromElementHiveType, toElementHiveType);
+            requireNonNull(typeManager, "typeManage is null");
+            requireNonNull(fromHiveType, "fromHiveType is null");
+            requireNonNull(toHiveType, "toHiveType is null");
+            this.bridgingRecordCursor = requireNonNull(bridgingRecordCursor, "bridgingRecordCursor is null");
+            HiveType fromElementHiveType = HiveType.valueOf(((ListTypeInfo) fromHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+            HiveType toElementHiveType = HiveType.valueOf(((ListTypeInfo) toHiveType.getTypeInfo()).getListElementTypeInfo().getTypeName());
+            this.fromElementType = fromElementHiveType.getType(typeManager);
+            this.toType = toHiveType.getType(typeManager);
+            this.toElementType = toElementHiveType.getType(typeManager);
+            this.elementCoercer = fromElementHiveType.equals(toElementHiveType) ? null : createCoercer(typeManager, fromElementHiveType, toElementHiveType, bridgingRecordCursor);
+            this.pageBuilder = elementCoercer == null ? null : new PageBuilder(ImmutableList.of(toType));
         }
 
         @Override
@@ -415,112 +423,57 @@ public class HiveCoercionRecordCursor
                 return;
             }
             Block block = (Block) delegate.getObject(field);
-            BlockBuilder builder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), 1);
-            BlockBuilder listBuilder = builder.beginBlockEntry();
+            if (pageBuilder.isFull()) {
+                pageBuilder.reset();
+            }
+            BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(0);
+            BlockBuilder listBuilder = blockBuilder.beginBlockEntry();
             for (int i = 0; i < block.getPositionCount(); i++) {
-                if (block.isNull(i)) {
-                    listBuilder.appendNull();
-                }
-                else if (elementCoercer == null) {
-                    block.writePositionTo(i, listBuilder);
-                    listBuilder.closeEntry();
+                if (elementCoercer == null) {
+                    toElementType.appendTo(block, i, listBuilder);
                 }
                 else {
-                    rewriteBlock(fromElementHiveType, toElementHiveType, block, i, listBuilder, elementCoercer, typeManager, field);
+                    if (block.isNull(i)) {
+                        listBuilder.appendNull();
+                    }
+                    else {
+                        rewriteBlock(fromElementType, toElementType, block, i, listBuilder, elementCoercer, bridgingRecordCursor);
+                    }
                 }
             }
-            builder.closeEntry();
-            setObject(builder.build().getObject(0, Block.class));
+            blockBuilder.closeEntry();
+            pageBuilder.declarePosition();
+            setObject(toType.getObject(blockBuilder, blockBuilder.getPositionCount() - 1));
         }
     }
 
-    private static class MapToMapCoercer
+    private static class MapCoercer
             extends Coercer
     {
-        private final TypeManager typeManager;
-        private final HiveType fromHiveType;
-        private final HiveType toHiveType;
-        private final HiveType fromKeyHiveType;
-        private final HiveType toKeyHiveType;
-        private final HiveType fromValueHiveType;
-        private final HiveType toValueHiveType;
-        private final Coercer keyCoercer;
-        private final Coercer valueCoercer;
-
-        public MapToMapCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
-        {
-            this.typeManager = requireNonNull(typeManager, "typeManage is null");
-            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
-            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
-            this.fromKeyHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
-            this.fromValueHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
-            this.toKeyHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
-            this.toValueHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
-            this.keyCoercer = fromKeyHiveType.equals(toKeyHiveType) ? null : createCoercer(typeManager, fromKeyHiveType, toKeyHiveType);
-            this.valueCoercer = fromValueHiveType.equals(toValueHiveType) ? null : createCoercer(typeManager, fromValueHiveType, toValueHiveType);
-        }
-
-        @Override
-        public void coerce(RecordCursor delegate, int field)
-        {
-            if (delegate.isNull(field)) {
-                setIsNull(true);
-                return;
-            }
-            Block block = (Block) delegate.getObject(field);
-            BlockBuilder builder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), 1);
-            BlockBuilder mapBuilder = builder.beginBlockEntry();
-            for (int i = 0; i < block.getPositionCount(); i += 2) {
-                if (block.isNull(i)) {
-                    mapBuilder.appendNull();
-                }
-                else if (keyCoercer == null) {
-                    block.writePositionTo(i, mapBuilder);
-                    mapBuilder.closeEntry();
-                }
-                else {
-                    rewriteBlock(fromKeyHiveType, toKeyHiveType, block.getSingleValueBlock(i), 0, mapBuilder, keyCoercer, typeManager, field);
-                }
-                if (block.isNull(i + 1)) {
-                    mapBuilder.appendNull();
-                }
-                if (valueCoercer == null) {
-                    block.writePositionTo(i + 1, mapBuilder);
-                    mapBuilder.closeEntry();
-                }
-                else {
-                    rewriteBlock(fromValueHiveType, toValueHiveType, block.getSingleValueBlock(i + 1), 0, mapBuilder, valueCoercer, typeManager, field);
-                }
-            }
-            builder.closeEntry();
-            setObject(builder.build().getObject(0, Block.class));
-        }
-    }
-
-    private static class StructToStructCoercer
-            extends Coercer
-    {
-        private final TypeManager typeManager;
-        private final HiveType fromHiveType;
-        private final HiveType toHiveType;
-        private final List<HiveType> fromFieldTypes;
-        private final List<HiveType> toFieldTypes;
+        private final List<Type> fromKeyValueTypes;
+        private final Type toType;
+        private final List<Type> toKeyValueTypes;
         private final Coercer[] coercers;
+        private final BridgingRecordCursor bridgingRecordCursor;
+        private final PageBuilder pageBuilder;
 
-        public StructToStructCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType)
+        public MapCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType, BridgingRecordCursor bridgingRecordCursor)
         {
-            this.typeManager = requireNonNull(typeManager, "typeManage is null");
-            this.fromHiveType = requireNonNull(fromHiveType, "fromHiveType is null");
-            this.toHiveType = requireNonNull(toHiveType, "toHiveType is null");
-            this.fromFieldTypes = getAllStructFieldTypeInfos(fromHiveType);
-            this.toFieldTypes = getAllStructFieldTypeInfos(toHiveType);
-            this.coercers = new Coercer[toFieldTypes.size()];
-            Arrays.fill(this.coercers, null);
-            for (int i = 0; i < Math.min(fromFieldTypes.size(), toFieldTypes.size()); i++) {
-                if (!fromFieldTypes.get(i).equals(toFieldTypes.get(i))) {
-                    coercers[i] = createCoercer(typeManager, fromFieldTypes.get(i), toFieldTypes.get(i));
-                }
-            }
+            requireNonNull(typeManager, "typeManage is null");
+            requireNonNull(fromHiveType, "fromHiveType is null");
+            requireNonNull(toHiveType, "toHiveType is null");
+            this.bridgingRecordCursor = requireNonNull(bridgingRecordCursor, "bridgingRecordCursor is null");
+            HiveType fromKeyHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+            HiveType fromValueHiveType = HiveType.valueOf(((MapTypeInfo) fromHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+            HiveType toKeyHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapKeyTypeInfo().getTypeName());
+            HiveType toValueHiveType = HiveType.valueOf(((MapTypeInfo) toHiveType.getTypeInfo()).getMapValueTypeInfo().getTypeName());
+            this.fromKeyValueTypes = fromHiveType.getType(typeManager).getTypeParameters();
+            this.toType = toHiveType.getType(typeManager);
+            this.toKeyValueTypes = toType.getTypeParameters();
+            this.coercers = new Coercer[2];
+            coercers[0] = fromKeyHiveType.equals(toKeyHiveType) ? null : createCoercer(typeManager, fromKeyHiveType, toKeyHiveType, bridgingRecordCursor);
+            coercers[1] = fromValueHiveType.equals(toValueHiveType) ? null : createCoercer(typeManager, fromValueHiveType, toValueHiveType, bridgingRecordCursor);
+            this.pageBuilder = coercers[0] == null && coercers[1] == null ? null : new PageBuilder(ImmutableList.of(toType));
         }
 
         @Override
@@ -531,146 +484,220 @@ public class HiveCoercionRecordCursor
                 return;
             }
             Block block = (Block) delegate.getObject(field);
-            BlockBuilder builder = toHiveType.getType(typeManager).createBlockBuilder(new BlockBuilderStatus(), 1);
-            BlockBuilder rowBuilder = builder.beginBlockEntry();
+            if (pageBuilder.isFull()) {
+                pageBuilder.reset();
+            }
+            BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(0);
+            BlockBuilder mapBuilder = blockBuilder.beginBlockEntry();
+            for (int i = 0; i < block.getPositionCount(); i++) {
+                int k = i % 2;
+                if (coercers[k] == null) {
+                    toKeyValueTypes.get(k).appendTo(block, i, mapBuilder);
+                }
+                else {
+                    if (block.isNull(i)) {
+                        mapBuilder.appendNull();
+                    }
+                    else {
+                        rewriteBlock(fromKeyValueTypes.get(k), toKeyValueTypes.get(k), block, i, mapBuilder, coercers[k], bridgingRecordCursor);
+                    }
+                }
+            }
+            blockBuilder.closeEntry();
+            pageBuilder.declarePosition();
+            setObject(toType.getObject(blockBuilder, blockBuilder.getPositionCount() - 1));
+        }
+    }
+
+    private static class StructCoercer
+            extends Coercer
+    {
+        private final Type toType;
+        private final List<Type> fromFieldTypes;
+        private final List<Type> toFieldTypes;
+        private final Coercer[] coercers;
+        private final BridgingRecordCursor bridgingRecordCursor;
+        private final PageBuilder pageBuilder;
+
+        public StructCoercer(TypeManager typeManager, HiveType fromHiveType, HiveType toHiveType, BridgingRecordCursor bridgingRecordCursor)
+        {
+            requireNonNull(typeManager, "typeManage is null");
+            requireNonNull(fromHiveType, "fromHiveType is null");
+            requireNonNull(toHiveType, "toHiveType is null");
+            this.bridgingRecordCursor = requireNonNull(bridgingRecordCursor, "bridgingRecordCursor is null");
+            List<HiveType> fromFieldHiveTypes = extractStructFieldTypes(fromHiveType);
+            List<HiveType> toFieldHiveTypes = extractStructFieldTypes(toHiveType);
+            this.fromFieldTypes = fromHiveType.getType(typeManager).getTypeParameters();
+            this.toType = toHiveType.getType(typeManager);
+            this.toFieldTypes = toType.getTypeParameters();
+            this.coercers = new Coercer[toFieldHiveTypes.size()];
+            for (int i = 0; i < min(fromFieldHiveTypes.size(), toFieldHiveTypes.size()); i++) {
+                if (!fromFieldTypes.get(i).equals(toFieldTypes.get(i))) {
+                    coercers[i] = createCoercer(typeManager, fromFieldHiveTypes.get(i), toFieldHiveTypes.get(i), bridgingRecordCursor);
+                }
+            }
+            this.pageBuilder = new PageBuilder(ImmutableList.of(toType));
+        }
+
+        @Override
+        public void coerce(RecordCursor delegate, int field)
+        {
+            if (delegate.isNull(field)) {
+                setIsNull(true);
+                return;
+            }
+            Block block = (Block) delegate.getObject(field);
+            if (pageBuilder.isFull()) {
+                pageBuilder.reset();
+            }
+            BlockBuilder blockBuilder = pageBuilder.getBlockBuilder(0);
+            BlockBuilder rowBuilder = blockBuilder.beginBlockEntry();
             for (int i = 0; i < toFieldTypes.size(); i++) {
                 if (i >= fromFieldTypes.size() || block.isNull(i)) {
                     rowBuilder.appendNull();
                 }
                 else if (coercers[i] == null) {
-                    block.writePositionTo(i, rowBuilder);
-                    rowBuilder.closeEntry();
+                    toFieldTypes.get(i).appendTo(block, i, rowBuilder);
                 }
                 else {
-                    rewriteBlock(fromFieldTypes.get(i), toFieldTypes.get(i), block, i, rowBuilder, coercers[i], typeManager, field);
+                    rewriteBlock(fromFieldTypes.get(i), toFieldTypes.get(i), block, i, rowBuilder, coercers[i], bridgingRecordCursor);
                 }
             }
-            builder.closeEntry();
-            setObject(builder.build().getObject(0, Block.class));
+            blockBuilder.closeEntry();
+            pageBuilder.declarePosition();
+            setObject(toType.getObject(blockBuilder, blockBuilder.getPositionCount() - 1));
         }
     }
 
     private static void rewriteBlock(
-            HiveType fromFieldHiveType,
-            HiveType toFieldHiveType,
+            Type fromType,
+            Type toType,
             Block block,
             int position,
-            BlockBuilder builder,
+            BlockBuilder blockBuilder,
             Coercer coercer,
-            TypeManager typeManager,
-            int field)
+            BridgingRecordCursor bridgingRecordCursor)
     {
-        Type fromFieldType = fromFieldHiveType.getType(typeManager);
-        Type toFieldType = toFieldHiveType.getType(typeManager);
-        Object value = null;
-        if (fromFieldHiveType.equals(HIVE_BYTE) || fromFieldHiveType.equals(HIVE_SHORT) || fromFieldHiveType.equals(HIVE_INT) || fromFieldHiveType.equals(HIVE_LONG) || fromFieldHiveType.equals(HIVE_FLOAT)) {
-            value = fromFieldType.getLong(block, position);
+        Class<?> fromJavaType = fromType.getJavaType();
+        if (fromJavaType == long.class) {
+            bridgingRecordCursor.setValue(fromType.getLong(block, position));
         }
-        else if (fromFieldType instanceof VarcharType) {
-            value = fromFieldType.getSlice(block, position);
+        else if (fromJavaType == double.class) {
+            bridgingRecordCursor.setValue(fromType.getDouble(block, position));
         }
-        else if (HiveUtil.isStructuralType(fromFieldHiveType)) {
-            value = fromFieldType.getObject(block, position);
+        else if (fromJavaType == boolean.class) {
+            bridgingRecordCursor.setValue(fromType.getBoolean(block, position));
         }
-        coercer.reset();
-        RecordCursor bridgingRecordCursor = createBridgingRecordCursor(value, typeManager, fromFieldHiveType);
-        if (coercer.isNull(bridgingRecordCursor, field)) {
-            builder.appendNull();
+        else if (fromJavaType == Slice.class) {
+            bridgingRecordCursor.setValue(fromType.getSlice(block, position));
         }
-        else if (toFieldHiveType.equals(HIVE_BYTE) || toFieldHiveType.equals(HIVE_SHORT) || toFieldHiveType.equals(HIVE_INT) || toFieldHiveType.equals(HIVE_LONG) || toFieldHiveType.equals(HIVE_FLOAT)) {
-            toFieldType.writeLong(builder, coercer.getLong(bridgingRecordCursor, field));
-        }
-        else if (toFieldHiveType.equals(HIVE_DOUBLE)) {
-            toFieldType.writeDouble(builder, coercer.getDouble(bridgingRecordCursor, field));
-        }
-        else if (toFieldType instanceof VarcharType) {
-            toFieldType.writeSlice(builder, coercer.getSlice(bridgingRecordCursor, field));
-        }
-        else if (HiveUtil.isStructuralType(toFieldHiveType)) {
-            toFieldType.writeObject(builder, coercer.getObject(bridgingRecordCursor, field));
+        else if (fromJavaType == Block.class) {
+            bridgingRecordCursor.setValue(fromType.getObject(block, position));
         }
         else {
-            throw new PrestoException(NOT_SUPPORTED, format("Unsupported coercion from %s to %s", fromFieldHiveType, toFieldHiveType));
+            bridgingRecordCursor.setValue(null);
         }
         coercer.reset();
+        Class<?> toJaveType = toType.getJavaType();
+        if (coercer.isNull(bridgingRecordCursor, 0)) {
+            blockBuilder.appendNull();
+        }
+        else if (toJaveType == long.class) {
+            toType.writeLong(blockBuilder, coercer.getLong(bridgingRecordCursor, 0));
+        }
+        else if (toJaveType == double.class) {
+            toType.writeDouble(blockBuilder, coercer.getDouble(bridgingRecordCursor, 0));
+        }
+        else if (toJaveType == boolean.class) {
+            toType.writeBoolean(blockBuilder, coercer.getBoolean(bridgingRecordCursor, 0));
+        }
+        else if (toJaveType == Slice.class) {
+            toType.writeSlice(blockBuilder, coercer.getSlice(bridgingRecordCursor, 0));
+        }
+        else if (toJaveType == Block.class) {
+            toType.writeObject(blockBuilder, coercer.getObject(bridgingRecordCursor, 0));
+        }
+        else {
+            throw new PrestoException(NOT_SUPPORTED, format("Unsupported coercion from %s to %s", fromType.getDisplayName(), toType.getDisplayName()));
+        }
+        coercer.reset();
+        bridgingRecordCursor.close();
     }
 
-    private static RecordCursor createBridgingRecordCursor(
-            Object value,
-            TypeManager typeManager,
-            HiveType hiveType)
+    private static class BridgingRecordCursor
+            implements RecordCursor
     {
-        return new RecordCursor() {
-            @Override
-            public long getCompletedBytes()
-            {
-                return 0;
-            }
+        private Object value;
 
-            @Override
-            public long getReadTimeNanos()
-            {
-                return 0;
-            }
+        public void setValue(Object value)
+        {
+            this.value = value;
+        }
 
-            @Override
-            public Type getType(int field)
-            {
-                return hiveType.getType(typeManager);
-            }
+        @Override
+        public long getCompletedBytes()
+        {
+            return 0;
+        }
 
-            @Override
-            public boolean advanceNextPosition()
-            {
-                return true;
-            }
+        @Override
+        public long getReadTimeNanos()
+        {
+            return 0;
+        }
 
-            @Override
-            public boolean getBoolean(int field)
-            {
-                return (Boolean) value;
-            }
+        @Override
+        public Type getType(int field)
+        {
+            throw new UnsupportedOperationException();
+        }
 
-            @Override
-            public long getLong(int field)
-            {
-                return (Long) value;
-            }
+        @Override
+        public boolean advanceNextPosition()
+        {
+            return true;
+        }
 
-            @Override
-            public double getDouble(int field)
-            {
-                return (Double) value;
-            }
+        @Override
+        public boolean getBoolean(int field)
+        {
+            return (Boolean) value;
+        }
 
-            @Override
-            public Slice getSlice(int field)
-            {
-                return (Slice) value;
-            }
+        @Override
+        public long getLong(int field)
+        {
+            return (Long) value;
+        }
 
-            @Override
-            public Object getObject(int field)
-            {
-                return value;
-            }
+        @Override
+        public double getDouble(int field)
+        {
+            return (Double) value;
+        }
 
-            @Override
-            public boolean isNull(int field)
-            {
-                return Objects.isNull(value);
-            }
+        @Override
+        public Slice getSlice(int field)
+        {
+            return (Slice) value;
+        }
 
-            @Override
-            public void close()
-            {
-            }
-        };
-    }
+        @Override
+        public Object getObject(int field)
+        {
+            return value;
+        }
 
-    private static List<HiveType> getAllStructFieldTypeInfos(HiveType hiveType)
-    {
-        return ((StructTypeInfo) hiveType.getTypeInfo()).getAllStructFieldTypeInfos()
-            .stream().map(typeInfo -> HiveType.valueOf(typeInfo.getTypeName())).collect(Collectors.toList());
+        @Override
+        public boolean isNull(int field)
+        {
+            return value == null;
+        }
+
+        @Override
+        public void close()
+        {
+            this.value = null;
+        }
     }
 }

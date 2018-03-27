@@ -15,6 +15,7 @@ package com.facebook.presto.server.protocol;
 
 import com.facebook.presto.client.QueryResults;
 import com.facebook.presto.execution.QueryManager;
+import com.facebook.presto.memory.context.SimpleLocalMemoryContext;
 import com.facebook.presto.metadata.SessionPropertyManager;
 import com.facebook.presto.operator.ExchangeClient;
 import com.facebook.presto.operator.ExchangeClientSupplier;
@@ -65,6 +66,7 @@ import static com.facebook.presto.client.PrestoHeaders.PRESTO_SET_CATALOG;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_SET_SCHEMA;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_SET_SESSION;
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_STARTED_TRANSACTION_ID;
+import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Strings.nullToEmpty;
 import static io.airlift.concurrent.Threads.threadsNamed;
@@ -122,7 +124,6 @@ public class StatementResource
             @Context HttpServletRequest servletRequest,
             @Context UriInfo uriInfo,
             @Suspended AsyncResponse asyncResponse)
-            throws InterruptedException
     {
         if (isNullOrEmpty(statement)) {
             throw new WebApplicationException(Response
@@ -151,7 +152,7 @@ public class StatementResource
 
         SessionContext sessionContext = new HttpRequestSessionContext(servletRequest);
 
-        ExchangeClient exchangeClient = exchangeClientSupplier.get(deltaMemoryInBytes -> {});
+        ExchangeClient exchangeClient = exchangeClientSupplier.get(new SimpleLocalMemoryContext(newSimpleAggregatedMemoryContext()));
         Query query = Query.create(
                 sessionContext,
                 statement,
@@ -175,7 +176,6 @@ public class StatementResource
             @QueryParam("maxWait") Duration maxWait,
             @Context UriInfo uriInfo,
             @Suspended AsyncResponse asyncResponse)
-            throws InterruptedException
     {
         Query query = queries.get(queryId);
         if (query == null) {

@@ -16,7 +16,6 @@ package com.facebook.presto.orc.stream;
 import com.facebook.presto.orc.OrcCorruptionException;
 import com.facebook.presto.orc.OrcDecompressor;
 import com.facebook.presto.orc.checkpoint.BooleanStreamCheckpoint;
-import com.facebook.presto.orc.memory.AggregatedMemoryContext;
 import com.facebook.presto.orc.metadata.Stream;
 import com.facebook.presto.orc.metadata.Stream.StreamKind;
 import io.airlift.slice.DynamicSliceOutput;
@@ -31,8 +30,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
+import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.facebook.presto.orc.OrcDecompressor.createOrcDecompressor;
-import static com.facebook.presto.orc.OrcWriter.DEFAULT_BUFFER_SIZE;
+import static com.facebook.presto.orc.OrcWriter.COMPRESSION_BLOCK_SIZE;
 import static com.facebook.presto.orc.metadata.CompressionKind.SNAPPY;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -110,7 +110,7 @@ public class TestBooleanStream
     @Override
     protected BooleanOutputStream createValueOutputStream()
     {
-        return new BooleanOutputStream(SNAPPY, DEFAULT_BUFFER_SIZE);
+        return new BooleanOutputStream(SNAPPY, COMPRESSION_BLOCK_SIZE);
     }
 
     @Override
@@ -123,8 +123,8 @@ public class TestBooleanStream
     protected BooleanInputStream createValueStream(Slice slice)
             throws OrcCorruptionException
     {
-        Optional<OrcDecompressor> orcDecompressor = createOrcDecompressor(ORC_DATA_SOURCE_ID, SNAPPY, DEFAULT_BUFFER_SIZE);
-        return new BooleanInputStream(new OrcInputStream(ORC_DATA_SOURCE_ID, slice.getInput(), orcDecompressor, new AggregatedMemoryContext()));
+        Optional<OrcDecompressor> orcDecompressor = createOrcDecompressor(ORC_DATA_SOURCE_ID, SNAPPY, COMPRESSION_BLOCK_SIZE);
+        return new BooleanInputStream(new OrcInputStream(ORC_DATA_SOURCE_ID, slice.getInput(), orcDecompressor, newSimpleAggregatedMemoryContext()));
     }
 
     @Override

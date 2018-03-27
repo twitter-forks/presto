@@ -5,7 +5,7 @@
     <parent>
         <artifactId>presto-root</artifactId>
         <groupId>com.facebook.presto</groupId>
-        <version>0.192-tw-0.48</version>
+        <version>0.196-tw-0.49</version>
     </parent>
 
     <artifactId>presto-tests</artifactId>
@@ -161,6 +161,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+        </dependency>
+
+        <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
@@ -198,8 +203,7 @@
                     <excludes>
                         <exclude>**/TestDistributedQueriesNoHashGeneration.java</exclude>
                         <exclude>**/TestLocalQueries.java</exclude>
-                        <exclude>**/TestLocalQueriesIndexed.java</exclude>
-                        <exclude>**/TestLocalBinarySpilledQueries.java</exclude>
+                        <exclude>**/TestNonIterativeDistributedQueries.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>
@@ -234,8 +238,7 @@
                             <includes>
                                 <include>**/TestDistributedQueriesNoHashGeneration.java</include>
                                 <include>**/TestLocalQueries.java</include>
-                                <include>**/TestLocalQueriesIndexed.java</include>
-                                <include>**/TestLocalBinarySpilledQueries.java</include>
+                                <include>**/TestNonIterativeDistributedQueries.java</include>
                             </includes>
                         </configuration>
                     </plugin>

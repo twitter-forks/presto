@@ -34,6 +34,7 @@ import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharTyp
 import static com.google.common.base.Strings.padEnd;
 import static com.google.common.io.BaseEncoding.base16;
 import static java.lang.String.format;
+import static java.math.RoundingMode.UNNECESSARY;
 import static java.util.Optional.empty;
 
 public class DataType<T>
@@ -127,14 +128,14 @@ public class DataType<T>
         return dataType("varbinary", VarbinaryType.VARBINARY, DataType::binaryLiteral, Function.identity());
     }
 
-    public static DataType<BigDecimal> decimalType(int precision, int scale)
+    public static DataType<BigDecimal> decimalDataType(int precision, int scale)
     {
         String databaseType = format("decimal(%s, %s)", precision, scale);
         return dataType(
                 databaseType,
                 createDecimalType(precision, scale),
                 bigDecimal -> format("CAST('%s' AS %s)", bigDecimal, databaseType),
-                bigDecimal -> bigDecimal);
+                bigDecimal -> bigDecimal.setScale(scale, UNNECESSARY));
     }
 
     private static String quote(String value)

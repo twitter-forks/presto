@@ -444,7 +444,11 @@ public class ExpressionInterpreter
         @Override
         protected Object visitIdentifier(Identifier node, Object context)
         {
-            return node;
+            // Identifier only exists before planning.
+            // ExpressionInterpreter should only be invoked after planning.
+            // As a result, this method should be unreachable.
+            // However, RelationPlanner.visitUnnest and visitValues invokes evaluateConstantExpression.
+            return ((SymbolResolver) context).getValue(new Symbol(node.getValue()));
         }
 
         @Override
@@ -1121,8 +1125,17 @@ public class ExpressionInterpreter
         public Object visitCast(Cast node, Object context)
         {
             Object value = process(node.getExpression(), context);
+            Type targetType = metadata.getType(parseTypeSignature(node.getType()));
+            if (targetType == null) {
+                throw new IllegalArgumentException("Unsupported type: " + node.getType());
+            }
 
+            Type sourceType = type(node.getExpression());
             if (value instanceof Expression) {
+                if (targetType.equals(sourceType)) {
+                    return value;
+                }
+
                 return new Cast((Expression) value, node.getType(), node.isSafe(), node.isTypeOnly());
             }
 
@@ -1133,19 +1146,14 @@ public class ExpressionInterpreter
             // hack!!! don't optimize CASTs for types that cannot be represented in the SQL AST
             // TODO: this will not be an issue when we migrate to RowExpression tree for this, which allows arbitrary literals.
             if (optimize && !FunctionRegistry.isSupportedLiteralType(type(node))) {
-                return new Cast(toExpression(value, type(node.getExpression())), node.getType(), node.isSafe(), node.isTypeOnly());
+                return new Cast(toExpression(value, sourceType), node.getType(), node.isSafe(), node.isTypeOnly());
             }
 
             if (value == null) {
                 return null;
             }
 
-            Type type = metadata.getType(parseTypeSignature(node.getType()));
-            if (type == null) {
-                throw new IllegalArgumentException("Unsupported type: " + node.getType());
-            }
-
-            Signature operator = metadata.getFunctionRegistry().getCoercion(type(node.getExpression()), type);
+            Signature operator = metadata.getFunctionRegistry().getCoercion(sourceType, targetType);
 
             try {
                 return functionInvoker.invoke(operator, session, ImmutableList.of(value));

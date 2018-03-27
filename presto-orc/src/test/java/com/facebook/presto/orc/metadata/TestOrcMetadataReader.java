@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.facebook.presto.orc.metadata.OrcMetadataReader.findStringStatisticTruncationPosition;
+import static com.facebook.presto.orc.metadata.OrcMetadataReader.findStringStatisticTruncationPositionForOriginalOrcWriter;
 import static com.facebook.presto.orc.metadata.OrcMetadataReader.maxStringTruncateToValidRange;
 import static com.facebook.presto.orc.metadata.OrcMetadataReader.minStringTruncateToValidRange;
 import static com.facebook.presto.orc.metadata.PostScript.HiveWriterVersion.ORC_HIVE_8732;
@@ -47,7 +47,6 @@ public class TestOrcMetadataReader
 {
     @Test
     public void testGetMinSlice()
-            throws Exception
     {
         int startCodePoint = MIN_CODE_POINT;
         int endCodePoint = MAX_CODE_POINT;
@@ -58,7 +57,7 @@ public class TestOrcMetadataReader
                 continue;
             }
             Slice value = codePointToUtf8(codePoint);
-            if (findStringStatisticTruncationPosition(value, ORIGINAL) == value.length()) {
+            if (findStringStatisticTruncationPositionForOriginalOrcWriter(value) == value.length()) {
                 assertEquals(minStringTruncateToValidRange(value, ORIGINAL), value);
             }
             else {
@@ -73,7 +72,7 @@ public class TestOrcMetadataReader
                 continue;
             }
             Slice value = concatSlice(prefix, codePointToUtf8(codePoint));
-            if (findStringStatisticTruncationPosition(value, ORIGINAL) == value.length()) {
+            if (findStringStatisticTruncationPositionForOriginalOrcWriter(value) == value.length()) {
                 assertEquals(minStringTruncateToValidRange(value, ORIGINAL), value);
             }
             else {
@@ -84,7 +83,6 @@ public class TestOrcMetadataReader
 
     @Test
     public void testGetMaxSlice()
-            throws Exception
     {
         int startCodePoint = MIN_CODE_POINT;
         int endCodePoint = MAX_CODE_POINT;
@@ -95,7 +93,7 @@ public class TestOrcMetadataReader
                 continue;
             }
             Slice value = codePointToUtf8(codePoint);
-            if (findStringStatisticTruncationPosition(value, ORIGINAL) == value.length()) {
+            if (findStringStatisticTruncationPositionForOriginalOrcWriter(value) == value.length()) {
                 assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), value);
             }
             else {
@@ -111,7 +109,7 @@ public class TestOrcMetadataReader
                 continue;
             }
             Slice value = concatSlice(prefix, codePointToUtf8(codePoint));
-            if (findStringStatisticTruncationPosition(value, ORIGINAL) == value.length()) {
+            if (findStringStatisticTruncationPositionForOriginalOrcWriter(value) == value.length()) {
                 assertEquals(maxStringTruncateToValidRange(value, ORIGINAL), value);
             }
             else {
@@ -283,7 +281,6 @@ public class TestOrcMetadataReader
 
     @Test
     public void testMinStringTruncateAtFirstReplacementCharacter()
-            throws Exception
     {
         for (Slice prefix : VALID_UTF8_SEQUENCES) {
             for (Slice suffix : VALID_UTF8_SEQUENCES) {
@@ -316,7 +313,6 @@ public class TestOrcMetadataReader
 
     @Test
     public void testMaxStringTruncateAtFirstReplacementCharacter()
-            throws Exception
     {
         for (Slice prefix : VALID_UTF8_SEQUENCES) {
             for (Slice suffix : VALID_UTF8_SEQUENCES) {
