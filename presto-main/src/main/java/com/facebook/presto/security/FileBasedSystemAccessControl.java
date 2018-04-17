@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.facebook.presto.spi.security.AccessDeniedException.denyCatalogAccess;
@@ -48,12 +47,12 @@ public class FileBasedSystemAccessControl
     public static final String NAME = "file";
 
     private final List<CatalogAccessControlRule> catalogRules;
-    private final List<Pattern> userPatterns;
+    private final List<PrincipalUserMatchRule> principalUserMatchRules;
 
-    private FileBasedSystemAccessControl(List<CatalogAccessControlRule> catalogRules, List<Pattern> userPatterns)
+    private FileBasedSystemAccessControl(List<CatalogAccessControlRule> catalogRules, List<PrincipalUserMatchRule> principalUserMatchRules)
     {
         this.catalogRules = catalogRules;
-        this.userPatterns = userPatterns;
+        this.principalUserMatchRules = principalUserMatchRules;
     }
 
     public static class Factory
@@ -90,8 +89,8 @@ public class FileBasedSystemAccessControl
                 ImmutableList.Builder<CatalogAccessControlRule> catalogRulesBuilder = ImmutableList.builder();
                 catalogRulesBuilder.addAll(rules.getCatalogRules());
 
-                ImmutableList.Builder<Pattern> userPatternsBuilder = ImmutableList.builder();
-                userPatternsBuilder.addAll(rules.getUserPatterns());
+                ImmutableList.Builder<PrincipalUserMatchRule> principleUserMatchRulesBuilder = ImmutableList.builder();
+                principleUserMatchRulesBuilder.addAll(rules.getPrincipalUserMatchRules());
 
                 // Hack to allow Presto Admin to access the "system" catalog for retrieving server status.
                 // todo Change userRegex from ".*" to one particular user that Presto Admin will be restricted to run as
@@ -100,7 +99,7 @@ public class FileBasedSystemAccessControl
                         Optional.of(Pattern.compile(".*")),
                         Optional.of(Pattern.compile("system"))));
 
-                return new FileBasedSystemAccessControl(catalogRulesBuilder.build(), userPatternsBuilder.build());
+                return new FileBasedSystemAccessControl(catalogRulesBuilder.build(), principleUserMatchRulesBuilder.build());
             }
             catch (SecurityException | IOException | InvalidPathException e) {
                 throw new RuntimeException(e);
@@ -111,7 +110,7 @@ public class FileBasedSystemAccessControl
     @Override
     public void checkCanSetUser(Principal principal, String userName)
     {
-        if (userPatterns.isEmpty()) {
+        if (principalUserMatchRules.isEmpty()) {
             return;
         }
 
@@ -121,14 +120,14 @@ public class FileBasedSystemAccessControl
 
         String principalName = principal.getName();
 
-        for (Pattern pattern : userPatterns) {
-            Matcher matcher = pattern.matcher(principalName);
-            if (matcher.matches()) {
-                for (int i = 1; i <= matcher.groupCount(); i++) {
-                    String extractedUsername = matcher.group(i);
-                    if (userName.equals(extractedUsername)) {
-                        return;
-                    }
+        for (PrincipalUserMatchRule rule : principalUserMatchRules) {
+            Optional<Boolean> allowed = rule.match(principalName, userName);
+            if (allowed.isPresent()) {
+                if (allowed.get()) {
+                    return;
+                }
+                else {
+                    denySetUser(principal, userName);
                 }
             }
         }

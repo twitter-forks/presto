@@ -39,6 +39,8 @@ public class TestFileBasedSystemAccessControl
     private static final Identity alice = new Identity("alice", Optional.empty());
     private static final Identity kerberosValidAlice = new Identity("alice", Optional.of(new KerberosPrincipal("alice/example.com@EXAMPLE.COM")));
     private static final Identity kerberosInvalidAlice = new Identity("alice", Optional.of(new KerberosPrincipal("mallory/example.com@EXAMPLE.COM")));
+    private static final Identity kerberosValidShare = new Identity("alice", Optional.of(new KerberosPrincipal("valid/example.com@EXAMPLE.COM")));
+    private static final Identity kerberosInValidShare = new Identity("alice", Optional.of(new KerberosPrincipal("invalid/example.com@EXAMPLE.COM")));
     private static final Identity bob = new Identity("bob", Optional.empty());
     private static final Identity admin = new Identity("admin", Optional.empty());
     private static final Identity nonAsciiUser = new Identity("\u0194\u0194\u0194", Optional.empty());
@@ -51,7 +53,7 @@ public class TestFileBasedSystemAccessControl
     public void testCanSetUserOperations()
     {
         TransactionManager transactionManager = createTestTransactionManager();
-        AccessControlManager accessControlManager = newAccessControlManager(transactionManager, "catalog_user_patterns.json");
+        AccessControlManager accessControlManager = newAccessControlManager(transactionManager, "catalog_principal.json");
 
         try {
             accessControlManager.checkCanSetUser(null, alice.getUser());
@@ -63,6 +65,14 @@ public class TestFileBasedSystemAccessControl
         accessControlManager.checkCanSetUser(kerberosValidAlice.getPrincipal().get(), kerberosValidAlice.getUser());
         try {
             accessControlManager.checkCanSetUser(kerberosInvalidAlice.getPrincipal().get(), kerberosInvalidAlice.getUser());
+            throw new AssertionError("expected AccessDeniedExeption");
+        }
+        catch (AccessDeniedException expected) {
+        }
+
+        accessControlManager.checkCanSetUser(kerberosValidShare.getPrincipal().get(), kerberosValidShare.getUser());
+        try {
+            accessControlManager.checkCanSetUser(kerberosInValidShare.getPrincipal().get(), kerberosInValidShare.getUser());
             throw new AssertionError("expected AccessDeniedExeption");
         }
         catch (AccessDeniedException expected) {

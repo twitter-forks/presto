@@ -64,10 +64,10 @@ contents:
 The config file is specified in JSON format.
 
 * It contains the rules defining which catalog can be accessed by which user (see Catalog Rules below).
-* User extraction rules specifying what principals can identify as what users (see Username Extraction below).
+* The principal rules specifying what principals can identify as what users (see Principal Rules below).
 
-This plugin currently only supports catalog access control rules and username
-extraction. If you want to limit access on a system level in any other way, you
+This plugin currently only supports catalog access control rules and principle
+rules. If you want to limit access on a system level in any other way, you
 must implement a custom SystemAccessControl plugin
 (see :doc:`/develop/system-access-control`).
 
@@ -81,7 +81,7 @@ following fields:
 
 * ``user`` (optional): regex to match against user name. Defaults to ``.*``.
 * ``catalog`` (optional): regex to match against catalog name. Defaults to ``.*``.
-* ``allowed`` (required): boolean indicating whether a user has access to the catalog
+* ``allow`` (required): boolean indicating whether a user has access to the catalog
 
 .. note::
 
@@ -112,15 +112,22 @@ catalog, and deny all other access, you can use the following rules:
       ]
     }
 
-Username Extraction
--------------------
+Principal Rules
+---------------
 
 These rules serve to enforce a specific matching between a principal and a
-specified user name. It consists of a list of regular expressions which will
-perform group extraction and compare it with the provided user name.
-If a provided expression extracts the same user name, the user will have
-access to the database.
-If no expression are specified, no checks will be performed.
+specified user name. The principal is granted authorization as a user based
+on the first matching rule read from top to bottom. If no rules are specified,
+no checks will be performed. If no rule matches, user authorization is denied.
+Each rule is composed of the following fields:
+
+* ``principal`` (required): regex to match and group against a principal.
+* ``user`` (optional): replacement value to substitute against principal name.
+  The result of substitution will be used as the regex to match the user name.
+  If no value presented, it will extract each group and compare those group values
+  with the user name.
+* ``allow`` (required): boolean indicating whether a principal can be authorized
+  as a user.
 
 The following implements an exact matching of the full principal name for LDAP
 and Kerberos authentication:
@@ -128,13 +135,39 @@ and Kerberos authentication:
 .. code-block:: json
 
     {
-      "catalog": [
+      "catalogs": [
         {
           "allow": true
         }
       ],
-      "user_patterns": [
-        "(.*)",
-        "([a-zA-Z]+)/?.*@.*"
+      "principals": [
+        {
+          "principal": "(.*)",
+          "allow": true
+        },
+        {
+          "principal": "([a-zA-Z]+)/?.*@.*",
+          "allow": true
+        }
+      ]
+    }
+
+The following implements a privileged service principle to run queries as any
+user's behalf:
+
+.. code-block:: json
+
+    {
+      "catalogs": [
+        {
+          "allow": true
+        }
+      ],
+      "principals": [
+        {
+          "principal": "privileged_service@example.net",
+          "user": ".*"
+          "allow": true
+        }
       ]
     }
