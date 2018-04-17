@@ -1,0 +1,29 @@
+{
+  "catalogs": [
+    {
+      "allow": true
+    }
+  ],
+  "principals": [
+    {
+      "allow": true,
+      "principal": "(.*)",
+      "user": "$1"
+    },
+    {
+      "allow": true,
+      "principal": "([a-zA-Z]+)/?.*@.*",
+      "user": "$1"
+    },
+    {
+      "allow": false,
+      "principal": "invalid/?.*@.*",
+      "user": ".*"
+    },
+    {
+      "allow": true,
+      "principal": "valid/?.*@.*",
+      "user": ".*"
+    }
+  ]
+}
