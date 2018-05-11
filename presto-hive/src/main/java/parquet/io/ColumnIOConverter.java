@@ -59,7 +59,7 @@ public class ColumnIOConverter
             for (int i = 0; i < fields.size(); i++) {
                 NamedTypeSignature namedTypeSignature = fields.get(i).getNamedTypeSignature();
                 String name = namedTypeSignature.getName().toLowerCase(Locale.ENGLISH);
-                Optional<Field> field = constructField(parameters.get(i), groupColumnIO.getChild(name));
+                Optional<Field> field = constructField(parameters.get(i), findColumnIObyName(groupColumnIO, name));
                 structHasParameters |= field.isPresent();
                 fileldsBuilder.add(field);
             }
@@ -93,5 +93,16 @@ public class ColumnIOConverter
         PrimitiveColumnIO primitiveColumnIO = (PrimitiveColumnIO) columnIO;
         RichColumnDescriptor column = new RichColumnDescriptor(primitiveColumnIO.getColumnDescriptor(), columnIO.getType().asPrimitiveType());
         return Optional.of(new PrimitiveField(type, repetitionLevel, definitionLevel, required, column, primitiveColumnIO.getId()));
+    }
+
+    public static ColumnIO findColumnIObyName(GroupColumnIO groupColumnIO, String name)
+    {
+        ColumnIO columnIO = groupColumnIO.getChild(name);
+
+        if (columnIO == null && name.endsWith("_")) {
+            return findColumnIObyName(groupColumnIO, name.substring(0, name.length() - 1));
+        }
+
+        return columnIO;
     }
 }

@@ -39,12 +39,13 @@ import java.util.Properties;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
-import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getFieldIndex;
+import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findFieldIndexByName;
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getParquetType;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Objects.requireNonNull;
 import static parquet.io.ColumnIOConverter.constructField;
+import static parquet.io.ColumnIOConverter.findColumnIObyName;
 
 public class ParquetPageSource
         implements ConnectorPageSource
@@ -107,7 +108,7 @@ public class ParquetPageSource
             }
             else {
                 String columnName = useParquetColumnNames ? name : fileSchema.getFields().get(column.getHiveColumnIndex()).getName();
-                fieldsList.add(constructField(type, messageColumnIO.getChild(columnName)));
+                fieldsList.add(constructField(type, findColumnIObyName(messageColumnIO, columnName)));
             }
         }
         types = typesBuilder.build();
@@ -163,7 +164,7 @@ public class ParquetPageSource
                 else {
                     Type type = types.get(fieldId);
                     Optional<Field> field = fields.get(fieldId);
-                    int fieldIndex = useParquetColumnNames ? getFieldIndex(fileSchema, columnNames.get(fieldId)) : hiveColumnIndexes[fieldId];
+                    int fieldIndex = useParquetColumnNames ? findFieldIndexByName(fileSchema, columnNames.get(fieldId)) : hiveColumnIndexes[fieldId];
                     if (fieldIndex != -1 && field.isPresent()) {
                         blocks[fieldId] = new LazyBlock(batchSize, new ParquetBlockLoader(field.get()));
                     }
