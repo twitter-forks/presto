@@ -53,6 +53,7 @@ public class TestLocalExchange
 {
     private static final List<Type> TYPES = ImmutableList.of(BIGINT);
     private static final DataSize RETAINED_PAGE_SIZE = new DataSize(createPage(42).getRetainedSizeInBytes(), BYTE);
+    private static final DataSize LOCAL_EXCHANGE_MAX_BUFFERED_BYTES = new DataSize(32, DataSize.Unit.MEGABYTE);
 
     @DataProvider
     public static Object[][] executionStrategy()
@@ -141,7 +142,8 @@ public class TestLocalExchange
                 TYPES,
                 ImmutableList.of(),
                 Optional.empty(),
-                executionStrategy);
+                executionStrategy,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         LocalExchangeSinkFactoryId localExchangeSinkFactoryId = localExchangeFactory.newSinkFactoryId();
         localExchangeFactory.noMoreSinkFactories();
 
@@ -227,7 +229,8 @@ public class TestLocalExchange
                 TYPES,
                 ImmutableList.of(),
                 Optional.empty(),
-                executionStrategy);
+                executionStrategy,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         LocalExchangeSinkFactoryId localExchangeSinkFactoryId = localExchangeFactory.newSinkFactoryId();
         localExchangeFactory.noMoreSinkFactories();
 
@@ -274,7 +277,8 @@ public class TestLocalExchange
                 TYPES,
                 ImmutableList.of(0),
                 Optional.empty(),
-                executionStrategy);
+                executionStrategy,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         LocalExchangeSinkFactoryId localExchangeSinkFactoryId = localExchangeFactory.newSinkFactoryId();
         localExchangeFactory.noMoreSinkFactories();
 
@@ -341,7 +345,8 @@ public class TestLocalExchange
                 types,
                 ImmutableList.of(),
                 Optional.empty(),
-                executionStrategy);
+                executionStrategy,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         LocalExchangeSinkFactoryId localExchangeSinkFactoryId = localExchangeFactory.newSinkFactoryId();
         localExchangeFactory.noMoreSinkFactories();
 
@@ -454,7 +459,8 @@ public class TestLocalExchange
                 TYPES,
                 ImmutableList.of(0),
                 Optional.empty(),
-                UNGROUPED_EXECUTION);
+                UNGROUPED_EXECUTION,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         try {
             ungroupedLocalExchangeFactory.getLocalExchange(Lifespan.driverGroup(3));
             fail("expected failure");
@@ -469,7 +475,8 @@ public class TestLocalExchange
                 TYPES,
                 ImmutableList.of(0),
                 Optional.empty(),
-                GROUPED_EXECUTION);
+                GROUPED_EXECUTION,
+                LOCAL_EXCHANGE_MAX_BUFFERED_BYTES);
         try {
             groupedLocalExchangeFactory.getLocalExchange(Lifespan.taskWide());
             fail("expected failure");
@@ -497,7 +504,6 @@ public class TestLocalExchange
 
     private static void assertSource(LocalExchangeSource source, int pageCount)
     {
-        assertEquals(source.getTypes(), TYPES);
         LocalExchangeBufferInfo bufferInfo = source.getBufferInfo();
         assertEquals(bufferInfo.getBufferedPages(), pageCount);
         assertFalse(source.isFinished());
@@ -516,7 +522,6 @@ public class TestLocalExchange
 
     private static void assertSourceFinished(LocalExchangeSource source)
     {
-        assertEquals(source.getTypes(), TYPES);
         assertTrue(source.isFinished());
         LocalExchangeBufferInfo bufferInfo = source.getBufferInfo();
         assertEquals(bufferInfo.getBufferedPages(), 0);
@@ -531,7 +536,6 @@ public class TestLocalExchange
 
     private static void assertRemovePage(LocalExchangeSource source, Page expectedPage)
     {
-        assertEquals(source.getTypes(), TYPES);
         assertTrue(source.waitForReading().isDone());
         Page actualPage = source.removePage();
         assertNotNull(actualPage);
@@ -542,7 +546,6 @@ public class TestLocalExchange
 
     private static void assertPartitionedRemovePage(LocalExchangeSource source, int partition, int partitionCount)
     {
-        assertEquals(source.getTypes(), TYPES);
         assertTrue(source.waitForReading().isDone());
         Page page = source.removePage();
         assertNotNull(page);
@@ -555,14 +558,12 @@ public class TestLocalExchange
 
     private static void assertSinkCanWrite(LocalExchangeSink sink)
     {
-        assertEquals(sink.getTypes(), TYPES);
         assertFalse(sink.isFinished());
         assertTrue(sink.waitForWriting().isDone());
     }
 
     private static ListenableFuture<?> assertSinkWriteBlocked(LocalExchangeSink sink)
     {
-        assertEquals(sink.getTypes(), TYPES);
         assertFalse(sink.isFinished());
         ListenableFuture<?> writeFuture = sink.waitForWriting();
         assertFalse(writeFuture.isDone());
@@ -571,7 +572,6 @@ public class TestLocalExchange
 
     private static void assertSinkFinished(LocalExchangeSink sink)
     {
-        assertEquals(sink.getTypes(), TYPES);
         assertTrue(sink.isFinished());
         assertTrue(sink.waitForWriting().isDone());
 

@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.196</version>
+        <version>0.203</version>
     </parent>
 
     <artifactId>presto-main</artifactId>
@@ -16,6 +16,21 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.locationtech.jts</groupId>
+            <artifactId>jts-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.esri.geometry</groupId>
+            <artifactId>esri-geometry-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-geospatial-toolkit</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>it.unimi.dsi</groupId>
             <artifactId>fastutil</artifactId>
@@ -143,6 +158,11 @@
 
         <dependency>
             <groupId>io.airlift</groupId>
+            <artifactId>security</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.airlift</groupId>
             <artifactId>stats</artifactId>
         </dependency>
 
@@ -237,11 +257,6 @@
         </dependency>
 
         <dependency>
-            <groupId>com.google.inject.extensions</groupId>
-            <artifactId>guice-multibindings</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
         </dependency>
@@ -280,6 +295,11 @@
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-analyzers-common</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt</artifactId>
         </dependency>
 
         <!-- used by tests but also needed transitively -->
@@ -399,7 +419,7 @@
                                 <argument>-Dmyproperty=myvalue</argument>
                                 <argument>-classpath</argument>
                                 <classpath />
-                                <argument>com.facebook.presto.benchmark.BenchmarkSuite</argument>
+                                <argument>com.facebook.presto</argument>
                             </arguments>
                             <classpathScope>test</classpathScope>
                         </configuration>

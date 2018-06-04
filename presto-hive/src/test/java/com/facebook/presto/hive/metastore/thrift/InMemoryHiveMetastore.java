@@ -38,6 +38,8 @@ import org.apache.hadoop.hive.metastore.api.Table;
 import javax.annotation.concurrent.GuardedBy;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.util.Collection;
 import java.util.EnumSet;
@@ -53,11 +55,12 @@ import java.util.function.Function;
 
 import static com.facebook.presto.hive.HiveUtil.toPartitionValues;
 import static com.facebook.presto.hive.metastore.HivePrivilegeInfo.HivePrivilege.OWNERSHIP;
-import static com.facebook.presto.hive.metastore.thrift.TestingHiveMetastore.deleteDirectory;
 import static com.facebook.presto.spi.StandardErrorCode.SCHEMA_NOT_EMPTY;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
+import static com.google.common.io.MoreFiles.deleteRecursively;
+import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static java.util.Locale.US;
 import static java.util.Objects.requireNonNull;
 import static java.util.stream.Collectors.toList;
@@ -438,18 +441,18 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public synchronized Optional<Set<ColumnStatisticsObj>> getTableColumnStatistics(String databaseName, String tableName, Set<String> columnNames)
+    public synchronized Set<ColumnStatisticsObj> getTableColumnStatistics(String databaseName, String tableName, Set<String> columnNames)
     {
         SchemaTableName schemaTableName = new SchemaTableName(databaseName, tableName);
         if (!columnStatistics.containsKey(schemaTableName)) {
-            return Optional.empty();
+            return ImmutableSet.of();
         }
 
         Map<String, ColumnStatisticsObj> columnStatisticsMap = columnStatistics.get(schemaTableName);
-        return Optional.of(columnNames.stream()
+        return columnNames.stream()
                 .filter(columnStatisticsMap::containsKey)
                 .map(columnStatisticsMap::get)
-                .collect(toImmutableSet()));
+                .collect(toImmutableSet());
     }
 
     public synchronized void setColumnStatistics(String databaseName, String tableName, String columnName, ColumnStatisticsObj columnStatisticsObj)
@@ -460,7 +463,7 @@ public class InMemoryHiveMetastore
     }
 
     @Override
-    public synchronized Optional<Map<String, Set<ColumnStatisticsObj>>> getPartitionColumnStatistics(String databaseName, String tableName, Set<String> partitionNames, Set<String> columnNames)
+    public synchronized Map<String, Set<ColumnStatisticsObj>> getPartitionColumnStatistics(String databaseName, String tableName, Set<String> partitionNames, Set<String> columnNames)
     {
         ImmutableMap.Builder<String, Set<ColumnStatisticsObj>> result = ImmutableMap.builder();
         for (String partitionName : partitionNames) {
@@ -477,7 +480,7 @@ public class InMemoryHiveMetastore
                             .map(columnStatistics::get)
                             .collect(toImmutableSet()));
         }
-        return Optional.of(result.build());
+        return result.build();
     }
 
     public synchronized void setPartitionColumnStatistics(String databaseName, String tableName, String partitionName, String columnName, ColumnStatisticsObj columnStatisticsObj)
@@ -570,6 +573,16 @@ public class InMemoryHiveMetastore
             }
         }
         return false;
+    }
+
+    private static void deleteDirectory(File dir)
+    {
+        try {
+            deleteRecursively(dir.toPath(), ALLOW_INSECURE);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static class PartitionName

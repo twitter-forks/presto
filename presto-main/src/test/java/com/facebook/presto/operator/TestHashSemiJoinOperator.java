@@ -19,6 +19,7 @@ import com.facebook.presto.operator.HashSemiJoinOperator.HashSemiJoinOperatorFac
 import com.facebook.presto.operator.SetBuilderOperator.SetBuilderOperatorFactory;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.testing.MaterializedResult;
@@ -37,6 +38,7 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.presto.RowPagesBuilder.rowPagesBuilder;
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
+import static com.facebook.presto.metadata.MetadataManager.createTestMetadataManager;
 import static com.facebook.presto.operator.GroupByHashYieldAssertion.createPagesWithDistinctHashKeys;
 import static com.facebook.presto.operator.GroupByHashYieldAssertion.finishOperatorWithYieldingGroupByHash;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -95,7 +97,7 @@ public class TestHashSemiJoinOperator
         // build
         OperatorContext operatorContext = driverContext.addOperatorContext(0, new PlanNodeId("test"), ValuesOperator.class.getSimpleName());
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, Ints.asList(0), BIGINT);
-        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder.getTypes(), rowPagesBuilder
+        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder
                 .row(10L)
                 .row(30L)
                 .row(30L)
@@ -104,7 +106,14 @@ public class TestHashSemiJoinOperator
                 .row(37L)
                 .row(50L)
                 .build());
-        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(1, new PlanNodeId("test"), buildOperator.getTypes().get(0), 0, rowPagesBuilder.getHashChannel(), 10, new JoinCompiler());
+        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                rowPagesBuilder.getTypes().get(0),
+                0,
+                rowPagesBuilder.getHashChannel(),
+                10,
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
         Operator setBuilderOperator = setBuilderOperatorFactory.createOperator(driverContext);
 
         Driver driver = Driver.createDriver(driverContext, buildOperator, setBuilderOperator);
@@ -156,7 +165,7 @@ public class TestHashSemiJoinOperator
                 0,
                 Optional.of(1),
                 10,
-                new JoinCompiler());
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
 
         // run test
         GroupByHashYieldAssertion.GroupByHashYieldResult result = finishOperatorWithYieldingGroupByHash(
@@ -164,9 +173,9 @@ public class TestHashSemiJoinOperator
                 type,
                 setBuilderOperatorFactory,
                 operator -> ((SetBuilderOperator) operator).getCapacity(),
-                170_000);
+                1_400_000);
 
-        assertGreaterThanOrEqual(result.getYieldCount(), 7);
+        assertGreaterThanOrEqual(result.getYieldCount(), 5);
         assertGreaterThan(result.getMaxReservedBytes(), 20L << 20);
         assertEquals(result.getOutput().stream().mapToInt(Page::getPositionCount).sum(), 0);
     }
@@ -180,7 +189,7 @@ public class TestHashSemiJoinOperator
         OperatorContext operatorContext = driverContext.addOperatorContext(0, new PlanNodeId("test"), ValuesOperator.class.getSimpleName());
         List<Type> buildTypes = ImmutableList.of(BIGINT);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, Ints.asList(0), buildTypes);
-        Operator buildOperator = new ValuesOperator(operatorContext, buildTypes, rowPagesBuilder
+        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder
                 .row(0L)
                 .row(1L)
                 .row(2L)
@@ -188,7 +197,14 @@ public class TestHashSemiJoinOperator
                 .row(3L)
                 .row((Object) null)
                 .build());
-        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(1, new PlanNodeId("test"), buildOperator.getTypes().get(0), 0, rowPagesBuilder.getHashChannel(), 10, new JoinCompiler());
+        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                buildTypes.get(0),
+                0,
+                rowPagesBuilder.getHashChannel(),
+                10,
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
         Operator setBuilderOperator = setBuilderOperatorFactory.createOperator(driverContext);
 
         Driver driver = Driver.createDriver(driverContext, buildOperator, setBuilderOperator);
@@ -229,12 +245,19 @@ public class TestHashSemiJoinOperator
         OperatorContext operatorContext = driverContext.addOperatorContext(0, new PlanNodeId("test"), ValuesOperator.class.getSimpleName());
         List<Type> buildTypes = ImmutableList.of(BIGINT);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, Ints.asList(0), buildTypes);
-        Operator buildOperator = new ValuesOperator(operatorContext, buildTypes, rowPagesBuilder
+        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder
                 .row(0L)
                 .row(1L)
                 .row(3L)
                 .build());
-        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(1, new PlanNodeId("test"), buildOperator.getTypes().get(0), 0, rowPagesBuilder.getHashChannel(), 10, new JoinCompiler());
+        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                buildTypes.get(0),
+                0,
+                rowPagesBuilder.getHashChannel(),
+                10,
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
         Operator setBuilderOperator = setBuilderOperatorFactory.createOperator(driverContext);
 
         Driver driver = Driver.createDriver(driverContext, buildOperator, setBuilderOperator);
@@ -278,13 +301,20 @@ public class TestHashSemiJoinOperator
         OperatorContext operatorContext = driverContext.addOperatorContext(0, new PlanNodeId("test"), ValuesOperator.class.getSimpleName());
         List<Type> buildTypes = ImmutableList.of(BIGINT);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, Ints.asList(0), buildTypes);
-        Operator buildOperator = new ValuesOperator(operatorContext, buildTypes, rowPagesBuilder
+        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder
                 .row(0L)
                 .row(1L)
                 .row((Object) null)
                 .row(3L)
                 .build());
-        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(1, new PlanNodeId("test"), buildOperator.getTypes().get(0), 0, rowPagesBuilder.getHashChannel(), 10, new JoinCompiler());
+        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                buildTypes.get(0),
+                0,
+                rowPagesBuilder.getHashChannel(),
+                10,
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
         Operator setBuilderOperator = setBuilderOperatorFactory.createOperator(driverContext);
 
         Driver driver = Driver.createDriver(driverContext, buildOperator, setBuilderOperator);
@@ -319,7 +349,7 @@ public class TestHashSemiJoinOperator
         OperatorAssertion.assertOperatorEquals(joinOperatorFactory, driverContext, probeInput, expected, hashEnabled, ImmutableList.of(probeTypes.size()));
     }
 
-    @Test(dataProvider = "hashEnabledValues", expectedExceptions = ExceededMemoryLimitException.class, expectedExceptionsMessageRegExp = "Query exceeded local memory limit of.*")
+    @Test(dataProvider = "hashEnabledValues", expectedExceptions = ExceededMemoryLimitException.class, expectedExceptionsMessageRegExp = "Query exceeded local user memory limit of.*")
     public void testMemoryLimit(boolean hashEnabled)
     {
         DriverContext driverContext = createTaskContext(executor, scheduledExecutor, TEST_SESSION, new DataSize(100, BYTE))
@@ -329,10 +359,17 @@ public class TestHashSemiJoinOperator
         OperatorContext operatorContext = driverContext.addOperatorContext(0, new PlanNodeId("test"), ValuesOperator.class.getSimpleName());
         List<Type> buildTypes = ImmutableList.of(BIGINT);
         RowPagesBuilder rowPagesBuilder = rowPagesBuilder(hashEnabled, Ints.asList(0), buildTypes);
-        Operator buildOperator = new ValuesOperator(operatorContext, buildTypes, rowPagesBuilder
+        Operator buildOperator = new ValuesOperator(operatorContext, rowPagesBuilder
                 .addSequencePage(10000, 20)
                 .build());
-        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(1, new PlanNodeId("test"), buildOperator.getTypes().get(0), 0, rowPagesBuilder.getHashChannel(), 10, new JoinCompiler());
+        SetBuilderOperatorFactory setBuilderOperatorFactory = new SetBuilderOperatorFactory(
+                1,
+                new PlanNodeId("test"),
+                buildTypes.get(0),
+                0,
+                rowPagesBuilder.getHashChannel(),
+                10,
+                new JoinCompiler(createTestMetadataManager(), new FeaturesConfig()));
         Operator setBuilderOperator = setBuilderOperatorFactory.createOperator(driverContext);
 
         Driver driver = Driver.createDriver(driverContext, buildOperator, setBuilderOperator);

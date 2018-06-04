@@ -19,13 +19,10 @@ import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetRecordCursorProvider;
 import com.facebook.presto.hive.rcfile.RcFilePageSourceFactory;
-import com.facebook.presto.spi.NodeManager;
-import com.facebook.presto.spi.PageIndexerFactory;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
-import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.twitter.hive.thrift.HiveThriftFieldIdResolverFactory;
 import com.facebook.presto.twitter.hive.thrift.ThriftFieldIdResolverFactory;
 import com.facebook.presto.twitter.hive.thrift.ThriftHiveRecordCursorProvider;
@@ -54,16 +51,10 @@ public class HiveClientModule
         implements Module
 {
     private final String connectorId;
-    private final TypeManager typeManager;
-    private final PageIndexerFactory pageIndexerFactory;
-    private final NodeManager nodeManager;
 
-    public HiveClientModule(String connectorId, TypeManager typeManager, PageIndexerFactory pageIndexerFactory, NodeManager nodeManager)
+    public HiveClientModule(String connectorId)
     {
         this.connectorId = connectorId;
-        this.typeManager = typeManager;
-        this.pageIndexerFactory = pageIndexerFactory;
-        this.nodeManager = nodeManager;
     }
 
     @Override
@@ -84,9 +75,6 @@ public class HiveClientModule
 
         binder.bind(NamenodeStats.class).in(Scopes.SINGLETON);
         newExporter(binder).export(NamenodeStats.class).as(generatedNameOf(NamenodeStats.class, connectorId));
-        binder.bind(NodeManager.class).toInstance(nodeManager);
-        binder.bind(TypeManager.class).toInstance(typeManager);
-        binder.bind(PageIndexerFactory.class).toInstance(pageIndexerFactory);
         binder.bind(ThriftFieldIdResolverFactory.class).toInstance(new HiveThriftFieldIdResolverFactory());
 
         Multibinder<HiveRecordCursorProvider> recordCursorProviderBinder = newSetBinder(binder, HiveRecordCursorProvider.class);

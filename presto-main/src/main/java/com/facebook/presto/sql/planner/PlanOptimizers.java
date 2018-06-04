@@ -26,6 +26,7 @@ import com.facebook.presto.sql.planner.iterative.rule.AddIntermediateAggregation
 import com.facebook.presto.sql.planner.iterative.rule.CanonicalizeExpressions;
 import com.facebook.presto.sql.planner.iterative.rule.CreatePartialTopN;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarAtTimeZone;
+import com.facebook.presto.sql.planner.iterative.rule.DesugarCurrentUser;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarLambdaExpression;
 import com.facebook.presto.sql.planner.iterative.rule.DesugarTryExpression;
 import com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType;
@@ -41,6 +42,7 @@ import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithTopN;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimits;
+import com.facebook.presto.sql.planner.iterative.rule.MultipleDistinctAggregationToMarkDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.PickTableLayout;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationSourceColumns;
@@ -50,6 +52,7 @@ import com.facebook.presto.sql.planner.iterative.rule.PruneFilterColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneIndexSourceColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneJoinChildrenColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneJoinColumns;
+import com.facebook.presto.sql.planner.iterative.rule.PruneLimitColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneMarkDistinctColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneOrderByInAggregation;
 import com.facebook.presto.sql.planner.iterative.rule.PruneOutputColumns;
@@ -78,17 +81,18 @@ import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarAp
 import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarLateralNodes;
 import com.facebook.presto.sql.planner.iterative.rule.SimplifyCountOverConstant;
 import com.facebook.presto.sql.planner.iterative.rule.SimplifyExpressions;
-import com.facebook.presto.sql.planner.iterative.rule.SingleMarkDistinctToGroupBy;
+import com.facebook.presto.sql.planner.iterative.rule.SingleDistinctAggregationToGroupBy;
 import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedInPredicateToJoin;
+import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedLateralJoinToJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedScalarAggregationToJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TransformExistsApplyToLateralNode;
+import com.facebook.presto.sql.planner.iterative.rule.TransformSpatialPredicates;
 import com.facebook.presto.sql.planner.iterative.rule.TransformUncorrelatedInPredicateSubqueryToSemiJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TransformUncorrelatedLateralToJoin;
 import com.facebook.presto.sql.planner.optimizations.AddExchanges;
 import com.facebook.presto.sql.planner.optimizations.AddLocalExchanges;
 import com.facebook.presto.sql.planner.optimizations.BeginTableWrite;
 import com.facebook.presto.sql.planner.optimizations.CheckSubqueryNodesAreRewritten;
-import com.facebook.presto.sql.planner.optimizations.DesugaringOptimizer;
 import com.facebook.presto.sql.planner.optimizations.DetermineSemiJoinDistributionType;
 import com.facebook.presto.sql.planner.optimizations.HashGenerationOptimizer;
 import com.facebook.presto.sql.planner.optimizations.ImplementIntersectAndExceptAsUnion;
@@ -101,7 +105,6 @@ import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
 import com.facebook.presto.sql.planner.optimizations.PredicatePushDown;
 import com.facebook.presto.sql.planner.optimizations.PruneUnreferencedOutputs;
 import com.facebook.presto.sql.planner.optimizations.SetFlatteningOptimizer;
-import com.facebook.presto.sql.planner.optimizations.TransformCorrelatedNoAggregationSubqueryToJoin;
 import com.facebook.presto.sql.planner.optimizations.TransformCorrelatedSingleRowSubqueryToProject;
 import com.facebook.presto.sql.planner.optimizations.TransformQuantifiedComparisonApplyToLateralJoin;
 import com.facebook.presto.sql.planner.optimizations.UnaliasSymbolReferences;
@@ -191,6 +194,7 @@ public class PlanOptimizers
                 new PruneTopNColumns(),
                 new PruneValuesColumns(),
                 new PruneWindowColumns(),
+                new PruneLimitColumns(),
                 new PruneTableScanColumns());
 
         IterativeOptimizer inlineProjections = new IterativeOptimizer(
@@ -221,10 +225,10 @@ public class PlanOptimizers
                         stats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
-                        ImmutableList.of(new DesugaringOptimizer(metadata, sqlParser)),
                         ImmutableSet.<Rule<?>>builder()
                                 .addAll(new DesugarLambdaExpression().rules())
                                 .addAll(new DesugarAtTimeZone(metadata, sqlParser).rules())
+                                .addAll(new DesugarCurrentUser().rules())
                                 .addAll(new DesugarTryExpression().rules())
                                 .build()),
                 new IterativeOptimizer(
@@ -252,6 +256,8 @@ public class PlanOptimizers
                                         new PushLimitThroughSemiJoin(),
                                         new RemoveTrivialFilters(),
                                         new ImplementFilteredAggregations(),
+                                        new SingleDistinctAggregationToGroupBy(),
+                                        new MultipleDistinctAggregationToMarkDistinct(),
                                         new ImplementBernoulliSampleAsFilter(),
                                         new MergeLimitWithDistinct(),
                                         new PruneCountAggregationOverScalar(),
@@ -273,6 +279,11 @@ public class PlanOptimizers
                         stats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
+                        columnPruningRules),
+                new IterativeOptimizer(
+                        stats,
+                        statsCalculator,
+                        estimatedExchangesCostCalculator,
                         ImmutableSet.of(new TransformExistsApplyToLateralNode(metadata.getFunctionRegistry()))),
                 new TransformQuantifiedComparisonApplyToLateralJoin(metadata),
                 new IterativeOptimizer(
@@ -283,7 +294,8 @@ public class PlanOptimizers
                                 new RemoveUnreferencedScalarLateralNodes(),
                                 new TransformUncorrelatedLateralToJoin(),
                                 new TransformUncorrelatedInPredicateSubqueryToSemiJoin(),
-                                new TransformCorrelatedScalarAggregationToJoin(metadata.getFunctionRegistry()))),
+                                new TransformCorrelatedScalarAggregationToJoin(metadata.getFunctionRegistry()),
+                                new TransformCorrelatedLateralJoinToJoin())),
                 new IterativeOptimizer(
                         stats,
                         statsCalculator,
@@ -292,7 +304,6 @@ public class PlanOptimizers
                                 new RemoveUnreferencedScalarApplyNodes(),
                                 new TransformCorrelatedInPredicateToJoin(), // must be run after PruneUnreferencedOutputs
                                 new ImplementFilteredAggregations())),
-                new TransformCorrelatedNoAggregationSubqueryToJoin(),
                 new TransformCorrelatedSingleRowSubqueryToProject(),
                 new CheckSubqueryNodesAreRewritten(),
                 new PredicatePushDown(metadata, sqlParser),
@@ -344,22 +355,13 @@ public class PlanOptimizers
                         estimatedExchangesCostCalculator,
                         ImmutableSet.of(new EliminateCrossJoins())), // This can pull up Filter and Project nodes from between Joins, so we need to push them down again
                 new PredicatePushDown(metadata, sqlParser),
+                simplifyOptimizer, // Should be always run after PredicatePushDown
                 new IterativeOptimizer(
                         stats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
                         new PickTableLayout(metadata).rules()),
                 projectionPushDown);
-
-        if (featuresConfig.isOptimizeSingleDistinct()) {
-            builder.add(
-                    new IterativeOptimizer(
-                            stats,
-                            statsCalculator,
-                            estimatedExchangesCostCalculator,
-                            ImmutableSet.of(new SingleMarkDistinctToGroupBy())),
-                    new PruneUnreferencedOutputs());
-        }
 
         builder.add(new OptimizeMixedDistinctAggregations(metadata));
         builder.add(new IterativeOptimizer(
@@ -396,15 +398,22 @@ public class PlanOptimizers
                         ImmutableSet.of(new RemoveEmptyDelete()))); // Run RemoveEmptyDelete after table scan is removed by PickTableLayout/AddExchanges
 
         builder.add(new PredicatePushDown(metadata, sqlParser)); // Run predicate push down one more time in case we can leverage new information from layouts' effective predicate
+        builder.add(simplifyOptimizer); // Should be always run after PredicatePushDown
         builder.add(projectionPushDown);
         builder.add(inlineProjections);
         builder.add(new UnaliasSymbolReferences()); // Run unalias after merging projections to simplify projections more efficiently
         builder.add(new PruneUnreferencedOutputs());
+        // TODO Make PredicatePushDown aware of spatial joins, move TransformSpatialPredicateToJoin
+        // before AddExchanges and update AddExchanges to set REPLICATED distribution for the build side.
         builder.add(new IterativeOptimizer(
                 stats,
                 statsCalculator,
                 costCalculator,
-                ImmutableSet.of(new RemoveRedundantIdentityProjections())));
+                ImmutableSet.<Rule<?>>builder()
+                        .add(new RemoveRedundantIdentityProjections())
+                        .addAll(new TransformSpatialPredicates(metadata).rules())
+                        .add(new InlineProjections())
+                        .build()));
 
         // Optimizers above this don't understand local exchanges, so be careful moving this.
         builder.add(new AddLocalExchanges(metadata, sqlParser));

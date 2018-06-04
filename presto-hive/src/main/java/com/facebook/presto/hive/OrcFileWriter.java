@@ -15,6 +15,7 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.orc.OrcDataSource;
 import com.facebook.presto.orc.OrcEncoding;
+import com.facebook.presto.orc.OrcWriteValidation.OrcWriteValidationMode;
 import com.facebook.presto.orc.OrcWriter;
 import com.facebook.presto.orc.OrcWriterOptions;
 import com.facebook.presto.orc.OrcWriterStats;
@@ -23,13 +24,13 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.block.RunLengthEncodedBlock;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.CountingOutputStream;
 import io.airlift.slice.OutputStreamSliceOutput;
 import org.joda.time.DateTimeZone;
+import org.openjdk.jol.info.ClassLayout;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -49,6 +50,8 @@ import static java.util.Objects.requireNonNull;
 public class OrcFileWriter
         implements HiveFileWriter
 {
+    private static final int INSTANCE_SIZE = ClassLayout.parseClass(OrcFileWriter.class).instanceSize();
+
     private final CountingOutputStream outputStream;
     private final OrcWriter orcWriter;
     private final Callable<Void> rollbackAction;
@@ -68,6 +71,7 @@ public class OrcFileWriter
             Map<String, String> metadata,
             DateTimeZone hiveStorageTimeZone,
             Optional<Supplier<OrcDataSource>> validationInputFactory,
+            OrcWriteValidationMode validationMode,
             OrcWriterStats stats)
     {
         this.outputStream = new CountingOutputStream(outputStream);
@@ -82,6 +86,7 @@ public class OrcFileWriter
                 metadata,
                 hiveStorageTimeZone,
                 validationInputFactory.isPresent(),
+                validationMode,
                 stats);
         this.rollbackAction = requireNonNull(rollbackAction, "rollbackAction is null");
 
@@ -89,7 +94,7 @@ public class OrcFileWriter
 
         ImmutableList.Builder<Block> nullBlocks = ImmutableList.builder();
         for (Type fileColumnType : fileColumnTypes) {
-            BlockBuilder blockBuilder = fileColumnType.createBlockBuilder(new BlockBuilderStatus(), 1, 0);
+            BlockBuilder blockBuilder = fileColumnType.createBlockBuilder(null, 1, 0);
             blockBuilder.appendNull();
             nullBlocks.add(blockBuilder.build());
         }
@@ -106,7 +111,7 @@ public class OrcFileWriter
     @Override
     public long getSystemMemoryUsage()
     {
-        return orcWriter.getRetainedBytes();
+        return INSTANCE_SIZE + orcWriter.getRetainedBytes();
     }
 
     @Override

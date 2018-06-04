@@ -221,11 +221,15 @@ public class OrcMetadataWriter
         }
 
         if (columnStatistics.getStringStatistics() != null) {
-            builder.setStringStatistics(OrcProto.StringStatistics.newBuilder()
-                    .setMinimumBytes(ByteString.copyFrom(columnStatistics.getStringStatistics().getMin().getBytes()))
-                    .setMaximumBytes(ByteString.copyFrom(columnStatistics.getStringStatistics().getMax().getBytes()))
-                    .setSum(columnStatistics.getStringStatistics().getSum())
-                    .build());
+            OrcProto.StringStatistics.Builder statisticsBuilder = OrcProto.StringStatistics.newBuilder();
+            if (columnStatistics.getStringStatistics().getMin() != null) {
+                statisticsBuilder.setMinimumBytes(ByteString.copyFrom(columnStatistics.getStringStatistics().getMin().getBytes()));
+            }
+            if (columnStatistics.getStringStatistics().getMax() != null) {
+                statisticsBuilder.setMaximumBytes(ByteString.copyFrom(columnStatistics.getStringStatistics().getMax().getBytes()));
+            }
+            statisticsBuilder.setSum(columnStatistics.getStringStatistics().getSum());
+            builder.setStringStatistics(statisticsBuilder.build());
         }
 
         if (columnStatistics.getDateStatistics() != null) {
@@ -239,6 +243,12 @@ public class OrcMetadataWriter
             builder.setDecimalStatistics(OrcProto.DecimalStatistics.newBuilder()
                     .setMinimum(columnStatistics.getDecimalStatistics().getMin().toString())
                     .setMaximum(columnStatistics.getDecimalStatistics().getMax().toString())
+                    .build());
+        }
+
+        if (columnStatistics.getBinaryStatistics() != null) {
+            builder.setBinaryStatistics(OrcProto.BinaryStatistics.newBuilder()
+                    .setSum(columnStatistics.getBinaryStatistics().getSum())
                     .build());
         }
 
@@ -332,12 +342,6 @@ public class OrcMetadataWriter
                         .collect(toList()))
                 .build();
         return writeProtobufObject(output, rowIndexProtobuf);
-    }
-
-    @Override
-    public MetadataReader getMetadataReader()
-    {
-        return new OrcMetadataReader();
     }
 
     private static RowIndexEntry toRowGroupIndex(RowGroupIndex rowGroupIndex)

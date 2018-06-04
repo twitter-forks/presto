@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.gen;
 
+import com.facebook.presto.operator.scalar.BitwiseFunctions;
 import com.facebook.presto.operator.scalar.DateTimeFunctions;
 import com.facebook.presto.operator.scalar.FunctionAssertions;
 import com.facebook.presto.operator.scalar.JoniRegexpFunctions;
@@ -31,7 +32,6 @@ import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.tree.Extract.Field;
 import com.facebook.presto.type.LikeFunctions;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ObjectArrays;
@@ -64,7 +64,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.stream.LongStream;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
@@ -153,7 +152,7 @@ public class TestExpressionCompiler
     private long start;
     private ListeningExecutorService executor;
     private FunctionAssertions functionAssertions;
-    private List<ListenableFuture<Void>> futures;
+    private List<ListenableFuture<?>> futures;
 
     @BeforeSuite
     public void setupClass()
@@ -204,7 +203,7 @@ public class TestExpressionCompiler
         assertExecute("'foo'", createVarcharType(3), "foo");
         assertExecute("4.2E0", DOUBLE, 4.2);
         assertExecute("10000000000 + 1", BIGINT, 10000000001L);
-        assertExecute("4.2", DOUBLE, 4.2);
+        assertExecute("4.2", createDecimalType(2, 1), new SqlDecimal(BigInteger.valueOf(42), 2, 1));
         assertExecute("DECIMAL '4.2'", createDecimalType(2, 1), new SqlDecimal(BigInteger.valueOf(42), 2, 1));
         assertExecute("X' 1 f'", VARBINARY, new SqlVarbinary(Slices.wrappedBuffer((byte) 0x1f).getBytes()));
         assertExecute("X' '", VARBINARY, new SqlVarbinary(new byte[0]));
@@ -1271,37 +1270,37 @@ public class TestExpressionCompiler
     {
         for (Integer left : intLefts) {
             for (Integer right : intRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left, right));
+                assertExecute(generateExpression("bitwise_and(%s, %s)", left, right), BIGINT, left == null || right == null ? null : BitwiseFunctions.bitwiseAnd(left, right));
             }
         }
 
         for (Integer left : intLefts) {
             for (Double right : doubleRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left, right));
+                assertExecute(generateExpression("mod(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.mod(left, right));
             }
         }
 
         for (Double left : doubleLefts) {
             for (Integer right : intRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left, right));
+                assertExecute(generateExpression("mod(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.mod(left, right));
             }
         }
 
         for (Double left : doubleLefts) {
             for (Double right : doubleRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left, right));
+                assertExecute(generateExpression("mod(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.mod(left, right));
             }
         }
 
         for (Double left : doubleLefts) {
             for (BigDecimal right : decimalRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left, right.doubleValue()));
+                assertExecute(generateExpression("mod(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.mod(left, right.doubleValue()));
             }
         }
 
         for (BigDecimal left : decimalLefts) {
             for (Long right : longRights) {
-                assertExecute(generateExpression("log(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.log(left.doubleValue(), right));
+                assertExecute(generateExpression("power(%s, %s)", left, right), DOUBLE, left == null || right == null ? null : MathFunctions.power(left.doubleValue(), right));
             }
         }
 
@@ -1753,8 +1752,8 @@ public class TestExpressionCompiler
                 else if (type.equals("bigint")) {
                     value = "CAST( " + value + " AS BIGINT)";
                 }
-                else if (type.trim().toLowerCase().startsWith("decimal")) {
-                    value = "CAST( " + value + " AS " + type + " )";
+                else if (type.equals("double")) {
+                    value = "CAST( " + value + " AS DOUBLE)";
                 }
                 unrolledValues.add(ImmutableSet.of(String.valueOf(value)));
             }
@@ -1785,18 +1784,13 @@ public class TestExpressionCompiler
         addCallable(new AssertExecuteTask(functionAssertions, expression, expectedType, expected));
     }
 
-    private void addCallable(Callable<Void> callable)
+    private void addCallable(Runnable runnable)
     {
         if (PARALLEL) {
-            futures.add(executor.submit(callable));
+            futures.add(executor.submit(runnable));
         }
         else {
-            try {
-                callable.call();
-            }
-            catch (Exception e) {
-                throw Throwables.propagate(e);
-            }
+            runnable.run();
         }
     }
 
@@ -1828,7 +1822,7 @@ public class TestExpressionCompiler
     }
 
     private static class AssertExecuteTask
-            implements Callable<Void>
+            implements Runnable
     {
         private final FunctionAssertions functionAssertions;
         private final String expression;
@@ -1844,7 +1838,7 @@ public class TestExpressionCompiler
         }
 
         @Override
-        public Void call()
+        public void run()
         {
             try {
                 functionAssertions.assertFunction(expression, expectedType, expected);
@@ -1852,7 +1846,6 @@ public class TestExpressionCompiler
             catch (Throwable e) {
                 throw new RuntimeException("Error processing " + expression, e);
             }
-            return null;
         }
     }
 
@@ -1867,7 +1860,7 @@ public class TestExpressionCompiler
     }
 
     private static class AssertFilterTask
-            implements Callable<Void>
+            implements Runnable
     {
         private final FunctionAssertions functionAssertions;
         private final String filter;
@@ -1883,7 +1876,7 @@ public class TestExpressionCompiler
         }
 
         @Override
-        public Void call()
+        public void run()
         {
             try {
                 functionAssertions.assertFilter(filter, expected, withNoInputColumns);
@@ -1891,7 +1884,6 @@ public class TestExpressionCompiler
             catch (Throwable e) {
                 throw new RuntimeException("Error processing " + filter, e);
             }
-            return null;
         }
     }
 }

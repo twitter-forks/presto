@@ -185,7 +185,7 @@ public class BenchmarkHashBuildAndJoinOperators
         protected List<Page> probePages;
         protected List<Integer> outputChannels;
 
-        protected LookupSourceFactoryManager lookupSourceFactory;
+        protected JoinBridgeDataManager<LookupSourceFactory> lookupSourceFactory;
 
         @Override
         @Setup
@@ -211,7 +211,7 @@ public class BenchmarkHashBuildAndJoinOperators
             initializeProbePages();
         }
 
-        public LookupSourceFactoryManager getLookupSourceFactory()
+        public JoinBridgeDataManager<LookupSourceFactory> getLookupSourceFactory()
         {
             return lookupSourceFactory;
         }
@@ -275,16 +275,16 @@ public class BenchmarkHashBuildAndJoinOperators
     }
 
     @Benchmark
-    public LookupSourceFactoryManager benchmarkBuildHash(BuildContext buildContext)
+    public JoinBridgeDataManager<LookupSourceFactory> benchmarkBuildHash(BuildContext buildContext)
     {
         return benchmarkBuildHash(buildContext, ImmutableList.of(0, 1, 2));
     }
 
-    private LookupSourceFactoryManager benchmarkBuildHash(BuildContext buildContext, List<Integer> outputChannels)
+    private JoinBridgeDataManager<LookupSourceFactory> benchmarkBuildHash(BuildContext buildContext, List<Integer> outputChannels)
     {
         DriverContext driverContext = buildContext.createTaskContext().addPipelineContext(0, true, true).addDriverContext();
 
-        LookupSourceFactoryManager lookupSourceFactoryManager = LookupSourceFactoryManager.allAtOnce(new PartitionedLookupSourceFactory(
+        JoinBridgeDataManager<LookupSourceFactory> lookupSourceFactoryManager = JoinBridgeDataManager.lookupAllAtOnce(new PartitionedLookupSourceFactory(
                 buildContext.getTypes(),
                 outputChannels.stream()
                         .map(buildContext.getTypes()::get)
@@ -298,7 +298,6 @@ public class BenchmarkHashBuildAndJoinOperators
         HashBuilderOperatorFactory hashBuilderOperatorFactory = new HashBuilderOperatorFactory(
                 HASH_BUILD_OPERATOR_ID,
                 TEST_PLAN_NODE_ID,
-                buildContext.getTypes(),
                 lookupSourceFactoryManager,
                 outputChannels,
                 buildContext.getHashChannels(),

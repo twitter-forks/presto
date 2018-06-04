@@ -21,7 +21,7 @@ import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.security.AccessControlManager;
 import com.facebook.presto.server.security.PasswordAuthenticatorManager;
 import com.facebook.presto.spi.Plugin;
-import com.facebook.presto.spi.block.BlockEncodingFactory;
+import com.facebook.presto.spi.block.BlockEncoding;
 import com.facebook.presto.spi.classloader.ThreadContextClassLoader;
 import com.facebook.presto.spi.connector.ConnectorFactory;
 import com.facebook.presto.spi.eventlistener.EventListenerFactory;
@@ -34,7 +34,6 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Ordering;
-import io.airlift.http.server.HttpServerInfo;
 import io.airlift.log.Logger;
 import io.airlift.node.NodeInfo;
 import io.airlift.resolver.ArtifactResolver;
@@ -92,7 +91,6 @@ public class PluginManager
     @Inject
     public PluginManager(
             NodeInfo nodeInfo,
-            HttpServerInfo httpServerInfo,
             PluginManagerConfig config,
             ConnectorManager connectorManager,
             Metadata metadata,
@@ -105,7 +103,6 @@ public class PluginManager
             TypeRegistry typeRegistry)
     {
         requireNonNull(nodeInfo, "nodeInfo is null");
-        requireNonNull(httpServerInfo, "httpServerInfo is null");
         requireNonNull(config, "config is null");
 
         installedPluginsDir = config.getInstalledPluginsDir();
@@ -178,9 +175,9 @@ public class PluginManager
 
     public void installPlugin(Plugin plugin)
     {
-        for (BlockEncodingFactory<?> blockEncodingFactory : plugin.getBlockEncodingFactories(blockEncodingManager)) {
-            log.info("Registering block encoding %s", blockEncodingFactory.getName());
-            blockEncodingManager.addBlockEncodingFactory(blockEncodingFactory);
+        for (BlockEncoding blockEncoding : plugin.getBlockEncodings()) {
+            log.info("Registering block encoding %s", blockEncoding.getName());
+            blockEncodingManager.addBlockEncoding(blockEncoding);
         }
 
         for (Type type : plugin.getTypes()) {

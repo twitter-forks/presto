@@ -42,6 +42,12 @@ Map Functions
 
         SELECT map_from_entries(ARRAY[(1, 'x'), (2, 'y')]); -- {1 -> 'x', 2 -> 'y'}
 
+.. function:: multimap_from_entries(array<row<K,V>>) -> map<K,array<V>>
+
+    Returns a multimap created from the given array of entries. Each key can be associated with multiple values. ::
+
+        SELECT multimap_from_entries(ARRAY[(1, 'x'), (2, 'y'), (1, 'z')]); -- {1 -> ['x', 'z'], 2 -> ['y']}
+
 .. function:: map_entries(map<K,V>) -> array<row<K,V>>
 
     Returns an array of all entries in the given map. ::
@@ -100,7 +106,7 @@ Map Functions
     Returns a map that applies ``function`` to each entry of ``map`` and transforms the values::
 
         SELECT transform_values(MAP(ARRAY[], ARRAY[]), (k, v) -> v + 1); -- {}
-        SELECT transform_values(MAP(ARRAY [1, 2, 3], ARRAY [10, 20, 30]), (k, v) -> v + 1); -- {1 -> 11, 2 -> 22, 3 -> 33}
+        SELECT transform_values(MAP(ARRAY [1, 2, 3], ARRAY [10, 20, 30]), (k, v) -> v + k); -- {1 -> 11, 2 -> 22, 3 -> 33}
         SELECT transform_values(MAP(ARRAY [1, 2, 3], ARRAY ['a', 'b', 'c']), (k, v) -> k * k); -- {1 -> 1, 2 -> 4, 3 -> 9}
         SELECT transform_values(MAP(ARRAY ['a', 'b'], ARRAY [1, 2]), (k, v) -> k || CAST(v as VARCHAR)); -- {a -> a1, b -> b2}
         SELECT transform_values(MAP(ARRAY [1, 2], ARRAY [1.0, 1.4]), -- {1 -> one_1.0, 2 -> two_1.4}

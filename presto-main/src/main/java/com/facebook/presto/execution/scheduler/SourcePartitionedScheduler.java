@@ -28,7 +28,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
-import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
@@ -54,6 +53,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.util.concurrent.Futures.nonCancellationPropagating;
+import static io.airlift.concurrent.MoreFutures.addSuccessCallback;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.whenAnyComplete;
 import static java.util.Objects.requireNonNull;
@@ -190,19 +190,7 @@ public class SourcePartitionedScheduler
                     scheduleGroup.nextSplitBatchFuture = splitSource.getNextBatch(scheduleGroup.partitionHandle, lifespan, splitBatchSize - pendingSplits.size());
 
                     long start = System.nanoTime();
-                    Futures.addCallback(scheduleGroup.nextSplitBatchFuture, new FutureCallback<SplitBatch>()
-                    {
-                        @Override
-                        public void onSuccess(SplitBatch result)
-                        {
-                            stage.recordGetSplitTime(start);
-                        }
-
-                        @Override
-                        public void onFailure(Throwable t)
-                        {
-                        }
-                    });
+                    addSuccessCallback(scheduleGroup.nextSplitBatchFuture, () -> stage.recordGetSplitTime(start));
                 }
 
                 if (scheduleGroup.nextSplitBatchFuture.isDone()) {
@@ -296,10 +284,6 @@ public class SourcePartitionedScheduler
                     splitSource.close();
                     // fall through
                 case NO_MORE_SPLITS:
-                    if (!scheduleGroups.isEmpty()) {
-                        // we are blocked on split assignment
-                        break;
-                    }
                     state = State.FINISHED;
                     whenFinishedOrNewLifespanAdded.set(null);
                     // fall through
@@ -345,6 +329,11 @@ public class SourcePartitionedScheduler
 
     public synchronized List<Lifespan> drainCompletedLifespans()
     {
+        if (scheduleGroups.isEmpty()) {
+            // Invoking splitSource.isFinished would fail if it was already closed, which is possible if scheduleGroups is empty.
+            return ImmutableList.of();
+        }
+
         ImmutableList.Builder<Lifespan> result = ImmutableList.builder();
         Iterator<Entry<Lifespan, ScheduleGroup>> entryIterator = scheduleGroups.entrySet().iterator();
         while (entryIterator.hasNext()) {
@@ -355,11 +344,11 @@ public class SourcePartitionedScheduler
             }
         }
 
-        if (scheduleGroups.isEmpty()) {
-            if (state == State.NO_MORE_SPLITS) {
-                state = State.FINISHED;
-                whenFinishedOrNewLifespanAdded.set(null);
-            }
+        if (scheduleGroups.isEmpty() && splitSource.isFinished()) {
+            // Wake up blocked caller so that it will invoke schedule() right away.
+            // Once schedule is invoked, state will be transitioned to FINISHED.
+            whenFinishedOrNewLifespanAdded.set(null);
+            whenFinishedOrNewLifespanAdded = SettableFuture.create();
         }
 
         return result.build();

@@ -46,7 +46,6 @@ public class AggregationOperator
         private final PlanNodeId planNodeId;
         private final Step step;
         private final List<AccumulatorFactory> accumulatorFactories;
-        private final List<Type> types;
         private boolean closed;
 
         public AggregationOperatorFactory(int operatorId, PlanNodeId planNodeId, Step step, List<AccumulatorFactory> accumulatorFactories)
@@ -55,13 +54,6 @@ public class AggregationOperator
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.step = step;
             this.accumulatorFactories = ImmutableList.copyOf(accumulatorFactories);
-            this.types = toTypes(step, accumulatorFactories);
-        }
-
-        @Override
-        public List<Type> getTypes()
-        {
-            return types;
         }
 
         @Override
@@ -95,7 +87,6 @@ public class AggregationOperator
     private final OperatorContext operatorContext;
     private final LocalMemoryContext systemMemoryContext;
     private final LocalMemoryContext userMemoryContext;
-    private final List<Type> types;
     private final List<Aggregator> aggregates;
 
     private State state = State.NEEDS_INPUT;
@@ -109,10 +100,8 @@ public class AggregationOperator
         requireNonNull(step, "step is null");
         this.partial = step.isOutputPartial();
 
-        requireNonNull(accumulatorFactories, "accumulatorFactories is null");
-        this.types = toTypes(step, accumulatorFactories);
-
         // wrapper each function with an aggregator
+        requireNonNull(accumulatorFactories, "accumulatorFactories is null");
         ImmutableList.Builder<Aggregator> builder = ImmutableList.builder();
         for (AccumulatorFactory accumulatorFactory : accumulatorFactories) {
             builder.add(new Aggregator(accumulatorFactory, step));
@@ -124,12 +113,6 @@ public class AggregationOperator
     public OperatorContext getOperatorContext()
     {
         return operatorContext;
-    }
-
-    @Override
-    public List<Type> getTypes()
-    {
-        return types;
     }
 
     @Override
@@ -192,15 +175,6 @@ public class AggregationOperator
 
         state = State.FINISHED;
         return pageBuilder.build();
-    }
-
-    private static List<Type> toTypes(Step step, List<AccumulatorFactory> accumulatorFactories)
-    {
-        ImmutableList.Builder<Type> types = ImmutableList.builder();
-        for (AccumulatorFactory accumulatorFactory : accumulatorFactories) {
-            types.add(new Aggregator(accumulatorFactory, step).getType());
-        }
-        return types.build();
     }
 
     private static class Aggregator
