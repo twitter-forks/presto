@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.type;
 
+import com.facebook.presto.spi.type.NamedType;
 import com.facebook.presto.spi.type.ParameterKind;
 import com.facebook.presto.spi.type.ParametricType;
 import com.facebook.presto.spi.type.RowType;
@@ -22,6 +23,7 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeParameter;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.stream.Collectors.toList;
@@ -45,7 +47,7 @@ public final class RowParametricType
     public Type createType(TypeManager typeManager, List<TypeParameter> parameters)
     {
         if (parameters.isEmpty()) {
-            parameters.add(TypeParameter.of(new NamedType(UnknownType.NAME, UnknownType.UNKNOWN)));
+            parameters.add(TypeParameter.of(new NamedType(Optional.of(UnknownType.NAME), UnknownType.UNKNOWN)));
         }
         checkArgument(
                 parameters.stream().allMatch(parameter -> parameter.getKind() == ParameterKind.NAMED_TYPE),

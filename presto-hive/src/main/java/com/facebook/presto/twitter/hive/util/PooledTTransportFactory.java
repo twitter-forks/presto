@@ -86,7 +86,7 @@ public class PooledTTransportFactory
             transport = new TSocket(host, port, timeoutMillis);
         }
         else {
-            SocketAddress address = InetSocketAddress.createUnresolved(socksProxy.getHostText(),
+            SocketAddress address = InetSocketAddress.createUnresolved(socksProxy.getHost(),
                                                             socksProxy.getPort());
             Socket socket = new Socket(new Proxy(Proxy.Type.SOCKS, address));
             try {

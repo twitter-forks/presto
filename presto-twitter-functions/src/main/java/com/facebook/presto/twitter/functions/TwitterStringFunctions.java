@@ -17,7 +17,6 @@ import com.facebook.presto.spi.ErrorCodeSupplier;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.function.Description;
 import com.facebook.presto.spi.function.LiteralParameters;
 import com.facebook.presto.spi.function.ScalarFunction;
@@ -65,7 +64,7 @@ public class TwitterStringFunctions
         checkCondition(limit <= Integer.MAX_VALUE, INVALID_FUNCTION_ARGUMENT, "Limit is too large");
         checkCondition(length > 0, INVALID_FUNCTION_ARGUMENT, "Length must be positive");
         checkCondition(length <= Integer.MAX_VALUE, INVALID_FUNCTION_ARGUMENT, "Length is too large");
-        BlockBuilder parts = VARCHAR.createBlockBuilder(new BlockBuilderStatus(), 1, Ints.saturatedCast(length));
+        BlockBuilder parts = VARCHAR.createBlockBuilder(null, 1, Ints.saturatedCast(length));
         // If limit is one, the last and only element is the complete string
         if (limit == 1) {
             VARCHAR.writeSlice(parts, utf8);

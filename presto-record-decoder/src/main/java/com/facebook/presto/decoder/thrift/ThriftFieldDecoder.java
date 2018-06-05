@@ -19,7 +19,6 @@ import com.facebook.presto.decoder.FieldDecoder;
 import com.facebook.presto.decoder.FieldValueProvider;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableSet;
@@ -228,7 +227,7 @@ public class ThriftFieldDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = elementType.createBlockBuilder(new BlockBuilderStatus(), list.size());
+                currentBuilder = elementType.createBlockBuilder(null, list.size());
             }
 
             for (Object element : list) {
@@ -263,7 +262,7 @@ public class ThriftFieldDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), map.size());
+                currentBuilder = type.createBlockBuilder(null, map.size());
             }
 
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -298,7 +297,7 @@ public class ThriftFieldDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = type.createBlockBuilder(new BlockBuilderStatus(), typeParameters.size());
+                currentBuilder = type.createBlockBuilder(null, typeParameters.size());
             }
 
             for (int i = 0; i < typeParameters.size(); i++) {
