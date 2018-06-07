@@ -77,6 +77,7 @@ public class ClientOptions
 
     // Pick the user name for the logged in user.
     // Do not let it be overridden by users.
+    @Option(name = "--user", title = "user", description = "Username")
     public String user = new UnixSystem().getUsername();
 
     @Option(name = "--truststore-path", title = "truststore path", description = "Truststore path")
