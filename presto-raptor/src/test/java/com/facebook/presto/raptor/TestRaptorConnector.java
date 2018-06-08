@@ -15,6 +15,7 @@ package com.facebook.presto.raptor;
 
 import com.facebook.presto.PagesIndexPageSorter;
 import com.facebook.presto.operator.PagesIndex;
+import com.facebook.presto.plugin.base.security.AllowAllAccessControl;
 import com.facebook.presto.raptor.metadata.MetadataDao;
 import com.facebook.presto.raptor.metadata.ShardManager;
 import com.facebook.presto.raptor.metadata.TableColumn;
@@ -115,6 +116,7 @@ public class TestRaptorConnector
                 new RaptorSessionProperties(config),
                 new RaptorTableProperties(typeRegistry),
                 ImmutableSet.of(),
+                new AllowAllAccessControl(),
                 dbi);
     }
 
@@ -215,6 +217,7 @@ public class TestRaptorConnector
         ConnectorSession session = new TestingConnectorSession(
                 "user",
                 Optional.of("test"),
+                Optional.empty(),
                 getTimeZoneKey(userTimeZone),
                 ENGLISH,
                 System.currentTimeMillis(),

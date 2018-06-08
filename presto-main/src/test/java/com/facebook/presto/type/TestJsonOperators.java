@@ -27,8 +27,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import java.util.Optional;
-
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -339,6 +337,45 @@ public class TestJsonOperators
     }
 
     @Test
+    public void testEquals()
+    {
+        assertFunction("json_parse('{ \"a\": \"1.1\" , \"b\": \"2.3\" , \"c\": { \"d\": \"314E-2\" }}') = json_parse('{ \"a\": \"1.1\" , \"b\": \"2.3\" , \"c\" : { \"d\" : \"314E-2\" }}')", BOOLEAN, true);
+        assertFunction("JSON '[1,2,3]' = JSON '[1,2,3]'", BOOLEAN, true);
+        assertFunction("JSON '{\"a\":1, \"b\":2}' = JSON '{\"b\":2, \"a\":1}'", BOOLEAN, true);
+        assertFunction("JSON '{\"a\":1, \"b\":2}' = CAST(MAP(ARRAY['b','a'], ARRAY[2,1]) AS JSON)", BOOLEAN, true);
+        assertFunction("JSON 'null' = JSON 'null'", BOOLEAN, true);
+        assertFunction("JSON 'true' = JSON 'true'", BOOLEAN, true);
+        assertFunction("JSON '{\"x\":\"y\"}' = JSON '{\"x\":\"y\"}'", BOOLEAN, true);
+        assertFunction("JSON '[1,2,3]' = JSON '[2,3,1]'", BOOLEAN, false);
+        assertFunction("JSON '{\"p_1\": 1, \"p_2\":\"v_2\", \"p_3\":null, \"p_4\":true, \"p_5\": {\"p_1\":1}}' = " +
+                "JSON '{\"p_2\":\"v_2\", \"p_4\":true, \"p_1\": 1, \"p_3\":null, \"p_5\": {\"p_1\":1}}'", BOOLEAN, true);
+    }
+
+    @Test
+    public void testNotEquals()
+    {
+        assertFunction("JSON '{ \"a\": 1 , \"b\": 2 , \"c\": { \"d\": 3 }}' != JSON '{ \"a\": 1 , \"b\": 2 , \"c\" : { \"d\" : 4 }}'", BOOLEAN, true);
+        assertFunction("JSON '[1,2,3]' != JSON '[1,2,3]'", BOOLEAN, false);
+        assertFunction("JSON '{\"a\":1, \"b\":2}' != JSON '{\"b\":2, \"a\":1}'", BOOLEAN, false);
+        assertFunction("JSON 'null' != JSON 'null'", BOOLEAN, false);
+        assertFunction("JSON 'true' != JSON 'true'", BOOLEAN, false);
+        assertFunction("JSON '{\"x\":\"y\"}' != JSON '{\"x\":\"y\"}'", BOOLEAN, false);
+        assertFunction("JSON '[1,2,3]' != JSON '[2,3,1]'", BOOLEAN, true);
+        assertFunction("JSON '{\"p_1\": 1, \"p_2\":\"v_2\", \"p_3\":null, \"p_4\":true, \"p_5\": {\"p_1\":1}}' != " +
+                "JSON '{\"p_2\":\"v_2\", \"p_4\":true, \"p_1\": 1, \"p_3\":null, \"p_5\": {\"p_1\":1}}'", BOOLEAN, false);
+    }
+
+    @Test
+    public void testIsDistinctFrom()
+    {
+        assertFunction("JSON 'null' IS DISTINCT FROM JSON 'null'", BOOLEAN, false);
+        assertFunction("JSON '{ \"a\": 1 , \"b\": 2 , \"c\": { \"d\": 3 }}' IS DISTINCT FROM JSON '{ \"a\": 1 , \"b\": 2 , \"c\" : { \"d\" : 4 }}'", BOOLEAN, true);
+        assertFunction("JSON '{ \"a\": 1 , \"b\": 2 , \"c\": { \"d\": 3 }}' IS DISTINCT FROM JSON '{ \"b\": 2 , \"a\": 1 , \"c\": { \"d\": 3 }}'", BOOLEAN, false);
+        assertFunction("JSON '{ \"a\": 1 , \"b\": 2 , \"c\": { \"d\": 3 }}' IS DISTINCT FROM JSON 'null'", BOOLEAN, true);
+        assertFunction("JSON 'null' IS DISTINCT FROM JSON '{ \"a\": 1 , \"b\": 2 , \"c\" : { \"d\" : 4 }}'", BOOLEAN, true);
+    }
+
+    @Test
     public void testCastFromVarchar()
     {
         assertFunction("cast(cast (null as varchar) as JSON)", JSON, null);
@@ -369,12 +406,14 @@ public class TestJsonOperators
         assertCastWithJsonParse(
                 "{\"a\"  \n  :1,  \"b\":  \t  [2, 3]}",
                 "ROW(a INTEGER, b ARRAY<INTEGER>)",
-                new RowType(ImmutableList.of(INTEGER, new ArrayType(INTEGER)), Optional.of(ImmutableList.of("a", "b"))),
+                RowType.from(ImmutableList.of(
+                        RowType.field("a", INTEGER),
+                        RowType.field("b", new ArrayType(INTEGER)))),
                 ImmutableList.of(1, ImmutableList.of(2, 3)));
         assertCastWithJsonParse(
                 "[  1,  [2, 3]  ]",
                 "ROW(INTEGER, ARRAY<INTEGER>)",
-                new RowType(ImmutableList.of(INTEGER, new ArrayType(INTEGER)), Optional.empty()),
+                RowType.anonymous(ImmutableList.of(INTEGER, new ArrayType(INTEGER))),
                 ImmutableList.of(1, ImmutableList.of(2, 3)));
         assertInvalidCastWithJsonParse(
                 "{\"a\" :1,  \"b\": {} }",
@@ -383,7 +422,7 @@ public class TestJsonOperators
         assertInvalidCastWithJsonParse(
                 "[  1,  {}  ]",
                 "ROW(INTEGER, ARRAY<INTEGER>)",
-                "Cannot cast to row(field0 integer,field1 array(integer)). Expected a json array, but got {\n[  1,  {}  ]");
+                "Cannot cast to row(integer,array(integer)). Expected a json array, but got {\n[  1,  {}  ]");
     }
 
     private static SqlTimestamp sqlTimestamp(long millisUtc)

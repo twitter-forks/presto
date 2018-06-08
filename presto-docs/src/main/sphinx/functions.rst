@@ -25,5 +25,6 @@ Functions and Operators
     functions/url
     functions/geospatial
     functions/color
+    functions/session
     functions/teradata
     functions/twitter

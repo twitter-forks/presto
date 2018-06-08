@@ -44,14 +44,11 @@ import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DI
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.util.Objects.requireNonNull;
 
 @ThreadSafe
 public class LocalExchange
 {
-    private static final DataSize DEFAULT_MAX_BUFFERED_BYTES = new DataSize(32, MEGABYTE);
-    private final List<Type> types;
     private final Supplier<LocalExchanger> exchangerSupplier;
 
     private final List<LocalExchangeSource> sources;
@@ -90,11 +87,10 @@ public class LocalExchange
                 .collect(toImmutableList());
         openSinkFactories.addAll(allSinkFactories);
         noMoreSinkFactories();
-        this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
 
         ImmutableList.Builder<LocalExchangeSource> sources = ImmutableList.builder();
         for (int i = 0; i < bufferCount; i++) {
-            sources.add(new LocalExchangeSource(types, source -> checkAllSourcesFinished()));
+            sources.add(new LocalExchangeSource(source -> checkAllSourcesFinished()));
         }
         this.sources = sources.build();
 
@@ -118,11 +114,6 @@ public class LocalExchange
         else {
             throw new IllegalArgumentException("Unsupported local exchange partitioning " + partitioning);
         }
-    }
-
-    public List<Type> getTypes()
-    {
-        return types;
     }
 
     public int getBufferCount()
@@ -193,12 +184,12 @@ public class LocalExchange
 
             if (allSourcesFinished) {
                 // all sources have completed so return a sink that is already finished
-                return finishedLocalExchangeSink(types);
+                return finishedLocalExchangeSink();
             }
 
             // Note: exchanger can be stateful so create a new one for each sink
             LocalExchanger exchanger = exchangerSupplier.get();
-            LocalExchangeSink sink = new LocalExchangeSink(types, exchanger, this::sinkFinished);
+            LocalExchangeSink sink = new LocalExchangeSink(exchanger, this::sinkFinished);
             sinks.add(sink);
             return sink;
         }
@@ -281,17 +272,6 @@ public class LocalExchange
                 List<Type> types,
                 List<Integer> partitionChannels,
                 Optional<Integer> partitionHashChannel,
-                PipelineExecutionStrategy exchangeSourcePipelineExecutionStrategy)
-        {
-            this(partitioning, defaultConcurrency, types, partitionChannels, partitionHashChannel, exchangeSourcePipelineExecutionStrategy, DEFAULT_MAX_BUFFERED_BYTES);
-        }
-
-        public LocalExchangeFactory(
-                PartitioningHandle partitioning,
-                int defaultConcurrency,
-                List<Type> types,
-                List<Integer> partitionChannels,
-                Optional<Integer> partitionHashChannel,
                 PipelineExecutionStrategy exchangeSourcePipelineExecutionStrategy,
                 DataSize maxBufferedBytes)
         {
@@ -316,11 +296,6 @@ public class LocalExchange
         public synchronized void noMoreSinkFactories()
         {
             noMoreSinkFactories = true;
-        }
-
-        public List<Type> getTypes()
-        {
-            return types;
         }
 
         public int getBufferCount()
@@ -403,11 +378,6 @@ public class LocalExchange
         private LocalExchangeSinkFactory(LocalExchange exchange)
         {
             this.exchange = requireNonNull(exchange, "exchange is null");
-        }
-
-        public List<Type> getTypes()
-        {
-            return exchange.getTypes();
         }
 
         public LocalExchangeSink createSink()

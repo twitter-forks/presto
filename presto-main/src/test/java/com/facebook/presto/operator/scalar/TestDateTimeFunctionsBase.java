@@ -120,8 +120,10 @@ public abstract class TestDateTimeFunctionsBase
     public void testCurrentDateTimezone()
     {
         TimeZoneKey kievTimeZoneKey = getTimeZoneKey("Europe/Kiev");
+        TimeZoneKey bahiaBanderasTimeZoneKey = getTimeZoneKey("America/Bahia_Banderas"); // The zone has 'gap' on 1970-01-01
         for (long instant = new DateTime(2000, 6, 15, 0, 0).getMillis(); instant < new DateTime(2016, 6, 15, 0, 0).getMillis(); instant += TimeUnit.HOURS.toMillis(1)) {
             assertCurrentDateAtInstant(kievTimeZoneKey, instant);
+            assertCurrentDateAtInstant(bahiaBanderasTimeZoneKey, instant);
             assertCurrentDateAtInstant(TIME_ZONE_KEY, instant);
         }
     }
@@ -129,7 +131,7 @@ public abstract class TestDateTimeFunctionsBase
     private void assertCurrentDateAtInstant(TimeZoneKey timeZoneKey, long instant)
     {
         long expectedDays = epochDaysInZone(timeZoneKey, instant);
-        long dateTimeCalculation = currentDate(new TestingConnectorSession("test", Optional.empty(), timeZoneKey, US, instant, ImmutableList.of(), ImmutableMap.of(), isLegacyTimestamp(session)));
+        long dateTimeCalculation = currentDate(new TestingConnectorSession("test", Optional.empty(), Optional.empty(), timeZoneKey, US, instant, ImmutableList.of(), ImmutableMap.of(), isLegacyTimestamp(session)));
         assertEquals(dateTimeCalculation, expectedDays);
     }
 

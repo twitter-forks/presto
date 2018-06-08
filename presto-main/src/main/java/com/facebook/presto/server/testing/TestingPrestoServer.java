@@ -45,11 +45,11 @@ import com.facebook.presto.testing.TestingEventListenerManager;
 import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
 import com.google.inject.Injector;
+import com.google.inject.Key;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
 import io.airlift.bootstrap.Bootstrap;
@@ -87,6 +87,7 @@ import java.util.concurrent.CountDownLatch;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.nullToEmpty;
+import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static io.airlift.discovery.client.ServiceAnnouncement.serviceAnnouncement;
@@ -98,6 +99,7 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 public class TestingPrestoServer
         implements Closeable
 {
+    private final Injector injector;
     private final Path baseDataDir;
     private final LifeCycleManager lifeCycleManager;
     private final PluginManager pluginManager;
@@ -187,10 +189,6 @@ public class TestingPrestoServer
                 .put("task.max-worker-threads", "4")
                 .put("exchange.client-threads", "4");
 
-        if (!properties.containsKey("query.max-memory-per-node")) {
-            serverProperties.put("query.max-memory-per-node", "512MB");
-        }
-
         if (coordinator) {
             // TODO: enable failure detector
             serverProperties.put("failure-detector.enabled", "false");
@@ -236,7 +234,7 @@ public class TestingPrestoServer
             optionalProperties.put("node.environment", environment);
         }
 
-        Injector injector = app
+        injector = app
                 .strictConfig()
                 .doNotInitializeLogging()
                 .setRequiredConfigurationProperties(serverProperties.build())
@@ -295,7 +293,8 @@ public class TestingPrestoServer
             }
         }
         catch (Exception e) {
-            throw Throwables.propagate(e);
+            throwIfUnchecked(e);
+            throw new RuntimeException(e);
         }
         finally {
             if (isDirectory(baseDataDir)) {
@@ -344,6 +343,12 @@ public class TestingPrestoServer
     public HostAndPort getAddress()
     {
         return HostAndPort.fromParts(getBaseUrl().getHost(), getBaseUrl().getPort());
+    }
+
+    public HostAndPort getHttpsAddress()
+    {
+        URI httpsUri = server.getHttpServerInfo().getHttpsUri();
+        return HostAndPort.fromParts(httpsUri.getHost(), httpsUri.getPort());
     }
 
     public CatalogManager getCatalogManager()
@@ -432,6 +437,11 @@ public class TestingPrestoServer
     public Set<Node> getActiveNodesWithConnector(ConnectorId connectorId)
     {
         return nodeManager.getActiveConnectorNodes(connectorId);
+    }
+
+    public <T> T getInstance(Key<T> key)
+    {
+        return injector.getInstance(key);
     }
 
     private static void updateConnectorIdAnnouncement(Announcer announcer, ConnectorId connectorId)

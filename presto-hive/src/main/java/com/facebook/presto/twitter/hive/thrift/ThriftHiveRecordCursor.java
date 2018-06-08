@@ -19,7 +19,6 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.BlockBuilderStatus;
 import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
@@ -577,7 +576,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             currentBuilder = builder.beginBlockEntry();
         }
         else {
-            currentBuilder = elementType.createBlockBuilder(new BlockBuilderStatus(), list.size());
+            currentBuilder = elementType.createBlockBuilder(null, list.size());
         }
 
         for (Object element : list) {
@@ -606,7 +605,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         boolean builderSynthesized = false;
         if (builder == null) {
             builderSynthesized = true;
-            builder = type.createBlockBuilder(new BlockBuilderStatus(), 1);
+            builder = type.createBlockBuilder(null, 1);
         }
         BlockBuilder currentBuilder = builder.beginBlockEntry();
 
@@ -635,7 +634,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         boolean builderSynthesized = false;
         if (builder == null) {
             builderSynthesized = true;
-            builder = type.createBlockBuilder(new BlockBuilderStatus(), 1);
+            builder = type.createBlockBuilder(null, 1);
         }
         BlockBuilder currentBuilder = builder.beginBlockEntry();
 

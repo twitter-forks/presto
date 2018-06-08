@@ -30,6 +30,13 @@ public final class ColumnarRow
         if (block instanceof RunLengthEncodedBlock) {
             return toColumnarRow((RunLengthEncodedBlock) block);
         }
+        if (block instanceof LazyBlock) {
+            LazyBlock lazyBlock = (LazyBlock) block;
+            if (!lazyBlock.isLoaded()) {
+                throw new IllegalArgumentException("LazyBlock is expected to be loaded");
+            }
+            return toColumnarRow(lazyBlock.getBlock());
+        }
 
         if (!(block instanceof AbstractRowBlock)) {
             throw new IllegalArgumentException("Invalid row block: " + block.getClass().getName());
@@ -42,7 +49,7 @@ public final class ColumnarRow
         int totalRowCount = rowBlock.getFieldBlockOffset(block.getPositionCount()) - firstRowPosition;
         Block[] fieldBlocks = new Block[rowBlock.numFields];
         for (int i = 0; i < fieldBlocks.length; i++) {
-            fieldBlocks[i] = rowBlock.getFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
+            fieldBlocks[i] = rowBlock.getRawFieldBlocks()[i].getRegion(firstRowPosition, totalRowCount);
         }
 
         return new ColumnarRow(block, fieldBlocks);

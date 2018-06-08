@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.operator;
 
-import com.facebook.presto.ExceededMemoryLimitException;
 import com.facebook.presto.Session;
 import com.facebook.presto.memory.QueryContextVisitor;
 import com.facebook.presto.memory.context.AggregatedMemoryContext;
@@ -23,8 +22,6 @@ import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.stats.CounterStat;
@@ -47,6 +44,7 @@ import static com.facebook.presto.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -254,25 +252,25 @@ public class OperatorContext
     // caller should close this context as it's a new context
     public LocalMemoryContext newLocalSystemMemoryContext()
     {
-        return operatorMemoryContext.newSystemMemoryContext();
+        return new InternalLocalMemoryContext(operatorMemoryContext.newSystemMemoryContext(), memoryFuture);
     }
 
     // caller shouldn't close this context as it's managed by the OperatorContext
     public LocalMemoryContext localUserMemoryContext()
     {
-        return new DecoratedLocalMemoryContext(operatorMemoryContext.localUserMemoryContext(), memoryFuture);
+        return new InternalLocalMemoryContext(operatorMemoryContext.localUserMemoryContext(), memoryFuture);
     }
 
     // caller shouldn't close this context as it's managed by the OperatorContext
     public LocalMemoryContext localRevocableMemoryContext()
     {
-        return new DecoratedLocalMemoryContext(operatorMemoryContext.localRevocableMemoryContext(), revocableMemoryFuture);
+        return new InternalLocalMemoryContext(operatorMemoryContext.localRevocableMemoryContext(), revocableMemoryFuture);
     }
 
     // caller should close this context as it's a new context
     public AggregatedMemoryContext newAggregateSystemMemoryContext()
     {
-        return operatorMemoryContext.newAggregateSystemMemoryContext();
+        return new InternalAggregatedMemoryContext(operatorMemoryContext.newAggregateSystemMemoryContext(), memoryFuture);
     }
 
     public long getReservedRevocableBytes()
@@ -297,20 +295,7 @@ public class OperatorContext
 
             SettableFuture<?> finalMemoryFuture = currentMemoryFuture;
             // Create a new future, so that this operator can un-block before the pool does, if it's moved to a new pool
-            Futures.addCallback(memoryPoolFuture, new FutureCallback<Object>()
-            {
-                @Override
-                public void onSuccess(Object result)
-                {
-                    finalMemoryFuture.set(null);
-                }
-
-                @Override
-                public void onFailure(Throwable t)
-                {
-                    finalMemoryFuture.set(null);
-                }
-            });
+            memoryPoolFuture.addListener(() -> finalMemoryFuture.set(null), directExecutor());
         }
     }
 
@@ -344,36 +329,6 @@ public class OperatorContext
     public void moreMemoryAvailable()
     {
         memoryFuture.get().set(null);
-    }
-
-    /**
-     * This method is <b>not</b> thread safe. If multiple threads work on the same
-     * <code>transferredBytesMemoryContext</code> instance it's possible that one of the writes
-     * is lost by the last <code>transferredBytesMemoryContext.setBytes()</code> call.
-     *
-     * @param taskBytes The number of bytes to transfer from the OperatorContext to TaskContext.
-     * @param transferredBytesMemoryContext This context should be created with {@link com.facebook.presto.operator.TaskContext#createNewTransferredBytesMemoryContext()}.
-     */
-    public void transferMemoryToTaskContext(long taskBytes, LocalMemoryContext transferredBytesMemoryContext)
-    {
-        checkArgument(taskBytes >= 0, "taskBytes is negative");
-        long bytes = operatorMemoryContext.getUserMemory();
-        long bytesBeforeTransfer = transferredBytesMemoryContext.getBytes();
-        operatorMemoryContext.localUserMemoryContext().transferMemory(transferredBytesMemoryContext);
-        try {
-            transferredBytesMemoryContext.setBytes(transferredBytesMemoryContext.getBytes() + taskBytes - bytes);
-        }
-        catch (ExceededMemoryLimitException e) {
-            // Since we can reserve an extra amount of memory above (when taskBytes > bytes),
-            // ExceededMemoryLimitException can be thrown when reserving this extra amount.
-            // This will happen after "bytes" is moved from the operator context to the task context.
-            // At this point "bytes" isn't tracked by the operator context.
-            // When drivers get destroyed, only memory tracked in its operators are freed.
-            // Therefore, we have to cleanup the memory here by resetting the
-            // state of the transferredBytesMemoryContext.
-            transferredBytesMemoryContext.setBytes(bytesBeforeTransfer);
-            throw e;
-        }
     }
 
     public synchronized boolean isMemoryRevokingRequested()
@@ -566,7 +521,7 @@ public class OperatorContext
     }
 
     @ThreadSafe
-    private class OperatorSpillContext
+    private static class OperatorSpillContext
             implements SpillContext
     {
         private final DriverContext driverContext;
@@ -613,13 +568,13 @@ public class OperatorContext
         }
     }
 
-    class DecoratedLocalMemoryContext
+    private static class InternalLocalMemoryContext
             implements LocalMemoryContext
     {
         private final LocalMemoryContext delegate;
         private final AtomicReference<SettableFuture<?>> memoryFuture;
 
-        public DecoratedLocalMemoryContext(LocalMemoryContext delegate, AtomicReference<SettableFuture<?>> memoryFuture)
+        InternalLocalMemoryContext(LocalMemoryContext delegate, AtomicReference<SettableFuture<?>> memoryFuture)
         {
             this.delegate = requireNonNull(delegate, "delegate is null");
             this.memoryFuture = requireNonNull(memoryFuture, "memoryFuture is null");
@@ -646,15 +601,46 @@ public class OperatorContext
         }
 
         @Override
-        public void transferMemory(LocalMemoryContext to)
+        public void close()
         {
-            throw new UnsupportedOperationException();
+            delegate.close();
+        }
+    }
+
+    private static class InternalAggregatedMemoryContext
+            implements AggregatedMemoryContext
+    {
+        private final AggregatedMemoryContext delegate;
+        private final AtomicReference<SettableFuture<?>> memoryFuture;
+
+        InternalAggregatedMemoryContext(AggregatedMemoryContext delegate, AtomicReference<SettableFuture<?>> memoryFuture)
+        {
+            this.delegate = requireNonNull(delegate, "delegate is null");
+            this.memoryFuture = requireNonNull(memoryFuture, "memoryFuture is null");
+        }
+
+        @Override
+        public AggregatedMemoryContext newAggregatedMemoryContext()
+        {
+            return delegate.newAggregatedMemoryContext();
+        }
+
+        @Override
+        public LocalMemoryContext newLocalMemoryContext()
+        {
+            return new InternalLocalMemoryContext(delegate.newLocalMemoryContext(), memoryFuture);
+        }
+
+        @Override
+        public long getBytes()
+        {
+            return delegate.getBytes();
         }
 
         @Override
         public void close()
         {
-            throw new UnsupportedOperationException("Caller shouldn't call close on DecoratedLocalMemoryContext");
+            delegate.close();
         }
     }
 

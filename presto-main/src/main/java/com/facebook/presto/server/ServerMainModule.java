@@ -30,8 +30,10 @@ import com.facebook.presto.cost.CostCalculatorUsingExchanges;
 import com.facebook.presto.cost.CostCalculatorWithEstimatedExchanges;
 import com.facebook.presto.cost.CostComparator;
 import com.facebook.presto.cost.EnforceSingleRowStatsRule;
+import com.facebook.presto.cost.ExchangeStatsRule;
 import com.facebook.presto.cost.FilterStatsCalculator;
 import com.facebook.presto.cost.FilterStatsRule;
+import com.facebook.presto.cost.JoinStatsRule;
 import com.facebook.presto.cost.LimitStatsRule;
 import com.facebook.presto.cost.OutputStatsRule;
 import com.facebook.presto.cost.ProjectStatsRule;
@@ -39,6 +41,7 @@ import com.facebook.presto.cost.ScalarStatsCalculator;
 import com.facebook.presto.cost.SelectingStatsCalculator;
 import com.facebook.presto.cost.SelectingStatsCalculator.New;
 import com.facebook.presto.cost.StatsCalculator;
+import com.facebook.presto.cost.StatsNormalizer;
 import com.facebook.presto.cost.TableScanStatsRule;
 import com.facebook.presto.cost.ValuesStatsRule;
 import com.facebook.presto.event.query.QueryMonitor;
@@ -104,7 +107,7 @@ import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PageIndexerFactory;
 import com.facebook.presto.spi.PageSorter;
 import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.BlockEncodingFactory;
+import com.facebook.presto.spi.block.BlockEncoding;
 import com.facebook.presto.spi.block.BlockEncodingSerde;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -158,6 +161,8 @@ import io.airlift.discovery.client.ServiceDescriptor;
 import io.airlift.discovery.server.EmbeddedDiscoveryModule;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.slice.Slice;
+import io.airlift.stats.GcMonitor;
+import io.airlift.stats.JmxGcMonitor;
 import io.airlift.stats.PauseMeter;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -250,6 +255,9 @@ public class ServerMainModule
         configBinder(binder).bindConfig(QueryManagerConfig.class);
 
         jsonCodecBinder(binder).bindJsonCodec(ViewDefinition.class);
+
+        // GC Monitor
+        binder.bind(GcMonitor.class).to(JmxGcMonitor.class).in(Scopes.SINGLETON);
 
         // session properties
         binder.bind(SessionPropertyManager.class).in(Scopes.SINGLETON);
@@ -347,6 +355,7 @@ public class ServerMainModule
         binder.bind(new TypeLiteral<ExchangeClientSupplier>() {}).to(ExchangeClientFactory.class).in(Scopes.SINGLETON);
         httpClientBinder(binder).bindHttpClient("exchange", ForExchange.class)
                 .withTracing()
+                .withFilter(GenerateTraceTokenRequestFilter.class)
                 .withConfigDefaults(config -> {
                     config.setIdleTimeout(new Duration(30, SECONDS));
                     config.setRequestTimeout(new Duration(10, SECONDS));
@@ -466,7 +475,7 @@ public class ServerMainModule
         // block encodings
         binder.bind(BlockEncodingManager.class).in(Scopes.SINGLETON);
         binder.bind(BlockEncodingSerde.class).to(BlockEncodingManager.class).in(Scopes.SINGLETON);
-        newSetBinder(binder, new TypeLiteral<BlockEncodingFactory<?>>() {});
+        newSetBinder(binder, BlockEncoding.class);
         jsonBinder(binder).addSerializerBinding(Block.class).to(BlockJsonSerde.Serializer.class);
         jsonBinder(binder).addDeserializerBinding(Block.class).to(BlockJsonSerde.Deserializer.class);
 
@@ -500,16 +509,21 @@ public class ServerMainModule
     @New
     public static StatsCalculator createNewStatsCalculator(Metadata metadata)
     {
+        StatsNormalizer normalizer = new StatsNormalizer();
         ScalarStatsCalculator scalarStatsCalculator = new ScalarStatsCalculator(metadata);
+        FilterStatsCalculator filterStatsCalculator = new FilterStatsCalculator(metadata, scalarStatsCalculator, normalizer);
 
         ImmutableList.Builder<ComposableStatsCalculator.Rule> rules = ImmutableList.builder();
         rules.add(new OutputStatsRule());
-        rules.add(new TableScanStatsRule(metadata));
-        rules.add(new FilterStatsRule(new FilterStatsCalculator(metadata, scalarStatsCalculator)));
+        rules.add(new TableScanStatsRule(metadata, normalizer));
+        rules.add(new FilterStatsRule(filterStatsCalculator));
         rules.add(new ValuesStatsRule(metadata));
-        rules.add(new LimitStatsRule());
-        rules.add(new EnforceSingleRowStatsRule());
-        rules.add(new ProjectStatsRule(scalarStatsCalculator));
+        rules.add(new LimitStatsRule(normalizer));
+        rules.add(new EnforceSingleRowStatsRule(normalizer));
+        rules.add(new ProjectStatsRule(scalarStatsCalculator, normalizer));
+        rules.add(new ExchangeStatsRule(normalizer));
+        rules.add(new JoinStatsRule(filterStatsCalculator, normalizer));
+
         return new ComposableStatsCalculator(rules.build());
     }
 

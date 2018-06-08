@@ -52,12 +52,6 @@ public class TableFinishOperator
         }
 
         @Override
-        public List<Type> getTypes()
-        {
-            return TYPES;
-        }
-
-        @Override
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
@@ -104,12 +98,6 @@ public class TableFinishOperator
     public OperatorContext getOperatorContext()
     {
         return operatorContext;
-    }
-
-    @Override
-    public List<Type> getTypes()
-    {
-        return TYPES;
     }
 
     @Override
@@ -160,7 +148,7 @@ public class TableFinishOperator
 
         outputMetadata = tableFinisher.finishTable(fragmentBuilder.build());
 
-        PageBuilder page = new PageBuilder(getTypes());
+        PageBuilder page = new PageBuilder(TYPES);
         page.declarePosition();
         BIGINT.writeLong(page.getBlockBuilder(0), rowCount);
         return page.build();

@@ -47,16 +47,18 @@ public final class RowParametricType
     public Type createType(TypeManager typeManager, List<TypeParameter> parameters)
     {
         if (parameters.isEmpty()) {
-            parameters.add(TypeParameter.of(new NamedType(UnknownType.NAME, UnknownType.UNKNOWN)));
+            parameters.add(TypeParameter.of(new NamedType(Optional.of(UnknownType.NAME), UnknownType.UNKNOWN)));
         }
         checkArgument(
                 parameters.stream().allMatch(parameter -> parameter.getKind() == ParameterKind.NAMED_TYPE),
                 "Expected only named types as a parameters, got %s",
                 parameters);
-        List<NamedType> namedTypes = parameters.stream().map(TypeParameter::getNamedType).collect(toList());
 
-        return new RowType(
-                namedTypes.stream().map(NamedType::getType).collect(toList()),
-                Optional.of(namedTypes.stream().map(NamedType::getName).collect(toList())));
+        List<RowType.Field> fields = parameters.stream()
+                .map(TypeParameter::getNamedType)
+                .map(parameter -> new RowType.Field(parameter.getName(), parameter.getType()))
+                .collect(toList());
+
+        return RowType.from(fields);
     }
 }
