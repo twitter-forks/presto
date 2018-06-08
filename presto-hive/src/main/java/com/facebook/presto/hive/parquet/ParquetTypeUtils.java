@@ -234,6 +234,19 @@ public final class ParquetTypeUtils
         return fieldIndex;
     }
 
+    // Find the ColumnIO by name following the same logic as findParquetTypeByName
+    public static ColumnIO findColumnIObyName(GroupColumnIO groupColumnIO, String name)
+    {
+        // direct match and case-insensitive match
+        ColumnIO columnIO = getColumnIOByName(groupColumnIO, name);
+
+        if (columnIO == null && name.endsWith("_")) {
+            return findColumnIObyName(groupColumnIO, name.substring(0, name.length() - 1));
+        }
+
+        return columnIO;
+    }
+
     public static ParquetEncoding getParquetEncoding(Encoding encoding)
     {
         switch (encoding) {
@@ -268,6 +281,25 @@ public final class ParquetTypeUtils
         for (parquet.schema.Type type : messageType.getFields()) {
             if (type.getName().equalsIgnoreCase(columnName)) {
                 return type;
+            }
+        }
+
+        return null;
+    }
+
+    private static ColumnIO getColumnIOByName(GroupColumnIO groupColumnIO, String name)
+    {
+        ColumnIO columnIO = groupColumnIO.getChild(name);
+
+        if (columnIO != null) {
+            return columnIO;
+        }
+
+        // parquet is case-sensitive, but hive is not. all hive columns get converted to lowercase
+        // check for direct match above but if no match found, try case-insensitive match
+        for (int i = 0; i < groupColumnIO.getChildrenCount(); i++) {
+            if (groupColumnIO.getChild(i).getName().equalsIgnoreCase(name)) {
+                return groupColumnIO.getChild(i);
             }
         }
 
