@@ -135,7 +135,7 @@ public class QueryStatsHelper
             operatorStats.finish_wall_millis = getMillisOrNegativeOne(obj.getString("finishWall"));
             operatorStats.finish_cpu_millis = getMillisOrNegativeOne(obj.getString("finishCpu"));
             operatorStats.finish_user_millis = getMillisOrNegativeOne(obj.getString("finishUser"));
-            operatorStats.memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("memoryReservation"));
+            operatorStats.memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("userMemoryReservation"));
             operatorStats.system_memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("systemMemoryReservation"));
         }
         catch (Exception e) {
