@@ -79,8 +79,8 @@ public class QueryStatsHelper
             stageInfo.output_data_size_bytes = getBytesOrNegativeOne(stageStats.getString("outputDataSize"));
             stageInfo.completed_tasks = stageStats.getInt("completedTasks");
             stageInfo.completed_drivers = stageStats.getInt("completedDrivers");
-            stageInfo.cumulative_memory = stageStats.getJsonNumber("cumulativeMemory").doubleValue();
-            stageInfo.peak_memory_reservation_bytes = getBytesOrNegativeOne(stageStats.getString("peakMemoryReservation"));
+            stageInfo.cumulative_memory = stageStats.getJsonNumber("cumulativeUserMemory").doubleValue();
+            stageInfo.peak_memory_reservation_bytes = getBytesOrNegativeOne(stageStats.getString("peakUserMemoryReservation"));
             stageInfo.total_scheduled_time_millis = getMillisOrNegativeOne(stageStats.getString("totalScheduledTime"));
             stageInfo.total_cpu_time_millis = getMillisOrNegativeOne(stageStats.getString("totalCpuTime"));
             stageInfo.total_user_time_millis = getMillisOrNegativeOne(stageStats.getString("totalUserTime"));
