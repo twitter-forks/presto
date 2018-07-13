@@ -17,6 +17,7 @@ import com.facebook.presto.hive.parquet.Field;
 import com.facebook.presto.hive.parquet.GroupField;
 import com.facebook.presto.hive.parquet.ParquetCorruptionException;
 import com.facebook.presto.hive.parquet.ParquetDataSource;
+import com.facebook.presto.hive.parquet.ParquetMetadataStats;
 import com.facebook.presto.hive.parquet.PrimitiveField;
 import com.facebook.presto.hive.parquet.RichColumnDescriptor;
 import com.facebook.presto.memory.context.AggregatedMemoryContext;
@@ -72,13 +73,15 @@ public class ParquetReader
     private long nextRowInGroup;
     private int batchSize;
     private final ParquetPrimitiveColumnReader[] columnReaders;
+    private final ParquetMetadataStats metadataStats;
 
     private AggregatedMemoryContext currentRowGroupMemoryContext;
 
     public ParquetReader(MessageColumnIO messageColumnIO,
             List<BlockMetaData> blocks,
             ParquetDataSource dataSource,
-            AggregatedMemoryContext systemMemoryContext)
+            AggregatedMemoryContext systemMemoryContext,
+            ParquetMetadataStats metadataStats)
     {
         this.blocks = blocks;
         this.dataSource = requireNonNull(dataSource, "dataSource is null");
@@ -86,6 +89,7 @@ public class ParquetReader
         this.currentRowGroupMemoryContext = systemMemoryContext.newAggregatedMemoryContext();
         columns = messageColumnIO.getLeaves();
         columnReaders = new ParquetPrimitiveColumnReader[columns.size()];
+        this.metadataStats = requireNonNull(metadataStats);
     }
 
     @Override
@@ -201,9 +205,10 @@ public class ParquetReader
             int totalSize = toIntExact(metadata.getTotalSize());
             byte[] buffer = allocateBlock(totalSize);
             dataSource.readFully(startingPosition, buffer);
+            metadataStats.addDataReadSize(metadata.getPath().toDotString(), totalSize);
             ParquetColumnChunkDescriptor descriptor = new ParquetColumnChunkDescriptor(columnDescriptor, metadata, totalSize);
             ParquetColumnChunk columnChunk = new ParquetColumnChunk(descriptor, buffer, 0);
-            columnReader.setPageReader(columnChunk.readAllPages());
+            columnReader.setPageReader(columnChunk.readAllPages(metadataStats));
         }
         return columnReader.readPrimitive(field);
     }

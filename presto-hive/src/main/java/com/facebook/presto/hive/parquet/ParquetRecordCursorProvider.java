@@ -49,18 +49,30 @@ public class ParquetRecordCursorProvider
     private final boolean useParquetColumnNames;
     private final HdfsEnvironment hdfsEnvironment;
     private final FileFormatDataSourceStats stats;
+    private final ParquetMetadataStats metadataStats;
 
-    @Inject
     public ParquetRecordCursorProvider(HiveClientConfig hiveClientConfig, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats)
     {
-        this(requireNonNull(hiveClientConfig, "hiveClientConfig is null").isUseParquetColumnNames(), hdfsEnvironment, stats);
+        this(hiveClientConfig, hdfsEnvironment, stats, new ParquetMetadataStats());
     }
 
     public ParquetRecordCursorProvider(boolean useParquetColumnNames, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats)
     {
+        this(useParquetColumnNames, hdfsEnvironment, stats, new ParquetMetadataStats());
+    }
+
+    @Inject
+    public ParquetRecordCursorProvider(HiveClientConfig hiveClientConfig, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats, ParquetMetadataStats metadataStats)
+    {
+        this(requireNonNull(hiveClientConfig, "hiveClientConfig is null").isUseParquetColumnNames(), hdfsEnvironment, stats, metadataStats);
+    }
+
+    public ParquetRecordCursorProvider(boolean useParquetColumnNames, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats, ParquetMetadataStats metadataStats)
+    {
         this.useParquetColumnNames = useParquetColumnNames;
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.stats = requireNonNull(stats, "stats is null");
+        this.metadataStats = requireNonNull(metadataStats);
     }
 
     @Override
@@ -95,6 +107,7 @@ public class ParquetRecordCursorProvider
                 typeManager,
                 isParquetPredicatePushdownEnabled(session),
                 effectivePredicate,
-                stats));
+                stats,
+                metadataStats));
     }
 }

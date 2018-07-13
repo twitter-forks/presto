@@ -18,6 +18,7 @@ import com.facebook.presto.hive.parquet.ParquetDataPage;
 import com.facebook.presto.hive.parquet.ParquetDataPageV1;
 import com.facebook.presto.hive.parquet.ParquetDataPageV2;
 import com.facebook.presto.hive.parquet.ParquetDictionaryPage;
+import com.facebook.presto.hive.parquet.ParquetMetadataStats;
 import io.airlift.slice.Slice;
 import parquet.column.Encoding;
 import parquet.format.DataPageHeader;
@@ -60,7 +61,7 @@ public class ParquetColumnChunk
         return Util.readPageHeader(this);
     }
 
-    public ParquetPageReader readAllPages()
+    public ParquetPageReader readAllPages(ParquetMetadataStats metadataStats)
             throws IOException
     {
         List<ParquetDataPage> pages = new ArrayList<>();
@@ -70,6 +71,7 @@ public class ParquetColumnChunk
             PageHeader pageHeader = readPageHeader();
             int uncompressedPageSize = pageHeader.getUncompressed_page_size();
             int compressedPageSize = pageHeader.getCompressed_page_size();
+            metadataStats.addPageSize(descriptor.getColumnChunkMetaData().getPath().toDotString(), compressedPageSize);
             switch (pageHeader.type) {
                 case DICTIONARY_PAGE:
                     if (dictionaryPage != null) {
