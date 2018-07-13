@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive.parquet.reader;
 
+import com.facebook.presto.hive.parquet.ParquetMetadataStats;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -62,15 +63,15 @@ public final class ParquetMetadataReader
 
     private ParquetMetadataReader() {}
 
-    public static ParquetMetadata readFooter(FileSystem fileSystem, Path file, long fileSize)
+    public static ParquetMetadata readFooter(FileSystem fileSystem, Path file, long fileSize, ParquetMetadataStats stats)
             throws IOException
     {
         try (FSDataInputStream inputStream = fileSystem.open(file)) {
-            return readFooter(inputStream, file, fileSize);
+            return readFooter(inputStream, file, fileSize, stats);
         }
     }
 
-    public static ParquetMetadata readFooter(FSDataInputStream inputStream, Path file, long fileSize)
+    public static ParquetMetadata readFooter(FSDataInputStream inputStream, Path file, long fileSize, ParquetMetadataStats stats)
             throws IOException
 
     {
@@ -88,6 +89,7 @@ public final class ParquetMetadataReader
         inputStream.seek(metadataLengthIndex);
         InputStream in = new BufferedInputStream(inputStream, PARQUET_METADATA_LENGTH + MAGIC.length);
         int metadataLength = readIntLittleEndian(in);
+        stats.getMetadataLength().add((long) metadataLength);
 
         byte[] magic = new byte[MAGIC.length];
         validateParquet(in.read(magic) == magic.length, "No enough data for MAGIC");
