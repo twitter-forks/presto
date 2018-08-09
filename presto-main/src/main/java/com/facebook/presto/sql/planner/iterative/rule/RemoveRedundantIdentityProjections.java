@@ -47,6 +47,10 @@ public class RemoveRedundantIdentityProjections
     @Override
     public Result apply(ProjectNode project, Captures captures, Context context)
     {
+        System.err.println("***********RemoveRedundantIdentityProjections:apply***********");
+        System.err.println(project.getAssignments());
+        System.err.println(project.getOutputSymbols());
+        System.err.println(project.getId());
         return Result.ofPlanNode(project.getSource());
     }
 }

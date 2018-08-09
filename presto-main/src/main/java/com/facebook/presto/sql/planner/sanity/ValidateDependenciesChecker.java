@@ -71,6 +71,7 @@ import static com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer.I
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 /**
@@ -223,8 +224,8 @@ public final class ValidateDependenciesChecker
             Set<Symbol> inputs = createInputs(source, boundSymbols);
             checkDependencies(inputs, node.getOutputSymbols(), "Invalid node. Output symbols (%s) not in source plan output (%s)", node.getOutputSymbols(), node.getSource().getOutputSymbols());
 
-            Set<Symbol> dependencies = SymbolsExtractor.extractUnique(node.getPredicate());
-            checkDependencies(inputs, dependencies, "Invalid node. Predicate dependencies (%s) not in source plan output (%s)", dependencies, node.getSource().getOutputSymbols());
+            Collection<Symbol> dependencies = SymbolsExtractor.extractUniqueWithFields(ImmutableSet.of(node.getPredicate())).values();
+            checkDependenciesWithFields(inputs, dependencies, "Invalid node. Predicate dependencies (%s) not in source plan output (%s)", dependencies, node.getSource().getOutputSymbols());
 
             return null;
         }
@@ -245,10 +246,8 @@ public final class ValidateDependenciesChecker
             source.accept(this, boundSymbols); // visit child
 
             Set<Symbol> inputs = createInputs(source, boundSymbols);
-            for (Expression expression : node.getAssignments().getExpressions()) {
-                Set<Symbol> dependencies = SymbolsExtractor.extractUnique(expression);
-                checkDependencies(inputs, dependencies, "Invalid node. Expression dependencies (%s) not in source plan output (%s)", dependencies, inputs);
-            }
+            Collection<Symbol> dependencies = SymbolsExtractor.extractUniqueWithFields(node.getAssignments().getExpressions()).values();
+            checkDependenciesWithFields(inputs, dependencies, "Invalid node. Expression dependencies (%s) not in source plan output (%s)", dependencies, inputs);
 
             return null;
         }
@@ -614,5 +613,13 @@ public final class ValidateDependenciesChecker
     private static void checkDependencies(Collection<Symbol> inputs, Collection<Symbol> required, String message, Object... parameters)
     {
         checkArgument(ImmutableSet.copyOf(inputs).containsAll(required), message, parameters);
+    }
+
+    private static void checkDependenciesWithFields(Collection<Symbol> inputs, Collection<Symbol> required, String message, Object... parameters)
+    {
+        Map<String, Symbol> inputsMap = inputs.stream()
+                .collect(toImmutableMap(Symbol::getName, symbol -> symbol));
+        checkArgument(required.stream()
+                .allMatch(symbol -> inputsMap.containsKey(symbol.getName()) && Symbol.contains(inputsMap.get(symbol.getName()), symbol)), message, parameters);
     }
 }

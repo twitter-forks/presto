@@ -189,6 +189,8 @@ public class PickTableLayout
 
     private static PlanNode planTableScan(TableScanNode node, Expression predicate, Rule.Context context, Metadata metadata, DomainTranslator domainTranslator)
     {
+        System.err.println("##############planTableScan#############");
+        System.err.println(node.getAssignments());
         Expression deterministicPredicate = filterDeterministicConjuncts(predicate);
         DomainTranslator.ExtractionResult decomposedPredicate = DomainTranslator.fromPredicate(
                 metadata,
