@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collector;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
@@ -105,6 +106,13 @@ public class Assignments
     {
         return assignments.entrySet().stream()
                 .map(entry -> Maps.immutableEntry(entry.getKey(), rewrite.apply(entry.getValue())))
+                .collect(toAssignments());
+    }
+
+    public Assignments rewriteEntry(Function<Map.Entry<Symbol, Expression>, Map.Entry<Symbol, Expression>> rewrite)
+    {
+        return assignments.entrySet().stream()
+                .map(rewrite::apply)
                 .collect(toAssignments());
     }
 
@@ -188,6 +196,14 @@ public class Assignments
     public int hashCode()
     {
         return assignments.hashCode();
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("assignments", assignments)
+                .toString();
     }
 
     public static class Builder
