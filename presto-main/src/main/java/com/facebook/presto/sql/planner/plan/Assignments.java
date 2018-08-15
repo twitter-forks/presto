@@ -34,7 +34,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collector;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 
@@ -91,6 +93,7 @@ public class Assignments
     }
 
     @JsonProperty("assignments")
+
     public Map<Symbol, Expression> getMap()
     {
         return assignments;
@@ -105,6 +108,23 @@ public class Assignments
     {
         return assignments.entrySet().stream()
                 .map(entry -> Maps.immutableEntry(entry.getKey(), rewrite.apply(entry.getValue())))
+                .collect(toAssignments());
+    }
+
+    public Assignments refineIdentities(Collection<Symbol> symbols)
+    {
+        Map<String, Symbol> symbolMap = assignments.keySet().stream()
+                .map(symbol -> Maps.immutableEntry(symbol.getName(), symbol))
+                .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
+
+        return symbols.stream()
+                .filter(symbol -> symbolMap.containsKey(symbol.getName()))
+                .map(symbol -> {
+                    if (isIdentity(symbolMap.get(symbol.getName()))) {
+                        return Maps.immutableEntry(symbol, (Expression) symbol.toSymbolReference());
+                    }
+                    return Maps.immutableEntry(symbol, assignments.get(symbolMap.get(symbol.getName())));
+                })
                 .collect(toAssignments());
     }
 
@@ -188,6 +208,14 @@ public class Assignments
     public int hashCode()
     {
         return assignments.hashCode();
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("assignments", assignments)
+                .toString();
     }
 
     public static class Builder

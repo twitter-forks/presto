@@ -55,13 +55,14 @@ import java.util.Set;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CANNOT_OPEN_SPLIT;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_MISSING_DATA;
+import static com.facebook.presto.hive.HiveSessionProperties.isParquetNestedFieldsProjectionPushdownEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetOptimizedReaderEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetPredicatePushdownEnabled;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static com.facebook.presto.hive.parquet.HdfsParquetDataSource.buildHdfsParquetDataSource;
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getColumnIO;
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getDescriptors;
-import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getParquetType;
+import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getPrunedParquetType;
 import static com.facebook.presto.hive.parquet.predicate.ParquetPredicateUtils.buildParquetPredicate;
 import static com.facebook.presto.hive.parquet.predicate.ParquetPredicateUtils.getParquetTupleDomain;
 import static com.facebook.presto.hive.parquet.predicate.ParquetPredicateUtils.predicateMatches;
@@ -83,19 +84,31 @@ public class ParquetPageSourceFactory
     private final boolean useParquetColumnNames;
     private final HdfsEnvironment hdfsEnvironment;
     private final FileFormatDataSourceStats stats;
+    private final ParquetMetadataStats metadataStats;
 
     @Inject
+    public ParquetPageSourceFactory(TypeManager typeManager, HiveClientConfig config, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats, ParquetMetadataStats metadataStats)
+    {
+        this(typeManager, requireNonNull(config, "hiveClientConfig is null").isUseParquetColumnNames(), hdfsEnvironment, stats, metadataStats);
+    }
+
     public ParquetPageSourceFactory(TypeManager typeManager, HiveClientConfig config, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats)
     {
-        this(typeManager, requireNonNull(config, "hiveClientConfig is null").isUseParquetColumnNames(), hdfsEnvironment, stats);
+        this(typeManager, config, hdfsEnvironment, stats, new ParquetMetadataStats());
     }
 
     public ParquetPageSourceFactory(TypeManager typeManager, boolean useParquetColumnNames, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats)
+    {
+        this(typeManager, useParquetColumnNames, hdfsEnvironment, stats, new ParquetMetadataStats());
+    }
+
+    public ParquetPageSourceFactory(TypeManager typeManager, boolean useParquetColumnNames, HdfsEnvironment hdfsEnvironment, FileFormatDataSourceStats stats, ParquetMetadataStats metadataStats)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.useParquetColumnNames = useParquetColumnNames;
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.stats = requireNonNull(stats, "stats is null");
+        this.metadataStats = requireNonNull(metadataStats);
     }
 
     @Override
@@ -133,7 +146,9 @@ public class ParquetPageSourceFactory
                 typeManager,
                 isParquetPredicatePushdownEnabled(session),
                 effectivePredicate,
-                stats));
+                stats,
+                metadataStats,
+                session));
     }
 
     public static ParquetPageSource createParquetPageSource(
@@ -150,7 +165,9 @@ public class ParquetPageSourceFactory
             TypeManager typeManager,
             boolean predicatePushdownEnabled,
             TupleDomain<HiveColumnHandle> effectivePredicate,
-            FileFormatDataSourceStats stats)
+            FileFormatDataSourceStats stats,
+            ParquetMetadataStats metadataStats,
+            ConnectorSession session)
     {
         AggregatedMemoryContext systemMemoryContext = newSimpleAggregatedMemoryContext();
 
@@ -158,14 +175,14 @@ public class ParquetPageSourceFactory
         try {
             FileSystem fileSystem = hdfsEnvironment.getFileSystem(user, path, configuration);
             FSDataInputStream inputStream = fileSystem.open(path);
-            ParquetMetadata parquetMetadata = ParquetMetadataReader.readFooter(inputStream, path, fileSize);
+            ParquetMetadata parquetMetadata = ParquetMetadataReader.readFooter(inputStream, path, fileSize, metadataStats);
             FileMetaData fileMetaData = parquetMetadata.getFileMetaData();
             MessageType fileSchema = fileMetaData.getSchema();
             dataSource = buildHdfsParquetDataSource(inputStream, path, fileSize, stats);
 
             List<parquet.schema.Type> fields = columns.stream()
                     .filter(column -> column.getColumnType() == REGULAR)
-                    .map(column -> getParquetType(column, fileSchema, useParquetColumnNames))
+                    .map(column -> getPrunedParquetType(column, fileSchema, useParquetColumnNames, isParquetNestedFieldsProjectionPushdownEnabled(session)))
                     .filter(Objects::nonNull)
                     .collect(toList());
 
@@ -185,7 +202,7 @@ public class ParquetPageSourceFactory
                 ParquetPredicate parquetPredicate = buildParquetPredicate(requestedSchema, parquetTupleDomain, descriptorsByPath);
                 final ParquetDataSource finalDataSource = dataSource;
                 blocks = blocks.stream()
-                        .filter(block -> predicateMatches(parquetPredicate, block, finalDataSource, descriptorsByPath, parquetTupleDomain))
+                        .filter(block -> predicateMatches(parquetPredicate, block, finalDataSource, descriptorsByPath, parquetTupleDomain, metadataStats))
                         .collect(toList());
             }
             MessageColumnIO messageColumnIO = getColumnIO(fileSchema, requestedSchema);
@@ -193,7 +210,8 @@ public class ParquetPageSourceFactory
                     messageColumnIO,
                     blocks,
                     dataSource,
-                    systemMemoryContext);
+                    systemMemoryContext,
+                    metadataStats);
 
             return new ParquetPageSource(
                     parquetReader,

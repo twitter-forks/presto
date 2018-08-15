@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive.parquet.reader;
 
+import com.facebook.presto.hive.parquet.ParquetMetadataStats;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -37,6 +38,7 @@ import parquet.schema.PrimitiveType.PrimitiveTypeName;
 import parquet.schema.Type.Repetition;
 import parquet.schema.Types;
 
+import java.io.BufferedInputStream;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -61,15 +63,15 @@ public final class ParquetMetadataReader
 
     private ParquetMetadataReader() {}
 
-    public static ParquetMetadata readFooter(FileSystem fileSystem, Path file, long fileSize)
+    public static ParquetMetadata readFooter(FileSystem fileSystem, Path file, long fileSize, ParquetMetadataStats stats)
             throws IOException
     {
         try (FSDataInputStream inputStream = fileSystem.open(file)) {
-            return readFooter(inputStream, file, fileSize);
+            return readFooter(inputStream, file, fileSize, stats);
         }
     }
 
-    public static ParquetMetadata readFooter(FSDataInputStream inputStream, Path file, long fileSize)
+    public static ParquetMetadata readFooter(FSDataInputStream inputStream, Path file, long fileSize, ParquetMetadataStats stats)
             throws IOException
 
     {
@@ -85,10 +87,12 @@ public final class ParquetMetadataReader
         long metadataLengthIndex = fileSize - PARQUET_METADATA_LENGTH - MAGIC.length;
 
         inputStream.seek(metadataLengthIndex);
-        int metadataLength = readIntLittleEndian(inputStream);
+        InputStream in = new BufferedInputStream(inputStream, PARQUET_METADATA_LENGTH + MAGIC.length);
+        int metadataLength = readIntLittleEndian(in);
+        stats.getMetadataLength().add(metadataLength);
 
         byte[] magic = new byte[MAGIC.length];
-        inputStream.readFully(magic);
+        validateParquet(in.read(magic) == magic.length, "No enough data for MAGIC");
         validateParquet(Arrays.equals(MAGIC, magic), "Not valid Parquet file: %s expected magic number: %s got: %s", file, Arrays.toString(MAGIC), Arrays.toString(magic));
 
         long metadataIndex = metadataLengthIndex - metadataLength;
@@ -98,7 +102,7 @@ public final class ParquetMetadataReader
                 file,
                 metadataIndex);
         inputStream.seek(metadataIndex);
-        FileMetaData fileMetaData = readFileMetaData(inputStream);
+        FileMetaData fileMetaData = readFileMetaData(new BufferedInputStream(inputStream, metadataLength));
         List<SchemaElement> schema = fileMetaData.getSchema();
         validateParquet(!schema.isEmpty(), "Empty Parquet schema in file: %s", file);
 

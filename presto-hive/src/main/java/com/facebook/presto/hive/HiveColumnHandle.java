@@ -15,6 +15,7 @@ package com.facebook.presto.hive;
 
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.predicate.FieldSet;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -56,15 +57,22 @@ public class HiveColumnHandle
     }
 
     private final String name;
+    private final Optional<FieldSet> fieldSet;
     private final HiveType hiveType;
     private final TypeSignature typeName;
     private final int hiveColumnIndex;
     private final ColumnType columnType;
     private final Optional<String> comment;
 
+    public HiveColumnHandle(String name, HiveType hiveType, TypeSignature typeSignature, int hiveColumnIndex, ColumnType columnType, Optional<String> comment)
+    {
+        this(name, Optional.empty(), hiveType, typeSignature, hiveColumnIndex, columnType, comment);
+    }
+
     @JsonCreator
     public HiveColumnHandle(
             @JsonProperty("name") String name,
+            @JsonProperty("fieldSet") Optional<FieldSet> fieldSet,
             @JsonProperty("hiveType") HiveType hiveType,
             @JsonProperty("typeSignature") TypeSignature typeSignature,
             @JsonProperty("hiveColumnIndex") int hiveColumnIndex,
@@ -72,6 +80,7 @@ public class HiveColumnHandle
             @JsonProperty("comment") Optional<String> comment)
     {
         this.name = requireNonNull(name, "name is null");
+        this.fieldSet = requireNonNull(fieldSet, "fieldSet is null");
         checkArgument(hiveColumnIndex >= 0 || columnType == PARTITION_KEY || columnType == SYNTHESIZED, "hiveColumnIndex is negative");
         this.hiveColumnIndex = hiveColumnIndex;
         this.hiveType = requireNonNull(hiveType, "hiveType is null");
@@ -84,6 +93,12 @@ public class HiveColumnHandle
     public String getName()
     {
         return name;
+    }
+
+    @JsonProperty
+    public Optional<FieldSet> getFieldSet()
+    {
+        return fieldSet;
     }
 
     @JsonProperty
@@ -134,7 +149,7 @@ public class HiveColumnHandle
     @Override
     public int hashCode()
     {
-        return Objects.hash(name, hiveColumnIndex, hiveType, columnType, comment);
+        return Objects.hash(name, fieldSet, hiveColumnIndex, hiveType, columnType, comment);
     }
 
     @Override
@@ -148,6 +163,7 @@ public class HiveColumnHandle
         }
         HiveColumnHandle other = (HiveColumnHandle) obj;
         return Objects.equals(this.name, other.name) &&
+                Objects.equals(this.fieldSet, other.fieldSet) &&
                 Objects.equals(this.hiveColumnIndex, other.hiveColumnIndex) &&
                 Objects.equals(this.hiveType, other.hiveType) &&
                 Objects.equals(this.columnType, other.columnType) &&
@@ -159,6 +175,7 @@ public class HiveColumnHandle
     {
         return toStringHelper(this)
                 .add("name", name)
+                .add("fieldSet", fieldSet.orElse(null))
                 .add("hiveType", hiveType)
                 .add("hiveColumnIndex", hiveColumnIndex)
                 .add("columnType", columnType)
@@ -201,5 +218,10 @@ public class HiveColumnHandle
     public static boolean isBucketColumnHandle(HiveColumnHandle column)
     {
         return column.getHiveColumnIndex() == BUCKET_COLUMN_INDEX;
+    }
+
+    public static HiveColumnHandle withFieldSet(HiveColumnHandle column, Optional<FieldSet> fieldSet)
+    {
+        return new HiveColumnHandle(column.name, fieldSet, column.getHiveType(), column.getTypeSignature(), column.getHiveColumnIndex(), column.getColumnType(), column.getComment());
     }
 }

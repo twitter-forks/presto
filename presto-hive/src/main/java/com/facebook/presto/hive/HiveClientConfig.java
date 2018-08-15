@@ -99,6 +99,7 @@ public class HiveClientConfig
     private boolean useParquetColumnNames;
     private boolean parquetOptimizedReaderEnabled;
     private boolean parquetPredicatePushdownEnabled;
+    private boolean parquetNestedFieldsProjectionPushdownEnabled;
 
     private boolean assumeCanonicalPartitionKeys;
 
@@ -672,6 +673,18 @@ public class HiveClientConfig
     public HiveClientConfig setParquetPredicatePushdownEnabled(boolean parquetPredicatePushdownEnabled)
     {
         this.parquetPredicatePushdownEnabled = parquetPredicatePushdownEnabled;
+        return this;
+    }
+
+    public boolean isParquetNestedFieldsProjectionPushdownEnabled()
+    {
+        return parquetNestedFieldsProjectionPushdownEnabled;
+    }
+
+    @Config("hive.parquet-nested-fields-projection-pushdown.enabled")
+    public HiveClientConfig setParquetNestedFieldsProjectionPushdownEnabled(boolean parquetNestedFieldsProjectionPushdownEnabled)
+    {
+        this.parquetNestedFieldsProjectionPushdownEnabled = parquetNestedFieldsProjectionPushdownEnabled;
         return this;
     }
 

@@ -39,7 +39,6 @@ import com.facebook.presto.sql.planner.plan.ValuesNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Maps;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -59,7 +58,6 @@ import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SOURCE_DI
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.Scope.REMOTE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.base.Predicates.in;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -142,13 +140,28 @@ public class PlanFragmenter
             PlanFragment fragment = new PlanFragment(
                     fragmentId,
                     root,
-                    Maps.filterKeys(types, in(dependencies)),
+                    typeMapper(dependencies),
                     properties.getPartitioningHandle(),
                     schedulingOrder,
                     properties.getPartitioningScheme(),
                     UNGROUPED_EXECUTION);
 
             return new SubPlan(fragment, properties.getChildren());
+        }
+
+        private Map<Symbol, Type> typeMapper(Set<Symbol> dependencies)
+        {
+            ImmutableMap.Builder<Symbol, Type> builder = ImmutableMap.builder();
+            for (Symbol symbol : dependencies) {
+                if (types.containsKey(symbol)) {
+                    builder.put(symbol, types.get(symbol));
+                    continue;
+                }
+                if (types.containsKey(new Symbol(symbol.getName()))) {
+                    builder.put(symbol, types.get(new Symbol(symbol.getName())));
+                }
+            }
+            return builder.build();
         }
 
         @Override

@@ -17,6 +17,7 @@ import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.parquet.ParquetDataSource;
 import com.facebook.presto.hive.parquet.ParquetDictionaryPage;
 import com.facebook.presto.hive.parquet.ParquetEncoding;
+import com.facebook.presto.hive.parquet.ParquetMetadataStats;
 import com.facebook.presto.hive.parquet.RichColumnDescriptor;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -110,14 +111,14 @@ public final class ParquetPredicateUtils
         return new TupleDomainParquetPredicate(parquetTupleDomain, columnReferences.build());
     }
 
-    public static boolean predicateMatches(ParquetPredicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain)
+    public static boolean predicateMatches(ParquetPredicate parquetPredicate, BlockMetaData block, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain, ParquetMetadataStats metadataStats)
     {
         Map<ColumnDescriptor, Statistics<?>> columnStatistics = getStatistics(block, descriptorsByPath);
         if (!parquetPredicate.matches(block.getRowCount(), columnStatistics)) {
             return false;
         }
 
-        Map<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = getDictionaries(block, dataSource, descriptorsByPath, parquetTupleDomain);
+        Map<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = getDictionaries(block, dataSource, descriptorsByPath, parquetTupleDomain, metadataStats);
         return parquetPredicate.matches(dictionaries);
     }
 
@@ -136,7 +137,7 @@ public final class ParquetPredicateUtils
         return statistics.build();
     }
 
-    private static Map<ColumnDescriptor, ParquetDictionaryDescriptor> getDictionaries(BlockMetaData blockMetadata, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain)
+    private static Map<ColumnDescriptor, ParquetDictionaryDescriptor> getDictionaries(BlockMetaData blockMetadata, ParquetDataSource dataSource, Map<List<String>, RichColumnDescriptor> descriptorsByPath, TupleDomain<ColumnDescriptor> parquetTupleDomain, ParquetMetadataStats metadataStats)
     {
         ImmutableMap.Builder<ColumnDescriptor, ParquetDictionaryDescriptor> dictionaries = ImmutableMap.builder();
         for (ColumnChunkMetaData columnMetaData : blockMetadata.getColumns()) {
@@ -146,6 +147,7 @@ public final class ParquetPredicateUtils
                     int totalSize = toIntExact(columnMetaData.getTotalSize());
                     byte[] buffer = new byte[totalSize];
                     dataSource.readFully(columnMetaData.getStartingPos(), buffer);
+                    metadataStats.addDictionaryReadSize(columnMetaData.getPath().toDotString(), totalSize);
                     Optional<ParquetDictionaryPage> dictionaryPage = readDictionaryPage(buffer, columnMetaData.getCodec());
                     dictionaries.put(descriptor, new ParquetDictionaryDescriptor(descriptor, dictionaryPage));
                     break;

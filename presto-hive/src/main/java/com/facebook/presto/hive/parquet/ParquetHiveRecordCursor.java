@@ -119,6 +119,7 @@ public class ParquetHiveRecordCursor
     private boolean closed;
 
     private final FileFormatDataSourceStats stats;
+    private final ParquetMetadataStats metadataStats;
 
     public ParquetHiveRecordCursor(
             HdfsEnvironment hdfsEnvironment,
@@ -134,13 +135,15 @@ public class ParquetHiveRecordCursor
             TypeManager typeManager,
             boolean predicatePushdownEnabled,
             TupleDomain<HiveColumnHandle> effectivePredicate,
-            FileFormatDataSourceStats stats)
+            FileFormatDataSourceStats stats,
+            ParquetMetadataStats metadataStats)
     {
         requireNonNull(path, "path is null");
         checkArgument(length >= 0, "length is negative");
         requireNonNull(splitSchema, "splitSchema is null");
         requireNonNull(columns, "columns is null");
         this.stats = requireNonNull(stats, "stats is null");
+        this.metadataStats = requireNonNull(metadataStats);
 
         this.totalBytes = length;
 
@@ -353,7 +356,7 @@ public class ParquetHiveRecordCursor
                         Map<List<String>, RichColumnDescriptor> descriptorsByPath = getDescriptors(fileSchema, requestedSchema);
                         TupleDomain<ColumnDescriptor> parquetTupleDomain = getParquetTupleDomain(descriptorsByPath, effectivePredicate);
                         ParquetPredicate parquetPredicate = buildParquetPredicate(requestedSchema, parquetTupleDomain, descriptorsByPath);
-                        if (predicateMatches(parquetPredicate, block, dataSource, descriptorsByPath, parquetTupleDomain)) {
+                        if (predicateMatches(parquetPredicate, block, dataSource, descriptorsByPath, parquetTupleDomain, metadataStats)) {
                             offsets.add(block.getStartingPos());
                         }
                     }
