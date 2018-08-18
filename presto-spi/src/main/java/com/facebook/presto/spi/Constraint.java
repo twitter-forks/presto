@@ -13,10 +13,13 @@
  */
 package com.facebook.presto.spi;
 
+import com.facebook.presto.spi.predicate.FieldSet;
 import com.facebook.presto.spi.predicate.NullableValue;
 import com.facebook.presto.spi.predicate.TupleDomain;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Predicate;
 
 import static java.util.Objects.requireNonNull;
@@ -25,6 +28,7 @@ public class Constraint<T>
 {
     private final TupleDomain<T> summary;
     private final Predicate<Map<T, NullableValue>> predicate;
+    private final Optional<List<FieldSet<T>>> fieldSets;
 
     public static <V> Constraint<V> alwaysTrue()
     {
@@ -36,18 +40,35 @@ public class Constraint<T>
         return new Constraint<>(TupleDomain.<V>none(), bindings -> false);
     }
 
+    public Constraint(Optional<List<FieldSet<T>>> fieldSets)
+    {
+        this(TupleDomain.<T>all(), bindings -> true, fieldSets);
+    }
+
     public Constraint(TupleDomain<T> summary, Predicate<Map<T, NullableValue>> predicate)
+    {
+        this(summary, predicate, Optional.empty());
+    }
+
+    public Constraint(TupleDomain<T> summary, Predicate<Map<T, NullableValue>> predicate, Optional<List<FieldSet<T>>> fieldSets)
     {
         requireNonNull(summary, "summary is null");
         requireNonNull(predicate, "predicate is null");
+        requireNonNull(fieldSets, "fieldSets is null");
 
         this.summary = summary;
         this.predicate = predicate;
+        this.fieldSets = fieldSets;
     }
 
     public TupleDomain<T> getSummary()
     {
         return summary;
+    }
+
+    public Optional<List<FieldSet<T>>> getFieldSets()
+    {
+        return fieldSets;
     }
 
     public Predicate<Map<T, NullableValue>> predicate()

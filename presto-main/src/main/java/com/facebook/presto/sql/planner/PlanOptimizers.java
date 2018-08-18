@@ -43,11 +43,13 @@ import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithTopN;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimits;
 import com.facebook.presto.sql.planner.iterative.rule.MultipleDistinctAggregationToMarkDistinct;
+import com.facebook.presto.sql.planner.iterative.rule.PickColumnLayouts;
 import com.facebook.presto.sql.planner.iterative.rule.PickTableLayout;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneAggregationSourceColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneCountAggregationOverScalar;
 import com.facebook.presto.sql.planner.iterative.rule.PruneCrossJoinColumns;
+import com.facebook.presto.sql.planner.iterative.rule.PruneFilterColumnFields;
 import com.facebook.presto.sql.planner.iterative.rule.PruneFilterColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneIndexSourceColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneJoinChildrenColumns;
@@ -56,9 +58,11 @@ import com.facebook.presto.sql.planner.iterative.rule.PruneLimitColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneMarkDistinctColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneOrderByInAggregation;
 import com.facebook.presto.sql.planner.iterative.rule.PruneOutputColumns;
+import com.facebook.presto.sql.planner.iterative.rule.PruneProjectColumnFields;
 import com.facebook.presto.sql.planner.iterative.rule.PruneProjectColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneSemiJoinColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneSemiJoinFilteringSourceColumns;
+import com.facebook.presto.sql.planner.iterative.rule.PruneTableScanColumnFields;
 import com.facebook.presto.sql.planner.iterative.rule.PruneTableScanColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneTopNColumns;
 import com.facebook.presto.sql.planner.iterative.rule.PruneValuesColumns;
@@ -196,6 +200,11 @@ public class PlanOptimizers
                 new PruneWindowColumns(),
                 new PruneLimitColumns(),
                 new PruneTableScanColumns());
+
+        Set<Rule<?>> fieldPruningRules = ImmutableSet.of(
+                new PruneProjectColumnFields(),
+                new PruneFilterColumnFields(),
+                new PruneTableScanColumnFields());
 
         IterativeOptimizer inlineProjections = new IterativeOptimizer(
                 stats,
@@ -413,6 +422,25 @@ public class PlanOptimizers
                         .add(new RemoveRedundantIdentityProjections())
                         .addAll(new TransformSpatialPredicates(metadata).rules())
                         .add(new InlineProjections())
+                        .build()));
+
+        // Optimize the nested fields.
+        builder.add(new IterativeOptimizer(
+                stats,
+                statsCalculator,
+                costCalculator,
+                ImmutableSet.<Rule<?>>builder()
+                        .addAll(fieldPruningRules)
+                        .add(new RemoveRedundantIdentityProjections())
+                        .build()));
+
+        // Update the table layouts after pruning.
+        builder.add(new IterativeOptimizer(
+                stats,
+                statsCalculator,
+                costCalculator,
+                ImmutableSet.<Rule<?>>builder()
+                        .add(new PickColumnLayouts(metadata))
                         .build()));
 
         // Optimizers above this don't understand local exchanges, so be careful moving this.

@@ -374,8 +374,8 @@ public class ExpressionAnalyzer
                     return setExpressionType(node, resolvedField.get().getType());
                 }
             }
-            Type type = symbolTypes.get(Symbol.from(node));
-            return setExpressionType(node, type);
+
+            return setExpressionType(node, getType(node));
         }
 
         @Override
@@ -1318,6 +1318,16 @@ public class ExpressionAnalyzer
             else if (typeOnlyCoercions.contains(ref)) {
                 typeOnlyCoercions.remove(ref);
             }
+        }
+
+        private Type getType(SymbolReference symbolReference)
+        {
+            Type type = symbolTypes.get(Symbol.from(symbolReference));
+            if (type == null) {
+                type = symbolTypes.get(Symbol.withEmptyFields(symbolReference));
+            }
+
+            return type;
         }
     }
 
