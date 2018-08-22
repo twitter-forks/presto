@@ -22,6 +22,7 @@ import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.session.ResourceEstimates;
 import com.facebook.presto.spi.type.TimeZoneKey;
+import com.facebook.presto.sql.SqlPath;
 import com.facebook.presto.sql.tree.Execute;
 import com.facebook.presto.transaction.TransactionId;
 import com.facebook.presto.transaction.TransactionManager;
@@ -57,6 +58,7 @@ public final class Session
     private final Optional<String> source;
     private final Optional<String> catalog;
     private final Optional<String> schema;
+    private final SqlPath path;
     private final TimeZoneKey timeZoneKey;
     private final Locale locale;
     private final Optional<String> remoteUserAddress;
@@ -64,6 +66,7 @@ public final class Session
     private final Optional<String> clientInfo;
     private final Optional<String> traceToken;
     private final Set<String> clientTags;
+    private final Set<String> clientCapabilities;
     private final ResourceEstimates resourceEstimates;
     private final long startTime;
     private final Map<String, String> systemProperties;
@@ -80,6 +83,7 @@ public final class Session
             Optional<String> source,
             Optional<String> catalog,
             Optional<String> schema,
+            SqlPath path,
             Optional<String> traceToken,
             TimeZoneKey timeZoneKey,
             Locale locale,
@@ -87,6 +91,7 @@ public final class Session
             Optional<String> userAgent,
             Optional<String> clientInfo,
             Set<String> clientTags,
+            Set<String> clientCapabilities,
             ResourceEstimates resourceEstimates,
             long startTime,
             Map<String, String> systemProperties,
@@ -102,6 +107,7 @@ public final class Session
         this.source = requireNonNull(source, "source is null");
         this.catalog = requireNonNull(catalog, "catalog is null");
         this.schema = requireNonNull(schema, "schema is null");
+        this.path = requireNonNull(path, "path is null");
         this.traceToken = requireNonNull(traceToken, "traceToken is null");
         this.timeZoneKey = requireNonNull(timeZoneKey, "timeZoneKey is null");
         this.locale = requireNonNull(locale, "locale is null");
@@ -109,6 +115,7 @@ public final class Session
         this.userAgent = requireNonNull(userAgent, "userAgent is null");
         this.clientInfo = requireNonNull(clientInfo, "clientInfo is null");
         this.clientTags = ImmutableSet.copyOf(requireNonNull(clientTags, "clientTags is null"));
+        this.clientCapabilities = ImmutableSet.copyOf(requireNonNull(clientCapabilities, "clientCapabilities is null"));
         this.resourceEstimates = requireNonNull(resourceEstimates, "resourceEstimates is null");
         this.startTime = startTime;
         this.systemProperties = ImmutableMap.copyOf(requireNonNull(systemProperties, "systemProperties is null"));
@@ -161,6 +168,11 @@ public final class Session
         return schema;
     }
 
+    public SqlPath getPath()
+    {
+        return path;
+    }
+
     public TimeZoneKey getTimeZoneKey()
     {
         return timeZoneKey;
@@ -189,6 +201,11 @@ public final class Session
     public Set<String> getClientTags()
     {
         return clientTags;
+    }
+
+    public Set<String> getClientCapabilities()
+    {
+        return clientCapabilities;
     }
 
     public Optional<String> getTraceToken()
@@ -309,6 +326,7 @@ public final class Session
                 source,
                 catalog,
                 schema,
+                path,
                 traceToken,
                 timeZoneKey,
                 locale,
@@ -316,6 +334,7 @@ public final class Session
                 userAgent,
                 clientInfo,
                 clientTags,
+                clientCapabilities,
                 resourceEstimates,
                 startTime,
                 systemProperties,
@@ -352,6 +371,7 @@ public final class Session
                 source,
                 catalog,
                 schema,
+                path,
                 traceToken,
                 timeZoneKey,
                 locale,
@@ -359,6 +379,7 @@ public final class Session
                 userAgent,
                 clientInfo,
                 clientTags,
+                clientCapabilities,
                 resourceEstimates,
                 startTime,
                 systemProperties,
@@ -377,6 +398,7 @@ public final class Session
                 .add("source", source.orElse(null))
                 .add("catalog", catalog.orElse(null))
                 .add("schema", schema.orElse(null))
+                .add("path", path)
                 .add("traceToken", traceToken.orElse(null))
                 .add("timeZoneKey", timeZoneKey)
                 .add("locale", locale)
@@ -384,6 +406,7 @@ public final class Session
                 .add("userAgent", userAgent.orElse(null))
                 .add("clientInfo", clientInfo.orElse(null))
                 .add("clientTags", clientTags)
+                .add("clientCapabilities", clientCapabilities)
                 .add("resourceEstimates", resourceEstimates)
                 .add("startTime", startTime)
                 .omitNullValues()
@@ -410,6 +433,7 @@ public final class Session
         private String source;
         private String catalog;
         private String schema;
+        private SqlPath path = new SqlPath(Optional.empty());
         private Optional<String> traceToken = Optional.empty();
         private TimeZoneKey timeZoneKey = TimeZoneKey.getTimeZoneKey(TimeZone.getDefault().getID());
         private Locale locale = Locale.getDefault();
@@ -417,6 +441,7 @@ public final class Session
         private String userAgent;
         private String clientInfo;
         private Set<String> clientTags = ImmutableSet.of();
+        private Set<String> clientCapabilities = ImmutableSet.of();
         private ResourceEstimates resourceEstimates;
         private long startTime = System.currentTimeMillis();
         private final Map<String, String> systemProperties = new HashMap<>();
@@ -440,6 +465,7 @@ public final class Session
             this.identity = session.identity;
             this.source = session.source.orElse(null);
             this.catalog = session.catalog.orElse(null);
+            this.path = session.path;
             this.schema = session.schema.orElse(null);
             this.traceToken = requireNonNull(session.traceToken, "traceToken is null");
             this.timeZoneKey = session.timeZoneKey;
@@ -497,6 +523,12 @@ public final class Session
             return this;
         }
 
+        public SessionBuilder setPath(SqlPath path)
+        {
+            this.path = path;
+            return this;
+        }
+
         public SessionBuilder setSource(String source)
         {
             this.source = source;
@@ -545,6 +577,12 @@ public final class Session
             return this;
         }
 
+        public SessionBuilder setClientCapabilities(Set<String> clientCapabilities)
+        {
+            this.clientCapabilities = ImmutableSet.copyOf(clientCapabilities);
+            return this;
+        }
+
         public SessionBuilder setResourceEstimates(ResourceEstimates resourceEstimates)
         {
             this.resourceEstimates = resourceEstimates;
@@ -588,6 +626,7 @@ public final class Session
                     Optional.ofNullable(source),
                     Optional.ofNullable(catalog),
                     Optional.ofNullable(schema),
+                    path,
                     traceToken,
                     timeZoneKey,
                     locale,
@@ -595,6 +634,7 @@ public final class Session
                     Optional.ofNullable(userAgent),
                     Optional.ofNullable(clientInfo),
                     clientTags,
+                    clientCapabilities,
                     Optional.ofNullable(resourceEstimates).orElse(new ResourceEstimateBuilder().build()),
                     startTime,
                     systemProperties,

@@ -18,6 +18,7 @@ import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.TaskState;
 import com.facebook.presto.execution.TaskStateMachine;
+import com.facebook.presto.execution.buffer.LazyOutputBuffer;
 import com.facebook.presto.memory.QueryContext;
 import com.facebook.presto.memory.QueryContextVisitor;
 import com.facebook.presto.memory.context.LocalMemoryContext;
@@ -37,6 +38,7 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
@@ -87,6 +89,8 @@ public class TaskContext
     private final boolean verboseStats;
     private final boolean cpuTimerEnabled;
 
+    private final OptionalInt totalPartitions;
+
     private final Object cumulativeMemoryLock = new Object();
     private final AtomicDouble cumulativeUserMemory = new AtomicDouble(0.0);
 
@@ -107,9 +111,10 @@ public class TaskContext
             Session session,
             MemoryTrackingContext taskMemoryContext,
             boolean verboseStats,
-            boolean cpuTimerEnabled)
+            boolean cpuTimerEnabled,
+            OptionalInt totalPartitions)
     {
-        TaskContext taskContext = new TaskContext(queryContext, taskStateMachine, gcMonitor, notificationExecutor, yieldExecutor, session, taskMemoryContext, verboseStats, cpuTimerEnabled);
+        TaskContext taskContext = new TaskContext(queryContext, taskStateMachine, gcMonitor, notificationExecutor, yieldExecutor, session, taskMemoryContext, verboseStats, cpuTimerEnabled, totalPartitions);
         taskContext.initialize();
         return taskContext;
     }
@@ -122,7 +127,8 @@ public class TaskContext
             Session session,
             MemoryTrackingContext taskMemoryContext,
             boolean verboseStats,
-            boolean cpuTimerEnabled)
+            boolean cpuTimerEnabled,
+            OptionalInt totalPartitions)
     {
         this.taskStateMachine = requireNonNull(taskStateMachine, "taskStateMachine is null");
         this.gcMonitor = requireNonNull(gcMonitor, "gcMonitor is null");
@@ -131,8 +137,11 @@ public class TaskContext
         this.yieldExecutor = requireNonNull(yieldExecutor, "yieldExecutor is null");
         this.session = session;
         this.taskMemoryContext = requireNonNull(taskMemoryContext, "taskMemoryContext is null");
+        // Initialize the local memory contexts with the LazyOutputBuffer tag as LazyOutputBuffer will do the local memory allocations
+        taskMemoryContext.initializeLocalMemoryContexts(LazyOutputBuffer.class.getSimpleName());
         this.verboseStats = verboseStats;
         this.cpuTimerEnabled = cpuTimerEnabled;
+        this.totalPartitions = requireNonNull(totalPartitions, "totalPartitions is null");
     }
 
     // the state change listener is added here in a separate initialize() method
@@ -146,6 +155,11 @@ public class TaskContext
     public TaskId getTaskId()
     {
         return taskStateMachine.getTaskId();
+    }
+
+    public OptionalInt getTotalPartitions()
+    {
+        return totalPartitions;
     }
 
     public PipelineContext addPipelineContext(int pipelineId, boolean inputPipeline, boolean outputPipeline)

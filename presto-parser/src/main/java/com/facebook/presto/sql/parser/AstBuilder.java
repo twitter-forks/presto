@@ -32,12 +32,12 @@ import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ColumnDefinition;
 import com.facebook.presto.sql.tree.Commit;
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.CreateSchema;
 import com.facebook.presto.sql.tree.CreateTable;
 import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.Cube;
+import com.facebook.presto.sql.tree.CurrentPath;
 import com.facebook.presto.sql.tree.CurrentTime;
 import com.facebook.presto.sql.tree.CurrentUser;
 import com.facebook.presto.sql.tree.Deallocate;
@@ -97,6 +97,8 @@ import com.facebook.presto.sql.tree.NullIfExpression;
 import com.facebook.presto.sql.tree.NullLiteral;
 import com.facebook.presto.sql.tree.OrderBy;
 import com.facebook.presto.sql.tree.Parameter;
+import com.facebook.presto.sql.tree.PathElement;
+import com.facebook.presto.sql.tree.PathSpecification;
 import com.facebook.presto.sql.tree.Prepare;
 import com.facebook.presto.sql.tree.Property;
 import com.facebook.presto.sql.tree.QualifiedName;
@@ -117,6 +119,7 @@ import com.facebook.presto.sql.tree.SampledRelation;
 import com.facebook.presto.sql.tree.SearchedCaseExpression;
 import com.facebook.presto.sql.tree.Select;
 import com.facebook.presto.sql.tree.SelectItem;
+import com.facebook.presto.sql.tree.SetPath;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.ShowCatalogs;
 import com.facebook.presto.sql.tree.ShowColumns;
@@ -867,6 +870,12 @@ class AstBuilder
                 tableName);
     }
 
+    @Override
+    public Node visitSetPath(SqlBaseParser.SetPathContext context)
+    {
+        return new SetPath(getLocation(context), (PathSpecification) visit(context.pathSpecification()));
+    }
+
     // ***************** boolean expressions ******************
 
     @Override
@@ -1023,7 +1032,7 @@ class AstBuilder
     {
         Expression expression = new ComparisonExpression(
                 getLocation(context),
-                ComparisonExpressionType.IS_DISTINCT_FROM,
+                ComparisonExpression.Operator.IS_DISTINCT_FROM,
                 (Expression) visit(context.value),
                 (Expression) visit(context.right));
 
@@ -1065,12 +1074,11 @@ class AstBuilder
     @Override
     public Node visitLike(SqlBaseParser.LikeContext context)
     {
-        Expression escape = null;
-        if (context.escape != null) {
-            escape = (Expression) visit(context.escape);
-        }
-
-        Expression result = new LikePredicate(getLocation(context), (Expression) visit(context.value), (Expression) visit(context.pattern), escape);
+        Expression result = new LikePredicate(
+                getLocation(context),
+                (Expression) visit(context.value),
+                (Expression) visit(context.pattern),
+                visitIfPresent(context.escape, Expression.class));
 
         if (context.NOT() != null) {
             result = new NotExpression(getLocation(context), result);
@@ -1214,19 +1222,25 @@ class AstBuilder
     @Override
     public Node visitSpecialDateTimeFunction(SqlBaseParser.SpecialDateTimeFunctionContext context)
     {
-        CurrentTime.Type type = getDateTimeFunctionType(context.name);
+        CurrentTime.Function function = getDateTimeFunctionType(context.name);
 
         if (context.precision != null) {
-            return new CurrentTime(getLocation(context), type, Integer.parseInt(context.precision.getText()));
+            return new CurrentTime(getLocation(context), function, Integer.parseInt(context.precision.getText()));
         }
 
-        return new CurrentTime(getLocation(context), type);
+        return new CurrentTime(getLocation(context), function);
     }
 
     @Override
     public Node visitCurrentUser(SqlBaseParser.CurrentUserContext context)
     {
         return new CurrentUser(getLocation(context.CURRENT_USER()));
+    }
+
+    @Override
+    public Node visitCurrentPath(SqlBaseParser.CurrentPathContext context)
+    {
+        return new CurrentPath(getLocation(context.CURRENT_PATH()));
     }
 
     @Override
@@ -1335,6 +1349,7 @@ class AstBuilder
             check(context.expression().size() == 2 || context.expression().size() == 3, "Invalid number of arguments for 'if' function", context);
             check(!window.isPresent(), "OVER clause not valid for 'if' function", context);
             check(!distinct, "DISTINCT not valid for 'if' function", context);
+            check(!filter.isPresent(), "FILTER not valid for 'if' function", context);
 
             Expression elseExpression = null;
             if (context.expression().size() == 3) {
@@ -1352,6 +1367,7 @@ class AstBuilder
             check(context.expression().size() == 2, "Invalid number of arguments for 'nullif' function", context);
             check(!window.isPresent(), "OVER clause not valid for 'nullif' function", context);
             check(!distinct, "DISTINCT not valid for 'nullif' function", context);
+            check(!filter.isPresent(), "FILTER not valid for 'nullif' function", context);
 
             return new NullIfExpression(
                     getLocation(context),
@@ -1363,6 +1379,7 @@ class AstBuilder
             check(context.expression().size() >= 2, "The 'coalesce' function must have at least two arguments", context);
             check(!window.isPresent(), "OVER clause not valid for 'coalesce' function", context);
             check(!distinct, "DISTINCT not valid for 'coalesce' function", context);
+            check(!filter.isPresent(), "FILTER not valid for 'coalesce' function", context);
 
             return new CoalesceExpression(getLocation(context), visit(context.expression(), Expression.class));
         }
@@ -1371,6 +1388,7 @@ class AstBuilder
             check(context.expression().size() == 1, "The 'try' function must have exactly one argument", context);
             check(!window.isPresent(), "OVER clause not valid for 'try' function", context);
             check(!distinct, "DISTINCT not valid for 'try' function", context);
+            check(!filter.isPresent(), "FILTER not valid for 'try' function", context);
 
             return new TryExpression(getLocation(context), (Expression) visit(getOnlyElement(context.expression())));
         }
@@ -1379,6 +1397,7 @@ class AstBuilder
             check(context.expression().size() >= 1, "The '$internal$bind' function must have at least one arguments", context);
             check(!window.isPresent(), "OVER clause not valid for '$internal$bind' function", context);
             check(!distinct, "DISTINCT not valid for '$internal$bind' function", context);
+            check(!filter.isPresent(), "FILTER not valid for '$internal$bind' function", context);
 
             int numValues = context.expression().size() - 1;
             List<Expression> arguments = context.expression().stream()
@@ -1442,10 +1461,17 @@ class AstBuilder
         if (context.COMMENT() != null) {
             comment = Optional.of(((StringLiteral) visit(context.string())).getValue());
         }
+
+        List<Property> properties = ImmutableList.of();
+        if (context.properties() != null) {
+            properties = visit(context.properties().property(), Property.class);
+        }
+
         return new ColumnDefinition(
                 getLocation(context),
                 (Identifier) visit(context.identifier()),
                 getType(context.type()),
+                properties,
                 comment);
     }
 
@@ -1651,6 +1677,24 @@ class AstBuilder
         return new CallArgument(getLocation(context), context.identifier().getText(), (Expression) visit(context.expression()));
     }
 
+    @Override
+    public Node visitQualifiedArgument(SqlBaseParser.QualifiedArgumentContext context)
+    {
+        return new PathElement(getLocation(context), (Identifier) visit(context.identifier(0)), (Identifier) visit(context.identifier(1)));
+    }
+
+    @Override
+    public Node visitUnqualifiedArgument(SqlBaseParser.UnqualifiedArgumentContext context)
+    {
+        return new PathElement(getLocation(context), (Identifier) visit(context.identifier()));
+    }
+
+    @Override
+    public Node visitPathSpecification(SqlBaseParser.PathSpecificationContext context)
+    {
+        return new PathSpecification(getLocation(context), visit(context.pathElement(), PathElement.class));
+    }
+
     // ***************** helpers *****************
 
     @Override
@@ -1830,57 +1874,57 @@ class AstBuilder
                 .map(Token::getText);
     }
 
-    private static ArithmeticBinaryExpression.Type getArithmeticBinaryOperator(Token operator)
+    private static ArithmeticBinaryExpression.Operator getArithmeticBinaryOperator(Token operator)
     {
         switch (operator.getType()) {
             case SqlBaseLexer.PLUS:
-                return ArithmeticBinaryExpression.Type.ADD;
+                return ArithmeticBinaryExpression.Operator.ADD;
             case SqlBaseLexer.MINUS:
-                return ArithmeticBinaryExpression.Type.SUBTRACT;
+                return ArithmeticBinaryExpression.Operator.SUBTRACT;
             case SqlBaseLexer.ASTERISK:
-                return ArithmeticBinaryExpression.Type.MULTIPLY;
+                return ArithmeticBinaryExpression.Operator.MULTIPLY;
             case SqlBaseLexer.SLASH:
-                return ArithmeticBinaryExpression.Type.DIVIDE;
+                return ArithmeticBinaryExpression.Operator.DIVIDE;
             case SqlBaseLexer.PERCENT:
-                return ArithmeticBinaryExpression.Type.MODULUS;
+                return ArithmeticBinaryExpression.Operator.MODULUS;
         }
 
         throw new UnsupportedOperationException("Unsupported operator: " + operator.getText());
     }
 
-    private static ComparisonExpressionType getComparisonOperator(Token symbol)
+    private static ComparisonExpression.Operator getComparisonOperator(Token symbol)
     {
         switch (symbol.getType()) {
             case SqlBaseLexer.EQ:
-                return ComparisonExpressionType.EQUAL;
+                return ComparisonExpression.Operator.EQUAL;
             case SqlBaseLexer.NEQ:
-                return ComparisonExpressionType.NOT_EQUAL;
+                return ComparisonExpression.Operator.NOT_EQUAL;
             case SqlBaseLexer.LT:
-                return ComparisonExpressionType.LESS_THAN;
+                return ComparisonExpression.Operator.LESS_THAN;
             case SqlBaseLexer.LTE:
-                return ComparisonExpressionType.LESS_THAN_OR_EQUAL;
+                return ComparisonExpression.Operator.LESS_THAN_OR_EQUAL;
             case SqlBaseLexer.GT:
-                return ComparisonExpressionType.GREATER_THAN;
+                return ComparisonExpression.Operator.GREATER_THAN;
             case SqlBaseLexer.GTE:
-                return ComparisonExpressionType.GREATER_THAN_OR_EQUAL;
+                return ComparisonExpression.Operator.GREATER_THAN_OR_EQUAL;
         }
 
         throw new IllegalArgumentException("Unsupported operator: " + symbol.getText());
     }
 
-    private static CurrentTime.Type getDateTimeFunctionType(Token token)
+    private static CurrentTime.Function getDateTimeFunctionType(Token token)
     {
         switch (token.getType()) {
             case SqlBaseLexer.CURRENT_DATE:
-                return CurrentTime.Type.DATE;
+                return CurrentTime.Function.DATE;
             case SqlBaseLexer.CURRENT_TIME:
-                return CurrentTime.Type.TIME;
+                return CurrentTime.Function.TIME;
             case SqlBaseLexer.CURRENT_TIMESTAMP:
-                return CurrentTime.Type.TIMESTAMP;
+                return CurrentTime.Function.TIMESTAMP;
             case SqlBaseLexer.LOCALTIME:
-                return CurrentTime.Type.LOCALTIME;
+                return CurrentTime.Function.LOCALTIME;
             case SqlBaseLexer.LOCALTIMESTAMP:
-                return CurrentTime.Type.LOCALTIMESTAMP;
+                return CurrentTime.Function.LOCALTIMESTAMP;
         }
 
         throw new IllegalArgumentException("Unsupported special function: " + token.getText());
@@ -1966,13 +2010,13 @@ class AstBuilder
         throw new IllegalArgumentException("Unsupported sampling method: " + token.getText());
     }
 
-    private static LogicalBinaryExpression.Type getLogicalBinaryOperator(Token token)
+    private static LogicalBinaryExpression.Operator getLogicalBinaryOperator(Token token)
     {
         switch (token.getType()) {
             case SqlBaseLexer.AND:
-                return LogicalBinaryExpression.Type.AND;
+                return LogicalBinaryExpression.Operator.AND;
             case SqlBaseLexer.OR:
-                return LogicalBinaryExpression.Type.OR;
+                return LogicalBinaryExpression.Operator.OR;
         }
 
         throw new IllegalArgumentException("Unsupported operator: " + token.getText());

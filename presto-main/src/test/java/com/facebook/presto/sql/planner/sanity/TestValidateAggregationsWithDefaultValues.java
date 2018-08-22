@@ -21,6 +21,7 @@ import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.assertions.BasePlanTest;
 import com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder;
 import com.facebook.presto.sql.planner.plan.PlanNode;
@@ -59,8 +60,7 @@ public class TestValidateAggregationsWithDefaultValues
     {
         metadata = getQueryRunner().getMetadata();
         builder = new PlanBuilder(new PlanNodeIdAllocator(), metadata);
-        ConnectorId connectorId = getQueryRunner()
-                .inTransaction(session -> metadata.getCatalogHandle(session, session.getCatalog().get())).get();
+        ConnectorId connectorId = getCurrentConnectorId();
         TableHandle nationTableHandle = new TableHandle(
                 connectorId,
                 new TpchTableHandle(connectorId.toString(), "nation", 1.0));
@@ -207,7 +207,7 @@ public class TestValidateAggregationsWithDefaultValues
         getQueryRunner().inTransaction(session -> {
             // metadata.getCatalogHandle() registers the catalog for the transaction
             session.getCatalog().ifPresent(catalog -> metadata.getCatalogHandle(session, catalog));
-            new ValidateAggregationsWithDefaultValues(forceSingleNode).validate(root, session, metadata, SQL_PARSER, ImmutableMap.of());
+            new ValidateAggregationsWithDefaultValues(forceSingleNode).validate(root, session, metadata, SQL_PARSER, TypeProvider.empty());
             return null;
         });
     }

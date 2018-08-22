@@ -28,13 +28,27 @@ import static java.util.Objects.requireNonNull;
 
 public class PageBuilder
 {
-    private static final int DEFAULT_INITIAL_EXPECTED_ENTRIES = 1024;
+    // We choose default initial size to be 8 for PageBuilder and BlockBuilder
+    // so the underlying data is larger than the object overhead, and the size is power of 2.
+    //
+    // This could be any other small number.
+    private static final int DEFAULT_INITIAL_EXPECTED_ENTRIES = 8;
 
     private final BlockBuilder[] blockBuilders;
     private final List<Type> types;
     private PageBuilderStatus pageBuilderStatus;
     private int declaredPositions;
 
+    /**
+     * Create a PageBuilder with given types.
+     * <p>
+     * A PageBuilder instance created with this constructor has no estimation about bytes per entry,
+     * therefore it can resize frequently while appending new rows.
+     * <p>
+     * This constructor should only be used to get the initial PageBuilder.
+     * Once the PageBuilder is full use reset() or createPageBuilderLike() to create a new
+     * PageBuilder instance with its size estimated based on previous data.
+     */
     public PageBuilder(List<? extends Type> types)
     {
         this(DEFAULT_INITIAL_EXPECTED_ENTRIES, types);

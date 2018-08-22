@@ -21,6 +21,7 @@ import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.MapType;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.analyzer.Analysis;
@@ -34,6 +35,7 @@ import com.facebook.presto.sql.planner.plan.ExceptNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
 import com.facebook.presto.sql.planner.plan.IntersectNode;
 import com.facebook.presto.sql.planner.plan.JoinNode;
+import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
@@ -45,7 +47,6 @@ import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
 import com.facebook.presto.sql.tree.Except;
 import com.facebook.presto.sql.tree.Expression;
@@ -126,7 +127,7 @@ class RelationPlanner
         this.lambdaDeclarationToSymbolMap = lambdaDeclarationToSymbolMap;
         this.metadata = metadata;
         this.session = session;
-        this.subqueryPlanner = new SubqueryPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session, analysis.getParameters());
+        this.subqueryPlanner = new SubqueryPlanner(analysis, symbolAllocator, idAllocator, lambdaDeclarationToSymbolMap, metadata, session);
     }
 
     @Override
@@ -206,8 +207,7 @@ class RelationPlanner
 
         RelationPlan rightPlan = process(node.getRight(), context);
 
-        if (!SystemSessionProperties.isLegacyJoinUsingEnabled(session) &&
-                node.getCriteria().isPresent() && node.getCriteria().get() instanceof JoinUsing) {
+        if (node.getCriteria().isPresent() && node.getCriteria().get() instanceof JoinUsing) {
             return planJoinUsing(node, leftPlan, rightPlan);
         }
 
@@ -232,7 +232,7 @@ class RelationPlanner
 
             List<Expression> leftComparisonExpressions = new ArrayList<>();
             List<Expression> rightComparisonExpressions = new ArrayList<>();
-            List<ComparisonExpressionType> joinConditionComparisonTypes = new ArrayList<>();
+            List<ComparisonExpression.Operator> joinConditionComparisonOperators = new ArrayList<>();
 
             for (Expression conjunct : ExpressionUtils.extractConjuncts(criteria)) {
                 conjunct = ExpressionUtils.normalize(conjunct);
@@ -244,32 +244,27 @@ class RelationPlanner
 
                 Set<QualifiedName> dependencies = SymbolsExtractor.extractNames(conjunct, analysis.getColumnReferences());
 
-                boolean isJoinUsing = node.getCriteria().filter(JoinUsing.class::isInstance).isPresent();
-                checkState(!isJoinUsing || SystemSessionProperties.isLegacyJoinUsingEnabled(session));
-                if (!isJoinUsing && (dependencies.stream().allMatch(left::canResolve) || dependencies.stream().allMatch(right::canResolve))) {
+                if (dependencies.stream().allMatch(left::canResolve) || dependencies.stream().allMatch(right::canResolve)) {
                     // If the conjunct can be evaluated entirely with the inputs on either side of the join, add
                     // it to the list complex expressions and let the optimizers figure out how to push it down later.
-                    // Due to legacy reasons, the expression for "join using" looks like "x = x", which (incorrectly)
-                    // appears to fit the condition we're after. So we skip them.
-
                     complexJoinExpressions.add(conjunct);
                 }
                 else if (conjunct instanceof ComparisonExpression) {
                     Expression firstExpression = ((ComparisonExpression) conjunct).getLeft();
                     Expression secondExpression = ((ComparisonExpression) conjunct).getRight();
-                    ComparisonExpressionType comparisonType = ((ComparisonExpression) conjunct).getType();
+                    ComparisonExpression.Operator comparisonOperator = ((ComparisonExpression) conjunct).getOperator();
                     Set<QualifiedName> firstDependencies = SymbolsExtractor.extractNames(firstExpression, analysis.getColumnReferences());
                     Set<QualifiedName> secondDependencies = SymbolsExtractor.extractNames(secondExpression, analysis.getColumnReferences());
 
                     if (firstDependencies.stream().allMatch(left::canResolve) && secondDependencies.stream().allMatch(right::canResolve)) {
                         leftComparisonExpressions.add(firstExpression);
                         rightComparisonExpressions.add(secondExpression);
-                        joinConditionComparisonTypes.add(comparisonType);
+                        joinConditionComparisonOperators.add(comparisonOperator);
                     }
                     else if (firstDependencies.stream().allMatch(right::canResolve) && secondDependencies.stream().allMatch(left::canResolve)) {
                         leftComparisonExpressions.add(secondExpression);
                         rightComparisonExpressions.add(firstExpression);
-                        joinConditionComparisonTypes.add(comparisonType.flip());
+                        joinConditionComparisonOperators.add(comparisonOperator.flip());
                     }
                     else {
                         // the case when we mix symbols from both left and right join side on either side of condition.
@@ -289,7 +284,7 @@ class RelationPlanner
             rightPlanBuilder = rightPlanBuilder.appendProjections(rightComparisonExpressions, symbolAllocator, idAllocator);
 
             for (int i = 0; i < leftComparisonExpressions.size(); i++) {
-                if (joinConditionComparisonTypes.get(i) == ComparisonExpressionType.EQUAL) {
+                if (joinConditionComparisonOperators.get(i) == ComparisonExpression.Operator.EQUAL) {
                     Symbol leftSymbol = leftPlanBuilder.translate(leftComparisonExpressions.get(i));
                     Symbol rightSymbol = rightPlanBuilder.translate(rightComparisonExpressions.get(i));
 
@@ -298,7 +293,7 @@ class RelationPlanner
                 else {
                     Expression leftExpression = leftPlanBuilder.rewrite(leftComparisonExpressions.get(i));
                     Expression rightExpression = rightPlanBuilder.rewrite(rightComparisonExpressions.get(i));
-                    postInnerJoinConditions.add(new ComparisonExpression(joinConditionComparisonTypes.get(i), leftExpression, rightExpression));
+                    postInnerJoinConditions.add(new ComparisonExpression(joinConditionComparisonOperators.get(i), leftExpression, rightExpression));
                 }
             }
         }
@@ -338,7 +333,6 @@ class RelationPlanner
 
         if (node.getType() != INNER && !complexJoinExpressions.isEmpty()) {
             Expression joinedFilterCondition = ExpressionUtils.and(complexJoinExpressions);
-            joinedFilterCondition = ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(analysis.getParameters(), analysis), joinedFilterCondition);
             Expression rewrittenFilterCondition = translationMap.rewrite(joinedFilterCondition);
             root = new JoinNode(idAllocator.getNextId(),
                     JoinNode.Type.typeConvert(node.getType()),
@@ -361,7 +355,6 @@ class RelationPlanner
             rootPlanBuilder = subqueryPlanner.handleSubqueries(rootPlanBuilder, complexJoinExpressions, node);
 
             for (Expression expression : complexJoinExpressions) {
-                expression = ExpressionTreeRewriter.rewriteWith(new ParameterRewriter(analysis.getParameters(), analysis), expression);
                 postInnerJoinConditions.add(rootPlanBuilder.rewrite(expression));
             }
             root = rootPlanBuilder.getRoot();
@@ -521,7 +514,7 @@ class RelationPlanner
         PlanBuilder leftPlanBuilder = initializePlanBuilder(leftPlan);
         PlanBuilder rightPlanBuilder = initializePlanBuilder(rightPlan);
 
-        PlanBuilder planBuilder = subqueryPlanner.appendLateralJoin(leftPlanBuilder, rightPlanBuilder, lateral.getQuery(), true);
+        PlanBuilder planBuilder = subqueryPlanner.appendLateralJoin(leftPlanBuilder, rightPlanBuilder, lateral.getQuery(), true, LateralJoinNode.Type.INNER);
 
         List<Symbol> outputSymbols = ImmutableList.<Symbol>builder()
                 .addAll(leftPlan.getRoot().getOutputSymbols())
@@ -532,7 +525,7 @@ class RelationPlanner
 
     private static boolean isEqualComparisonExpression(Expression conjunct)
     {
-        return conjunct instanceof ComparisonExpression && ((ComparisonExpression) conjunct).getType() == ComparisonExpressionType.EQUAL;
+        return conjunct instanceof ComparisonExpression && ((ComparisonExpression) conjunct).getOperator() == ComparisonExpression.Operator.EQUAL;
     }
 
     private RelationPlan planCrossJoinUnnest(RelationPlan leftPlan, Join joinNode, Unnest node)
@@ -558,7 +551,17 @@ class RelationPlanner
             Type type = analysis.getType(expression);
             Symbol inputSymbol = translations.get(expression);
             if (type instanceof ArrayType) {
-                unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next()));
+                Type elementType = ((ArrayType) type).getElementType();
+                if (!SystemSessionProperties.isLegacyUnnest(session) && elementType instanceof RowType) {
+                    ImmutableList.Builder<Symbol> unnestSymbolBuilder = ImmutableList.builder();
+                    for (int i = 0; i < ((RowType) elementType).getFields().size(); i++) {
+                        unnestSymbolBuilder.add(unnestedSymbolsIterator.next());
+                    }
+                    unnestSymbols.put(inputSymbol, unnestSymbolBuilder.build());
+                }
+                else {
+                    unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next()));
+                }
             }
             else if (type instanceof MapType) {
                 unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next(), unnestedSymbolsIterator.next()));
@@ -649,7 +652,17 @@ class RelationPlanner
             Symbol inputSymbol = symbolAllocator.newSymbol(rewritten, type);
             argumentSymbols.add(inputSymbol);
             if (type instanceof ArrayType) {
-                unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next()));
+                Type elementType = ((ArrayType) type).getElementType();
+                if (!SystemSessionProperties.isLegacyUnnest(session) && elementType instanceof RowType) {
+                    ImmutableList.Builder<Symbol> unnestSymbolBuilder = ImmutableList.builder();
+                    for (int i = 0; i < ((RowType) elementType).getFields().size(); i++) {
+                        unnestSymbolBuilder.add(unnestedSymbolsIterator.next());
+                    }
+                    unnestSymbols.put(inputSymbol, unnestSymbolBuilder.build());
+                }
+                else {
+                    unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next()));
+                }
             }
             else if (type instanceof MapType) {
                 unnestSymbols.put(inputSymbol, ImmutableList.of(unnestedSymbolsIterator.next(), unnestedSymbolsIterator.next()));
@@ -812,6 +825,7 @@ class RelationPlanner
                 node,
                 ImmutableMap.of(),
                 ImmutableList.of(node.getOutputSymbols()),
+                ImmutableList.of(),
                 AggregationNode.Step.SINGLE,
                 Optional.empty(),
                 Optional.empty());

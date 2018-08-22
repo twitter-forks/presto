@@ -50,6 +50,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -1037,7 +1038,7 @@ public final class JsonUtil
     private static class ShortDecimalBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        DecimalType type;
+        final DecimalType type;
 
         ShortDecimalBlockBuilderAppender(DecimalType type)
         {
@@ -1062,7 +1063,7 @@ public final class JsonUtil
     private static class LongDecimalBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        DecimalType type;
+        final DecimalType type;
 
         LongDecimalBlockBuilderAppender(DecimalType type)
         {
@@ -1087,7 +1088,7 @@ public final class JsonUtil
     private static class VarcharBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        Type type;
+        final Type type;
 
         VarcharBlockBuilderAppender(Type type)
         {
@@ -1111,7 +1112,7 @@ public final class JsonUtil
     private static class ArrayBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        BlockBuilderAppender elementAppender;
+        final BlockBuilderAppender elementAppender;
 
         ArrayBlockBuilderAppender(BlockBuilderAppender elementAppender)
         {
@@ -1141,9 +1142,9 @@ public final class JsonUtil
     private static class MapBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        BlockBuilderAppender keyAppender;
-        BlockBuilderAppender valueAppender;
-        Type keyType;
+        final BlockBuilderAppender keyAppender;
+        final BlockBuilderAppender valueAppender;
+        final Type keyType;
 
         MapBlockBuilderAppender(BlockBuilderAppender keyAppender, BlockBuilderAppender valueAppender, Type keyType)
         {
@@ -1183,8 +1184,8 @@ public final class JsonUtil
     private static class RowBlockBuilderAppender
             implements BlockBuilderAppender
     {
-        BlockBuilderAppender[] fieldAppenders;
-        Optional<Map<String, Integer>> fieldNameToIndex;
+        final BlockBuilderAppender[] fieldAppenders;
+        final Optional<Map<String, Integer>> fieldNameToIndex;
 
         RowBlockBuilderAppender(BlockBuilderAppender[] fieldAppenders, Optional<Map<String, Integer>> fieldNameToIndex)
         {
@@ -1258,7 +1259,7 @@ public final class JsonUtil
                 if (parser.currentToken() != FIELD_NAME) {
                     throw new JsonCastException(format("Expected a json field name, but got %s", parser.getText()));
                 }
-                String fieldName = parser.getText().toLowerCase();
+                String fieldName = parser.getText().toLowerCase(Locale.ENGLISH);
                 Integer fieldIndex = fieldNameToIndex.get().get(fieldName);
                 parser.nextToken();
                 if (fieldIndex != null) {

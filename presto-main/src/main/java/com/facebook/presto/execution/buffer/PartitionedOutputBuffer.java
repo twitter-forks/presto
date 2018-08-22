@@ -18,6 +18,7 @@ import com.facebook.presto.OutputBuffers.OutputBufferId;
 import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.memory.context.LocalMemoryContext;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
@@ -245,6 +246,7 @@ public class PartitionedOutputBuffer
         if (state.setIf(FINISHED, oldState -> !oldState.isTerminal())) {
             partitions.forEach(ClientBuffer::destroy);
             memoryManager.setNoBlockOnFull();
+            forceFreeMemory();
         }
     }
 
@@ -254,6 +256,7 @@ public class PartitionedOutputBuffer
         // ignore fail if the buffer already in a terminal state.
         if (state.setIf(FAILED, oldState -> !oldState.isTerminal())) {
             memoryManager.setNoBlockOnFull();
+            forceFreeMemory();
             // DO NOT destroy buffers or set no more pages.  The coordinator manages the teardown of failed queries.
         }
     }
@@ -262,6 +265,12 @@ public class PartitionedOutputBuffer
     public long getPeakMemoryUsage()
     {
         return memoryManager.getPeakMemoryUsage();
+    }
+
+    @VisibleForTesting
+    void forceFreeMemory()
+    {
+        memoryManager.close();
     }
 
     private void checkFlushComplete()
@@ -273,5 +282,11 @@ public class PartitionedOutputBuffer
         if (partitions.stream().allMatch(ClientBuffer::isDestroyed)) {
             destroy();
         }
+    }
+
+    @VisibleForTesting
+    OutputBufferMemoryManager getMemoryManager()
+    {
+        return memoryManager;
     }
 }

@@ -42,8 +42,6 @@ import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameS
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRevokeTablePrivilege;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySelectColumns;
-import static com.facebook.presto.spi.security.AccessDeniedException.denySelectTable;
-import static com.facebook.presto.spi.security.AccessDeniedException.denySelectView;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetCatalogSessionProperty;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetSystemSessionProperty;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetUser;
@@ -150,12 +148,6 @@ public class DenyAllAccessControl
     }
 
     @Override
-    public void checkCanSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
-    {
-        denySelectTable(tableName.toString());
-    }
-
-    @Override
     public void checkCanInsertIntoTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         denyInsertTable(tableName.toString());
@@ -180,27 +172,9 @@ public class DenyAllAccessControl
     }
 
     @Override
-    public void checkCanSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
-    {
-        denySelectView(viewName.toString());
-    }
-
-    @Override
-    public void checkCanCreateViewWithSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
-    {
-        denyCreateViewWithSelect(tableName.toString());
-    }
-
-    @Override
-    public void checkCanCreateViewWithSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
-    {
-        denyCreateViewWithSelect(viewName.toString());
-    }
-
-    @Override
     public void checkCanCreateViewWithSelectFromColumns(TransactionId transactionId, Identity identity, QualifiedObjectName tableName, Set<String> columnNames)
     {
-        denyCreateViewWithSelect(tableName.toString());
+        denyCreateViewWithSelect(tableName.toString(), identity);
     }
 
     @Override

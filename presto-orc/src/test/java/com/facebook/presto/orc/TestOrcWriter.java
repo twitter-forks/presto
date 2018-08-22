@@ -55,7 +55,7 @@ public class TestOrcWriter
         for (OrcWriteValidationMode validationMode : OrcWriteValidationMode.values()) {
             TempFile tempFile = new TempFile();
             OrcWriter writer = new OrcWriter(
-                    new FileOutputStream(tempFile.getFile()),
+                    new OutputStreamOrcDataSink(new FileOutputStream(tempFile.getFile())),
                     ImmutableList.of("test1", "test2", "test3", "test4", "test5"),
                     ImmutableList.of(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR),
                     ORC,
@@ -101,7 +101,7 @@ public class TestOrcWriter
                 // read the footer
                 byte[] tailBuffer = new byte[toIntExact(stripe.getFooterLength())];
                 orcDataSource.readFully(stripe.getOffset() + stripe.getIndexLength() + stripe.getDataLength(), tailBuffer);
-                try (InputStream inputStream = new OrcInputStream(orcDataSource.getId(), Slices.wrappedBuffer(tailBuffer).getInput(), Optional.empty(), newSimpleAggregatedMemoryContext())) {
+                try (InputStream inputStream = new OrcInputStream(orcDataSource.getId(), Slices.wrappedBuffer(tailBuffer).getInput(), Optional.empty(), newSimpleAggregatedMemoryContext(), tailBuffer.length)) {
                     StripeFooter stripeFooter = ORC.createMetadataReader().readStripeFooter(footer.getTypes(), inputStream);
 
                     int size = 0;

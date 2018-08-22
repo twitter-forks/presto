@@ -162,6 +162,7 @@ public class ClientOptions
                 clientInfo,
                 catalog,
                 schema,
+                null,
                 TimeZone.getDefault().getID(),
                 Locale.getDefault(),
                 toResourceEstimates(resourceEstimates),

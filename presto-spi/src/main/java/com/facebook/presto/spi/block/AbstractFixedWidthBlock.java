@@ -157,7 +157,18 @@ public abstract class AbstractFixedWidthBlock
 
         Slice copy = Slices.copyOf(getRawSlice(), valueOffset(position), fixedSize);
 
-        return new FixedWidthBlock(fixedSize, 1, copy, Slices.wrappedBooleanArray(isNull(position)));
+        Slice valueIsNull = null;
+        if (isNull(position)) {
+            valueIsNull = Slices.wrappedBooleanArray(true);
+        }
+
+        return new FixedWidthBlock(fixedSize, 1, copy, valueIsNull);
+    }
+
+    @Override
+    public long getEstimatedDataSizeForStats(int position)
+    {
+        return isNull(position) ? 0 : fixedSize;
     }
 
     @Override

@@ -22,6 +22,7 @@ import com.facebook.presto.sql.analyzer.TypeSignatureProvider;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Aggregation;
 import com.facebook.presto.sql.planner.plan.Assignments;
@@ -32,7 +33,6 @@ import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.sql.tree.IfExpression;
@@ -81,7 +81,7 @@ public class OptimizeMixedDistinctAggregations
     }
 
     @Override
-    public PlanNode optimize(PlanNode plan, Session session, Map<Symbol, Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
+    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
     {
         if (isOptimizeDistinctAggregationEnabled(session)) {
             return SimplePlanRewriter.rewriteWith(new Optimizer(idAllocator, symbolAllocator, metadata), plan, Optional.empty());
@@ -177,6 +177,7 @@ public class OptimizeMixedDistinctAggregations
                     source,
                     aggregations.build(),
                     node.getGroupingSets(),
+                    ImmutableList.of(),
                     node.getStep(),
                     Optional.empty(),
                     node.getGroupIdSymbol());
@@ -227,8 +228,7 @@ public class OptimizeMixedDistinctAggregations
                     source);
 
             // 2. Add aggregation node
-            Set<Symbol> groupByKeys = new HashSet<>();
-            groupByKeys.addAll(groupBySymbols);
+            Set<Symbol> groupByKeys = new HashSet<>(groupBySymbols);
             groupByKeys.add(distinctSymbol);
             groupByKeys.add(groupSymbol);
 
@@ -300,7 +300,7 @@ public class OptimizeMixedDistinctAggregations
                     Expression expression = createIfExpression(
                             groupSymbol.toSymbolReference(),
                             new Cast(new LongLiteral("1"), "bigint"), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
-                            ComparisonExpressionType.EQUAL,
+                            ComparisonExpression.Operator.EQUAL,
                             symbol.toSymbolReference(),
                             symbolAllocator.getTypes().get(symbol));
                     outputSymbols.put(newSymbol, expression);
@@ -312,7 +312,7 @@ public class OptimizeMixedDistinctAggregations
                     Expression expression = createIfExpression(
                             groupSymbol.toSymbolReference(),
                             new Cast(new LongLiteral("0"), "bigint"), // TODO: this should use GROUPING() when that's available instead of relying on specific group numbering
-                            ComparisonExpressionType.EQUAL,
+                            ComparisonExpression.Operator.EQUAL,
                             symbol.toSymbolReference(),
                             symbolAllocator.getTypes().get(symbol));
                     outputSymbols.put(newSymbol, expression);
@@ -355,8 +355,7 @@ public class OptimizeMixedDistinctAggregations
             groups.add(ImmutableList.copyOf(group0));
 
             // g1
-            Set<Symbol> group1 = new HashSet<>();
-            group1.addAll(groupBySymbols);
+            Set<Symbol> group1 = new HashSet<>(groupBySymbols);
             group1.add(distinctSymbol);
             groups.add(ImmutableList.copyOf(group1));
 
@@ -367,7 +366,7 @@ public class OptimizeMixedDistinctAggregations
                     allSymbols.stream().collect(Collectors.toMap(
                             symbol -> symbol,
                             symbol -> (symbol.equals(duplicatedDistinctSymbol) ? distinctSymbol : symbol))),
-                    ImmutableMap.of(),
+                    ImmutableList.of(),
                     groupSymbol);
         }
 
@@ -420,6 +419,7 @@ public class OptimizeMixedDistinctAggregations
                     groupIdNode,
                     aggregations.build(),
                     ImmutableList.of(ImmutableList.copyOf(groupByKeys)),
+                    ImmutableList.of(),
                     SINGLE,
                     originalNode.getHashSymbol(),
                     Optional.empty());
@@ -434,10 +434,10 @@ public class OptimizeMixedDistinctAggregations
         }
 
         // creates if clause specific to use case here, default value always null
-        private static IfExpression createIfExpression(Expression left, Expression right, ComparisonExpressionType type, Expression result, Type trueValueType)
+        private static IfExpression createIfExpression(Expression left, Expression right, ComparisonExpression.Operator operator, Expression result, Type trueValueType)
         {
             return new IfExpression(
-                    new ComparisonExpression(type, left, right),
+                    new ComparisonExpression(operator, left, right),
                     result,
                     new Cast(new NullLiteral(), trueValueType.getTypeSignature().toString()));
         }

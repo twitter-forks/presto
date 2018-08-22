@@ -15,10 +15,10 @@ package com.facebook.presto.sql.planner.sanity;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolsExtractor;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Aggregation;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
@@ -63,14 +63,15 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.facebook.presto.sql.planner.optimizations.IndexJoinOptimizer.IndexKeyTracer;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 
 /**
@@ -80,7 +81,7 @@ public final class ValidateDependenciesChecker
         implements PlanSanityChecker.Checker
 {
     @Override
-    public void validate(PlanNode plan, Session session, Metadata metadata, SqlParser sqlParser, Map<Symbol, Type> types)
+    public void validate(PlanNode plan, Session session, Metadata metadata, SqlParser sqlParser, TypeProvider types)
     {
         validate(plan);
     }
@@ -346,19 +347,19 @@ public final class ValidateDependenciesChecker
                         allInputs);
             });
 
-            checkDependencies(allInputs, node.getOutputSymbols(), "Symbol from join output (%s) not in sources (%s)", node.getOutputSymbols(), allInputs);
-
-            List<Integer> rightSymbolIndexes = node.getRight().getOutputSymbols().stream()
-                    .filter(symbol -> node.getOutputSymbols().contains(symbol))
-                    .map(symbol -> node.getOutputSymbols().indexOf(symbol))
-                    .collect(toImmutableList());
-
-            boolean allLeftBeforeRight = node.getLeft().getOutputSymbols().stream()
-                    .filter(symbol -> node.getOutputSymbols().contains(symbol))
-                    .map(symbol -> node.getOutputSymbols().indexOf(symbol))
-                    .allMatch(leftIndex -> rightSymbolIndexes.stream()
-                            .allMatch(rightIndex -> rightIndex > leftIndex));
-            checkState(allLeftBeforeRight, "Not all left output symbols are before right output symbols");
+            int leftMaxPosition = -1;
+            Optional<Integer> rightMinPosition = Optional.empty();
+            Set<Symbol> leftSymbols = new HashSet<>(node.getLeft().getOutputSymbols());
+            for (int i = 0; i < node.getOutputSymbols().size(); i++) {
+                Symbol symbol = node.getOutputSymbols().get(i);
+                if (leftSymbols.contains(symbol)) {
+                    leftMaxPosition = i;
+                }
+                else if (!rightMinPosition.isPresent()) {
+                    rightMinPosition = Optional.of(i);
+                }
+            }
+            checkState(!rightMinPosition.isPresent() || rightMinPosition.get() > leftMaxPosition, "Not all left output symbols are before right output symbols");
 
             if (node.isCrossJoin()) {
                 List<Symbol> allInputsOrdered = ImmutableList.<Symbol>builder()
@@ -426,14 +427,20 @@ public final class ValidateDependenciesChecker
         @Override
         public Void visitTableScan(TableScanNode node, Set<Symbol> boundSymbols)
         {
-            checkArgument(node.getAssignments().keySet().containsAll(node.getOutputSymbols()), "Assignments must contain mappings for output symbols");
-
+            //We don't have to do a check here as TableScanNode has no dependencies.
             return null;
         }
 
         @Override
         public Void visitValues(ValuesNode node, Set<Symbol> boundSymbols)
         {
+            Set<Symbol> correlatedDependencies = SymbolsExtractor.extractUnique(node);
+            checkDependencies(
+                    boundSymbols,
+                    correlatedDependencies,
+                    "Invalid node. Expression correlated dependencies (%s) not satisfied by (%s)",
+                    correlatedDependencies,
+                    boundSymbols);
             return null;
         }
 

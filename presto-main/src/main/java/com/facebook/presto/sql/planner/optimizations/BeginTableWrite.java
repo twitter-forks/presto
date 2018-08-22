@@ -19,10 +19,9 @@ import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableLayoutHandle;
 import com.facebook.presto.metadata.TableLayoutResult;
 import com.facebook.presto.spi.Constraint;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
-import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
 import com.facebook.presto.sql.planner.plan.FilterNode;
@@ -40,7 +39,6 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -68,7 +66,7 @@ public class BeginTableWrite
     }
 
     @Override
-    public PlanNode optimize(PlanNode plan, Session session, Map<Symbol, Type> types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
+    public PlanNode optimize(PlanNode plan, Session session, TypeProvider types, SymbolAllocator symbolAllocator, PlanNodeIdAllocator idAllocator)
     {
         return SimplePlanRewriter.rewriteWith(new Rewriter(session), plan, new Context());
     }
@@ -94,10 +92,13 @@ public class BeginTableWrite
                     node.getId(),
                     node.getSource().accept(this, context),
                     writerTarget,
+                    node.getRowCountSymbol(),
+                    node.getFragmentSymbol(),
                     node.getColumns(),
                     node.getColumnNames(),
-                    node.getOutputSymbols(),
-                    node.getPartitioningScheme());
+                    node.getPartitioningScheme(),
+                    node.getStatisticsAggregation(),
+                    node.getStatisticsAggregationDescriptor());
         }
 
         @Override
@@ -123,7 +124,13 @@ public class BeginTableWrite
             context.get().addMaterializedHandle(originalTarget, newTarget);
             child = child.accept(this, context);
 
-            return new TableFinishNode(node.getId(), child, newTarget, node.getOutputSymbols());
+            return new TableFinishNode(
+                    node.getId(),
+                    child,
+                    newTarget,
+                    node.getRowCountSymbol(),
+                    node.getStatisticsAggregation(),
+                    node.getStatisticsAggregationDescriptor());
         }
 
         public TableWriterNode.WriterTarget getTarget(PlanNode node)
@@ -170,7 +177,7 @@ public class BeginTableWrite
                 List<TableLayoutResult> layouts = metadata.getLayouts(
                         session,
                         handle,
-                        new Constraint<>(scan.getCurrentConstraint(), bindings -> true),
+                        new Constraint<>(scan.getCurrentConstraint()),
                         Optional.of(ImmutableSet.copyOf(scan.getAssignments().values())));
                 verify(layouts.size() == 1, "Expected exactly one layout for delete");
                 TableLayoutHandle layout = Iterables.getOnlyElement(layouts).getLayout().getHandle();

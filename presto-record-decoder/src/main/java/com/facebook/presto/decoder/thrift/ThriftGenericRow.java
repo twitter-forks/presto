@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.decoder.thrift;
 
-import io.airlift.log.Logger;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
@@ -40,7 +39,6 @@ import java.util.Set;
 public class ThriftGenericRow
         implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
 {
-    private static final Logger log = Logger.get(ThriftGenericRow.class);
     private final Map<Short, Object> values = new HashMap<>();
     private byte[] buf;
     private int off;

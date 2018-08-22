@@ -42,7 +42,6 @@ import com.facebook.presto.sql.planner.plan.UnionNode;
 import com.facebook.presto.sql.planner.plan.WindowNode;
 import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.FunctionCall;
@@ -158,6 +157,7 @@ public class TestEffectivePredicateExtractor
                         C, new Aggregation(fakeFunction(), fakeFunctionHandle("test", AGGREGATE), Optional.empty()),
                         D, new Aggregation(fakeFunction(), fakeFunctionHandle("test", AGGREGATE), Optional.empty())),
                 ImmutableList.of(ImmutableList.of(A, B, C)),
+                ImmutableList.of(),
                 AggregationNode.Step.FINAL,
                 Optional.empty(),
                 Optional.empty());
@@ -181,6 +181,7 @@ public class TestEffectivePredicateExtractor
                 filter(baseTableScan, FALSE_LITERAL),
                 ImmutableMap.of(),
                 ImmutableList.of(ImmutableList.of()),
+                ImmutableList.of(),
                 AggregationNode.Step.FINAL,
                 Optional.empty(),
                 Optional.empty());
@@ -735,17 +736,17 @@ public class TestEffectivePredicateExtractor
 
     private static ComparisonExpression equals(Expression expression1, Expression expression2)
     {
-        return new ComparisonExpression(ComparisonExpressionType.EQUAL, expression1, expression2);
+        return new ComparisonExpression(ComparisonExpression.Operator.EQUAL, expression1, expression2);
     }
 
     private static ComparisonExpression lessThan(Expression expression1, Expression expression2)
     {
-        return new ComparisonExpression(ComparisonExpressionType.LESS_THAN, expression1, expression2);
+        return new ComparisonExpression(ComparisonExpression.Operator.LESS_THAN, expression1, expression2);
     }
 
     private static ComparisonExpression greaterThan(Expression expression1, Expression expression2)
     {
-        return new ComparisonExpression(ComparisonExpressionType.GREATER_THAN, expression1, expression2);
+        return new ComparisonExpression(ComparisonExpression.Operator.GREATER_THAN, expression1, expression2);
     }
 
     private static IsNullPredicate isNull(Expression expression)

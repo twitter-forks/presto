@@ -14,9 +14,10 @@
 package com.facebook.presto.sql.planner.assertions;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.sql.planner.LogicalPlanner;
 import com.facebook.presto.sql.planner.Plan;
-import com.facebook.presto.sql.planner.StatsRecorder;
+import com.facebook.presto.sql.planner.RuleStatsRecorder;
 import com.facebook.presto.sql.planner.iterative.IterativeOptimizer;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantIdentityProjections;
 import com.facebook.presto.sql.planner.optimizations.PlanOptimizer;
@@ -33,6 +34,7 @@ import org.testng.annotations.BeforeClass;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
@@ -91,6 +93,11 @@ public class BasePlanTest
         queryRunner = null;
     }
 
+    public ConnectorId getCurrentConnectorId()
+    {
+        return queryRunner.inTransaction(transactionSession -> queryRunner.getMetadata().getCatalogHandle(transactionSession, transactionSession.getCatalog().get())).get();
+    }
+
     protected LocalQueryRunner getQueryRunner()
     {
         return queryRunner;
@@ -131,13 +138,23 @@ public class BasePlanTest
         });
     }
 
+    protected void assertDistributedPlan(String sql, PlanMatchPattern pattern)
+    {
+        assertDistributedPlan(sql, getQueryRunner().getDefaultSession(), pattern);
+    }
+
+    protected void assertDistributedPlan(String sql, Session session, PlanMatchPattern pattern)
+    {
+        assertPlanWithSession(sql, session, false, pattern);
+    }
+
     protected void assertMinimallyOptimizedPlan(@Language("SQL") String sql, PlanMatchPattern pattern)
     {
         List<PlanOptimizer> optimizers = ImmutableList.of(
                 new UnaliasSymbolReferences(),
                 new PruneUnreferencedOutputs(),
                 new IterativeOptimizer(
-                        new StatsRecorder(),
+                        new RuleStatsRecorder(),
                         queryRunner.getStatsCalculator(),
                         queryRunner.getCostCalculator(),
                         ImmutableSet.of(new RemoveRedundantIdentityProjections())));
@@ -150,6 +167,16 @@ public class BasePlanTest
         queryRunner.inTransaction(session, transactionSession -> {
             Plan actualPlan = queryRunner.createPlan(transactionSession, sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, forceSingleNode);
             PlanAssert.assertPlan(transactionSession, queryRunner.getMetadata(), queryRunner.getStatsCalculator(), actualPlan, pattern);
+            return null;
+        });
+    }
+
+    protected void assertPlanWithSession(@Language("SQL") String sql, Session session, boolean forceSingleNode, PlanMatchPattern pattern, Consumer<Plan> planValidator)
+    {
+        queryRunner.inTransaction(session, transactionSession -> {
+            Plan actualPlan = queryRunner.createPlan(transactionSession, sql, LogicalPlanner.Stage.OPTIMIZED_AND_VALIDATED, forceSingleNode);
+            PlanAssert.assertPlan(transactionSession, queryRunner.getMetadata(), queryRunner.getStatsCalculator(), actualPlan, pattern);
+            planValidator.accept(actualPlan);
             return null;
         });
     }

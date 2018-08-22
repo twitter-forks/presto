@@ -26,6 +26,7 @@ import io.airlift.stats.GcMonitor;
 import io.airlift.stats.TestingGcMonitor;
 import io.airlift.units.DataSize;
 
+import java.util.OptionalInt;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledExecutorService;
 
@@ -69,7 +70,8 @@ public final class TestingTaskContext
                 taskStateMachine,
                 session,
                 true,
-                true);
+                true,
+                OptionalInt.empty());
     }
 
     public static Builder builder(Executor notificationExecutor, ScheduledExecutorService yieldExecutor, Session session)
@@ -85,7 +87,7 @@ public final class TestingTaskContext
         private QueryId queryId = new QueryId("test_query");
         private TaskStateMachine taskStateMachine;
         private DataSize queryMaxMemory = new DataSize(256, MEGABYTE);
-        private DataSize queryMaxTotalMemory = new DataSize(512, MEGABYTE);
+        private final DataSize queryMaxTotalMemory = new DataSize(512, MEGABYTE);
         private DataSize memoryPoolSize = new DataSize(1, GIGABYTE);
         private DataSize maxSpillSize = new DataSize(1, GIGABYTE);
         private DataSize queryMaxSpillSize = new DataSize(1, GIGABYTE);

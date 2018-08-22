@@ -35,10 +35,12 @@ import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.TestingConnectorIndexHandle;
 import com.facebook.presto.sql.planner.TestingConnectorTransactionHandle;
 import com.facebook.presto.sql.planner.TestingWriterTarget;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.AggregationNode;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Aggregation;
 import com.facebook.presto.sql.planner.plan.AggregationNode.Step;
 import com.facebook.presto.sql.planner.plan.ApplyNode;
+import com.facebook.presto.sql.planner.plan.AssignUniqueId;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.DeleteNode;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
@@ -52,6 +54,7 @@ import com.facebook.presto.sql.planner.plan.LimitNode;
 import com.facebook.presto.sql.planner.plan.MarkDistinctNode;
 import com.facebook.presto.sql.planner.plan.OutputNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
+import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.sql.planner.plan.ProjectNode;
 import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.facebook.presto.sql.planner.plan.SemiJoinNode;
@@ -75,7 +78,6 @@ import com.google.common.collect.Maps;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -154,15 +156,22 @@ public class PlanBuilder
 
     public ValuesNode values(Symbol... columns)
     {
-        return new ValuesNode(
-                idAllocator.getNextId(),
-                ImmutableList.copyOf(columns),
-                ImmutableList.of());
+        return values(idAllocator.getNextId(), columns);
+    }
+
+    public ValuesNode values(PlanNodeId id, Symbol... columns)
+    {
+        return values(id, ImmutableList.copyOf(columns), ImmutableList.of());
     }
 
     public ValuesNode values(List<Symbol> columns, List<List<Expression>> rows)
     {
-        return new ValuesNode(idAllocator.getNextId(), columns, rows);
+        return values(idAllocator.getNextId(), columns, rows);
+    }
+
+    public ValuesNode values(PlanNodeId id, List<Symbol> columns, List<List<Expression>> rows)
+    {
+        return new ValuesNode(id, columns, rows);
     }
 
     public EnforceSingleRowNode enforceSingleRow(PlanNode source)
@@ -173,11 +182,6 @@ public class PlanBuilder
     public LimitNode limit(long limit, PlanNode source)
     {
         return new LimitNode(idAllocator.getNextId(), source, limit, false);
-    }
-
-    public MarkDistinctNode markDistinct(PlanNode source, Symbol markerSymbol, List<Symbol> distinctSymbols)
-    {
-        return new MarkDistinctNode(idAllocator.getNextId(), source, markerSymbol, distinctSymbols, Optional.empty());
     }
 
     public TopNNode topN(long count, List<Symbol> orderBy, PlanNode source)
@@ -229,6 +233,7 @@ public class PlanBuilder
         private PlanNode source;
         private Map<Symbol, Aggregation> assignments = new HashMap<>();
         private List<List<Symbol>> groupingSets = new ArrayList<>();
+        private List<Symbol> preGroupedSymbols = new ArrayList<>();
         private Step step = Step.SINGLE;
         private Optional<Symbol> hashSymbol = Optional.empty();
         private Optional<Symbol> groupIdSymbol = Optional.empty();
@@ -286,6 +291,13 @@ public class PlanBuilder
             return this;
         }
 
+        public AggregationBuilder preGroupedSymbols(Symbol... symbols)
+        {
+            checkState(this.preGroupedSymbols.isEmpty(), "preGroupedSymbols already defined");
+            this.preGroupedSymbols = ImmutableList.copyOf(symbols);
+            return this;
+        }
+
         public AggregationBuilder step(Step step)
         {
             this.step = step;
@@ -312,6 +324,7 @@ public class PlanBuilder
                     source,
                     assignments,
                     groupingSets,
+                    preGroupedSymbols,
                     step,
                     hashSymbol,
                     groupIdSymbol);
@@ -322,6 +335,11 @@ public class PlanBuilder
     {
         NullLiteral originSubquery = new NullLiteral(); // does not matter for tests
         return new ApplyNode(idAllocator.getNextId(), input, subquery, subqueryAssignments, correlation, originSubquery);
+    }
+
+    public AssignUniqueId assignUniqueId(Symbol unique, PlanNode source)
+    {
+        return new AssignUniqueId(idAllocator.getNextId(), source, unique);
     }
 
     public LateralJoinNode lateral(List<Symbol> correlation, PlanNode input, PlanNode subquery)
@@ -402,7 +420,9 @@ public class PlanBuilder
                         .addInputsSet(deleteRowId)
                         .singleDistributionPartitioningScheme(deleteRowId)),
                 deleteHandle,
-                ImmutableList.of(deleteRowId));
+                deleteRowId,
+                Optional.empty(),
+                Optional.empty());
     }
 
     public ExchangeNode gatheringExchange(ExchangeNode.Scope scope, PlanNode child)
@@ -423,7 +443,7 @@ public class PlanBuilder
             PlanNode source,
             PlanNode filteringSource)
     {
-        return new SemiJoinNode(idAllocator.getNextId(),
+        return semiJoin(
                 source,
                 filteringSource,
                 sourceJoinSymbol,
@@ -432,6 +452,28 @@ public class PlanBuilder
                 sourceHashSymbol,
                 filteringSourceHashSymbol,
                 Optional.empty());
+    }
+
+    public SemiJoinNode semiJoin(
+            PlanNode source,
+            PlanNode filteringSource,
+            Symbol sourceJoinSymbol,
+            Symbol filteringSourceJoinSymbol,
+            Symbol semiJoinOutput,
+            Optional<Symbol> sourceHashSymbol,
+            Optional<Symbol> filteringSourceHashSymbol,
+            Optional<SemiJoinNode.DistributionType> distributionType)
+    {
+        return new SemiJoinNode(
+                idAllocator.getNextId(),
+                source,
+                filteringSource,
+                sourceJoinSymbol,
+                filteringSourceJoinSymbol,
+                semiJoinOutput,
+                sourceHashSymbol,
+                filteringSourceHashSymbol,
+                distributionType);
     }
 
     public IndexSourceNode indexSource(
@@ -467,6 +509,7 @@ public class PlanBuilder
         private ExchangeNode.Type type = ExchangeNode.Type.GATHER;
         private ExchangeNode.Scope scope = ExchangeNode.Scope.REMOTE;
         private PartitioningScheme partitioningScheme;
+        private OrderingScheme orderingScheme;
         private List<PlanNode> sources = new ArrayList<>();
         private List<List<Symbol>> inputs = new ArrayList<>();
 
@@ -532,9 +575,15 @@ public class PlanBuilder
             return this;
         }
 
+        public ExchangeBuilder orderingScheme(OrderingScheme orderingScheme)
+        {
+            this.orderingScheme = orderingScheme;
+            return this;
+        }
+
         protected ExchangeNode build()
         {
-            return new ExchangeNode(idAllocator.getNextId(), type, scope, partitioningScheme, sources, inputs);
+            return new ExchangeNode(idAllocator.getNextId(), type, scope, partitioningScheme, sources, inputs, Optional.ofNullable(orderingScheme));
         }
     }
 
@@ -620,9 +669,12 @@ public class PlanBuilder
                 idAllocator.getNextId(),
                 source,
                 new TestingWriterTarget(),
+                symbol("partialrows", BIGINT),
+                symbol("fragment", VARBINARY),
                 columns,
                 columnNames,
-                ImmutableList.of(symbol("partialrows", BIGINT), symbol("fragment", VARBINARY)),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -683,8 +735,8 @@ public class PlanBuilder
                 .collect(toImmutableList());
     }
 
-    public Map<Symbol, Type> getSymbols()
+    public TypeProvider getTypes()
     {
-        return Collections.unmodifiableMap(symbols);
+        return TypeProvider.copyOf(symbols);
     }
 }

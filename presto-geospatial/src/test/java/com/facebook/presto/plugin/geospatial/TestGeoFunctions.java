@@ -13,12 +13,18 @@
  */
 package com.facebook.presto.plugin.geospatial;
 
+import com.esri.core.geometry.Point;
+import com.esri.core.geometry.ogc.OGCPoint;
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.Type;
+import com.google.common.collect.ImmutableList;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.util.List;
 
 import static com.facebook.presto.metadata.FunctionExtractor.extractFunctions;
 import static com.facebook.presto.plugin.geospatial.GeometryType.GEOMETRY;
@@ -82,9 +88,27 @@ public class TestGeoFunctions
     @Test
     public void testSTArea()
     {
-        assertFunction("ST_Area(ST_GeometryFromText('POLYGON ((2 2, 2 6, 6 6, 6 2))'))", DOUBLE, 16.0);
-        assertFunction("ST_Area(ST_GeometryFromText('POLYGON EMPTY'))", DOUBLE, 0.0);
-        assertInvalidFunction("ST_Area(ST_GeometryFromText('POINT (1 4)'))", "ST_Area only applies to POLYGON or MULTI_POLYGON. Input type is: POINT");
+        assertArea("POLYGON ((2 2, 2 6, 6 6, 6 2))", 16.0);
+        assertArea("POLYGON EMPTY", 0.0);
+        assertArea("LINESTRING (1 4, 2 5)", 0.0);
+        assertArea("LINESTRING EMPTY", 0.0);
+        assertArea("POINT (1 4)", 0.0);
+        assertArea("POINT EMPTY", 0.0);
+        assertArea("GEOMETRYCOLLECTION EMPTY", 0.0);
+
+        // Test basic geometry collection. Area is the area of the polygon.
+        assertArea("GEOMETRYCOLLECTION (POINT (8 8), LINESTRING (5 5, 6 6), POLYGON ((1 1, 3 1, 3 4, 1 4, 1 1)))", 6.0);
+
+        // Test overlapping geometries. Area is the sum of the individual elements
+        assertArea("GEOMETRYCOLLECTION (POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0)), POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1)))", 8.0);
+
+        // Test nested geometry collection
+        assertArea("GEOMETRYCOLLECTION (POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0)), POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1)), GEOMETRYCOLLECTION (POINT (8 8), LINESTRING (5 5, 6 6), POLYGON ((1 1, 3 1, 3 4, 1 4, 1 1))))", 14.0);
+    }
+
+    private void assertArea(String wkt, double expectedArea)
+    {
+        assertFunction(format("ST_Area(ST_GeometryFromText('%s'))", wkt), DOUBLE, expectedArea);
     }
 
     @Test
@@ -479,6 +503,25 @@ public class TestGeoFunctions
     }
 
     @Test
+    public void testSTEnvelopeAsPts()
+    {
+        assertEnvelopeAsPts("MULTIPOINT (1 2, 2 4, 3 6, 4 8)", new Point(1, 2), new Point(4, 8));
+        assertFunction("ST_EnvelopeAsPts(ST_GeometryFromText('LINESTRING EMPTY'))", new ArrayType(GEOMETRY), null);
+        assertEnvelopeAsPts("LINESTRING (1 1, 2 2, 1 3)", new Point(1, 1), new Point(2, 3));
+        assertEnvelopeAsPts("LINESTRING (8 4, 5 7)", new Point(5, 4), new Point(8, 7));
+        assertEnvelopeAsPts("MULTILINESTRING ((1 1, 5 1), (2 4, 4 4))", new Point(1, 1), new Point(5, 4));
+        assertEnvelopeAsPts("POLYGON ((1 1, 4 1, 1 4))", new Point(1, 1), new Point(4, 4));
+        assertEnvelopeAsPts("MULTIPOLYGON (((1 1, 1 3, 3 3, 3 1)), ((0 0, 0 2, 2 2, 2 0)))", new Point(0, 0), new Point(3, 3));
+        assertEnvelopeAsPts("GEOMETRYCOLLECTION (POINT (5 1), LINESTRING (3 4, 4 4))", new Point(3, 1), new Point(5, 4));
+        assertEnvelopeAsPts("POINT (1 2)", new Point(1, 2), new Point(1, 2));
+    }
+
+    private void assertEnvelopeAsPts(String wkt, Point lowerLeftCorner, Point upperRightCorner)
+    {
+        assertFunction(format("transform(ST_EnvelopeAsPts(ST_GeometryFromText('%s')), x -> ST_AsText(x))", wkt), new ArrayType(VARCHAR), ImmutableList.of(new OGCPoint(lowerLeftCorner, null).asText(), new OGCPoint(upperRightCorner, null).asText()));
+    }
+
+    @Test
     public void testSTDifference()
     {
         assertFunction("ST_AsText(ST_Difference(ST_GeometryFromText('POINT (50 100)'), ST_GeometryFromText('POINT (150 150)')))", VARCHAR, "POINT (50 100)");
@@ -508,7 +551,8 @@ public class TestGeoFunctions
         assertFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('POLYGON EMPTY')))", VARCHAR, null);
         assertFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('POLYGON ((1 1, 1 4, 4 1))')))", VARCHAR, "LINESTRING (1 1, 4 1, 1 4, 1 1)");
         assertFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('POLYGON ((0 0, 0 5, 5 5, 5 0, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))')))", VARCHAR, "LINESTRING (0 0, 5 0, 5 5, 0 5, 0 0)");
-        assertInvalidFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('LINESTRING (1 1, 2 2, 1 3)')))", "ST_ExteriorRing only applies to POLYGON or MULTI_POLYGON. Input type is: LINE_STRING");
+        assertInvalidFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('LINESTRING (1 1, 2 2, 1 3)')))", "ST_ExteriorRing only applies to POLYGON. Input type is: LINE_STRING");
+        assertInvalidFunction("ST_AsText(ST_ExteriorRing(ST_GeometryFromText('MULTIPOLYGON (((1 1, 2 2, 1 3, 1 1)), ((4 4, 5 5, 4 6, 4 4)))')))", "ST_ExteriorRing only applies to POLYGON. Input type is: MULTI_POLYGON");
     }
 
     @Test
@@ -707,6 +751,33 @@ public class TestGeoFunctions
     }
 
     @Test
+    public void testSTInteriorRings()
+    {
+        assertInvalidInteriorRings("POINT (2 3)", "POINT");
+        assertInvalidInteriorRings("LINESTRING EMPTY", "LINE_STRING");
+        assertInvalidInteriorRings("MULTIPOINT (30 20, 60 70)", "MULTI_POINT");
+        assertInvalidInteriorRings("MULTILINESTRING ((1 10, 100 1000), (2 2, 1 0, 5 6))", "MULTI_LINE_STRING");
+        assertInvalidInteriorRings("MULTIPOLYGON (((1 1, 1 3, 3 3, 3 1)), ((0 0, 0 2, 2 2, 2 0)))", "MULTI_POLYGON");
+        assertInvalidInteriorRings("GEOMETRYCOLLECTION (POINT (1 1), POINT (2 3), LINESTRING (5 8, 13 21))", "GEOMETRY_COLLECTION");
+
+        assertFunction("ST_InteriorRings(ST_GeometryFromText('POLYGON EMPTY'))", new ArrayType(GEOMETRY), null);
+        assertInteriorRings("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))");
+        assertInteriorRings("POLYGON ((0 0, 0 3, 3 3, 3 0, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))", "LINESTRING (1 1, 1 2, 2 2, 2 1, 1 1)");
+        assertInteriorRings("POLYGON ((0 0, 0 5, 5 5, 5 0, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1), (3 3, 3 4, 4 4, 4 3, 3 3))",
+                "LINESTRING (1 1, 1 2, 2 2, 2 1, 1 1)", "LINESTRING (3 3, 3 4, 4 4, 4 3, 3 3)");
+    }
+
+    private void assertInteriorRings(String wkt, String... expected)
+    {
+        assertFunction(format("transform(ST_InteriorRings(ST_GeometryFromText('%s')), x -> ST_ASText(x))", wkt), new ArrayType(VARCHAR), ImmutableList.copyOf(expected));
+    }
+
+    private void assertInvalidInteriorRings(String wkt, String geometryType)
+    {
+        assertInvalidFunction(format("ST_InteriorRings(ST_GeometryFromText('%s'))", wkt), format("ST_InteriorRings only applies to POLYGON. Input type is: %s", geometryType));
+    }
+
+    @Test
     public void testSTNumGeometries()
     {
         assertSTNumGeometries("POINT EMPTY", 0);
@@ -728,6 +799,77 @@ public class TestGeoFunctions
     private void assertSTNumGeometries(String wkt, int expected)
     {
         assertFunction("ST_NumGeometries(ST_GeometryFromText('" + wkt + "'))", INTEGER, expected);
+    }
+
+    @Test
+    public void testSTUnion()
+    {
+        List<String> emptyWkts =
+                ImmutableList.of(
+                        "POINT EMPTY",
+                        "MULTIPOINT EMPTY",
+                        "LINESTRING EMPTY",
+                        "MULTILINESTRING EMPTY",
+                        "POLYGON EMPTY",
+                        "MULTIPOLYGON EMPTY");
+        List<String> simpleWkts =
+                ImmutableList.of(
+                        "POINT (1 2)",
+                        "MULTIPOINT ((1 2), (3 4))",
+                        "LINESTRING (0 0, 2 2, 4 4)",
+                        "MULTILINESTRING ((0 0, 2 2, 4 4), (5 5, 7 7, 9 9))",
+                        "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))",
+                        "MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1)), ((2 4, 6 4, 6 6, 2 6, 2 4)))");
+
+        // invalid type GEOMETRYCOLLECTION
+        for (String simpleWkt : simpleWkts) {
+            assertInvalidGeometryCollectionUnion(simpleWkt);
+        }
+
+        // empty geometry
+        for (String emptyWkt : emptyWkts) {
+            for (String simpleWkt : simpleWkts) {
+                assertUnion(emptyWkt, simpleWkt, simpleWkt);
+            }
+        }
+
+        // self union
+        for (String simpleWkt : simpleWkts) {
+            assertUnion(simpleWkt, simpleWkt, simpleWkt);
+        }
+
+        // touching union
+        assertUnion("POINT (1 2)", "MULTIPOINT ((1 2), (3 4))", "MULTIPOINT ((1 2), (3 4))");
+        assertUnion("MULTIPOINT ((1 2))", "MULTIPOINT ((1 2), (3 4))", "MULTIPOINT ((1 2), (3 4))");
+        assertUnion("LINESTRING (0 1, 1 2)", "LINESTRING (1 2, 3 4)", "LINESTRING (0 1, 1 2, 3 4)");
+        assertUnion("MULTILINESTRING ((0 0, 2 2, 4 4), (5 5, 7 7, 9 9))", "MULTILINESTRING ((5 5, 7 7, 9 9), (11 11, 13 13, 15 15))", "MULTILINESTRING ((0 0, 2 2, 4 4), (5 5, 7 7, 9 9), (11 11, 13 13, 15 15))");
+        assertUnion("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", "POLYGON ((1 0, 2 0, 2 1, 1 1, 1 0))", "POLYGON ((0 0, 1 0, 2 0, 2 1, 1 1, 0 1, 0 0))");
+        assertUnion("MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)))", "MULTIPOLYGON (((1 0, 2 0, 2 1, 1 1, 1 0)))", "POLYGON ((0 0, 1 0, 2 0, 2 1, 1 1, 0 1, 0 0))");
+
+        // within union
+        assertUnion("MULTIPOINT ((20 20), (25 25))", "POINT (25 25)", "MULTIPOINT ((20 20), (25 25))");
+        assertUnion("LINESTRING (20 20, 30 30)", "POINT (25 25)", "LINESTRING (20 20, 25 25, 30 30)");
+        assertUnion("LINESTRING (20 20, 30 30)", "LINESTRING (25 25, 27 27)", "LINESTRING (20 20, 25 25, 27 27, 30 30)");
+        assertUnion("POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))", "POLYGON ((1 1, 1 2, 2 2, 2 1, 1 1))", "POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))");
+        assertUnion("MULTIPOLYGON (((0 0 , 0 2, 2 2, 2 0)), ((2 2, 2 4, 4 4, 4 2)))", "POLYGON ((2 2, 2 3, 3 3, 3 2))", "MULTIPOLYGON (((0 0, 2 0, 2 2, 0 2, 0 0)), ((2 2, 3 2, 4 2, 4 4, 2 4, 2 3, 2 2)))");
+
+        // overlap union
+        assertUnion("LINESTRING (1 1, 3 1)", "LINESTRING (2 1, 4 1)", "LINESTRING (1 1, 2 1, 3 1, 4 1)");
+        assertUnion("MULTILINESTRING ((1 1, 3 1))", "MULTILINESTRING ((2 1, 4 1))", "LINESTRING (1 1, 2 1, 3 1, 4 1)");
+        assertUnion("POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1))", "POLYGON ((2 2, 4 2, 4 4, 2 4, 2 2))", "POLYGON ((1 1, 3 1, 3 2, 4 2, 4 4, 2 4, 2 3, 1 3, 1 1))");
+        assertUnion("MULTIPOLYGON (((1 1, 3 1, 3 3, 1 3, 1 1)))", "MULTIPOLYGON (((2 2, 4 2, 4 4, 2 4, 2 2)))", "POLYGON ((1 1, 3 1, 3 2, 4 2, 4 4, 2 4, 2 3, 1 3, 1 1))");
+    }
+
+    private void assertUnion(String leftWkt, String rightWkt, String expectWkt)
+    {
+        assertFunction(format("ST_ASText(ST_Union(ST_GeometryFromText('%s'), ST_GeometryFromText('%s')))", leftWkt, rightWkt), VARCHAR, expectWkt);
+        assertFunction(format("ST_ASText(ST_Union(ST_GeometryFromText('%s'), ST_GeometryFromText('%s')))", rightWkt, leftWkt), VARCHAR, expectWkt);
+    }
+
+    private void assertInvalidGeometryCollectionUnion(String validWkt)
+    {
+        assertInvalidFunction(format("ST_Union(ST_GeometryFromText('%s'), ST_GeometryFromText('GEOMETRYCOLLECTION (POINT(2 3))'))", validWkt), "ST_Union only applies to POINT or MULTI_POINT or LINE_STRING or MULTI_LINE_STRING or POLYGON or MULTI_POLYGON. Input type is: GEOMETRY_COLLECTION");
+        assertInvalidFunction(format("ST_Union(ST_GeometryFromText('GEOMETRYCOLLECTION (POINT(2 3))'), ST_GeometryFromText('%s'))", validWkt), "ST_Union only applies to POINT or MULTI_POINT or LINE_STRING or MULTI_LINE_STRING or POLYGON or MULTI_POLYGON. Input type is: GEOMETRY_COLLECTION");
     }
 
     @Test
@@ -779,6 +921,80 @@ public class TestGeoFunctions
     private void assertSTGeometryN(String wkt, int index, String expected)
     {
         assertFunction("ST_ASText(ST_GeometryN(ST_GeometryFromText('" + wkt + "')," + index + "))", VARCHAR, expected);
+    }
+
+    @Test
+    public void testSTPointN()
+    {
+        assertPointN("LINESTRING(1 2, 3 4, 5 6, 7 8)", 1, "POINT (1 2)");
+        assertPointN("LINESTRING(1 2, 3 4, 5 6, 7 8)", 3, "POINT (5 6)");
+        assertPointN("LINESTRING(1 2, 3 4, 5 6, 7 8)", 10, null);
+        assertPointN("LINESTRING(1 2, 3 4, 5 6, 7 8)", 0, null);
+        assertPointN("LINESTRING(1 2, 3 4, 5 6, 7 8)", -1, null);
+
+        assertInvalidPointN("POINT (1 2)", "POINT");
+        assertInvalidPointN("MULTIPOINT (1 1, 2 2)", "MULTI_POINT");
+        assertInvalidPointN("MULTILINESTRING ((1 1, 2 2), (3 3, 4 4))", "MULTI_LINE_STRING");
+        assertInvalidPointN("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", "POLYGON");
+        assertInvalidPointN("MULTIPOLYGON (((1 1, 1 4, 4 4, 4 1)), ((1 1, 1 4, 4 4, 4 1)))", "MULTI_POLYGON");
+        assertInvalidPointN("GEOMETRYCOLLECTION(POINT(4 6),LINESTRING(4 6, 7 10))", "GEOMETRY_COLLECTION");
+    }
+
+    private void assertPointN(String wkt, int index, String expected)
+    {
+        assertFunction(format("ST_ASText(ST_PointN(ST_GeometryFromText('%s'), %d))", wkt, index), VARCHAR, expected);
+    }
+
+    private void assertInvalidPointN(String wkt, String type)
+    {
+        String message = format("ST_PointN only applies to LINE_STRING. Input type is: %s", type);
+        assertInvalidFunction(format("ST_PointN(ST_GeometryFromText('%s'), 1)", wkt), message);
+    }
+
+    @Test
+    public void testSTGeometries()
+    {
+        assertFunction("ST_Geometries(ST_GeometryFromText('POINT EMPTY'))", new ArrayType(GEOMETRY), null);
+        assertSTGeometries("POINT (1 5)", "POINT (1 5)");
+        assertSTGeometries("LINESTRING (77.29 29.07, 77.42 29.26, 77.27 29.31, 77.29 29.07)", "LINESTRING (77.29 29.07, 77.42 29.26, 77.27 29.31, 77.29 29.07)");
+        assertSTGeometries("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))");
+        assertSTGeometries("MULTIPOINT (1 2, 4 8, 16 32)", "POINT (1 2)", "POINT (4 8)", "POINT (16 32)");
+        assertSTGeometries("MULTILINESTRING ((1 1, 2 2))", "LINESTRING (1 1, 2 2)");
+        assertSTGeometries("MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)), ((1 1, 3 1, 3 3, 1 3, 1 1)))",
+                "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", "POLYGON ((1 1, 3 1, 3 3, 1 3, 1 1))");
+        assertSTGeometries("GEOMETRYCOLLECTION (POINT (2 3), LINESTRING (2 3, 3 4))", "POINT (2 3)", "LINESTRING (2 3, 3 4)");
+    }
+
+    private void assertSTGeometries(String wkt, String... expected)
+    {
+        assertFunction(String.format("transform(ST_Geometries(ST_GeometryFromText('%s')), x -> ST_ASText(x))", wkt), new ArrayType(VARCHAR), ImmutableList.copyOf(expected));
+    }
+
+    public void testSTInteriorRingN()
+    {
+        assertInvalidInteriorRingN("POINT EMPTY", 0, "POINT");
+        assertInvalidInteriorRingN("LINESTRING (1 2, 2 3, 3 4)", 1, "LINE_STRING");
+        assertInvalidInteriorRingN("MULTIPOINT (1 1, 2 3, 5 8)", -1, "MULTI_POINT");
+        assertInvalidInteriorRingN("MULTILINESTRING ((2 4, 4 2), (3 5, 5 3))", 0, "MULTI_LINE_STRING");
+        assertInvalidInteriorRingN("MULTIPOLYGON (((1 1, 1 3, 3 3, 3 1)), ((2 4, 2 6, 6 6, 6 4)))", 2, "MULTI_POLYGON");
+        assertInvalidInteriorRingN("GEOMETRYCOLLECTION (POINT (2 2), POINT (10 20))", 1, "GEOMETRY_COLLECTION");
+
+        assertInteriorRingN("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", 1, null);
+        assertInteriorRingN("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", 2, null);
+        assertInteriorRingN("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", -1, null);
+        assertInteriorRingN("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))", 0, null);
+        assertInteriorRingN("POLYGON ((0 0, 0 3, 3 3, 3 0, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))", 1, "LINESTRING (1 1, 1 2, 2 2, 2 1, 1 1)");
+        assertInteriorRingN("POLYGON ((0 0, 0 5, 5 5, 5 0, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1), (3 3, 3 4, 4 4, 4 3, 3 3))", 2, "LINESTRING (3 3, 3 4, 4 4, 4 3, 3 3)");
+    }
+
+    private void assertInteriorRingN(String wkt, int index, String expected)
+    {
+        assertFunction(format("ST_ASText(ST_InteriorRingN(ST_GeometryFromText('%s'), %d))", wkt, index), VARCHAR, expected);
+    }
+
+    private void assertInvalidInteriorRingN(String wkt, int index, String geometryType)
+    {
+        assertInvalidFunction(format("ST_InteriorRingN(ST_GeometryFromText('%s'), %d)", wkt, index), format("ST_InteriorRingN only applies to POLYGON. Input type is: %s", geometryType));
     }
 
     public void testSTGeometryType()

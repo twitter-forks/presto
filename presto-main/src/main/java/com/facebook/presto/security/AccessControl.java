@@ -138,13 +138,6 @@ public interface AccessControl
     void checkCanRenameColumn(TransactionId transactionId, Identity identity, QualifiedObjectName tableName);
 
     /**
-     * Check if identity is allowed to select from the specified table.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    void checkCanSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName);
-
-    /**
      * Check if identity is allowed to insert into the specified table.
      *
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
@@ -171,27 +164,6 @@ public interface AccessControl
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
     void checkCanDropView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName);
-
-    /**
-     * Check if identity is allowed to select from the specified view.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    void checkCanSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName);
-
-    /**
-     * Check if identity is allowed to create a view that selects from the specified table.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    void checkCanCreateViewWithSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName);
-
-    /**
-     * Check if identity is allowed to create a view that selects from the specified view.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    void checkCanCreateViewWithSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName);
 
     /**
      * Check if identity is allowed to create a view that selects from the specified columns.
@@ -230,7 +202,6 @@ public interface AccessControl
 
     /**
      * Check if identity is allowed to select from the specified columns.  The column set can be empty.
-     * If this is implemented, checkCanSelectFromTable and checkCanSelectFromView can be pass-through.
      *
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */

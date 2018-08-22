@@ -43,6 +43,7 @@ import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.concurrent.ThreadPoolExecutorMBean;
 import io.airlift.log.Logger;
 import io.airlift.node.NodeInfo;
+import io.airlift.stats.CounterStat;
 import io.airlift.stats.GcMonitor;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -59,6 +60,7 @@ import javax.inject.Inject;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -102,6 +104,8 @@ public class SqlTaskManager
     private long currentMemoryPoolAssignmentVersion;
     @GuardedBy("this")
     private String coordinatorId;
+
+    private final CounterStat failedTasks = new CounterStat();
 
     @Inject
     public SqlTaskManager(
@@ -153,7 +157,8 @@ public class SqlTaskManager
                             finishedTaskStats.merge(sqlTask.getIoStats());
                             return null;
                         },
-                        maxBufferSize)));
+                        maxBufferSize,
+                        failedTasks)));
     }
 
     private QueryContext createQueryContext(
@@ -273,6 +278,13 @@ public class SqlTaskManager
         return taskNotificationExecutorMBean;
     }
 
+    @Managed(description = "Failed tasks counter")
+    @Nested
+    public CounterStat getFailedTasks()
+    {
+        return failedTasks;
+    }
+
     public List<SqlTask> getAllTasks()
     {
         return ImmutableList.copyOf(tasks.asMap().values());
@@ -335,7 +347,7 @@ public class SqlTaskManager
     }
 
     @Override
-    public TaskInfo updateTask(Session session, TaskId taskId, Optional<PlanFragment> fragment, List<TaskSource> sources, OutputBuffers outputBuffers)
+    public TaskInfo updateTask(Session session, TaskId taskId, Optional<PlanFragment> fragment, List<TaskSource> sources, OutputBuffers outputBuffers, OptionalInt totalPartitions)
     {
         requireNonNull(session, "session is null");
         requireNonNull(taskId, "taskId is null");
@@ -350,7 +362,7 @@ public class SqlTaskManager
 
         SqlTask sqlTask = tasks.getUnchecked(taskId);
         sqlTask.recordHeartbeat();
-        return sqlTask.updateTask(session, fragment, sources, outputBuffers);
+        return sqlTask.updateTask(session, fragment, sources, outputBuffers, totalPartitions);
     }
 
     @Override

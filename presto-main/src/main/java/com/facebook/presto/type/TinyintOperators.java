@@ -22,6 +22,7 @@ import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.TinyintType;
 import com.google.common.primitives.SignedBytes;
 import io.airlift.slice.Slice;
+import io.airlift.slice.XxHash64;
 
 import static com.facebook.presto.spi.StandardErrorCode.DIVISION_BY_ZERO;
 import static com.facebook.presto.spi.StandardErrorCode.NUMERIC_VALUE_OUT_OF_RANGE;
@@ -33,6 +34,7 @@ import static com.facebook.presto.spi.function.OperatorType.EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN;
 import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN_OR_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
+import static com.facebook.presto.spi.function.OperatorType.INDETERMINATE;
 import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
@@ -41,6 +43,7 @@ import static com.facebook.presto.spi.function.OperatorType.MULTIPLY;
 import static com.facebook.presto.spi.function.OperatorType.NEGATION;
 import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.SUBTRACT;
+import static com.facebook.presto.spi.function.OperatorType.XX_HASH_64;
 import static io.airlift.slice.Slices.utf8Slice;
 import static java.lang.Float.floatToRawIntBits;
 import static java.lang.String.format;
@@ -230,6 +233,13 @@ public final class TinyintOperators
         return TinyintType.hash((byte) value);
     }
 
+    @ScalarOperator(XX_HASH_64)
+    @SqlType(StandardTypes.BIGINT)
+    public static long xxHash64(@SqlType(StandardTypes.TINYINT) long value)
+    {
+        return XxHash64.hash(value);
+    }
+
     @ScalarOperator(IS_DISTINCT_FROM)
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean isDistinctFrom(
@@ -245,5 +255,12 @@ public final class TinyintOperators
             return false;
         }
         return notEqual(left, right);
+    }
+
+    @ScalarOperator(INDETERMINATE)
+    @SqlType(StandardTypes.BOOLEAN)
+    public static boolean indeterminate(@SqlType(StandardTypes.TINYINT) long value, @IsNull boolean isNull)
+    {
+        return isNull;
     }
 }

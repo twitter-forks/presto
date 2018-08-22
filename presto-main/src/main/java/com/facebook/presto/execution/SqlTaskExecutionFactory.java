@@ -25,11 +25,13 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner.LocalExecutionPlan;
 import com.facebook.presto.sql.planner.PlanFragment;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import io.airlift.concurrent.SetThreadName;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.Executor;
 
 import static com.facebook.presto.execution.SqlTaskExecution.createSqlTaskExecution;
@@ -68,14 +70,15 @@ public class SqlTaskExecutionFactory
         this.cpuTimerEnabled = config.isTaskCpuTimerEnabled();
     }
 
-    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources)
+    public SqlTaskExecution create(Session session, QueryContext queryContext, TaskStateMachine taskStateMachine, OutputBuffer outputBuffer, PlanFragment fragment, List<TaskSource> sources, OptionalInt totalPartitions)
     {
         boolean verboseStats = getVerboseStats(session);
         TaskContext taskContext = queryContext.addTaskContext(
                 taskStateMachine,
                 session,
                 verboseStats,
-                cpuTimerEnabled);
+                cpuTimerEnabled,
+                totalPartitions);
 
         LocalExecutionPlan localExecutionPlan;
         try (SetThreadName ignored = new SetThreadName("Task-%s", taskStateMachine.getTaskId())) {
@@ -83,7 +86,7 @@ public class SqlTaskExecutionFactory
                 localExecutionPlan = planner.plan(
                         taskContext,
                         fragment.getRoot(),
-                        fragment.getSymbols(),
+                        TypeProvider.copyOf(fragment.getSymbols()),
                         fragment.getPartitioningScheme(),
                         fragment.getPipelineExecutionStrategy() == GROUPED_EXECUTION,
                         fragment.getPartitionedSources(),

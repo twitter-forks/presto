@@ -34,6 +34,8 @@ import com.facebook.presto.spi.resourceGroups.QueryType;
 import com.facebook.presto.spi.resourceGroups.ResourceGroupId;
 import com.facebook.presto.spi.resourceGroups.SelectionContext;
 import com.facebook.presto.spi.resourceGroups.SelectionCriteria;
+import com.facebook.presto.sql.SqlEnvironmentConfig;
+import com.facebook.presto.sql.SqlPath;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.parser.ParsingOptions;
@@ -90,9 +92,9 @@ import static com.facebook.presto.spi.StandardErrorCode.QUERY_TEXT_TOO_LARGE;
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_SHUTTING_DOWN;
 import static com.facebook.presto.spi.StandardErrorCode.SERVER_STARTING_UP;
 import static com.facebook.presto.sql.ParsingUtil.createParsingOptions;
+import static com.facebook.presto.sql.analyzer.ConstantExpressionVerifier.verifyExpressionIsConstant;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARAMETER_USAGE;
 import static com.facebook.presto.sql.parser.ParsingOptions.DecimalLiteralTreatment.AS_DECIMAL;
-import static com.facebook.presto.sql.planner.ExpressionInterpreter.verifyExpressionIsConstant;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.util.concurrent.Futures.immediateFailedFuture;
@@ -117,6 +119,7 @@ public class SqlQueryManager
     private final ResourceGroupManager resourceGroupManager;
     private final ClusterMemoryManager memoryManager;
 
+    private final Optional<String> path;
     private final boolean isIncludeCoordinator;
     private final int maxQueryHistory;
     private final Duration minQueryExpireAge;
@@ -157,6 +160,7 @@ public class SqlQueryManager
             SqlParser sqlParser,
             NodeSchedulerConfig nodeSchedulerConfig,
             QueryManagerConfig queryManagerConfig,
+            SqlEnvironmentConfig sqlEnvironmentConfig,
             QueryMonitor queryMonitor,
             ResourceGroupManager resourceGroupManager,
             ClusterMemoryManager memoryManager,
@@ -192,6 +196,7 @@ public class SqlQueryManager
 
         this.internalNodeManager = requireNonNull(internalNodeManager, "internalNodeManager is null");
 
+        this.path = sqlEnvironmentConfig.getPath();
         this.isIncludeCoordinator = nodeSchedulerConfig.isIncludeCoordinator();
         this.minQueryExpireAge = queryManagerConfig.getMinQueryExpireAge();
         this.maxQueryHistory = queryManagerConfig.getMaxQueryHistory();
@@ -448,6 +453,7 @@ public class SqlQueryManager
                 session = Session.builder(new SessionPropertyManager())
                         .setQueryId(queryId)
                         .setIdentity(sessionContext.getIdentity())
+                        .setPath(new SqlPath(Optional.empty()))
                         .build();
             }
             QueryExecution execution = new FailedQueryExecution(
@@ -589,9 +595,10 @@ public class SqlQueryManager
      */
     public void enforceMemoryLimits()
     {
-        memoryManager.process(queries.values().stream()
+        List<QueryExecution> runningQueries = queries.values().stream()
                 .filter(query -> query.getState() == RUNNING)
-                .collect(toImmutableList()));
+                .collect(toImmutableList());
+        memoryManager.process(runningQueries, this::getAllQueryInfo);
     }
 
     /**

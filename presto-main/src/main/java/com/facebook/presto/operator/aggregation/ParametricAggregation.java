@@ -44,20 +44,22 @@ import static com.facebook.presto.spi.StandardErrorCode.FUNCTION_IMPLEMENTATION_
 import static com.google.common.base.Throwables.throwIfUnchecked;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
+import static java.util.Objects.requireNonNull;
 
 public class ParametricAggregation
         extends SqlAggregationFunction
 {
-    AggregationHeader details;
-    ParametricImplementationsGroup<AggregationImplementation> implementations;
+    final AggregationHeader details;
+    final ParametricImplementationsGroup<AggregationImplementation> implementations;
 
-    public ParametricAggregation(Signature signature,
+    public ParametricAggregation(
+            Signature signature,
             AggregationHeader details,
-            ParametricImplementationsGroup implementations)
+            ParametricImplementationsGroup<AggregationImplementation> implementations)
     {
-        super(signature);
-        this.details = details;
-        this.implementations = implementations;
+        super(signature, details.isHidden());
+        this.details = requireNonNull(details, "details is null");
+        this.implementations = requireNonNull(implementations, "implementations is null");
     }
 
     @Override
@@ -70,7 +72,7 @@ public class ParametricAggregation
         AggregationImplementation concreteImplementation = findMatchingImplementation(boundSignature, variables, typeManager, functionRegistry);
 
         // Build argument and return Types from signatures
-        List<Type> inputTypes = boundSignature.getArgumentTypes().stream().map(x -> typeManager.getType(x)).collect(toImmutableList());
+        List<Type> inputTypes = boundSignature.getArgumentTypes().stream().map(typeManager::getType).collect(toImmutableList());
         Type outputType = typeManager.getType(boundSignature.getReturnType());
 
         // Create classloader for additional aggregation dependencies
@@ -179,7 +181,7 @@ public class ParametricAggregation
     {
         return types
                 .stream()
-                .map(x -> x.getTypeSignature())
+                .map(Type::getTypeSignature)
                 .collect(toImmutableList());
     }
 

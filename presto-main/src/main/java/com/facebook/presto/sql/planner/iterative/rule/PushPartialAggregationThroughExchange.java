@@ -67,7 +67,10 @@ public class PushPartialAggregationThroughExchange
     private static final Capture<ExchangeNode> EXCHANGE_NODE = Capture.newCapture();
 
     private static final Pattern<AggregationNode> PATTERN = aggregation()
-            .with(source().matching(exchange().capturedAs(EXCHANGE_NODE)));
+            .with(source().matching(
+                    exchange()
+                            .matching(node -> !node.getOrderingScheme().isPresent())
+                            .capturedAs(EXCHANGE_NODE)));
 
     @Override
     public Pattern<AggregationNode> getPattern()
@@ -185,7 +188,8 @@ public class PushPartialAggregationThroughExchange
                 exchange.getScope(),
                 partitioning,
                 partials,
-                ImmutableList.copyOf(Collections.nCopies(partials.size(), aggregation.getOutputSymbols())));
+                ImmutableList.copyOf(Collections.nCopies(partials.size(), aggregation.getOutputSymbols())),
+                Optional.empty());
     }
 
     private PlanNode split(AggregationNode node, Context context)
@@ -215,6 +219,9 @@ public class PushPartialAggregationThroughExchange
                 node.getSource(),
                 intermediateAggregation,
                 node.getGroupingSets(),
+                // preGroupedSymbols reflect properties of the input. Splitting the aggregation and pushing partial aggregation
+                // through the exchange may or may not preserve these properties. Hence, it is safest to drop preGroupedSymbols here.
+                ImmutableList.of(),
                 PARTIAL,
                 node.getHashSymbol(),
                 node.getGroupIdSymbol());
@@ -224,6 +231,9 @@ public class PushPartialAggregationThroughExchange
                 partial,
                 finalAggregation,
                 node.getGroupingSets(),
+                // preGroupedSymbols reflect properties of the input. Splitting the aggregation and pushing partial aggregation
+                // through the exchange may or may not preserve these properties. Hence, it is safest to drop preGroupedSymbols here.
+                ImmutableList.of(),
                 FINAL,
                 node.getHashSymbol(),
                 node.getGroupIdSymbol());

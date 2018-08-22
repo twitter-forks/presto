@@ -37,6 +37,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.OptionalInt;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
@@ -110,7 +111,8 @@ public class TestMemoryTracking
                 new TaskStateMachine(new TaskId("query", 0, 0), notificationExecutor),
                 testSessionBuilder().build(),
                 true,
-                true);
+                true,
+                OptionalInt.empty());
         pipelineContext = taskContext.addPipelineContext(0, true, true);
         driverContext = pipelineContext.addDriverContext();
         operatorContext = driverContext.addOperatorContext(1, new PlanNodeId("a"), "test-operator");
@@ -120,7 +122,7 @@ public class TestMemoryTracking
     public void testOperatorAllocations()
     {
         MemoryTrackingContext operatorMemoryContext = operatorContext.getOperatorMemoryContext();
-        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext();
+        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext("test");
         LocalMemoryContext userMemory = operatorContext.localUserMemoryContext();
         LocalMemoryContext revocableMemory = operatorContext.localRevocableMemoryContext();
         userMemory.setBytes(100);
@@ -143,7 +145,7 @@ public class TestMemoryTracking
     @Test
     public void testLocalTotalMemoryLimitExceeded()
     {
-        LocalMemoryContext systemMemoryContext = operatorContext.newLocalSystemMemoryContext();
+        LocalMemoryContext systemMemoryContext = operatorContext.newLocalSystemMemoryContext("test");
         systemMemoryContext.setBytes(100);
         assertOperatorMemoryAllocations(operatorContext.getOperatorMemoryContext(), 0, 100, 0);
         systemMemoryContext.setBytes(queryMaxTotalMemory.toBytes());
@@ -195,7 +197,7 @@ public class TestMemoryTracking
     @Test
     public void testStats()
     {
-        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext();
+        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext("test");
         LocalMemoryContext userMemory = operatorContext.localUserMemoryContext();
         userMemory.setBytes(100_000_000);
         systemMemory.setBytes(200_000_000);
@@ -255,7 +257,7 @@ public class TestMemoryTracking
     @Test
     public void testRevocableMemoryAllocations()
     {
-        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext();
+        LocalMemoryContext systemMemory = operatorContext.newLocalSystemMemoryContext("test");
         LocalMemoryContext userMemory = operatorContext.localUserMemoryContext();
         LocalMemoryContext revocableMemory = operatorContext.localRevocableMemoryContext();
         revocableMemory.setBytes(100_000_000);
@@ -329,7 +331,7 @@ public class TestMemoryTracking
     @Test
     public void testDestroy()
     {
-        LocalMemoryContext newLocalSystemMemoryContext = operatorContext.newLocalSystemMemoryContext();
+        LocalMemoryContext newLocalSystemMemoryContext = operatorContext.newLocalSystemMemoryContext("test");
         LocalMemoryContext newLocalUserMemoryContext = operatorContext.localUserMemoryContext();
         LocalMemoryContext newLocalRevocableMemoryContext = operatorContext.localRevocableMemoryContext();
         newLocalSystemMemoryContext.setBytes(100_000);

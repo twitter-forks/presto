@@ -24,6 +24,7 @@ import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.memory.MemoryManagerConfig;
 import com.facebook.presto.metadata.Catalog;
 import com.facebook.presto.metadata.CatalogManager;
+import com.facebook.presto.metadata.ColumnPropertyManager;
 import com.facebook.presto.metadata.InMemoryNodeManager;
 import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.metadata.Metadata;
@@ -893,6 +894,13 @@ public class TestAnalyzer
         assertFails(TYPE_MISMATCH, "SELECT x.f1 FROM (VALUES 1) t(x)");
     }
 
+    @Test
+    public void testLike()
+    {
+        analyze("SELECT '1' LIKE '1'");
+        analyze("SELECT CAST('1' as CHAR(1)) LIKE '1'");
+    }
+
     @Test(enabled = false) // TODO: need to support widening conversion for numbers
     public void testInWithNumericTypes()
     {
@@ -1455,6 +1463,7 @@ public class TestAnalyzer
                 new SessionPropertyManager(),
                 new SchemaPropertyManager(),
                 new TablePropertyManager(),
+                new ColumnPropertyManager(),
                 transactionManager);
 
         metadata.getFunctionRegistry().addFunctions(ImmutableList.of(APPLY_FUNCTION));

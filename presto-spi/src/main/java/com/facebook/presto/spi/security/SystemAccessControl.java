@@ -39,8 +39,6 @@ import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameS
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRevokeTablePrivilege;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySelectColumns;
-import static com.facebook.presto.spi.security.AccessDeniedException.denySelectTable;
-import static com.facebook.presto.spi.security.AccessDeniedException.denySelectView;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetCatalogSessionProperty;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyShowSchemas;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyShowTablesMetadata;
@@ -215,23 +213,12 @@ public interface SystemAccessControl
 
     /**
      * Check if identity is allowed to select from the specified columns in a relation.  The column set can be empty.
-     * If this is implemented, checkCanSelectFromTable and checkCanSelectFromView can be pass-through.
      *
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
     default void checkCanSelectFromColumns(Identity identity, CatalogSchemaTableName table, Set<String> columns)
     {
         denySelectColumns(table.toString(), columns);
-    }
-
-    /**
-     * Check if identity is allowed to select from the specified table in a catalog.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    default void checkCanSelectFromTable(Identity identity, CatalogSchemaTableName table)
-    {
-        denySelectTable(table.toString());
     }
 
     /**
@@ -275,43 +262,13 @@ public interface SystemAccessControl
     }
 
     /**
-     * Check if identity is allowed to select from the specified view in a catalog.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    default void checkCanSelectFromView(Identity identity, CatalogSchemaTableName view)
-    {
-        denySelectView(view.toString());
-    }
-
-    /**
-     * Check if identity is allowed to create a view that selects from the specified table in a catalog.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    default void checkCanCreateViewWithSelectFromTable(Identity identity, CatalogSchemaTableName table)
-    {
-        denyCreateViewWithSelect(table.toString());
-    }
-
-    /**
-     * Check if identity is allowed to create a view that selects from the specified view in a catalog.
-     *
-     * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
-     */
-    default void checkCanCreateViewWithSelectFromView(Identity identity, CatalogSchemaTableName view)
-    {
-        denyCreateViewWithSelect(view.toString());
-    }
-
-    /**
      * Check if identity is allowed to create a view that selects from the specified columns in a relation.
      *
      * @throws com.facebook.presto.spi.security.AccessDeniedException if not allowed
      */
     default void checkCanCreateViewWithSelectFromColumns(Identity identity, CatalogSchemaTableName table, Set<String> columns)
     {
-        denyCreateViewWithSelect(table.toString());
+        denyCreateViewWithSelect(table.toString(), identity);
     }
 
     /**

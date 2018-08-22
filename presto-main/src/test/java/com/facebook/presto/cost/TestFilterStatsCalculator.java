@@ -19,13 +19,12 @@ import com.facebook.presto.spi.type.DoubleType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.tree.Expression;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import java.util.Map;
 
 import static com.facebook.presto.sql.planner.iterative.rule.test.PlanBuilder.expression;
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
@@ -40,7 +39,7 @@ public class TestFilterStatsCalculator
 
     private FilterStatsCalculator statsCalculator;
     private PlanNodeStatsEstimate standardInputStatistics;
-    private Map<Symbol, Type> standardTypes;
+    private TypeProvider standardTypes;
     private Session session;
 
     @BeforeClass
@@ -115,7 +114,7 @@ public class TestFilterStatsCalculator
                 .setOutputRowCount(1000.0)
                 .build();
 
-        standardTypes = ImmutableMap.<Symbol, Type>builder()
+        standardTypes = TypeProvider.copyOf(ImmutableMap.<Symbol, Type>builder()
                 .put(new Symbol("x"), DoubleType.DOUBLE)
                 .put(new Symbol("y"), DoubleType.DOUBLE)
                 .put(new Symbol("z"), DoubleType.DOUBLE)
@@ -124,7 +123,7 @@ public class TestFilterStatsCalculator
                 .put(new Symbol("unknownRange"), DoubleType.DOUBLE)
                 .put(new Symbol("emptyRange"), DoubleType.DOUBLE)
                 .put(new Symbol("mediumVarchar"), MEDIUM_VARCHAR_TYPE)
-                .build();
+                .build());
 
         session = testSessionBuilder().build();
         MetadataManager metadata = MetadataManager.createTestMetadataManager();
@@ -293,6 +292,15 @@ public class TestFilterStatsCalculator
                                 .highValue(10.0)
                                 .distinctValuesCount(40.0)
                                 .nullsFraction(0.25));
+
+        assertExpression("NOT(x IS NULL)")
+                .outputRowsCount(750)
+                .symbolStats(new Symbol("x"), symbolAssert ->
+                        symbolAssert.averageRowSize(4.0)
+                                .lowValue(-10.0)
+                                .highValue(10.0)
+                                .distinctValuesCount(40.0)
+                                .nullsFraction(0));
     }
 
     @Test
@@ -422,6 +430,21 @@ public class TestFilterStatsCalculator
                             .lowValue(-100.0)
                             .highValue(100.0)
                             .nullsFraction(0.0);
+                });
+    }
+
+    @Test
+    public void testSymbolEqualsSameSymbolFilter()
+    {
+        assertExpression("x = x")
+                .outputRowsCount(750)
+                .symbolStats("x", symbolStats -> {
+                    SymbolStatsEstimate.builder()
+                            .setAverageRowSize(4.0)
+                            .setDistinctValuesCount(40.0)
+                            .setLowValue(-10.0)
+                            .setHighValue(10.0)
+                            .build();
                 });
     }
 

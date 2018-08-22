@@ -19,6 +19,7 @@ import com.facebook.presto.execution.StateMachine;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.execution.buffer.ClientBuffer.PagesSupplier;
 import com.facebook.presto.memory.context.LocalMemoryContext;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
 import com.google.common.collect.Sets.SetView;
@@ -305,6 +306,7 @@ public class ArbitraryOutputBuffer
             safeGetBuffersSnapshot().forEach(ClientBuffer::destroy);
 
             memoryManager.setNoBlockOnFull();
+            forceFreeMemory();
         }
     }
 
@@ -314,6 +316,7 @@ public class ArbitraryOutputBuffer
         // ignore fail if the buffer already in a terminal state.
         if (state.setIf(FAILED, oldState -> !oldState.isTerminal())) {
             memoryManager.setNoBlockOnFull();
+            forceFreeMemory();
             // DO NOT destroy buffers or set no more pages.  The coordinator manages the teardown of failed queries.
         }
     }
@@ -322,6 +325,12 @@ public class ArbitraryOutputBuffer
     public long getPeakMemoryUsage()
     {
         return memoryManager.getPeakMemoryUsage();
+    }
+
+    @VisibleForTesting
+    void forceFreeMemory()
+    {
+        memoryManager.close();
     }
 
     private synchronized ClientBuffer getBuffer(OutputBufferId id)
@@ -464,5 +473,11 @@ public class ArbitraryOutputBuffer
                     .add("bufferedPages", bufferedPages.get())
                     .toString();
         }
+    }
+
+    @VisibleForTesting
+    OutputBufferMemoryManager getMemoryManager()
+    {
+        return memoryManager;
     }
 }

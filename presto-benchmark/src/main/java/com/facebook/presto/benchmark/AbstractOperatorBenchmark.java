@@ -48,6 +48,7 @@ import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spiller.SpillSpaceTracker;
 import com.facebook.presto.split.SplitSource;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.optimizations.HashGenerationOptimizer;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.sql.tree.Expression;
@@ -65,6 +66,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageRowCount;
 import static com.facebook.presto.SystemSessionProperties.getFilterAndProjectMinOutputPageSize;
@@ -226,7 +228,7 @@ public abstract class AbstractOperatorBenchmark
         verify(hashExpression.isPresent());
         projections.add(new InterpretedPageProjection(
                 hashExpression.get(),
-                symbolTypes.build(),
+                TypeProvider.copyOf(symbolTypes.build()),
                 symbolToInputMapping.build(),
                 localQueryRunner.getMetadata(),
                 localQueryRunner.getSqlParser(),
@@ -289,7 +291,8 @@ public abstract class AbstractOperatorBenchmark
                 .addTaskContext(new TaskStateMachine(new TaskId("query", 0, 0), localQueryRunner.getExecutor()),
                         session,
                         false,
-                        false);
+                        false,
+                        OptionalInt.empty());
 
         CpuTimer cpuTimer = new CpuTimer();
         Map<String, Long> executionStats = execute(taskContext);

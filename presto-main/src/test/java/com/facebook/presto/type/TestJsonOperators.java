@@ -17,7 +17,6 @@ import com.facebook.presto.operator.scalar.AbstractTestFunctions;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.RowType;
-import com.facebook.presto.spi.type.SqlTimestamp;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.testing.MaterializedResult;
@@ -29,6 +28,7 @@ import org.testng.annotations.Test;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
+import static com.facebook.presto.spi.function.OperatorType.INDETERMINATE;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
@@ -36,12 +36,16 @@ import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.IntegerType.INTEGER;
 import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
+import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
 import static com.facebook.presto.spi.type.TinyintType.TINYINT;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.testing.DateTimeTestingUtils.sqlTimestampOf;
 import static com.facebook.presto.type.JsonType.JSON;
 import static com.facebook.presto.util.StructuralTestUtil.mapType;
 import static java.lang.Double.NEGATIVE_INFINITY;
 import static java.lang.Double.POSITIVE_INFINITY;
+import static java.lang.String.format;
+import static org.joda.time.DateTimeZone.UTC;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.fail;
 
@@ -77,7 +81,7 @@ public class TestJsonOperators
         assertInvalidFunction("cast(JSON '12345678901234567890' as BIGINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '128.9' as BIGINT)", BIGINT, 129L);
         assertFunction("cast(JSON '1234567890123456789.0' as BIGINT)", BIGINT, 1234567890123456768L); // loss of precision
-        assertFunction("cast(JSON '12345678901234567890.0' as BIGINT)", BIGINT, 9223372036854775807L); // overflow. unexpected behavior. coherent with rest of Presto.
+        assertInvalidFunction("cast(JSON '12345678901234567890.0' as BIGINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '1e-324' as BIGINT)", BIGINT, 0L);
         assertInvalidFunction("cast(JSON '1e309' as BIGINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON 'true' as BIGINT)", BIGINT, 1L);
@@ -101,7 +105,7 @@ public class TestJsonOperators
         assertFunction("cast(JSON '128' as INTEGER)", INTEGER, 128);
         assertInvalidFunction("cast(JSON '12345678901' as INTEGER)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '128.9' as INTEGER)", INTEGER, 129);
-        assertInvalidFunction("cast(JSON '12345678901.0' as INTEGER)", INVALID_CAST_ARGUMENT); // overflow. unexpected behavior. coherent with rest of Presto.
+        assertInvalidFunction("cast(JSON '12345678901.0' as INTEGER)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '1e-324' as INTEGER)", INTEGER, 0);
         assertInvalidFunction("cast(JSON '1e309' as INTEGER)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON 'true' as INTEGER)", INTEGER, 1);
@@ -125,7 +129,7 @@ public class TestJsonOperators
         assertFunction("cast(JSON '128' as SMALLINT)", SMALLINT, (short) 128);
         assertInvalidFunction("cast(JSON '123456' as SMALLINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '128.9' as SMALLINT)", SMALLINT, (short) 129);
-        assertInvalidFunction("cast(JSON '123456.0' as SMALLINT)", INVALID_CAST_ARGUMENT); // overflow. unexpected behavior. coherent with rest of Presto.
+        assertInvalidFunction("cast(JSON '123456.0' as SMALLINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '1e-324' as SMALLINT)", SMALLINT, (short) 0);
         assertInvalidFunction("cast(JSON '1e309' as SMALLINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON 'true' as SMALLINT)", SMALLINT, (short) 1);
@@ -149,7 +153,7 @@ public class TestJsonOperators
         assertFunction("cast(JSON '12' as TINYINT)", TINYINT, (byte) 12);
         assertInvalidFunction("cast(JSON '1234' as TINYINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '12.9' as TINYINT)", TINYINT, (byte) 13);
-        assertInvalidFunction("cast(JSON '1234.0' as TINYINT)", INVALID_CAST_ARGUMENT); // overflow. unexpected behavior. coherent with rest of Presto.
+        assertInvalidFunction("cast(JSON '1234.0' as TINYINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON '1e-324' as TINYINT)", TINYINT, (byte) 0);
         assertInvalidFunction("cast(JSON '1e309' as TINYINT)", INVALID_CAST_ARGUMENT);
         assertFunction("cast(JSON 'true' as TINYINT)", TINYINT, (byte) 1);
@@ -387,7 +391,7 @@ public class TestJsonOperators
     public void testCastFromTimestamp()
     {
         assertFunction("cast(cast (null as timestamp) as JSON)", JSON, null);
-        assertFunction("CAST(from_unixtime(1) AS JSON)", JSON, "\"" + sqlTimestamp(1000).toString() + "\"");
+        assertFunction("CAST(TIMESTAMP '1970-01-01 00:00:01' AS JSON)", JSON, format("\"%s\"", sqlTimestampOf(1970, 1, 1, 0, 0, 1, 0, UTC, UTC_KEY, TEST_SESSION)));
     }
 
     @Test
@@ -425,9 +429,26 @@ public class TestJsonOperators
                 "Cannot cast to row(integer,array(integer)). Expected a json array, but got {\n[  1,  {}  ]");
     }
 
-    private static SqlTimestamp sqlTimestamp(long millisUtc)
+    @Test
+    public void testIndeterminate()
     {
-        return new SqlTimestamp(millisUtc, TEST_SESSION.getTimeZoneKey());
+        assertOperator(INDETERMINATE, "cast(null as JSON)", BOOLEAN, true);
+        assertOperator(INDETERMINATE, "JSON '128'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'true'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'false'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"test\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"null\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'true'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'false'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"True\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"true\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '123.456'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'true'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON 'false'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"NaN\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"Infinity\"'", BOOLEAN, false);
+        assertOperator(INDETERMINATE, "JSON '\"-Infinity\"'", BOOLEAN, false);
     }
 
     private void assertCastWithJsonParse(String json, String castSqlType, Type expectedType, Object expected)

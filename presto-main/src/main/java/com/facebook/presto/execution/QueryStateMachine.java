@@ -70,6 +70,7 @@ import static com.facebook.presto.execution.QueryState.QUEUED;
 import static com.facebook.presto.execution.QueryState.RUNNING;
 import static com.facebook.presto.execution.QueryState.STARTING;
 import static com.facebook.presto.execution.QueryState.TERMINAL_QUERY_STATES;
+import static com.facebook.presto.execution.QueryState.WAITING_FOR_RESOURCES;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.memory.LocalMemoryManager.GENERAL_POOL;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_FOUND;
@@ -128,10 +129,14 @@ public class QueryStateMachine
     private final AtomicReference<Long> totalPlanningStartNanos = new AtomicReference<>();
     private final AtomicReference<Duration> totalPlanningTime = new AtomicReference<>();
 
+    private final AtomicReference<Long> resourceWaitingStartNanos = new AtomicReference<>();
+    private final AtomicReference<Duration> resourceWaitingTime = new AtomicReference<>();
+
     private final StateMachine<QueryState> queryState;
 
     private final AtomicReference<String> setCatalog = new AtomicReference<>();
     private final AtomicReference<String> setSchema = new AtomicReference<>();
+    private final AtomicReference<String> setPath = new AtomicReference<>();
 
     private final Map<String, String> setSessionProperties = new ConcurrentHashMap<>();
     private final Set<String> resetSessionProperties = Sets.newConcurrentHashSet();
@@ -422,6 +427,7 @@ public class QueryStateMachine
 
                 elapsedTime.convertToMostSuccinctTimeUnit(),
                 queuedTime.get(),
+                resourceWaitingTime.get(),
                 analysisTime.get(),
                 distributedPlanningTime.get(),
                 totalPlanningTime.get(),
@@ -477,6 +483,7 @@ public class QueryStateMachine
                 queryStats,
                 Optional.ofNullable(setCatalog.get()),
                 Optional.ofNullable(setSchema.get()),
+                Optional.ofNullable(setPath.get()),
                 setSessionProperties,
                 resetSessionProperties,
                 addedPreparedStatements,
@@ -490,7 +497,7 @@ public class QueryStateMachine
                 inputs.get(),
                 output.get(),
                 completeInfo,
-                getResourceGroup().map(ResourceGroupId::toString));
+                getResourceGroup());
     }
 
     public VersionedMemoryPoolId getMemoryPool()
@@ -543,6 +550,17 @@ public class QueryStateMachine
     public void setSetSchema(String schema)
     {
         setSchema.set(requireNonNull(schema, "schema is null"));
+    }
+
+    public void setSetPath(String path)
+    {
+        requireNonNull(path, "path is null");
+        setPath.set(path);
+    }
+
+    public String getSetPath()
+    {
+        return setPath.get();
     }
 
     public void addSetSessionProperties(String key, String value)
@@ -615,16 +633,27 @@ public class QueryStateMachine
         return queryState.get().isDone();
     }
 
+    public boolean transitionToWaitingForResources()
+    {
+        queuedTime.compareAndSet(null, nanosSince(createNanos).convertToMostSuccinctTimeUnit());
+        resourceWaitingStartNanos.compareAndSet(null, tickerNanos());
+        return queryState.compareAndSet(QUEUED, WAITING_FOR_RESOURCES);
+    }
+
     public boolean transitionToPlanning()
     {
         queuedTime.compareAndSet(null, nanosSince(createNanos).convertToMostSuccinctTimeUnit());
+        resourceWaitingStartNanos.compareAndSet(null, tickerNanos());
+        resourceWaitingTime.compareAndSet(null, nanosSince(resourceWaitingStartNanos.get()).convertToMostSuccinctTimeUnit());
         totalPlanningStartNanos.compareAndSet(null, tickerNanos());
-        return queryState.compareAndSet(QUEUED, PLANNING);
+        return queryState.setIf(PLANNING, currentState -> currentState == QUEUED || currentState == WAITING_FOR_RESOURCES);
     }
 
     public boolean transitionToStarting()
     {
         queuedTime.compareAndSet(null, nanosSince(createNanos).convertToMostSuccinctTimeUnit());
+        resourceWaitingStartNanos.compareAndSet(null, tickerNanos());
+        resourceWaitingTime.compareAndSet(null, nanosSince(resourceWaitingStartNanos.get()).convertToMostSuccinctTimeUnit());
         totalPlanningStartNanos.compareAndSet(null, tickerNanos());
         totalPlanningTime.compareAndSet(null, nanosSince(totalPlanningStartNanos.get()));
 
@@ -633,8 +662,9 @@ public class QueryStateMachine
 
     public boolean transitionToRunning()
     {
-        Duration durationSinceCreation = nanosSince(createNanos).convertToMostSuccinctTimeUnit();
-        queuedTime.compareAndSet(null, durationSinceCreation);
+        queuedTime.compareAndSet(null, nanosSince(createNanos).convertToMostSuccinctTimeUnit());
+        resourceWaitingStartNanos.compareAndSet(null, tickerNanos());
+        resourceWaitingTime.compareAndSet(null, nanosSince(resourceWaitingStartNanos.get()).convertToMostSuccinctTimeUnit());
         totalPlanningStartNanos.compareAndSet(null, tickerNanos());
         totalPlanningTime.compareAndSet(null, nanosSince(totalPlanningStartNanos.get()));
         executionStartTime.compareAndSet(null, DateTime.now());
@@ -644,8 +674,9 @@ public class QueryStateMachine
 
     public boolean transitionToFinishing()
     {
-        Duration durationSinceCreation = nanosSince(createNanos).convertToMostSuccinctTimeUnit();
-        queuedTime.compareAndSet(null, durationSinceCreation);
+        queuedTime.compareAndSet(null, nanosSince(createNanos).convertToMostSuccinctTimeUnit());
+        resourceWaitingStartNanos.compareAndSet(null, tickerNanos());
+        resourceWaitingTime.compareAndSet(null, nanosSince(resourceWaitingStartNanos.get()).convertToMostSuccinctTimeUnit());
         totalPlanningStartNanos.compareAndSet(null, tickerNanos());
         totalPlanningTime.compareAndSet(null, nanosSince(totalPlanningStartNanos.get()));
         DateTime now = DateTime.now();
@@ -742,6 +773,7 @@ public class QueryStateMachine
     {
         Duration durationSinceCreation = nanosSince(createNanos).convertToMostSuccinctTimeUnit();
         queuedTime.compareAndSet(null, durationSinceCreation);
+        resourceWaitingTime.compareAndSet(null, succinctNanos(0));
         totalPlanningStartNanos.compareAndSet(null, tickerNanos());
         totalPlanningTime.compareAndSet(null, nanosSince(totalPlanningStartNanos.get()));
         DateTime now = DateTime.now();
@@ -845,6 +877,7 @@ public class QueryStateMachine
                 pruneQueryStats(queryInfo.getQueryStats()),
                 queryInfo.getSetCatalog(),
                 queryInfo.getSetSchema(),
+                queryInfo.getSetPath(),
                 queryInfo.getSetSessionProperties(),
                 queryInfo.getResetSessionProperties(),
                 queryInfo.getAddedPreparedStatements(),
@@ -858,7 +891,7 @@ public class QueryStateMachine
                 queryInfo.getInputs(),
                 queryInfo.getOutput(),
                 queryInfo.isCompleteInfo(),
-                queryInfo.getResourceGroupName());
+                queryInfo.getResourceGroupId());
         finalQueryInfo.compareAndSet(finalInfo, Optional.of(prunedQueryInfo));
     }
 
@@ -871,6 +904,7 @@ public class QueryStateMachine
                 queryStats.getEndTime(),
                 queryStats.getElapsedTime(),
                 queryStats.getQueuedTime(),
+                queryStats.getResourceWaitingTime(),
                 queryStats.getAnalysisTime(),
                 queryStats.getDistributedPlanningTime(),
                 queryStats.getTotalPlanningTime(),

@@ -49,6 +49,7 @@ import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler;
+import com.facebook.presto.sql.gen.OrderingCompiler;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
@@ -72,6 +73,7 @@ import io.airlift.node.NodeInfo;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
 import static com.facebook.presto.operator.PipelineExecutionStrategy.UNGROUPED_EXECUTION;
@@ -164,12 +166,13 @@ public final class TaskTestUtils
                 new BlockEncodingManager(new TestingTypeManager()),
                 new PagesIndex.TestingFactory(false),
                 new JoinCompiler(MetadataManager.createTestMetadataManager(), new FeaturesConfig()),
-                new LookupJoinOperators());
+                new LookupJoinOperators(),
+                new OrderingCompiler());
     }
 
     public static TaskInfo updateTask(SqlTask sqlTask, List<TaskSource> taskSources, OutputBuffers outputBuffers)
     {
-        return sqlTask.updateTask(TEST_SESSION, Optional.of(PLAN_FRAGMENT), taskSources, outputBuffers);
+        return sqlTask.updateTask(TEST_SESSION, Optional.of(PLAN_FRAGMENT), taskSources, outputBuffers, OptionalInt.empty());
     }
 
     public static QueryMonitor createTestQueryMonitor()

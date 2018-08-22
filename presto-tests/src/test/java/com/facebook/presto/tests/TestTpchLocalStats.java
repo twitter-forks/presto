@@ -29,12 +29,15 @@ import static com.facebook.presto.tests.statistics.MetricComparisonStrategies.de
 import static com.facebook.presto.tests.statistics.MetricComparisonStrategies.noError;
 import static com.facebook.presto.tests.statistics.MetricComparisonStrategies.relativeError;
 import static com.facebook.presto.tests.statistics.Metrics.OUTPUT_ROW_COUNT;
+import static com.facebook.presto.tests.statistics.Metrics.distinctValuesCount;
+import static com.facebook.presto.tests.statistics.Metrics.highValue;
+import static com.facebook.presto.tests.statistics.Metrics.lowValue;
+import static com.facebook.presto.tests.statistics.Metrics.nullsFraction;
 import static com.facebook.presto.tpch.TpchConnectorFactory.TPCH_COLUMN_NAMING_PROPERTY;
 import static com.facebook.presto.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 
 public class TestTpchLocalStats
 {
-    private LocalQueryRunner queryRunner;
     private StatisticsAssertion statisticsAssertion;
 
     @BeforeClass
@@ -45,7 +48,7 @@ public class TestTpchLocalStats
                 .setSchema(TINY_SCHEMA_NAME)
                 .build();
 
-        queryRunner = new LocalQueryRunner(defaultSession);
+        LocalQueryRunner queryRunner = new LocalQueryRunner(defaultSession);
         queryRunner.createCatalog(
                 "tpch",
                 new TpchConnectorFactory(1),
@@ -56,11 +59,8 @@ public class TestTpchLocalStats
     @AfterClass(alwaysRun = true)
     public void tearDown()
     {
+        statisticsAssertion.close();
         statisticsAssertion = null;
-        if (queryRunner != null) {
-            queryRunner.close();
-            queryRunner = null;
-        }
     }
 
     @Test
@@ -189,38 +189,38 @@ public class TestTpchLocalStats
     public void testLeftJoinStats()
     {
         // non equi predicates
-        statisticsAssertion.check("SELECT * FROM supplier left join nation on true",
+        statisticsAssertion.check("SELECT * FROM supplier LEFT JOIN nation ON true",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
                         .verifyExactColumnStatistics("s_nationkey")
                         .verifyExactColumnStatistics("n_nationkey")
                         .verifyExactColumnStatistics("s_suppkey"));
-        statisticsAssertion.check("SELECT * FROM supplier left join nation on false",
+        statisticsAssertion.check("SELECT * FROM supplier LEFT JOIN nation ON false",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
                         .verifyExactColumnStatistics("s_nationkey")
                         .verifyExactColumnStatistics("s_suppkey"));
         // simple equi join
-        statisticsAssertion.check("SELECT * FROM supplier left join nation on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM supplier LEFT JOIN nation ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM supplier left join nation on s_nationkey = n_nationkey AND n_nationkey <= 12",
+        statisticsAssertion.check("SELECT * FROM supplier LEFT JOIN nation ON s_nationkey = n_nationkey AND n_nationkey <= 12",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", relativeError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM (SELECT * FROM supplier WHERE s_nationkey <= 12) left join nation on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM (SELECT * FROM supplier WHERE s_nationkey <= 12) LEFT JOIN nation ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(2.0))
                         .verifyColumnStatistics("n_nationkey", absoluteError(2.0)));
 
         // join with two keys
-        statisticsAssertion.check("SELECT * FROM partsupp left join lineitem on ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
+        statisticsAssertion.check("SELECT * FROM partsupp LEFT JOIN lineitem ON ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
                         .verifyExactColumnStatistics("ps_partkey")
@@ -228,44 +228,54 @@ public class TestTpchLocalStats
                         .verifyExactColumnStatistics("ps_suppkey")
                         .verifyColumnStatistics("l_suppkey", absoluteError(6.0))
                         .verifyColumnStatistics("l_orderkey", absoluteError(6.0)));
+
+        // simple non-equi join
+        statisticsAssertion.check("SELECT * FROM partsupp LEFT JOIN lineitem ON ps_partkey = l_partkey AND ps_suppkey < l_suppkey",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
+                        .verifyExactColumnStatistics("ps_partkey")
+                        .verifyColumnStatistics("l_partkey", relativeError(0.10))
+                        .verifyExactColumnStatistics("ps_suppkey")
+                        .verifyColumnStatistics("l_suppkey", relativeError(1.0))
+                        .verifyColumnStatistics("l_orderkey", relativeError(0.10)));
     }
 
     @Test
     public void testRightJoinStats()
     {
         // non equi predicates
-        statisticsAssertion.check("SELECT * FROM nation right join supplier on true",
+        statisticsAssertion.check("SELECT * FROM nation RIGHT JOIN supplier ON true",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
                         .verifyExactColumnStatistics("s_nationkey")
                         .verifyExactColumnStatistics("n_nationkey")
                         .verifyExactColumnStatistics("s_suppkey"));
-        statisticsAssertion.check("SELECT * FROM nation right join supplier on false",
+        statisticsAssertion.check("SELECT * FROM nation RIGHT JOIN supplier ON false",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
                         .verifyExactColumnStatistics("s_nationkey")
                         .verifyExactColumnStatistics("s_suppkey"));
         // simple equi join
-        statisticsAssertion.check("SELECT * FROM nation right join supplier on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM nation RIGHT JOIN supplier ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM nation right join supplier on s_nationkey = n_nationkey AND n_nationkey <= 12",
+        statisticsAssertion.check("SELECT * FROM nation RIGHT JOIN supplier ON s_nationkey = n_nationkey AND n_nationkey <= 12",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", relativeError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM nation right JOIN (SELECT * FROM supplier WHERE s_nationkey <= 12) on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM nation RIGHT JOIN (SELECT * FROM supplier WHERE s_nationkey <= 12) ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(2.0))
                         .verifyColumnStatistics("n_nationkey", absoluteError(2.0)));
 
         // join with two keys
-        statisticsAssertion.check("SELECT * FROM lineitem right join partsupp on ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
+        statisticsAssertion.check("SELECT * FROM lineitem RIGHT JOIN partsupp ON ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
                         .verifyExactColumnStatistics("ps_partkey")
@@ -273,39 +283,49 @@ public class TestTpchLocalStats
                         .verifyExactColumnStatistics("ps_suppkey")
                         .verifyColumnStatistics("l_suppkey", absoluteError(6.0))
                         .verifyColumnStatistics("l_orderkey", absoluteError(6.0)));
+
+        // simple non-equi join
+        statisticsAssertion.check("SELECT * FROM lineitem RIGHT JOIN partsupp ON ps_partkey = l_partkey AND ps_suppkey < l_suppkey",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
+                        .verifyExactColumnStatistics("ps_partkey")
+                        .verifyColumnStatistics("l_partkey", relativeError(0.10))
+                        .verifyExactColumnStatistics("ps_suppkey")
+                        .verifyColumnStatistics("l_suppkey", relativeError(1.0))
+                        .verifyColumnStatistics("l_orderkey", relativeError(0.10)));
     }
 
     @Test
     public void testFullJoinStats()
     {
         // non equi predicates
-        statisticsAssertion.check("SELECT * FROM supplier full join nation on true",
+        statisticsAssertion.check("SELECT * FROM supplier FULL JOIN nation ON true",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
                         .verifyExactColumnStatistics("s_nationkey")
                         .verifyExactColumnStatistics("n_nationkey")
                         .verifyExactColumnStatistics("s_suppkey"));
         // simple equi join
-        statisticsAssertion.check("SELECT * FROM nation full join supplier on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM nation FULL JOIN supplier ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM (SELECT * FROM nation WHERE n_nationkey <= 12) full join supplier on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM (SELECT * FROM nation WHERE n_nationkey <= 12) FULL JOIN supplier ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", absoluteError(0.40))
                         .verifyColumnStatistics("n_nationkey", relativeError(0.40))
                         .verifyColumnStatistics("s_suppkey", absoluteError(0.40)));
-        statisticsAssertion.check("SELECT * FROM nation full join (SELECT * FROM supplier WHERE s_nationkey <= 12) on s_nationkey = n_nationkey",
+        statisticsAssertion.check("SELECT * FROM nation FULL JOIN (SELECT * FROM supplier WHERE s_nationkey <= 12) ON s_nationkey = n_nationkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(0.70))
                         .verifyColumnStatistics("s_nationkey", relativeError(0.40))
                         .verifyColumnStatistics("n_nationkey", relativeError(0.40)));
 
         // join with two keys
-        statisticsAssertion.check("SELECT * FROM lineitem full join partsupp on ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
+        statisticsAssertion.check("SELECT * FROM lineitem FULL JOIN partsupp ON ps_partkey = l_partkey AND ps_suppkey = l_suppkey",
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
                         .verifyColumnStatistics("ps_partkey", absoluteError(6.0))
@@ -313,5 +333,178 @@ public class TestTpchLocalStats
                         .verifyColumnStatistics("ps_suppkey", absoluteError(6.0))
                         .verifyColumnStatistics("l_suppkey", absoluteError(6.0))
                         .verifyColumnStatistics("l_orderkey", absoluteError(6.0)));
+
+        // simple non-equi join
+        statisticsAssertion.check("SELECT * FROM lineitem FULL JOIN partsupp ON ps_partkey = l_partkey AND ps_suppkey < l_suppkey",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(4.0))
+                        .verifyColumnStatistics("ps_partkey", relativeError(0.10))
+                        .verifyColumnStatistics("l_partkey", relativeError(0.10))
+                        .verifyColumnStatistics("ps_suppkey", relativeError(0.10))
+                        .verifyColumnStatistics("l_suppkey", relativeError(1.0))
+                        .verifyColumnStatistics("l_orderkey", relativeError(0.10)));
+    }
+
+    @Test
+    public void testAggregation()
+    {
+        statisticsAssertion.check("SELECT count() AS count FROM nation",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
+                        .verifyNoColumnStatistics("count"));
+
+        statisticsAssertion.check("SELECT n_name, count() AS count FROM nation GROUP BY n_name",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
+                        .verifyNoColumnStatistics("count")
+                        .verifyExactColumnStatistics("n_name"));
+
+        statisticsAssertion.check("SELECT n_name, count() AS count FROM nation, region GROUP BY n_name",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
+                        .verifyNoColumnStatistics("count")
+                        .verifyExactColumnStatistics("n_name"));
+    }
+
+    @Test
+    public void testUnion()
+    {
+        statisticsAssertion.check("SELECT * FROM nation UNION SELECT * FROM nation",
+                // real count is 25, estimation cannot know all rows are duplicate.
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(1, 1))
+                        .verifyExactColumnStatistics("n_nationkey")
+                        .verifyExactColumnStatistics("n_regionkey"));
+
+        statisticsAssertion.check("SELECT * FROM nation UNION ALL SELECT * FROM nation",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, noError())
+                        .verifyExactColumnStatistics("n_nationkey")
+                        .verifyExactColumnStatistics("n_regionkey"));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 755 OR o_orderstatus = '0' UNION SELECT * FROM orders WHERE o_custkey > 755 OR o_orderstatus = 'F'",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(.3, .35))
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(.3, .35))
+                        .estimate(lowValue("o_orderkey"), noError())
+                        .estimate(highValue("o_orderkey"), noError())
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.2))
+                        .estimate(nullsFraction("o_custkey"), relativeError(.45, .55))
+                        .estimate(lowValue("o_custkey"), noError())
+                        .estimate(highValue("o_custkey"), noError())
+                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.2))
+                        .estimate(nullsFraction("o_orderstatus"), noError())
+                        .estimate(lowValue("o_orderstatus"), noError())
+                        .estimate(highValue("o_orderstatus"), noError()));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 755 OR o_orderstatus = '0' UNION ALL SELECT * FROM orders WHERE o_custkey > 755 OR o_orderstatus = 'F'",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(.3, .35))
+                        .estimate(lowValue("o_orderkey"), noError())
+                        .estimate(highValue("o_orderkey"), noError())
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.2))
+                        .estimate(nullsFraction("o_custkey"), relativeError(.45, .55))
+                        .estimate(lowValue("o_custkey"), noError())
+                        .estimate(highValue("o_custkey"), noError())
+                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.2))
+                        .estimate(nullsFraction("o_orderstatus"), noError())
+                        .estimate(lowValue("o_orderstatus"), noError())
+                        .estimate(highValue("o_orderstatus"), noError()));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 900 UNION SELECT * FROM orders WHERE o_custkey > 600",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(.15, .25))
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(.15, .25))
+                        .estimate(lowValue("o_orderkey"), noError())
+                        .estimate(highValue("o_orderkey"), noError())
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_custkey"), relativeError(.15, .25))
+                        .estimate(lowValue("o_custkey"), noError())
+                        .estimate(highValue("o_custkey"), noError()));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 900 UNION ALL SELECT * FROM orders WHERE o_custkey > 600",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, defaultTolerance())
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(-.4, -.3))
+                        .estimate(lowValue("o_orderkey"), noError())
+                        .estimate(highValue("o_orderkey"), noError())
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(-.4, -.3))
+                        .estimate(nullsFraction("o_custkey"), relativeError(.15, .25))
+                        .estimate(lowValue("o_custkey"), noError())
+                        .estimate(highValue("o_custkey"), noError()));
+    }
+
+    @Test
+    public void testIntersect()
+    {
+        statisticsAssertion.check("SELECT * FROM nation INTERSECT SELECT * FROM nation",
+                // real count is 25, estimation cannot know all rows are duplicate.
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(.7, .9))
+                        .verifyExactColumnStatistics("n_nationkey")
+                        .verifyExactColumnStatistics("n_regionkey"));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 900 INTERSECT SELECT * FROM orders WHERE o_custkey > 600",
+                // TODO fix INTERSECT stats calculation as custkey values distribution is pretty linear
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(4, 5))
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(1.5, 2))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(4, 5))
+                        .estimate(lowValue("o_orderkey"), absoluteError(-1, -1))
+                        .estimate(highValue("o_orderkey"), absoluteError(25, 25))
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(1.5, 2.5))
+                        .estimate(nullsFraction("o_custkey"), relativeError(5, 6))
+                        .estimate(lowValue("o_custkey"), absoluteError(-600, -600))
+                        .estimate(highValue("o_custkey"), relativeError(.5, 1)));
+    }
+
+    @Test
+    public void testExcept()
+    {
+        statisticsAssertion.check("SELECT * FROM nation EXCEPT SELECT * FROM nation",
+                // real count is 0, estimation cannot know all rows are eliminated
+                checks -> checks.estimate(OUTPUT_ROW_COUNT, absoluteError(45, 45)));
+
+        statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 900 EXCEPT SELECT * FROM orders WHERE o_custkey > 600",
+                // TODO fix EXCEPT stats calculation as custkey values distirbution is pretty linear
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(1.5, 2))
+                        .estimate(distinctValuesCount("o_orderkey"), relativeError(0.5, 1))
+                        .estimate(nullsFraction("o_orderkey"), relativeError(1.5, 2))
+                        .estimate(lowValue("o_orderkey"), noError())
+                        .estimate(highValue("o_orderkey"), absoluteError(27, 27))
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.5, 0.8))
+                        .estimate(nullsFraction("o_custkey"), relativeError(2, 2.5))
+                        .estimate(lowValue("o_custkey"), noError())
+                        .estimate(highValue("o_custkey"), relativeError(1.5, 2)));
+    }
+
+    @Test
+    public void testInSubquery()
+    {
+        statisticsAssertion.check("select * from lineitem where l_orderkey in (select o_orderkey from orders where o_orderdate >= DATE '1993-10-01')",
+                checks -> checks.estimate(OUTPUT_ROW_COUNT, defaultTolerance()));
+    }
+
+    @Test
+    public void testNotInSubquery()
+    {
+        statisticsAssertion.check("select * from lineitem where l_orderkey not in (select o_orderkey from orders where o_orderdate >= DATE '1993-10-01')",
+                // we allow overestimating here. That is because safety heuristic for antijoin which enforces that not more that 50%
+                // of values are filtered out.
+                checks -> checks.estimate(OUTPUT_ROW_COUNT, relativeError(0.0, 1.0)));
+    }
+
+    @Test
+    public void testCorrelatedSubquery()
+    {
+        statisticsAssertion.check("SELECT (SELECT count(*) FROM nation n1 WHERE n1.n_nationkey = n2.n_nationkey AND n1.n_regionkey > n2.n_regionkey) FROM nation n2",
+                checks -> checks
+                        .estimate(OUTPUT_ROW_COUNT, relativeError(0.5)));
     }
 }

@@ -23,6 +23,7 @@ import com.facebook.presto.block.BlockEncodingManager;
 import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.connector.ConnectorManager;
 import com.facebook.presto.connector.system.CatalogSystemTable;
+import com.facebook.presto.connector.system.ColumnPropertiesSystemTable;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.connector.system.GlobalSystemConnectorFactory;
 import com.facebook.presto.connector.system.NodeSystemTable;
@@ -52,6 +53,7 @@ import com.facebook.presto.execution.RenameColumnTask;
 import com.facebook.presto.execution.RenameTableTask;
 import com.facebook.presto.execution.ResetSessionTask;
 import com.facebook.presto.execution.RollbackTask;
+import com.facebook.presto.execution.SetPathTask;
 import com.facebook.presto.execution.SetSessionTask;
 import com.facebook.presto.execution.StartTransactionTask;
 import com.facebook.presto.execution.TaskManagerConfig;
@@ -62,6 +64,7 @@ import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
 import com.facebook.presto.index.IndexManager;
 import com.facebook.presto.memory.MemoryManagerConfig;
 import com.facebook.presto.metadata.CatalogManager;
+import com.facebook.presto.metadata.ColumnPropertyManager;
 import com.facebook.presto.metadata.HandleResolver;
 import com.facebook.presto.metadata.InMemoryNodeManager;
 import com.facebook.presto.metadata.Metadata;
@@ -112,6 +115,7 @@ import com.facebook.presto.sql.analyzer.QueryExplainer;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler;
 import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler;
+import com.facebook.presto.sql.gen.OrderingCompiler;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
@@ -142,6 +146,7 @@ import com.facebook.presto.sql.tree.RenameColumn;
 import com.facebook.presto.sql.tree.RenameTable;
 import com.facebook.presto.sql.tree.ResetSession;
 import com.facebook.presto.sql.tree.Rollback;
+import com.facebook.presto.sql.tree.SetPath;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.StartTransaction;
 import com.facebook.presto.sql.tree.Statement;
@@ -183,6 +188,7 @@ import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSched
 import static com.facebook.presto.spi.connector.ConnectorSplitManager.SplitSchedulingStrategy.UNGROUPED_SCHEDULING;
 import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static com.facebook.presto.sql.ParsingUtil.createParsingOptions;
+import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.testing.TreeAssertions.assertFormattedSql;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
 import static com.facebook.presto.testing.TestingSession.createBogusTestingCatalog;
@@ -207,6 +213,7 @@ public class LocalQueryRunner
     private final FinalizerService finalizerService;
 
     private final SqlParser sqlParser;
+    private final PlanFragmenter planFragmenter;
     private final InMemoryNodeManager nodeManager;
     private final TypeRegistry typeRegistry;
     private final PageSorter pageSorter;
@@ -243,29 +250,12 @@ public class LocalQueryRunner
 
     public LocalQueryRunner(Session defaultSession)
     {
-        this(
-                defaultSession,
-                new FeaturesConfig(),
-                false,
-                false);
-    }
-
-    public LocalQueryRunner(Session defaultSession, boolean alwaysRevokeMemory)
-    {
-        this(defaultSession,
-                new FeaturesConfig(),
-                false,
-                alwaysRevokeMemory);
+        this(defaultSession, new FeaturesConfig(), new NodeSpillConfig(), false, false);
     }
 
     public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig)
     {
-        this(defaultSession, featuresConfig, false, false);
-    }
-
-    public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
-    {
-        this(defaultSession, featuresConfig, new NodeSpillConfig(), withInitialTransaction, alwaysRevokeMemory);
+        this(defaultSession, featuresConfig, new NodeSpillConfig(), false, false);
     }
 
     public LocalQueryRunner(Session defaultSession, FeaturesConfig featuresConfig, NodeSpillConfig nodeSpillConfig, boolean withInitialTransaction, boolean alwaysRevokeMemory)
@@ -286,6 +276,7 @@ public class LocalQueryRunner
         finalizerService.start();
 
         this.sqlParser = new SqlParser();
+        this.planFragmenter = new PlanFragmenter(new QueryManagerConfig());
         this.nodeManager = new InMemoryNodeManager();
         this.typeRegistry = new TypeRegistry();
         this.pageSorter = new PagesIndexPageSorter(new PagesIndex.TestingFactory(false));
@@ -313,6 +304,7 @@ public class LocalQueryRunner
                 new SessionPropertyManager(new SystemSessionProperties(new QueryManagerConfig(), new TaskManagerConfig(), new MemoryManagerConfig(), featuresConfig)),
                 new SchemaPropertyManager(),
                 new TablePropertyManager(),
+                new ColumnPropertyManager(),
                 transactionManager);
         this.joinCompiler = new JoinCompiler(metadata, featuresConfig);
         this.pageIndexerFactory = new GroupByHashPageIndexerFactory(joinCompiler);
@@ -351,6 +343,7 @@ public class LocalQueryRunner
                 new CatalogSystemTable(metadata, accessControl),
                 new SchemaPropertiesSystemTable(transactionManager, metadata),
                 new TablePropertiesSystemTable(transactionManager, metadata),
+                new ColumnPropertiesSystemTable(transactionManager, metadata),
                 new TransactionsSystemTable(typeRegistry, transactionManager)),
                 ImmutableSet.of());
 
@@ -382,6 +375,7 @@ public class LocalQueryRunner
                 defaultSession.getSource(),
                 defaultSession.getCatalog(),
                 defaultSession.getSchema(),
+                defaultSession.getPath(),
                 defaultSession.getTraceToken(),
                 defaultSession.getTimeZoneKey(),
                 defaultSession.getLocale(),
@@ -389,6 +383,7 @@ public class LocalQueryRunner
                 defaultSession.getUserAgent(),
                 defaultSession.getClientInfo(),
                 defaultSession.getClientTags(),
+                defaultSession.getClientCapabilities(),
                 defaultSession.getResourceEstimates(),
                 defaultSession.getStartTime(),
                 defaultSession.getSystemProperties(),
@@ -411,6 +406,7 @@ public class LocalQueryRunner
                 .put(StartTransaction.class, new StartTransactionTask())
                 .put(Commit.class, new CommitTask())
                 .put(Rollback.class, new RollbackTask())
+                .put(SetPath.class, new SetPathTask())
                 .build();
 
         SpillerStats spillerStats = new SpillerStats();
@@ -674,7 +670,7 @@ public class LocalQueryRunner
             System.out.println(PlanPrinter.textLogicalPlan(plan.getRoot(), plan.getTypes(), metadata.getFunctionRegistry(), statsCalculator, estimatedExchangesCostCalculator, session));
         }
 
-        SubPlan subplan = PlanFragmenter.createSubPlans(session, metadata, nodePartitioningManager, plan, true);
+        SubPlan subplan = planFragmenter.createSubPlans(session, metadata, nodePartitioningManager, plan, true);
         if (!subplan.getChildren().isEmpty()) {
             throw new AssertionError("Expected subplan to have no children");
         }
@@ -701,7 +697,8 @@ public class LocalQueryRunner
                 blockEncodingManager,
                 new PagesIndex.TestingFactory(false),
                 joinCompiler,
-                new LookupJoinOperators());
+                new LookupJoinOperators(),
+                new OrderingCompiler());
 
         // plan query
         PipelineExecutionStrategy pipelineExecutionStrategy = subplan.getFragment().getPipelineExecutionStrategy();
@@ -829,6 +826,7 @@ public class LocalQueryRunner
 
         QueryExplainer queryExplainer = new QueryExplainer(
                 optimizers,
+                planFragmenter,
                 metadata,
                 nodePartitioningManager,
                 accessControl,
@@ -851,19 +849,8 @@ public class LocalQueryRunner
 
     private static List<TableScanNode> findTableScanNodes(PlanNode node)
     {
-        ImmutableList.Builder<TableScanNode> tableScanNodes = ImmutableList.builder();
-        findTableScanNodes(node, tableScanNodes);
-        return tableScanNodes.build();
-    }
-
-    private static void findTableScanNodes(PlanNode node, ImmutableList.Builder<TableScanNode> builder)
-    {
-        for (PlanNode source : node.getSources()) {
-            findTableScanNodes(source, builder);
-        }
-
-        if (node instanceof TableScanNode) {
-            builder.add((TableScanNode) node);
-        }
+        return searchFrom(node)
+                .where(TableScanNode.class::isInstance)
+                .findAll();
     }
 }

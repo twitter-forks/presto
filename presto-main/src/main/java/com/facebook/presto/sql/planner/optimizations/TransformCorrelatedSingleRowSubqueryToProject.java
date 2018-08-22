@@ -15,10 +15,9 @@
 package com.facebook.presto.sql.planner.optimizations;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.PlanNodeIdAllocator;
-import com.facebook.presto.sql.planner.Symbol;
 import com.facebook.presto.sql.planner.SymbolAllocator;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.plan.Assignments;
 import com.facebook.presto.sql.planner.plan.LateralJoinNode;
 import com.facebook.presto.sql.planner.plan.PlanNode;
@@ -27,7 +26,6 @@ import com.facebook.presto.sql.planner.plan.SimplePlanRewriter;
 import com.facebook.presto.sql.planner.plan.ValuesNode;
 
 import java.util.List;
-import java.util.Map;
 
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
 import static com.facebook.presto.sql.planner.plan.SimplePlanRewriter.rewriteWith;
@@ -49,6 +47,7 @@ import static java.util.Objects.requireNonNull;
  *       - (input) plan which produces symbols: [A, B, C]
  * </pre>
  */
+@Deprecated
 public class TransformCorrelatedSingleRowSubqueryToProject
         implements PlanOptimizer
 {
@@ -56,7 +55,7 @@ public class TransformCorrelatedSingleRowSubqueryToProject
     public PlanNode optimize(
             PlanNode plan,
             Session session,
-            Map<Symbol, Type> types,
+            TypeProvider types,
             SymbolAllocator symbolAllocator,
             PlanNodeIdAllocator idAllocator)
     {
@@ -90,8 +89,8 @@ public class TransformCorrelatedSingleRowSubqueryToProject
                 return rewrittenLateral;
             }
 
-            List<ProjectNode> subqueryProjections = searchFrom(lateral.getSubquery())
-                    .where(ProjectNode.class::isInstance)
+            List<ProjectNode> subqueryProjections = searchFrom(rewrittenLateral.getSubquery())
+                    .where(node -> node instanceof ProjectNode && !node.getOutputSymbols().equals(rewrittenLateral.getCorrelation()))
                     .findAll();
 
             if (subqueryProjections.size() == 0) {

@@ -155,8 +155,9 @@ public class FixedSourcePartitionedScheduler
         // schedule a task on every node in the distribution
         List<RemoteTask> newTasks = ImmutableList.of();
         if (!scheduledTasks) {
+            OptionalInt totalPartitions = OptionalInt.of(partitioning.getPartitionToNode().size());
             newTasks = partitioning.getPartitionToNode().entrySet().stream()
-                    .map(entry -> stage.scheduleTask(entry.getValue(), entry.getKey()))
+                    .map(entry -> stage.scheduleTask(entry.getValue(), entry.getKey(), totalPartitions))
                     .collect(toImmutableList());
             scheduledTasks = true;
         }
@@ -166,10 +167,12 @@ public class FixedSourcePartitionedScheduler
         BlockedReason blockedReason = BlockedReason.NO_ACTIVE_DRIVER_GROUP;
 
         if (groupedLifespanScheduler.isPresent()) {
-            // start new driver groups on the first scheduler, if previous ones have finished execution
-            // (Note: finished execution is different from finished scheduling)
-            SettableFuture newDriverGroupReady = groupedLifespanScheduler.get().schedule(sourcePartitionedSchedulers.get(0));
-            blocked.add(newDriverGroupReady);
+            // Start new driver groups on the first scheduler if necessary,
+            // i.e. when previous ones have finished execution (not finished scheduling).
+            //
+            // Invoke schedule method to get a new SettableFuture every time.
+            // Reusing previously returned SettableFuture could lead to the ListenableFuture retaining too many listeners.
+            blocked.add(groupedLifespanScheduler.get().schedule(sourcePartitionedSchedulers.get(0)));
         }
 
         int splitsScheduled = 0;
@@ -318,6 +321,9 @@ public class FixedSourcePartitionedScheduler
 
         public SettableFuture schedule(SourcePartitionedScheduler scheduler)
         {
+            // Return a new future even if newDriverGroupReady has not finished.
+            // Returning the same SettableFuture instance could lead to ListenableFuture retaining too many listener objects.
+
             checkState(initialScheduled);
 
             List<Lifespan> recentlyCompletedDriverGroups;

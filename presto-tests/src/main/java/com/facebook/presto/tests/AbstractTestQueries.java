@@ -21,6 +21,7 @@ import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.SqlTimestampWithTimeZone;
 import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
 import com.facebook.presto.sql.analyzer.SemanticException;
 import com.facebook.presto.testing.MaterializedResult;
 import com.facebook.presto.testing.MaterializedRow;
@@ -50,7 +51,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.IntStream;
 
-import static com.facebook.presto.SystemSessionProperties.REORDER_JOINS;
+import static com.facebook.presto.SystemSessionProperties.DISTRIBUTED_SORT;
+import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
 import static com.facebook.presto.connector.informationSchema.InformationSchemaMetadata.INFORMATION_SCHEMA;
 import static com.facebook.presto.operator.scalar.ApplyFunction.APPLY_FUNCTION;
 import static com.facebook.presto.operator.scalar.InvokeFunction.INVOKE_FUNCTION;
@@ -72,7 +74,6 @@ import static com.facebook.presto.testing.TestingAccessControlManager.TestingPri
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.DELETE_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.INSERT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_COLUMN;
-import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.privilege;
 import static com.facebook.presto.testing.TestingSession.TESTING_CATALOG;
 import static com.facebook.presto.testing.TestngUtils.toDataProvider;
@@ -109,33 +110,33 @@ public abstract class AbstractTestQueries
             .getFunctions();
 
     public static final List<PropertyMetadata<?>> TEST_SYSTEM_PROPERTIES = ImmutableList.of(
-            PropertyMetadata.stringSessionProperty(
+            PropertyMetadata.stringProperty(
                     "test_string",
                     "test string property",
                     "test default",
                     false),
-            PropertyMetadata.longSessionProperty(
+            PropertyMetadata.longProperty(
                     "test_long",
                     "test long property",
                     42L,
                     false));
     public static final List<PropertyMetadata<?>> TEST_CATALOG_PROPERTIES = ImmutableList.of(
-            PropertyMetadata.stringSessionProperty(
+            PropertyMetadata.stringProperty(
                     "connector_string",
                     "connector string property",
                     "connector default",
                     false),
-            PropertyMetadata.longSessionProperty(
+            PropertyMetadata.longProperty(
                     "connector_long",
                     "connector long property",
                     33L,
                     false),
-            PropertyMetadata.booleanSessionProperty(
+            PropertyMetadata.booleanProperty(
                     "connector_boolean",
                     "connector boolean property",
                     true,
                     false),
-            PropertyMetadata.doubleSessionProperty(
+            PropertyMetadata.doubleProperty(
                     "connector_double",
                     "connector double property",
                     99.0,
@@ -153,7 +154,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testParsingError()
     {
-        assertQueryFails("SELECT foo FROM", "line 1:16: no viable alternative at input.*");
+        assertQueryFails("SELECT foo FROM", "line 1:16: mismatched input '<EOF>'. Expecting: .*");
     }
 
     @Test
@@ -1682,42 +1683,10 @@ public abstract class AbstractTestQueries
     }
 
     @Test
-    public void testJoinWithConstantFalseExpressionWithCoercion()
-    {
-        // Covers #7520
-
-        // Cannot use assertQuery because H2 behaves differently than Presto in CHAR(x) = CHAR(y) comparison, when x != y
-        // assertQuery("SELECT (cast ('a' AS char(1)) = cast ('a' AS char(2)))") would fail
-        MaterializedResult actual = computeActual("SELECT count(*) > 0 FROM nation JOIN region ON (cast('a' AS char(1)) = CAST('a' AS char(2)))");
-
-        MaterializedResult expected = resultBuilder(getSession(), BOOLEAN)
-                .row(false)
-                .build();
-
-        assertEquals(actual, expected);
-    }
-
-    @Test
     public void testJoinWithConstantTrueExpressionWithCoercion()
     {
         // Covers #7520
         assertQuery("SELECT count(*) > 0 FROM nation JOIN region ON (cast(1.2 AS real) = CAST(1.2 AS decimal(2,1)))");
-    }
-
-    @Test
-    public void testJoinWithCanonicalizedConstantFalseExpressionWithCoercion()
-    {
-        // Covers #7520
-
-        // Cannot use assertQuery because H2 behaves differently than Presto in CHAR(x) = CHAR(y) comparison, when x != y
-        // assertQuery("SELECT (cast ('a' AS char(1)) = cast ('a' AS char(2)))") would fail
-        MaterializedResult actual = computeActual("SELECT count(*) > 0 FROM nation JOIN region ON CAST((CASE WHEN (TRUE IS NOT NULL) THEN 'a' ELSE 'a' END) AS char(1)) = CAST('a' AS char(2))");
-
-        MaterializedResult expected = resultBuilder(getSession(), BOOLEAN)
-                .row(false)
-                .build();
-
-        assertEquals(actual, expected);
     }
 
     @Test
@@ -3029,6 +2998,28 @@ public abstract class AbstractTestQueries
         assertQuery(
                 "WITH t AS (SELECT orderkey x, totalprice y, orderkey z FROM orders) SELECT x, y, z FROM t ORDER BY x, y, z LIMIT 1",
                 "SELECT 1, 172799.49, 1");
+    }
+
+    @Test
+    public void testOrderByUnderManyProjections()
+    {
+        assertQuery("SELECT nationkey, arbitrary_column + arbitrary_column " +
+                "FROM " +
+                "( " +
+                "   SELECT nationkey, COALESCE(arbitrary_column, 0) arbitrary_column " +
+                "   FROM ( " +
+                "      SELECT nationkey, 1 arbitrary_column " +
+                "      FROM nation " +
+                "      ORDER BY 1 ASC))");
+    }
+
+    @Test
+    public void testUndistributedOrderBy()
+    {
+        Session undistributedOrderBy = Session.builder(getSession())
+                .setSystemProperty(DISTRIBUTED_SORT, "false")
+                .build();
+        assertQueryOrdered(undistributedOrderBy, "SELECT orderstatus FROM orders ORDER BY orderstatus");
     }
 
     @Test
@@ -4616,7 +4607,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testShowSchemasLikeWithEscape()
     {
-        assertQueryFails("SHOW SCHEMAS IN foo LIKE '%$_%' ESCAPE", "line 1:39: no viable alternative at input '<EOF>'");
+        assertQueryFails("SHOW SCHEMAS IN foo LIKE '%$_%' ESCAPE", "line 1:39: mismatched input '<EOF>'. Expecting: <string>");
         assertQueryFails("SHOW SCHEMAS LIKE 't$_%' ESCAPE ''", "Escape string must be a single character");
         assertQueryFails("SHOW SCHEMAS LIKE 't$_%' ESCAPE '$$'", "Escape string must be a single character");
 
@@ -4684,7 +4675,7 @@ public abstract class AbstractTestQueries
     @Test
     public void testShowTablesLikeWithEscape()
     {
-        assertQueryFails("SHOW TABLES IN a LIKE '%$_%' ESCAPE", "line 1:36: no viable alternative at input '<EOF>'");
+        assertQueryFails("SHOW TABLES IN a LIKE '%$_%' ESCAPE", "line 1:36: mismatched input '<EOF>'. Expecting: <string>");
         assertQueryFails("SHOW TABLES LIKE 't$_%' ESCAPE ''", "Escape string must be a single character");
         assertQueryFails("SHOW TABLES LIKE 't$_%' ESCAPE '$$'", "Escape string must be a single character");
 
@@ -4889,6 +4880,7 @@ public abstract class AbstractTestQueries
                 getSession().getSource(),
                 getSession().getCatalog(),
                 getSession().getSchema(),
+                getSession().getPath(),
                 getSession().getTraceToken(),
                 getSession().getTimeZoneKey(),
                 getSession().getLocale(),
@@ -4896,6 +4888,7 @@ public abstract class AbstractTestQueries
                 getSession().getUserAgent(),
                 getSession().getClientInfo(),
                 getSession().getClientTags(),
+                getSession().getClientCapabilities(),
                 getSession().getResourceEstimates(),
                 getSession().getStartTime(),
                 ImmutableMap.<String, String>builder()
@@ -6074,52 +6067,118 @@ public abstract class AbstractTestQueries
     @Test
     public void testCorrelatedScalarSubqueries()
     {
-        assertQueryFails(
-                "SELECT (SELECT l.orderkey) FROM lineitem l",
-                "line 1.9: Given correlated subquery is not supported"); // check also position of subquery
-        assertQueryFails(
-                "SELECT (SELECT 2 * l.orderkey) FROM lineitem l",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
-        assertQueryFails(
-                "SELECT * FROM lineitem l WHERE 1 = (SELECT 2 * l.orderkey)",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
-        assertQueryFails(
-                "SELECT * FROM lineitem l ORDER BY (SELECT 2 * l.orderkey)",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        assertQuery("SELECT (SELECT n.nationkey) FROM nation n");
+        assertQuery("SELECT (SELECT 2 * n.nationkey) FROM nation n");
+        assertQuery("SELECT nationkey FROM nation n WHERE 2 = (SELECT 2 * n.nationkey)");
+        assertQuery("SELECT nationkey FROM nation n ORDER BY (SELECT 2 * n.nationkey)");
 
         // group by
-        assertQueryFails(
-                "SELECT max(l.quantity), 2 * l.orderkey, (SELECT l.orderkey) FROM lineitem l GROUP BY l.orderkey",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
-        assertQueryFails(
-                "SELECT max(l.quantity), 2 * l.orderkey FROM lineitem l GROUP BY l.orderkey HAVING max(l.quantity) < (SELECT l.orderkey)",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
-        assertQueryFails(
-                "SELECT max(l.quantity), 2 * l.orderkey FROM lineitem l GROUP BY l.orderkey, (SELECT l.orderkey)",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        assertQuery("SELECT max(n.regionkey), 2 * n.nationkey, (SELECT n.nationkey) FROM nation n GROUP BY n.nationkey");
+        assertQuery(
+                "SELECT max(l.quantity), 2 * l.orderkey FROM lineitem l GROUP BY l.orderkey HAVING max(l.quantity) < (SELECT l.orderkey)");
+        assertQuery("SELECT max(l.quantity), 2 * l.orderkey FROM lineitem l GROUP BY l.orderkey, (SELECT l.orderkey)");
 
         // join
-        assertQueryFails(
-                "SELECT * FROM lineitem l1 JOIN lineitem l2 ON l1.orderkey= (SELECT l2.orderkey)",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        assertQuery("SELECT * FROM nation n1 JOIN nation n2 ON n1.nationkey = (SELECT n2.nationkey)");
         assertQueryFails(
                 "SELECT (SELECT l3.* FROM lineitem l2 CROSS JOIN (SELECT l1.orderkey) l3 LIMIT 1) FROM lineitem l1",
                 UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
 
         // subrelation
-        assertQueryFails(
-                "SELECT * FROM lineitem l WHERE 2 * l.orderkey = (SELECT * FROM (SELECT l.orderkey))",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        assertQuery(
+                "SELECT 1 FROM nation n WHERE 2 * nationkey - 1  = (SELECT * FROM (SELECT n.nationkey))",
+                "SELECT 1"); // h2 fails to parse this query
 
         // two level of nesting
-        assertQueryFails(
-                "SELECT * FROM lineitem l WHERE 1 = (SELECT (SELECT 2 * l.orderkey))",
-                "line 1.37: Given correlated subquery is not supported"); // check also the position of subqueyr
+        assertQuery("SELECT * FROM nation n WHERE 2 = (SELECT (SELECT 2 * n.nationkey))");
 
         // explicit LIMIT in subquery
         assertQueryFails(
                 "SELECT (SELECT count(*) FROM (VALUES (7,1)) t(orderkey, value) WHERE orderkey = corr_key LIMIT 1) FROM (values 7) t(corr_key)",
+                "line 1:9: Given correlated subquery is not supported");
+    }
+
+    @Test
+    public void testCorrelatedNonAggregationScalarSubqueries()
+    {
+        String subqueryReturnedTooManyRows = "Scalar sub-query has returned multiple rows";
+
+        assertQuery("SELECT (SELECT 1 WHERE a = 2) FROM (VALUES 1) t(a)", "SELECT null");
+        assertQuery("SELECT (SELECT 2 WHERE a = 1) FROM (VALUES 1) t(a)", "SELECT 2");
+        assertQueryFails(
+                "SELECT (SELECT 2 FROM (VALUES 3, 4) WHERE a = 1) FROM (VALUES 1) t(a)",
+                subqueryReturnedTooManyRows);
+
+        // multiple subquery output projections
+        assertQueryFails(
+                "SELECT name FROM nation n WHERE 'AFRICA' = (SELECT 'bleh' FROM region WHERE regionkey > n.regionkey)",
+                subqueryReturnedTooManyRows);
+        assertQueryFails(
+                "SELECT name FROM nation n WHERE 'AFRICA' = (SELECT name FROM region WHERE regionkey > n.regionkey)",
+                subqueryReturnedTooManyRows);
+        assertQueryFails(
+                "SELECT name FROM nation n WHERE 1 = (SELECT 1 FROM region WHERE regionkey > n.regionkey)",
+                subqueryReturnedTooManyRows);
+
+        // correlation used in subquery output
+        assertQueryFails(
+                "SELECT name FROM nation n WHERE 'AFRICA' = (SELECT n.name FROM region WHERE regionkey > n.regionkey)",
                 UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+
+        assertQuery(
+                "SELECT (SELECT 2 WHERE o.orderkey = 1) FROM orders o ORDER BY orderkey LIMIT 5",
+                "VALUES 2, null, null, null, null");
+        // outputs plain correlated orderkey symbol which causes ambiguity with outer query orderkey symbol
+        assertQueryFails(
+                "SELECT (SELECT o.orderkey WHERE o.orderkey = 1) FROM orders o ORDER BY orderkey LIMIT 5",
+                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        assertQueryFails(
+                "SELECT (SELECT o.orderkey * 2 WHERE o.orderkey = 1) FROM orders o ORDER BY orderkey LIMIT 5",
+                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+        // correlation used outside the subquery
+        assertQueryFails(
+                "SELECT o.orderkey, (SELECT o.orderkey * 2 WHERE o.orderkey = 1) FROM orders o ORDER BY orderkey LIMIT 5",
+                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+
+        // aggregation with having
+//        TODO: uncomment below test once #8456 is fixed
+//        assertQuery("SELECT (SELECT avg(totalprice) FROM orders GROUP BY custkey, orderdate HAVING avg(totalprice) < a) FROM (VALUES 900) t(a)");
+
+        // correlation in predicate
+        assertQuery("SELECT name FROM nation n WHERE 'AFRICA' = (SELECT name FROM region WHERE regionkey = n.regionkey)");
+
+        // same correlation in predicate and projection
+        assertQueryFails(
+                "SELECT nationkey FROM nation n WHERE " +
+                        "(SELECT n.regionkey * 2 FROM region r WHERE n.regionkey = r.regionkey) > 6",
+                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+
+        // different correlation in predicate and projection
+        assertQueryFails(
+                "SELECT nationkey FROM nation n WHERE " +
+                        "(SELECT n.nationkey * 2 FROM region r WHERE n.regionkey = r.regionkey) > 6",
+                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+
+        // correlation used in subrelation
+        assertQuery(
+                "SELECT nationkey FROM nation n WHERE " +
+                        "(SELECT regionkey * 2 FROM (SELECT regionkey FROM region r WHERE n.regionkey = r.regionkey)) > 6 " +
+                        "ORDER BY 1 LIMIT 3",
+                "VALUES 4, 10, 11"); // h2 didn't make it
+
+        // with duplicated rows
+        assertQuery(
+                "SELECT (SELECT name FROM nation WHERE nationkey = a) FROM (VALUES 1, 1, 2, 3) t(a)",
+                "VALUES 'ARGENTINA', 'ARGENTINA', 'BRAZIL', 'CANADA'"); // h2 didn't make it
+
+        // returning null when nothing matched
+        assertQuery(
+                "SELECT (SELECT name FROM nation WHERE nationkey = a) FROM (VALUES 31) t(a)",
+                "VALUES null");
+
+        assertQuery(
+                "SELECT (SELECT r.name FROM nation n, region r WHERE r.regionkey = n.regionkey AND n.nationkey = a) FROM (VALUES 1) t(a)",
+                "VALUES 'AMERICA'");
     }
 
     @Test
@@ -7346,7 +7405,6 @@ public abstract class AbstractTestQueries
     @Test
     public void testAccessControl()
     {
-        assertAccessDenied("SELECT COUNT(true) FROM orders", "Cannot select from table .*.orders.*", privilege("orders", SELECT_TABLE));
         assertAccessDenied("INSERT INTO orders SELECT * FROM orders", "Cannot insert into table .*.orders.*", privilege("orders", INSERT_TABLE));
         assertAccessDenied("DELETE FROM orders", "Cannot delete from table .*.orders.*", privilege("orders", DELETE_TABLE));
         assertAccessDenied("CREATE TABLE foo AS SELECT * FROM orders", "Cannot create table .*.foo.*", privilege("foo", CREATE_TABLE));
@@ -7847,17 +7905,19 @@ public abstract class AbstractTestQueries
         assertQuery(
                 "SELECT count(*) FROM nation WHERE (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) OR TRUE",
                 "SELECT 25");
-        assertQueryFails(
+        assertQuery(
                 "SELECT (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) " +
                         "FROM nation " +
-                        "WHERE (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) OR TRUE",
-                UNSUPPORTED_CORRELATED_SUBQUERY_ERROR_MSG);
+                        "WHERE (SELECT true FROM (SELECT 1) t(a) WHERE a = nationkey) OR TRUE " +
+                        "ORDER BY nationkey " +
+                        "LIMIT 2",
+                "VALUES true, null");
     }
 
     @Test
     public void testAssignUniqueId()
     {
-        String unionLineitem50Times = IntStream.range(0, 50)
+        String unionLineitem25Times = IntStream.range(0, 25)
                 .mapToObj(i -> "SELECT * FROM lineitem")
                 .collect(joining(" UNION ALL "));
 
@@ -7866,9 +7926,9 @@ public abstract class AbstractTestQueries
                         "SELECT * FROM (" +
                         "   SELECT (SELECT count(*) WHERE c = 1) " +
                         "   FROM (SELECT CASE orderkey WHEN 1 THEN orderkey ELSE 1 END " +
-                        "       FROM (" + unionLineitem50Times + ")) o(c)) result(a) " +
+                        "       FROM (" + unionLineitem25Times + ")) o(c)) result(a) " +
                         "WHERE a = 1)",
-                "VALUES 3008750");
+                "VALUES 1504375");
     }
 
     @Test
@@ -8028,7 +8088,7 @@ public abstract class AbstractTestQueries
     protected Session noJoinReordering()
     {
         return Session.builder(getSession())
-                .setSystemProperty(REORDER_JOINS, "false")
+                .setSystemProperty(JOIN_REORDERING_STRATEGY, JoinReorderingStrategy.NONE.name())
                 .build();
     }
 }

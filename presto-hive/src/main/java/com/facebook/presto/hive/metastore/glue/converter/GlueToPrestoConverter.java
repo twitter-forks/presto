@@ -32,6 +32,7 @@ import com.google.common.collect.ImmutableMap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
@@ -53,7 +54,7 @@ public final class GlueToPrestoConverter
                 .setDatabaseName(glueDb.getName())
                 .setLocation(Optional.ofNullable(glueDb.getLocationUri()))
                 .setComment(Optional.ofNullable(glueDb.getDescription()))
-                .setParameters(glueDb.getParameters())
+                .setParameters(firstNonNull(glueDb.getParameters(), ImmutableMap.of()))
                 .setOwnerName(PUBLIC_OWNER)
                 .setOwnerType(PrincipalType.ROLE)
                 .build();
@@ -72,7 +73,7 @@ public final class GlueToPrestoConverter
                 .setDataColumns(sd.getColumns().stream()
                         .map(GlueToPrestoConverter::convertColumn)
                         .collect(toList()))
-                .setParameters(glueTable.getParameters())
+                .setParameters(firstNonNull(glueTable.getParameters(), ImmutableMap.of()))
                 .setViewOriginalText(Optional.ofNullable(glueTable.getViewOriginalText()))
                 .setViewExpandedText(Optional.ofNullable(glueTable.getViewExpandedText()));
 
@@ -120,7 +121,7 @@ public final class GlueToPrestoConverter
 
     private static Column convertColumn(com.amazonaws.services.glue.model.Column glueColumn)
     {
-        return new Column(glueColumn.getName(), HiveType.valueOf(glueColumn.getType().toLowerCase()), Optional.ofNullable(glueColumn.getComment()));
+        return new Column(glueColumn.getName(), HiveType.valueOf(glueColumn.getType().toLowerCase(Locale.ENGLISH)), Optional.ofNullable(glueColumn.getComment()));
     }
 
     public static Partition convertPartition(com.amazonaws.services.glue.model.Partition gluePartition)
@@ -135,7 +136,7 @@ public final class GlueToPrestoConverter
                 .setColumns(sd.getColumns().stream()
                         .map(GlueToPrestoConverter::convertColumn)
                         .collect(toList()))
-                .setParameters(gluePartition.getParameters());
+                .setParameters(firstNonNull(gluePartition.getParameters(), ImmutableMap.of()));
 
         setStorageBuilder(sd, partitionBuilder.getStorageBuilder());
         return partitionBuilder.build();
