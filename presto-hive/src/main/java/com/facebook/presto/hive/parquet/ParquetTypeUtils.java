@@ -270,7 +270,7 @@ public final class ParquetTypeUtils
         ColumnIO columnIO = lookupColumnByName(groupColumnIO, name);
 
         if (columnIO == null && name.endsWith("_")) {
-            return findColumnIObyName(groupColumnIO, name.substring(0, name.length() - 1));
+            columnIO = lookupColumnByName(groupColumnIO, name.substring(0, name.length() - 1));
         }
 
         return columnIO;

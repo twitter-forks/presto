@@ -27,9 +27,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findColumnIObyName;
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getArrayElementColumn;
 import static com.facebook.presto.hive.parquet.ParquetTypeUtils.getMapKeyValueColumn;
-import static com.facebook.presto.hive.parquet.ParquetTypeUtils.lookupColumnByName;
 import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
 import static com.facebook.presto.spi.type.StandardTypes.MAP;
 import static com.facebook.presto.spi.type.StandardTypes.ROW;
@@ -61,7 +61,7 @@ public class ColumnIOConverter
             for (int i = 0; i < fields.size(); i++) {
                 NamedTypeSignature namedTypeSignature = fields.get(i).getNamedTypeSignature();
                 String name = namedTypeSignature.getName().get().toLowerCase(Locale.ENGLISH);
-                Optional<Field> field = constructField(parameters.get(i), lookupColumnByName(groupColumnIO, name));
+                Optional<Field> field = constructField(parameters.get(i), findColumnIObyName(groupColumnIO, name));
                 structHasParameters |= field.isPresent();
                 fieldsBuilder.add(field);
             }
