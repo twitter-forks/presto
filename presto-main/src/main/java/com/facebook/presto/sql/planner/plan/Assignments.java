@@ -20,7 +20,6 @@ import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.SymbolReference;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
@@ -32,8 +31,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collector;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
@@ -108,6 +109,13 @@ public class Assignments
                 .collect(toAssignments());
     }
 
+    public Assignments rewriteEntry(Function<Entry<Symbol, Expression>, Entry<Symbol, Expression>> rewrite)
+    {
+        return assignments.entrySet().stream()
+                .map(rewrite::apply)
+                .collect(toAssignments());
+    }
+
     public Assignments filter(Collection<Symbol> symbols)
     {
         return filter(symbols::contains);
@@ -116,7 +124,7 @@ public class Assignments
     public Assignments filter(Predicate<Symbol> predicate)
     {
         return assignments.entrySet().stream()
-                .filter(entry -> predicate.apply(entry.getKey()))
+                .filter(entry -> predicate.test(entry.getKey()))
                 .collect(toAssignments());
     }
 
@@ -136,7 +144,7 @@ public class Assignments
                     left.putAll(right.build());
                     return left;
                 },
-                Assignments.Builder::build);
+                Builder::build);
     }
 
     public Collection<Expression> getExpressions()
@@ -188,6 +196,14 @@ public class Assignments
     public int hashCode()
     {
         return assignments.hashCode();
+    }
+
+    @Override
+    public String toString()
+    {
+        return toStringHelper(this)
+                .add("assignments", assignments)
+                .toString();
     }
 
     public static class Builder

@@ -16,6 +16,7 @@ package com.facebook.presto.sql.planner.assertions;
 import com.facebook.presto.Session;
 import com.facebook.presto.cost.StatsProvider;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.sql.parser.ParsingOptions;
@@ -132,6 +133,11 @@ public final class PlanMatchPattern
         return TableScanMatcher.builder(expectedTableName)
                 .expectedOriginalConstraint(expectedOriginalConstraint)
                 .build();
+    }
+
+    public static PlanMatchPattern tableScan(String expectedTableName, Collection<? extends ColumnHandle> columnHandles)
+    {
+        return TableScanMatcher.create(expectedTableName, columnHandles);
     }
 
     public static PlanMatchPattern tableScan(String expectedTableName, Map<String, String> columnReferences)
@@ -632,6 +638,11 @@ public final class PlanMatchPattern
     }
 
     public static ExpressionMatcher expression(String expression)
+    {
+        return new ExpressionMatcher(expression);
+    }
+
+    public static ExpressionMatcher expression(Expression expression)
     {
         return new ExpressionMatcher(expression);
     }
