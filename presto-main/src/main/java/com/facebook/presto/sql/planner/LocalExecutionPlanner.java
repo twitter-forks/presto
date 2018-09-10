@@ -230,6 +230,7 @@ import static com.facebook.presto.spi.type.TypeUtils.writeNativeValue;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypes;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
 import static com.facebook.presto.sql.planner.ExpressionNodeInliner.replaceExpression;
+import static com.facebook.presto.sql.planner.Symbol.withEmptyFields;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_ARBITRARY_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_BROADCAST_DISTRIBUTION;
@@ -575,6 +576,16 @@ public class LocalExecutionPlanner
         public TypeProvider getTypes()
         {
             return types;
+        }
+
+        public Type getType(Symbol symbol)
+        {
+            Type type = types.get(symbol);
+            if (type == null) {
+                type = types.get(withEmptyFields(symbol));
+            }
+
+            return type;
         }
 
         public Optional<IndexSourceContext> getIndexSourceContext()
@@ -2758,7 +2769,7 @@ public class LocalExecutionPlanner
 
             return range(0, channelCount)
                     .mapToObj(channelLayout::get)
-                    .map(context.getTypes()::get)
+                    .map(context::getType)
                     .collect(toImmutableList());
         }
 
