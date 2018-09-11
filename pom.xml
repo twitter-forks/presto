@@ -1300,7 +1300,6 @@
                 <activeByDefault>true</activeByDefault>
             </activation>
             <modules>
-                <module>presto-kafka07</module>
                 <module>twitter-eventlistener-plugin</module>
                 <module>presto-twitter-server</module>
             </modules>
