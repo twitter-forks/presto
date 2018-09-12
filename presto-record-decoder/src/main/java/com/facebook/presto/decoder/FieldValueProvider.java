@@ -48,9 +48,4 @@ public abstract class FieldValueProvider
     }
 
     public abstract boolean isNull();
-
-    public Block getBlock()
-    {
-        throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to block not supported");
-    }
 }

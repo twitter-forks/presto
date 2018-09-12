@@ -38,7 +38,7 @@ public class TwitterStringFunctions
 
     @ScalarFunction("split_every")
     @Description("Splits the string on every character and returns an array")
-    @LiteralParameters({"x"})
+    @LiteralParameters("x")
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8)
     {
@@ -47,7 +47,7 @@ public class TwitterStringFunctions
 
     @ScalarFunction("split_every")
     @Description("Splits the string on every given length of characters and returns an array")
-    @LiteralParameters({"x"})
+    @LiteralParameters("x")
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long length)
     {
@@ -56,7 +56,7 @@ public class TwitterStringFunctions
 
     @ScalarFunction("split_every")
     @Description("Splits the string on every given length of characters and returns an array with the size at most of the given limit")
-    @LiteralParameters({"x"})
+    @LiteralParameters("x")
     @SqlType("array(varchar(x))")
     public static Block str2array(@SqlType("varchar(x)") Slice utf8, @SqlType(StandardTypes.BIGINT) long length, @SqlType(StandardTypes.BIGINT) long limit)
     {
