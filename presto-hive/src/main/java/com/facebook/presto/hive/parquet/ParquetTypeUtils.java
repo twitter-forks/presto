@@ -15,6 +15,8 @@ package com.facebook.presto.hive.parquet;
 
 import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.predicate.Domain;
+import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.BooleanType;
 import com.facebook.presto.spi.type.DecimalType;
@@ -24,6 +26,7 @@ import com.facebook.presto.spi.type.RealType;
 import com.facebook.presto.spi.type.TimestampType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.VarcharType;
+import parquet.column.ColumnDescriptor;
 import parquet.column.Encoding;
 import parquet.io.ColumnIO;
 import parquet.io.ColumnIOFactory;
@@ -38,6 +41,7 @@ import parquet.schema.MessageType;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -155,13 +159,13 @@ public final class ParquetTypeUtils
         return index;
     }
 
-    public static Type getPrestoType(RichColumnDescriptor descriptor)
+    public static Type getPrestoType(TupleDomain<ColumnDescriptor> effectivePredicate, RichColumnDescriptor descriptor)
     {
         switch (descriptor.getType()) {
             case BOOLEAN:
                 return BooleanType.BOOLEAN;
             case BINARY:
-                return createDecimalType(descriptor).orElse(VarcharType.VARCHAR);
+                return createDecimalType(descriptor).orElse(createVarcharType(effectivePredicate, descriptor));
             case FLOAT:
                 return RealType.REAL;
             case DOUBLE:
@@ -179,10 +183,26 @@ public final class ParquetTypeUtils
         }
     }
 
+    private static Type createVarcharType(TupleDomain<ColumnDescriptor> effectivePredicate, RichColumnDescriptor column)
+    {
+        // We look at the effectivePredicate domain here, because it matches the Hive column type
+        // more accurately than the type available in the RichColumnDescriptor.
+        // For example, a Hive column of type varchar(length) is encoded as a Parquet BINARY, but
+        // when that is converted to a Presto Type the length information wasn't retained.
+        Optional<Map<ColumnDescriptor, Domain>> predicateDomains = effectivePredicate.getDomains();
+        if (predicateDomains.isPresent()) {
+            Domain domain = predicateDomains.get().get(column);
+            if (domain != null) {
+                return domain.getType();
+            }
+        }
+        return VarcharType.VARCHAR;
+    }
+
     public static int getFieldIndex(MessageType fileSchema, String name)
     {
         try {
-            return fileSchema.getFieldIndex(name.toLowerCase());
+            return fileSchema.getFieldIndex(name.toLowerCase(Locale.ENGLISH));
         }
         catch (InvalidRecordException e) {
             for (parquet.schema.Type type : fileSchema.getFields()) {
@@ -247,10 +267,10 @@ public final class ParquetTypeUtils
     public static ColumnIO findColumnIObyName(GroupColumnIO groupColumnIO, String name)
     {
         // direct match and case-insensitive match
-        ColumnIO columnIO = getColumnIOByName(groupColumnIO, name);
+        ColumnIO columnIO = lookupColumnByName(groupColumnIO, name);
 
         if (columnIO == null && name.endsWith("_")) {
-            return findColumnIObyName(groupColumnIO, name.substring(0, name.length() - 1));
+            columnIO = lookupColumnByName(groupColumnIO, name.substring(0, name.length() - 1));
         }
 
         return columnIO;
@@ -296,18 +316,20 @@ public final class ParquetTypeUtils
         return null;
     }
 
-    private static ColumnIO getColumnIOByName(GroupColumnIO groupColumnIO, String name)
+    /**
+     * Parquet column names are case-sensitive unlike Hive, which converts all column names to lowercase.
+     * Therefore, when we look up columns we first check for exact match, and if that fails we look for a case-insensitive match.
+     */
+    public static ColumnIO lookupColumnByName(GroupColumnIO groupColumnIO, String columnName)
     {
-        ColumnIO columnIO = groupColumnIO.getChild(name);
+        ColumnIO columnIO = groupColumnIO.getChild(columnName);
 
         if (columnIO != null) {
             return columnIO;
         }
 
-        // parquet is case-sensitive, but hive is not. all hive columns get converted to lowercase
-        // check for direct match above but if no match found, try case-insensitive match
         for (int i = 0; i < groupColumnIO.getChildrenCount(); i++) {
-            if (groupColumnIO.getChild(i).getName().equalsIgnoreCase(name)) {
+            if (groupColumnIO.getChild(i).getName().equalsIgnoreCase(columnName)) {
                 return groupColumnIO.getChild(i);
             }
         }

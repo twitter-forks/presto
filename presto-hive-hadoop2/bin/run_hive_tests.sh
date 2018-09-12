@@ -2,13 +2,7 @@
 
 set -euo pipefail -x
 
-# http://stackoverflow.com/questions/3572030/bash-script-absolute-path-with-osx
-function absolutepath() {
-    [[ $1 = /* ]] && echo "$1" || echo "$PWD/${1#./}"
-}
-
-SCRIPT_DIR=$(dirname $(absolutepath "$0"))
-. ${SCRIPT_DIR}/common.sh
+. ${BASH_SOURCE%/*}/common.sh
 
 cleanup_docker_containers
 start_docker_containers
@@ -22,7 +16,7 @@ stop_unnecessary_hadoop_services
 # run product tests
 pushd ${PROJECT_ROOT}
 set +e
-./mvnw -pl presto-hive-hadoop2 test -P test-hive-hadoop2 \
+./mvnw -B -pl presto-hive-hadoop2 test -P test-hive-hadoop2 \
   -Dhive.hadoop2.timeZone=UTC \
   -DHADOOP_USER_NAME=hive \
   -Dhive.hadoop2.metastoreHost=localhost \

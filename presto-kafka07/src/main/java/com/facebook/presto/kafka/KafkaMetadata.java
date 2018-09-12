@@ -164,7 +164,7 @@ public class KafkaMetadata
         }
 
         for (KafkaInternalFieldDescription kafkaInternalFieldDescription : internalFieldDescriptions) {
-            columnHandles.put(kafkaInternalFieldDescription.getName(), kafkaInternalFieldDescription.getColumnHandle(connectorId, index++, hideInternalColumns));
+            columnHandles.put(kafkaInternalFieldDescription.getColumnName(), kafkaInternalFieldDescription.getColumnHandle(connectorId, index++, hideInternalColumns));
         }
 
         return columnHandles.build();
@@ -177,7 +177,7 @@ public class KafkaMetadata
 
         ImmutableMap.Builder<SchemaTableName, List<ColumnMetadata>> columns = ImmutableMap.builder();
 
-        List<SchemaTableName> tableNames = prefix.getSchemaName() == null ? listTables(session, null) : ImmutableList.of(new SchemaTableName(prefix.getSchemaName(), prefix.getTableName()));
+        List<SchemaTableName> tableNames = prefix.getSchemaName() == null ? listTables(session, Optional.empty()) : ImmutableList.of(new SchemaTableName(prefix.getSchemaName(), prefix.getTableName()));
 
         for (SchemaTableName tableName : tableNames) {
             ConnectorTableMetadata tableMetadata = getTableMetadata(tableName);
@@ -208,7 +208,7 @@ public class KafkaMetadata
         if (domains.isPresent()) {
             Map<ColumnHandle, Domain> columnHandleDomainMap = domains.get();
             for (Map.Entry<ColumnHandle, Domain> entry : columnHandleDomainMap.entrySet()) {
-                if (entry.getKey() instanceof KafkaColumnHandle && ((KafkaColumnHandle) entry.getKey()).getName().equals(KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getName())) {
+                if (entry.getKey() instanceof KafkaColumnHandle && ((KafkaColumnHandle) entry.getKey()).getName().equals(KafkaInternalFieldDescription.OFFSET_TIMESTAMP_FIELD.getColumnName())) {
                     Range span = entry.getValue().getValues().getRanges().getSpan();
                     Marker low = span.getLow();
                     Marker high = span.getHigh();

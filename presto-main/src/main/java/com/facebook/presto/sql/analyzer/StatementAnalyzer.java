@@ -36,18 +36,16 @@ import com.facebook.presto.spi.type.MapType;
 import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.parser.ParsingException;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.planner.ExpressionInterpreter;
 import com.facebook.presto.sql.planner.SymbolsExtractor;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.AliasedRelation;
 import com.facebook.presto.sql.tree.AllColumns;
 import com.facebook.presto.sql.tree.Call;
 import com.facebook.presto.sql.tree.Commit;
-import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.CreateSchema;
 import com.facebook.presto.sql.tree.CreateTable;
 import com.facebook.presto.sql.tree.CreateTableAsSelect;
@@ -315,7 +313,7 @@ class StatementAnalyzer
             if (insert.getColumns().isPresent()) {
                 insertColumns = insert.getColumns().get().stream()
                         .map(Identifier::getValue)
-                        .map(String::toLowerCase)
+                        .map(column -> column.toLowerCase(ENGLISH))
                         .collect(toImmutableList());
 
                 Set<String> columnNames = new HashSet<>();
@@ -391,7 +389,7 @@ class StatementAnalyzer
                     session);
 
             Scope tableScope = analyzer.analyze(table, scope);
-            node.getWhere().ifPresent(where -> analyzer.analyzeWhere(node, tableScope, where));
+            node.getWhere().ifPresent(where -> analyzeWhere(node, tableScope, where));
 
             analysis.setUpdateType("DELETE");
 
@@ -700,7 +698,15 @@ class StatementAnalyzer
                 ExpressionAnalysis expressionAnalysis = analyzeExpression(expression, createScope(scope));
                 Type expressionType = expressionAnalysis.getType(expression);
                 if (expressionType instanceof ArrayType) {
-                    outputFields.add(Field.newUnqualified(Optional.empty(), ((ArrayType) expressionType).getElementType()));
+                    Type elementType = ((ArrayType) expressionType).getElementType();
+                    if (!SystemSessionProperties.isLegacyUnnest(session) && elementType instanceof RowType) {
+                        ((RowType) elementType).getFields().stream()
+                                .map(field -> Field.newUnqualified(field.getName(), field.getType()))
+                                .forEach(outputFields::add);
+                    }
+                    else {
+                        outputFields.add(Field.newUnqualified(Optional.empty(), elementType));
+                    }
                 }
                 else if (expressionType instanceof MapType) {
                     outputFields.add(Field.newUnqualified(Optional.empty(), ((MapType) expressionType).getKeyType()));
@@ -778,7 +784,7 @@ class StatementAnalyzer
             }
 
             QualifiedObjectName name = createQualifiedObjectName(session, table, table.getName());
-            analysis.addEmptyColumnReferencesForTable(session.getIdentity(), name);
+            analysis.addEmptyColumnReferencesForTable(accessControl, session.getIdentity(), name);
 
             Optional<ViewDefinition> optionalView = metadata.getView(session, name);
             if (optionalView.isPresent()) {
@@ -798,8 +804,6 @@ class StatementAnalyzer
                 Query query = parseView(view.getOriginalSql(), name, table);
 
                 analysis.registerNamedQuery(table, query);
-
-                accessControl.checkCanSelectFromView(session.getRequiredTransactionId(), session.getIdentity(), name);
 
                 analysis.registerTableForView(table);
                 RelationType descriptor = analyzeView(query, name, view.getCatalog(), view.getSchema(), view.getOwner(), table);
@@ -837,7 +841,6 @@ class StatementAnalyzer
                 }
                 throw new SemanticException(MISSING_TABLE, table, "Table %s does not exist", name);
             }
-            accessControl.checkCanSelectFromTable(session.getRequiredTransactionId(), session.getIdentity(), name);
             TableMetadata tableMetadata = metadata.getTableMetadata(session, tableHandle.get());
             Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, tableHandle.get());
 
@@ -899,7 +902,7 @@ class StatementAnalyzer
                     session,
                     metadata,
                     sqlParser,
-                    ImmutableMap.of(),
+                    TypeProvider.empty(),
                     relation.getSamplePercentage(),
                     analysis.getParameters(),
                     analysis.isDescribe());
@@ -961,8 +964,7 @@ class StatementAnalyzer
                 analysis.setOrderByExpressions(node, emptyList());
             }
 
-            List<Expression> sourceExpressions = new ArrayList<>();
-            sourceExpressions.addAll(outputExpressions);
+            List<Expression> sourceExpressions = new ArrayList<>(outputExpressions);
             node.getHaving().ifPresent(sourceExpressions::add);
 
             analyzeGroupingOperations(node, sourceExpressions, orderByExpressions);
@@ -1090,10 +1092,6 @@ class StatementAnalyzer
             Scope right = process(node.getRight(), isLateralRelation(node.getRight()) ? Optional.of(left) : scope);
 
             if (criteria instanceof JoinUsing) {
-                if (SystemSessionProperties.isLegacyJoinUsingEnabled(session)) {
-                    return analyzeLegacyJoinUsing(node, ((JoinUsing) criteria).getColumns(), scope, left, right);
-                }
-
                 return analyzeJoinUsing(node, ((JoinUsing) criteria).getColumns(), scope, left, right);
             }
 
@@ -1126,41 +1124,6 @@ class StatementAnalyzer
             }
 
             return output;
-        }
-
-        private Scope analyzeLegacyJoinUsing(Join node, List<Identifier> columns, Optional<Scope> scope, Scope left, Scope right)
-        {
-            List<Expression> expressions = new ArrayList<>();
-            for (Identifier column : columns) {
-                Expression leftExpression = new Identifier(column.getValue());
-                Expression rightExpression = new Identifier(column.getValue());
-
-                ExpressionAnalysis leftExpressionAnalysis = analyzeExpression(leftExpression, left);
-                ExpressionAnalysis rightExpressionAnalysis = analyzeExpression(rightExpression, right);
-                checkState(leftExpressionAnalysis.getSubqueryInPredicates().isEmpty(), "INVARIANT");
-                checkState(rightExpressionAnalysis.getSubqueryInPredicates().isEmpty(), "INVARIANT");
-                checkState(leftExpressionAnalysis.getScalarSubqueries().isEmpty(), "INVARIANT");
-                checkState(rightExpressionAnalysis.getScalarSubqueries().isEmpty(), "INVARIANT");
-
-                Type leftType = analysis.getTypeWithCoercions(leftExpression);
-                Type rightType = analysis.getTypeWithCoercions(rightExpression);
-                Optional<Type> superType = metadata.getTypeManager().getCommonSuperType(leftType, rightType);
-                if (!superType.isPresent()) {
-                    throw new SemanticException(TYPE_MISMATCH, node, "Join criteria has incompatible types: %s, %s", leftType.getDisplayName(), rightType.getDisplayName());
-                }
-                if (!leftType.equals(superType.get())) {
-                    analysis.addCoercion(leftExpression, superType.get(), metadata.getTypeManager().isTypeOnlyCoercion(leftType, rightType));
-                }
-                if (!rightType.equals(superType.get())) {
-                    analysis.addCoercion(rightExpression, superType.get(), metadata.getTypeManager().isTypeOnlyCoercion(rightType, leftType));
-                }
-
-                expressions.add(new ComparisonExpression(ComparisonExpressionType.EQUAL, leftExpression, rightExpression));
-            }
-
-            analysis.setJoinCriteria(node, ExpressionUtils.and(expressions));
-
-            return createAndAssignScope(node, scope, left.getRelationType().joinWith(right.getRelationType()));
         }
 
         private Scope analyzeJoinUsing(Join node, List<Identifier> columns, Optional<Scope> scope, Scope left, Scope right)
@@ -1419,89 +1382,6 @@ class StatementAnalyzer
 
                 analysis.setHaving(node, predicate);
             }
-        }
-
-        /**
-         * Preserve the old column resolution behavior for ORDER BY while we transition workloads to new semantics
-         * TODO: remove this
-         */
-        private List<Expression> legacyAnalyzeOrderBy(QuerySpecification node, Scope sourceScope, Scope orderByScope, List<Expression> outputExpressions)
-        {
-            List<SortItem> items = getSortItemsFromOrderBy(node.getOrderBy());
-
-            ImmutableList.Builder<Expression> orderByExpressionsBuilder = ImmutableList.builder();
-
-            if (!items.isEmpty()) {
-                // Compute aliased output terms so we can resolve order by expressions against them first
-                ImmutableMultimap.Builder<QualifiedName, Expression> byAliasBuilder = ImmutableMultimap.builder();
-                for (SelectItem item : node.getSelect().getSelectItems()) {
-                    if (item instanceof SingleColumn) {
-                        Optional<Identifier> alias = ((SingleColumn) item).getAlias();
-                        if (alias.isPresent()) {
-                            byAliasBuilder.put(QualifiedName.of(alias.get().getValue()), ((SingleColumn) item).getExpression()); // TODO: need to know if alias was quoted
-                        }
-                    }
-                }
-                Multimap<QualifiedName, Expression> byAlias = byAliasBuilder.build();
-
-                for (SortItem item : items) {
-                    Expression expression = item.getSortKey();
-
-                    Expression orderByExpression = null;
-                    if (expression instanceof Identifier) {
-                        // if this is a simple name reference, try to resolve against output columns
-
-                        QualifiedName name = QualifiedName.of(((Identifier) expression).getValue());
-                        Collection<Expression> expressions = byAlias.get(name);
-                        if (expressions.size() > 1) {
-                            throw new SemanticException(AMBIGUOUS_ATTRIBUTE, expression, "'%s' in ORDER BY is ambiguous", name.getSuffix());
-                        }
-                        if (expressions.size() == 1) {
-                            orderByExpression = Iterables.getOnlyElement(expressions);
-                        }
-
-                        // otherwise, couldn't resolve name against output aliases, so fall through...
-                    }
-                    else if (expression instanceof LongLiteral) {
-                        // this is an ordinal in the output tuple
-
-                        long ordinal = ((LongLiteral) expression).getValue();
-                        if (ordinal < 1 || ordinal > outputExpressions.size()) {
-                            throw new SemanticException(INVALID_ORDINAL, expression, "ORDER BY position %s is not in select list", ordinal);
-                        }
-
-                        int field = toIntExact(ordinal - 1);
-                        Type type = orderByScope.getRelationType().getFieldByIndex(field).getType();
-                        if (!type.isOrderable()) {
-                            throw new SemanticException(TYPE_MISMATCH, node, "The type of expression in position %s is not orderable (actual: %s), and therefore cannot be used in ORDER BY", ordinal, type);
-                        }
-
-                        orderByExpression = outputExpressions.get(field);
-                    }
-
-                    // otherwise, just use the expression as is
-                    if (orderByExpression == null) {
-                        orderByExpression = expression;
-                    }
-
-                    ExpressionAnalysis expressionAnalysis = analyzeExpression(orderByExpression, sourceScope);
-                    analysis.recordSubqueries(node, expressionAnalysis);
-
-                    Type type = expressionAnalysis.getType(orderByExpression);
-                    if (!type.isOrderable()) {
-                        throw new SemanticException(TYPE_MISMATCH, node, "Type %s is not orderable, and therefore cannot be used in ORDER BY: %s", type, expression);
-                    }
-
-                    orderByExpressionsBuilder.add(orderByExpression);
-                }
-            }
-
-            List<Expression> orderByExpressions = orderByExpressionsBuilder.build();
-
-            if (node.getSelect().isDistinct() && !outputExpressions.containsAll(orderByExpressions)) {
-                throw new SemanticException(ORDER_BY_MUST_BE_IN_SELECT, node.getSelect(), "For SELECT DISTINCT, ORDER BY expressions must appear in select list");
-            }
-            return orderByExpressions;
         }
 
         private Multimap<QualifiedName, Expression> extractNamedOutputExpressions(Select node)
@@ -1957,6 +1837,7 @@ class StatementAnalyzer
                     viewAccessControl = accessControl;
                 }
 
+                // TODO: record path in view definition (?) (check spec) and feed it into the session object we use to evaluate the query defined by the view
                 Session viewSession = Session.builder(metadata.getSessionPropertyManager())
                         .setQueryId(session.getQueryId())
                         .setTransactionId(session.getTransactionId().orElse(null))
@@ -1964,6 +1845,7 @@ class StatementAnalyzer
                         .setSource(session.getSource().orElse(null))
                         .setCatalog(catalog.orElse(null))
                         .setSchema(schema.orElse(null))
+                        .setPath(session.getPath())
                         .setTimeZoneKey(session.getTimeZoneKey())
                         .setLocale(session.getLocale())
                         .setRemoteUserAddress(session.getRemoteUserAddress().orElse(null))
@@ -2134,7 +2016,8 @@ class StatementAnalyzer
 
                 ExpressionAnalysis expressionAnalysis = ExpressionAnalyzer.analyzeExpression(session,
                         metadata,
-                        accessControl, sqlParser,
+                        accessControl,
+                        sqlParser,
                         orderByScope,
                         analysis,
                         expression);

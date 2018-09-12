@@ -22,7 +22,6 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Optional;
 import java.util.PriorityQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
 import static com.facebook.presto.operator.WorkProcessor.ProcessorState.Type.BLOCKED;
@@ -40,38 +39,52 @@ public final class WorkProcessorUtils
 
     static <T> Iterator<T> iteratorFrom(WorkProcessor<T> processor)
     {
+        requireNonNull(processor, "processor is null");
         return new AbstractIterator<T>()
         {
+            final Iterator<Optional<T>> yieldingIterator = yieldingIteratorFrom(processor);
+
             @Override
             protected T computeNext()
             {
-                while (true) {
-                    if (processor.process()) {
-                        if (processor.isFinished()) {
-                            return endOfData();
-                        }
-
-                        return processor.getResult();
-                    }
-                    else if (processor.isBlocked()) {
-                        try {
-                            processor.getBlockedFuture().get();
-                        }
-                        catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            throw new RuntimeException(e);
-                        }
-                        catch (ExecutionException e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
+                if (!yieldingIterator.hasNext()) {
+                    return endOfData();
                 }
+
+                return yieldingIterator.next()
+                        .orElseThrow(() -> new IllegalStateException("Cannot iterate over yielding WorkProcessor"));
+            }
+        };
+    }
+
+    static <T> Iterator<Optional<T>> yieldingIteratorFrom(WorkProcessor<T> processor)
+    {
+        requireNonNull(processor, "processor is null");
+        return new AbstractIterator<Optional<T>>()
+        {
+            @Override
+            protected Optional<T> computeNext()
+            {
+                if (processor.process()) {
+                    if (processor.isFinished()) {
+                        return endOfData();
+                    }
+
+                    return Optional.of(processor.getResult());
+                }
+                else if (processor.isBlocked()) {
+                    throw new IllegalStateException("Cannot iterate over blocking WorkProcessor");
+                }
+
+                // yielded
+                return Optional.empty();
             }
         };
     }
 
     static <T> WorkProcessor<T> fromIterator(Iterator<T> iterator)
     {
+        requireNonNull(iterator, "iterator is null");
         return create(() -> {
             if (!iterator.hasNext()) {
                 return ProcessorState.finished();
@@ -127,6 +140,8 @@ public final class WorkProcessorUtils
 
     static <T, R> WorkProcessor<R> flatMap(WorkProcessor<T> processor, Function<T, WorkProcessor<R>> mapper)
     {
+        requireNonNull(processor, "processor is null");
+        requireNonNull(mapper, "mapper is null");
         return processor.flatTransform(elementOptional ->
                 elementOptional
                         .map(element -> ProcessorState.ofResult(mapper.apply(element)))
@@ -135,6 +150,8 @@ public final class WorkProcessorUtils
 
     static <T, R> WorkProcessor<R> map(WorkProcessor<T> processor, Function<T, R> mapper)
     {
+        requireNonNull(processor, "processor is null");
+        requireNonNull(mapper, "mapper is null");
         return processor.transform(elementOptional ->
                 elementOptional
                         .map(element -> ProcessorState.ofResult(mapper.apply(element)))
@@ -143,6 +160,8 @@ public final class WorkProcessorUtils
 
     static <T, R> WorkProcessor<R> flatTransform(WorkProcessor<T> processor, Transformation<T, WorkProcessor<R>> transformation)
     {
+        requireNonNull(processor, "processor is null");
+        requireNonNull(transformation, "transformation is null");
         return processor.transform(new Transformation<T, R>()
         {
             WorkProcessor<R> processor;
@@ -184,6 +203,8 @@ public final class WorkProcessorUtils
 
     static <T, R> WorkProcessor<R> transform(WorkProcessor<T> processor, Transformation<T, R> transformation)
     {
+        requireNonNull(processor, "processor is null");
+        requireNonNull(transformation, "transformation is null");
         return create(new WorkProcessor.Process<R>()
         {
             Optional<T> element = Optional.empty();
@@ -225,6 +246,7 @@ public final class WorkProcessorUtils
 
     static <T> WorkProcessor<T> create(WorkProcessor.Process<T> process)
     {
+        requireNonNull(process, "process is null");
         return new WorkProcessor<T>()
         {
             ProcessorState<T> state;

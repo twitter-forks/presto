@@ -35,6 +35,7 @@ import com.facebook.presto.hive.rcfile.RcFilePageSourceFactory;
 import com.facebook.presto.orc.OrcWriter;
 import com.facebook.presto.orc.OrcWriterOptions;
 import com.facebook.presto.orc.OrcWriterStats;
+import com.facebook.presto.orc.OutputStreamOrcDataSink;
 import com.facebook.presto.rcfile.AircompressorCodecFactory;
 import com.facebook.presto.rcfile.HadoopCodecFactory;
 import com.facebook.presto.rcfile.RcFileEncoding;
@@ -191,7 +192,7 @@ public enum FileFormat
         @Override
         public ConnectorPageSource createFileFormatReader(ConnectorSession session, HdfsEnvironment hdfsEnvironment, File targetFile, List<String> columnNames, List<Type> columnTypes)
         {
-            HivePageSourceFactory pageSourceFactory = new ParquetPageSourceFactory(TYPE_MANAGER, false, hdfsEnvironment, new FileFormatDataSourceStats());
+            HivePageSourceFactory pageSourceFactory = new ParquetPageSourceFactory(TYPE_MANAGER, hdfsEnvironment, new FileFormatDataSourceStats());
             return createPageSource(pageSourceFactory, session, targetFile, columnNames, columnTypes, HiveStorageFormat.PARQUET);
         }
 
@@ -297,7 +298,7 @@ public enum FileFormat
         @Override
         public ConnectorPageSource createFileFormatReader(ConnectorSession session, HdfsEnvironment hdfsEnvironment, File targetFile, List<String> columnNames, List<Type> columnTypes)
         {
-            HiveRecordCursorProvider cursorProvider = new ParquetRecordCursorProvider(false, hdfsEnvironment, new FileFormatDataSourceStats());
+            HiveRecordCursorProvider cursorProvider = new ParquetRecordCursorProvider(hdfsEnvironment, new FileFormatDataSourceStats());
             return createPageSource(cursorProvider, session, targetFile, columnNames, columnTypes, HiveStorageFormat.PARQUET);
         }
 
@@ -502,7 +503,7 @@ public enum FileFormat
                 throws IOException
         {
             writer = new OrcWriter(
-                    new FileOutputStream(targetFile),
+                    new OutputStreamOrcDataSink(new FileOutputStream(targetFile)),
                     columnNames,
                     types,
                     ORC,
@@ -539,7 +540,7 @@ public enum FileFormat
                 throws IOException
         {
             writer = new OrcWriter(
-                    new FileOutputStream(targetFile),
+                    new OutputStreamOrcDataSink(new FileOutputStream(targetFile)),
                     columnNames,
                     types,
                     DWRF,

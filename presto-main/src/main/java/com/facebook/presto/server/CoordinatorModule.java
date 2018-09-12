@@ -41,6 +41,7 @@ import com.facebook.presto.execution.RenameTableTask;
 import com.facebook.presto.execution.ResetSessionTask;
 import com.facebook.presto.execution.RevokeTask;
 import com.facebook.presto.execution.RollbackTask;
+import com.facebook.presto.execution.SetPathTask;
 import com.facebook.presto.execution.SetSessionTask;
 import com.facebook.presto.execution.SqlQueryManager;
 import com.facebook.presto.execution.StartTransactionTask;
@@ -67,6 +68,8 @@ import com.facebook.presto.server.remotetask.RemoteTaskStats;
 import com.facebook.presto.spi.memory.ClusterMemoryPoolManager;
 import com.facebook.presto.spi.resourceGroups.QueryType;
 import com.facebook.presto.sql.analyzer.QueryExplainer;
+import com.facebook.presto.sql.planner.PlanFragmenter;
+import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.tree.AddColumn;
 import com.facebook.presto.sql.tree.Call;
 import com.facebook.presto.sql.tree.Commit;
@@ -86,6 +89,7 @@ import com.facebook.presto.sql.tree.RenameTable;
 import com.facebook.presto.sql.tree.ResetSession;
 import com.facebook.presto.sql.tree.Revoke;
 import com.facebook.presto.sql.tree.Rollback;
+import com.facebook.presto.sql.tree.SetPath;
 import com.facebook.presto.sql.tree.SetSession;
 import com.facebook.presto.sql.tree.StartTransaction;
 import com.facebook.presto.sql.tree.Statement;
@@ -176,6 +180,10 @@ public class CoordinatorModule
         // cluster statistics
         jaxrsBinder(binder).bind(ClusterStatsResource.class);
 
+        // planner
+        binder.bind(PlanFragmenter.class).in(Scopes.SINGLETON);
+        binder.bind(PlanOptimizers.class).in(Scopes.SINGLETON);
+
         // query explainer
         binder.bind(QueryExplainer.class).in(Scopes.SINGLETON);
 
@@ -237,6 +245,7 @@ public class CoordinatorModule
         bindDataDefinitionTask(binder, executionBinder, Revoke.class, RevokeTask.class);
         bindDataDefinitionTask(binder, executionBinder, Prepare.class, PrepareTask.class);
         bindDataDefinitionTask(binder, executionBinder, Deallocate.class, DeallocateTask.class);
+        bindDataDefinitionTask(binder, executionBinder, SetPath.class, SetPathTask.class);
 
         MapBinder<String, ExecutionPolicy> executionPolicyBinder = newMapBinder(binder, String.class, ExecutionPolicy.class);
         executionPolicyBinder.addBinding("all-at-once").to(AllAtOnceExecutionPolicy.class);

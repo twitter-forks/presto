@@ -24,8 +24,10 @@ import java.util.List;
 
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.any;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.anyTree;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.assignUniqueId;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.equiJoinClause;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.exchange;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expression;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.filter;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
@@ -35,6 +37,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.semiJo
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.tableScan;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.values;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
+import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 
 public class TestPredicatePushdown
         extends BasePlanTest
@@ -250,5 +253,81 @@ public class TestPredicatePushdown
                 output(
                         values("orderstatus")),
                 allOptimizers);
+    }
+
+    @Test
+    public void testPredicatePushDownThroughMarkDistinct()
+    {
+        assertPlan(
+                "SELECT (SELECT a FROM (VALUES 1, 2, 3) t(a) WHERE a = b) FROM (VALUES 0, 1) p(b) WHERE b = 1",
+                // TODO this could be optimized to VALUES with values from partitions
+                anyTree(
+                        join(
+                                LEFT,
+                                ImmutableList.of(equiJoinClause("A", "B")),
+                                project(assignUniqueId("unique", filter("A = 1", values("A")))),
+                                project(filter("1 = B", values("B"))))));
+    }
+
+    @Test
+    public void testPredicatePushDownOverProjection()
+    {
+        // Non-singletons should not be pushed down
+        assertPlan(
+                "WITH t AS (SELECT orderkey * 2 x FROM orders) " +
+                        "SELECT * FROM t WHERE x + x > 1",
+                anyTree(
+                        filter("((expr + expr) > BIGINT '1')",
+                                project(ImmutableMap.of("expr", expression("orderkey * BIGINT '2'")),
+                                        tableScan("orders", ImmutableMap.of("ORDERKEY", "orderkey"))))));
+
+        // constant non-singleton should be pushed down
+        assertPlan(
+                "with t AS (SELECT orderkey * 2 x, 1 y FROM orders) " +
+                        "SELECT * FROM t WHERE x + y + y >1",
+                anyTree(
+                        project(
+                                filter("(((orderkey * BIGINT '2') + BIGINT '1') + BIGINT '1') > BIGINT '1'",
+                                        tableScan("orders", ImmutableMap.of(
+                                                "orderkey", "orderkey"))))));
+
+        // singletons should be pushed down
+        assertPlan(
+                "WITH t AS (SELECT orderkey * 2 x FROM orders) " +
+                        "SELECT * FROM t WHERE x > 1",
+                anyTree(
+                        project(
+                                filter("(orderkey * BIGINT '2') > BIGINT '1'",
+                                        tableScan("orders", ImmutableMap.of(
+                                                "orderkey", "orderkey"))))));
+
+        // composite singletons should be pushed down
+        assertPlan(
+                "with t AS (SELECT orderkey * 2 x, orderkey y FROM orders) " +
+                        "SELECT * FROM t WHERE x + y > 1",
+                anyTree(
+                        project(
+                                filter("((orderkey * BIGINT '2') + orderkey) > BIGINT '1'",
+                                        tableScan("orders", ImmutableMap.of(
+                                                "orderkey", "orderkey"))))));
+
+        // Identities should be pushed down
+        assertPlan(
+                "WITH t AS (SELECT orderkey x FROM orders) " +
+                        "SELECT * FROM t WHERE x >1",
+                anyTree(
+                        filter("orderkey > BIGINT '1'",
+                                tableScan("orders", ImmutableMap.of(
+                                        "orderkey", "orderkey")))));
+
+        // Non-deterministic predicate should not be pushed down
+        assertPlan(
+                "WITH t AS (SELECT rand() * orderkey x FROM orders) " +
+                        "SELECT * FROM t WHERE x > 5000",
+                anyTree(
+                        filter("expr > 5E3",
+                                project(ImmutableMap.of("expr", expression("rand() * CAST(orderkey AS double)")),
+                                        tableScan("orders", ImmutableMap.of(
+                                                "ORDERKEY", "orderkey"))))));
     }
 }

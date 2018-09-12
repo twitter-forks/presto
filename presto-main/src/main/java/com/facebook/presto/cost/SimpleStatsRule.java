@@ -14,18 +14,17 @@
 package com.facebook.presto.cost;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.cost.ComposableStatsCalculator.Rule;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.PlanNode;
 
-import java.util.Map;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
-public abstract class SimpleStatsRule
-        implements ComposableStatsCalculator.Rule
+public abstract class SimpleStatsRule<T extends PlanNode>
+        implements Rule<T>
 {
     private final StatsNormalizer normalizer;
 
@@ -35,11 +34,11 @@ public abstract class SimpleStatsRule
     }
 
     @Override
-    public final Optional<PlanNodeStatsEstimate> calculate(PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, Map<Symbol, Type> types)
+    public final Optional<PlanNodeStatsEstimate> calculate(T node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types)
     {
         return doCalculate(node, sourceStats, lookup, session, types)
                 .map(estimate -> normalizer.normalize(estimate, node.getOutputSymbols(), types));
     }
 
-    protected abstract Optional<PlanNodeStatsEstimate> doCalculate(PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, Map<Symbol, Type> types);
+    protected abstract Optional<PlanNodeStatsEstimate> doCalculate(T node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types);
 }

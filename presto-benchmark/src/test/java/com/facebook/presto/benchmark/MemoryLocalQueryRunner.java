@@ -41,12 +41,14 @@ import org.intellij.lang.annotations.Language;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 import static com.facebook.presto.testing.TestingSession.testSessionBuilder;
 import static io.airlift.units.DataSize.Unit.GIGABYTE;
 import static org.testng.Assert.assertTrue;
 
 public class MemoryLocalQueryRunner
+        implements AutoCloseable
 {
     protected final LocalQueryRunner localQueryRunner;
 
@@ -89,7 +91,8 @@ public class MemoryLocalQueryRunner
                 .addTaskContext(new TaskStateMachine(new TaskId("query", 0, 0), localQueryRunner.getExecutor()),
                         localQueryRunner.getDefaultSession(),
                         false,
-                        false);
+                        false,
+                        OptionalInt.empty());
 
         // Use NullOutputFactory to avoid coping out results to avoid affecting benchmark results
         ImmutableList.Builder<Page> output = ImmutableList.builder();
@@ -134,5 +137,11 @@ public class MemoryLocalQueryRunner
         Optional<TableHandle> tableHandle = metadata.getTableHandle(session, QualifiedObjectName.valueOf(tableName));
         assertTrue(tableHandle.isPresent(), "Table " + tableName + " does not exist");
         metadata.dropTable(session, tableHandle.get());
+    }
+
+    @Override
+    public void close()
+    {
+        localQueryRunner.close();
     }
 }

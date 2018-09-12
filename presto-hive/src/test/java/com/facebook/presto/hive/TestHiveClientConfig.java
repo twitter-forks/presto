@@ -76,12 +76,12 @@ public class TestHiveClientConfig
                 .setImmutablePartitions(false)
                 .setSortedWritingEnabled(true)
                 .setMaxPartitionsPerWriter(100)
-                .setMaxSortFilesPerBucket(100)
+                .setMaxOpenSortFiles(50)
                 .setWriteValidationThreads(16)
                 .setUseParquetColumnNames(false)
                 .setUseOrcColumnNames(false)
-                .setParquetPredicatePushdownEnabled(false)
-                .setParquetOptimizedReaderEnabled(false)
+                .setParquetPredicatePushdownEnabled(true)
+                .setParquetOptimizedReaderEnabled(true)
                 .setAssumeCanonicalPartitionKeys(false)
                 .setOrcBloomFiltersEnabled(false)
                 .setOrcDefaultBloomFilterFpp(0.05)
@@ -94,7 +94,7 @@ public class TestHiveClientConfig
                 .setRcfileOptimizedWriterEnabled(true)
                 .setRcfileWriterValidate(false)
                 .setOrcOptimizedWriterEnabled(false)
-                .setOrcWriterValidationPercentage(1.0)
+                .setOrcWriterValidationPercentage(100.0)
                 .setOrcWriterValidationMode(OrcWriteValidationMode.BOTH)
                 .setHiveMetastoreAuthenticationType(HiveMetastoreAuthenticationType.NONE)
                 .setHdfsAuthenticationType(HdfsAuthenticationType.NONE)
@@ -104,7 +104,10 @@ public class TestHiveClientConfig
                 .setFileSystemMaxCacheSize(1000)
                 .setTableStatisticsEnabled(true)
                 .setWritesToNonManagedTablesEnabled(false)
-                .setCreatesOfNonManagedTablesEnabled(true));
+                .setCreatesOfNonManagedTablesEnabled(true)
+                .setHdfsWireEncryptionEnabled(false)
+                .setPartitionStatisticsSampleSize(100)
+                .setCollectColumnStatisticsOnWrite(false));
     }
 
     @Test
@@ -146,15 +149,15 @@ public class TestHiveClientConfig
                 .put("hive.respect-table-format", "false")
                 .put("hive.immutable-partitions", "true")
                 .put("hive.max-partitions-per-writers", "222")
-                .put("hive.max-sort-files-per-bucket", "333")
+                .put("hive.max-open-sort-files", "333")
                 .put("hive.write-validation-threads", "11")
                 .put("hive.force-local-scheduling", "true")
                 .put("hive.max-concurrent-file-renames", "100")
                 .put("hive.assume-canonical-partition-keys", "true")
                 .put("hive.parquet.use-column-names", "true")
                 .put("hive.orc.use-column-names", "true")
-                .put("hive.parquet-predicate-pushdown.enabled", "true")
-                .put("hive.parquet-optimized-reader.enabled", "true")
+                .put("hive.parquet-predicate-pushdown.enabled", "false")
+                .put("hive.parquet-optimized-reader.enabled", "false")
                 .put("hive.orc.bloom-filters.enabled", "true")
                 .put("hive.orc.default-bloom-filter-fpp", "0.96")
                 .put("hive.orc.max-merge-distance", "22kB")
@@ -178,6 +181,9 @@ public class TestHiveClientConfig
                 .put("hive.table-statistics-enabled", "false")
                 .put("hive.non-managed-table-writes-enabled", "true")
                 .put("hive.non-managed-table-creates-enabled", "false")
+                .put("hive.hdfs.wire-encryption.enabled", "true")
+                .put("hive.partition-statistics-sample-size", "1234")
+                .put("hive.collect-column-statistics-on-write", "true")
                 .build();
 
         HiveClientConfig expected = new HiveClientConfig()
@@ -216,14 +222,14 @@ public class TestHiveClientConfig
                 .setRespectTableFormat(false)
                 .setImmutablePartitions(true)
                 .setMaxPartitionsPerWriter(222)
-                .setMaxSortFilesPerBucket(333)
+                .setMaxOpenSortFiles(333)
                 .setWriteValidationThreads(11)
                 .setDomainSocketPath("/foo")
                 .setS3FileSystemType(S3FileSystemType.EMRFS)
                 .setUseParquetColumnNames(true)
                 .setUseOrcColumnNames(true)
-                .setParquetPredicatePushdownEnabled(true)
-                .setParquetOptimizedReaderEnabled(true)
+                .setParquetPredicatePushdownEnabled(false)
+                .setParquetOptimizedReaderEnabled(false)
                 .setAssumeCanonicalPartitionKeys(true)
                 .setOrcBloomFiltersEnabled(true)
                 .setOrcDefaultBloomFilterFpp(0.96)
@@ -247,7 +253,10 @@ public class TestHiveClientConfig
                 .setFileSystemMaxCacheSize(1010)
                 .setTableStatisticsEnabled(false)
                 .setWritesToNonManagedTablesEnabled(true)
-                .setCreatesOfNonManagedTablesEnabled(false);
+                .setCreatesOfNonManagedTablesEnabled(false)
+                .setHdfsWireEncryptionEnabled(true)
+                .setPartitionStatisticsSampleSize(1234)
+                .setCollectColumnStatisticsOnWrite(true);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

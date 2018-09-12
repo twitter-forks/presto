@@ -15,12 +15,12 @@ package com.facebook.presto.cost;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.matching.Pattern;
-import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.JoinNode;
 import com.facebook.presto.sql.planner.plan.JoinNode.EquiJoinClause;
-import com.facebook.presto.sql.planner.plan.PlanNode;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.util.MoreMath;
@@ -28,14 +28,14 @@ import com.google.common.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
 import static com.facebook.presto.cost.FilterStatsCalculator.UNKNOWN_FILTER_COEFFICIENT;
 import static com.facebook.presto.cost.PlanNodeStatsEstimate.UNKNOWN_STATS;
 import static com.facebook.presto.cost.SymbolStatsEstimate.buildFrom;
-import static com.facebook.presto.sql.tree.ComparisonExpressionType.EQUAL;
+import static com.facebook.presto.sql.planner.plan.Patterns.join;
+import static com.facebook.presto.sql.tree.ComparisonExpression.Operator.EQUAL;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Sets.difference;
@@ -46,8 +46,9 @@ import static java.util.Comparator.comparingDouble;
 import static java.util.Objects.requireNonNull;
 
 public class JoinStatsRule
-        extends SimpleStatsRule
+        extends SimpleStatsRule<JoinNode>
 {
+    private static final Pattern<JoinNode> PATTERN = join();
     private static final double DEFAULT_UNMATCHED_JOIN_COMPLEMENT_NDVS_COEFFICIENT = 0.5;
 
     private final FilterStatsCalculator filterStatsCalculator;
@@ -69,29 +70,27 @@ public class JoinStatsRule
     @Override
     public Pattern<JoinNode> getPattern()
     {
-        return Pattern.typeOf(JoinNode.class);
+        return PATTERN;
     }
 
     @Override
-    protected Optional<PlanNodeStatsEstimate> doCalculate(PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, Map<Symbol, Type> types)
+    protected Optional<PlanNodeStatsEstimate> doCalculate(JoinNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types)
     {
-        JoinNode joinNode = (JoinNode) node;
+        PlanNodeStatsEstimate leftStats = sourceStats.getStats(node.getLeft());
+        PlanNodeStatsEstimate rightStats = sourceStats.getStats(node.getRight());
+        PlanNodeStatsEstimate crossJoinStats = crossJoinStats(node, leftStats, rightStats);
 
-        PlanNodeStatsEstimate leftStats = sourceStats.getStats(joinNode.getLeft());
-        PlanNodeStatsEstimate rightStats = sourceStats.getStats(joinNode.getRight());
-        PlanNodeStatsEstimate crossJoinStats = crossJoinStats(joinNode, leftStats, rightStats);
-
-        switch (joinNode.getType()) {
+        switch (node.getType()) {
             case INNER:
-                return Optional.of(computeInnerJoinStats(joinNode, crossJoinStats, session, types));
+                return Optional.of(computeInnerJoinStats(node, crossJoinStats, session, types));
             case LEFT:
-                return Optional.of(computeLeftJoinStats(joinNode, leftStats, rightStats, crossJoinStats, session, types));
+                return Optional.of(computeLeftJoinStats(node, leftStats, rightStats, crossJoinStats, session, types));
             case RIGHT:
-                return Optional.of(computeRightJoinStats(joinNode, leftStats, rightStats, crossJoinStats, session, types));
+                return Optional.of(computeRightJoinStats(node, leftStats, rightStats, crossJoinStats, session, types));
             case FULL:
-                return Optional.of(computeFullJoinStats(joinNode, leftStats, rightStats, crossJoinStats, session, types));
+                return Optional.of(computeFullJoinStats(node, leftStats, rightStats, crossJoinStats, session, types));
             default:
-                throw new IllegalStateException("Unknown join type: " + joinNode.getType());
+                throw new IllegalStateException("Unknown join type: " + node.getType());
         }
     }
 
@@ -101,7 +100,7 @@ public class JoinStatsRule
             PlanNodeStatsEstimate rightStats,
             PlanNodeStatsEstimate crossJoinStats,
             Session session,
-            Map<Symbol, Type> types)
+            TypeProvider types)
     {
         PlanNodeStatsEstimate rightJoinComplementStats = calculateJoinComplementStats(node.getFilter(), flippedCriteria(node), rightStats, leftStats);
         return addJoinComplementStats(
@@ -116,7 +115,7 @@ public class JoinStatsRule
             PlanNodeStatsEstimate rightStats,
             PlanNodeStatsEstimate crossJoinStats,
             Session session,
-            Map<Symbol, Type> types)
+            TypeProvider types)
     {
         PlanNodeStatsEstimate innerJoinStats = computeInnerJoinStats(node, crossJoinStats, session, types);
         PlanNodeStatsEstimate leftJoinComplementStats = calculateJoinComplementStats(node.getFilter(), node.getCriteria(), leftStats, rightStats);
@@ -132,7 +131,7 @@ public class JoinStatsRule
             PlanNodeStatsEstimate rightStats,
             PlanNodeStatsEstimate crossJoinStats,
             Session session,
-            Map<Symbol, Type> types)
+            TypeProvider types)
     {
         PlanNodeStatsEstimate innerJoinStats = computeInnerJoinStats(node, crossJoinStats, session, types);
         PlanNodeStatsEstimate rightJoinComplementStats = calculateJoinComplementStats(node.getFilter(), flippedCriteria(node), rightStats, leftStats);
@@ -142,7 +141,7 @@ public class JoinStatsRule
                 rightJoinComplementStats);
     }
 
-    private PlanNodeStatsEstimate computeInnerJoinStats(JoinNode node, PlanNodeStatsEstimate crossJoinStats, Session session, Map<Symbol, Type> types)
+    private PlanNodeStatsEstimate computeInnerJoinStats(JoinNode node, PlanNodeStatsEstimate crossJoinStats, Session session, TypeProvider types)
     {
         List<EquiJoinClause> equiJoinClauses = node.getCriteria();
 
@@ -176,7 +175,7 @@ public class JoinStatsRule
             EquiJoinClause drivingClause,
             List<EquiJoinClause> auxiliaryClauses,
             Session session,
-            Map<Symbol, Type> types)
+            TypeProvider types)
     {
         ComparisonExpression drivingPredicate = new ComparisonExpression(EQUAL, drivingClause.getLeft().toSymbolReference(), drivingClause.getRight().toSymbolReference());
         PlanNodeStatsEstimate filteredStats = filterStatsCalculator.filterStats(stats, drivingPredicate, session, types);
@@ -241,24 +240,24 @@ public class JoinStatsRule
             PlanNodeStatsEstimate leftStats,
             PlanNodeStatsEstimate rightStats)
     {
-        // TODO: add support for non-equality conditions (e.g: <=, !=, >)
-        if (filter.isPresent()) {
-            // non-equi filters are not supported
-            return UNKNOWN_STATS;
+        if (rightStats.getOutputRowCount() == 0) {
+            // no left side rows are matched
+            return leftStats;
         }
 
         if (criteria.isEmpty()) {
-            if (rightStats.getOutputRowCount() > 0) {
-                // all left side rows are matched
-                return leftStats.mapOutputRowCount(rowCount -> 0.0);
+            // TODO: account for non-equi conditions
+            if (filter.isPresent()) {
+                return UNKNOWN_STATS;
             }
-            if (rightStats.getOutputRowCount() == 0) {
-                // no left side rows are matched
-                return leftStats;
-            }
-            // right stats row count is NaN
-            return UNKNOWN_STATS;
+
+            return leftStats.mapOutputRowCount(rowCount -> 0.0);
         }
+
+        // TODO: add support for non-equality conditions (e.g: <=, !=, >)
+        int numberOfFilterClauses = filter.map(
+                exression -> ExpressionUtils.extractConjuncts(exression).size())
+                .orElse(0);
 
         // Heuristics: select the most selective criteria for join complement clause.
         // Principals behind this heuristics is the same as in computeInnerJoinStats:
@@ -266,8 +265,7 @@ public class JoinStatsRule
         return IntStream.range(0, criteria.size())
                 .mapToObj(drivingClauseId -> {
                     EquiJoinClause drivingClause = criteria.get(drivingClauseId);
-                    List<EquiJoinClause> remainingClauses = copyWithout(criteria, drivingClauseId);
-                    return calculateJoinComplementStats(leftStats, rightStats, drivingClause, remainingClauses);
+                    return calculateJoinComplementStats(leftStats, rightStats, drivingClause, criteria.size() - 1 + numberOfFilterClauses);
                 })
                 .max(comparingDouble(PlanNodeStatsEstimate::getOutputRowCount))
                 .get();
@@ -277,7 +275,7 @@ public class JoinStatsRule
             PlanNodeStatsEstimate leftStats,
             PlanNodeStatsEstimate rightStats,
             EquiJoinClause drivingClause,
-            List<EquiJoinClause> remainingClauses)
+            int numberOfRemainingClauses)
     {
         PlanNodeStatsEstimate result = leftStats;
 
@@ -318,10 +316,8 @@ public class JoinStatsRule
             return UNKNOWN_STATS;
         }
 
-        // account for remaining clauses
-        for (int i = 0; i < remainingClauses.size(); ++i) {
-            result = result.mapOutputRowCount(rowCount -> min(leftStats.getOutputRowCount(), rowCount / UNKNOWN_FILTER_COEFFICIENT));
-        }
+        // limit the number of complement rows (to left row count) and account for remaining clauses
+        result = result.mapOutputRowCount(rowCount -> min(leftStats.getOutputRowCount(), rowCount / Math.pow(UNKNOWN_FILTER_COEFFICIENT, numberOfRemainingClauses)));
 
         return result;
     }

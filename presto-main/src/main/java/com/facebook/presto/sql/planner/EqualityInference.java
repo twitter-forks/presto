@@ -14,7 +14,6 @@
 package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.ComparisonExpressionType;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.sql.tree.InListExpression;
@@ -34,9 +33,7 @@ import com.google.common.collect.SetMultimap;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,22 +53,17 @@ import static java.util.Objects.requireNonNull;
 public class EqualityInference
 {
     // Ordering used to determine Expression preference when determining canonicals
-    private static final Ordering<Expression> CANONICAL_ORDERING = Ordering.from(new Comparator<Expression>()
-    {
-        @Override
-        public int compare(Expression expression1, Expression expression2)
-        {
-            // Current cost heuristic:
-            // 1) Prefer fewer input symbols
-            // 2) Prefer smaller expression trees
-            // 3) Sort the expressions alphabetically - creates a stable consistent ordering (extremely useful for unit testing)
-            // TODO: be more precise in determining the cost of an expression
-            return ComparisonChain.start()
-                    .compare(SymbolsExtractor.extractAll(expression1).size(), SymbolsExtractor.extractAll(expression2).size())
-                    .compare(SubExpressionExtractor.extract(expression1).size(), SubExpressionExtractor.extract(expression2).size())
-                    .compare(expression1.toString(), expression2.toString())
-                    .result();
-        }
+    private static final Ordering<Expression> CANONICAL_ORDERING = Ordering.from((expression1, expression2) -> {
+        // Current cost heuristic:
+        // 1) Prefer fewer input symbols
+        // 2) Prefer smaller expression trees
+        // 3) Sort the expressions alphabetically - creates a stable consistent ordering (extremely useful for unit testing)
+        // TODO: be more precise in determining the cost of an expression
+        return ComparisonChain.start()
+                .compare(SymbolsExtractor.extractAll(expression1).size(), SymbolsExtractor.extractAll(expression2).size())
+                .compare(SubExpressionExtractor.extract(expression1).size(), SubExpressionExtractor.extract(expression2).size())
+                .compare(expression1.toString(), expression2.toString())
+                .result();
     });
 
     private final SetMultimap<Expression, Expression> equalitySets; // Indexed by canonical expression
@@ -176,14 +168,14 @@ public class EqualityInference
      */
     public EqualityPartition generateEqualitiesPartitionedBy(Predicate<Symbol> symbolScope)
     {
-        Set<Expression> scopeEqualities = new HashSet<>();
-        Set<Expression> scopeComplementEqualities = new HashSet<>();
-        Set<Expression> scopeStraddlingEqualities = new HashSet<>();
+        ImmutableSet.Builder<Expression> scopeEqualities = ImmutableSet.builder();
+        ImmutableSet.Builder<Expression> scopeComplementEqualities = ImmutableSet.builder();
+        ImmutableSet.Builder<Expression> scopeStraddlingEqualities = ImmutableSet.builder();
 
         for (Collection<Expression> equalitySet : equalitySets.asMap().values()) {
-            Set<Expression> scopeExpressions = new HashSet<>();
-            Set<Expression> scopeComplementExpressions = new HashSet<>();
-            Set<Expression> scopeStraddlingExpressions = new HashSet<>();
+            Set<Expression> scopeExpressions = new LinkedHashSet<>();
+            Set<Expression> scopeComplementExpressions = new LinkedHashSet<>();
+            Set<Expression> scopeStraddlingExpressions = new LinkedHashSet<>();
 
             // Try to push each non-derived expression into one side of the scope
             for (Expression expression : filter(equalitySet, not(derivedExpressions::contains))) {
@@ -203,13 +195,13 @@ public class EqualityInference
             Expression matchingCanonical = getCanonical(scopeExpressions);
             if (scopeExpressions.size() >= 2) {
                 for (Expression expression : filter(scopeExpressions, not(equalTo(matchingCanonical)))) {
-                    scopeEqualities.add(new ComparisonExpression(ComparisonExpressionType.EQUAL, matchingCanonical, expression));
+                    scopeEqualities.add(new ComparisonExpression(ComparisonExpression.Operator.EQUAL, matchingCanonical, expression));
                 }
             }
             Expression complementCanonical = getCanonical(scopeComplementExpressions);
             if (scopeComplementExpressions.size() >= 2) {
                 for (Expression expression : filter(scopeComplementExpressions, not(equalTo(complementCanonical)))) {
-                    scopeComplementEqualities.add(new ComparisonExpression(ComparisonExpressionType.EQUAL, complementCanonical, expression));
+                    scopeComplementEqualities.add(new ComparisonExpression(ComparisonExpression.Operator.EQUAL, complementCanonical, expression));
                 }
             }
 
@@ -222,12 +214,12 @@ public class EqualityInference
             Expression connectingCanonical = getCanonical(connectingExpressions);
             if (connectingCanonical != null) {
                 for (Expression expression : filter(connectingExpressions, not(equalTo(connectingCanonical)))) {
-                    scopeStraddlingEqualities.add(new ComparisonExpression(ComparisonExpressionType.EQUAL, connectingCanonical, expression));
+                    scopeStraddlingEqualities.add(new ComparisonExpression(ComparisonExpression.Operator.EQUAL, connectingCanonical, expression));
                 }
             }
         }
 
-        return new EqualityPartition(scopeEqualities, scopeComplementEqualities, scopeStraddlingEqualities);
+        return new EqualityPartition(scopeEqualities.build(), scopeComplementEqualities.build(), scopeStraddlingEqualities.build());
     }
 
     /**
@@ -271,7 +263,7 @@ public class EqualityInference
                     isDeterministic(expression) &&
                     !mayReturnNullOnNonNullInput(expression)) {
                 ComparisonExpression comparison = (ComparisonExpression) expression;
-                if (comparison.getType() == ComparisonExpressionType.EQUAL) {
+                if (comparison.getOperator() == ComparisonExpression.Operator.EQUAL) {
                     // We should only consider equalities that have distinct left and right components
                     return !comparison.getLeft().equals(comparison.getRight());
                 }
@@ -290,7 +282,7 @@ public class EqualityInference
             if (inPredicate.getValueList() instanceof InListExpression) {
                 InListExpression valueList = (InListExpression) inPredicate.getValueList();
                 if (valueList.getValues().size() == 1) {
-                    return new ComparisonExpression(ComparisonExpressionType.EQUAL, inPredicate.getValue(), Iterables.getOnlyElement(valueList.getValues()));
+                    return new ComparisonExpression(ComparisonExpression.Operator.EQUAL, inPredicate.getValue(), Iterables.getOnlyElement(valueList.getValues()));
                 }
             }
         }
@@ -346,7 +338,7 @@ public class EqualityInference
     public static class Builder
     {
         private final DisjointSet<Expression> equalities = new DisjointSet<>();
-        private final Set<Expression> derivedExpressions = new HashSet<>();
+        private final Set<Expression> derivedExpressions = new LinkedHashSet<>();
 
         public Builder extractInferenceCandidates(Expression expression)
         {
@@ -388,13 +380,14 @@ public class EqualityInference
             Collection<Set<Expression>> equivalentClasses = equalities.getEquivalentClasses();
 
             // Map every expression to the set of equivalent expressions
-            Map<Expression, Set<Expression>> map = new HashMap<>();
+            ImmutableMap.Builder<Expression, Set<Expression>> mapBuilder = ImmutableMap.builder();
             for (Set<Expression> expressions : equivalentClasses) {
-                expressions.forEach(expression -> map.put(expression, expressions));
+                expressions.forEach(expression -> mapBuilder.put(expression, expressions));
             }
 
             // For every non-derived expression, extract the sub-expressions and see if they can be rewritten as other expressions. If so,
             // use this new information to update the known equalities.
+            Map<Expression, Set<Expression>> map = mapBuilder.build();
             for (Expression expression : map.keySet()) {
                 if (!derivedExpressions.contains(expression)) {
                     for (Expression subExpression : filter(SubExpressionExtractor.extract(expression), not(equalTo(expression)))) {

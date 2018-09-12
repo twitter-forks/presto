@@ -34,7 +34,6 @@ import static com.facebook.presto.metadata.SignatureBinder.applyBoundVariables;
 import static com.facebook.presto.operator.scalar.ScalarFunctionImplementation.NullConvention.USE_BOXED_TYPE;
 import static com.facebook.presto.operator.scalar.ScalarFunctionImplementation.NullConvention.USE_NULL_FLAG;
 import static com.facebook.presto.type.TypeUtils.resolveTypes;
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Collections.emptyList;
 import static java.util.Objects.requireNonNull;
@@ -138,7 +137,7 @@ class PolymorphicScalarFunction
             if (!methodParameterJavaTypes[methodParameterIndex].equals(type)) {
                 return false;
             }
-            methodParameterIndex += nullConvention == USE_NULL_FLAG ? 2 : 1;
+            methodParameterIndex += nullConvention.getParameterCount();
         }
         return method.getReturnType().equals(getNullAwareContainerType(returnType.getJavaType(), nullableResult));
     }
@@ -186,7 +185,6 @@ class PolymorphicScalarFunction
         if (nullable) {
             return Primitives.wrap(clazz);
         }
-        checkArgument(clazz != void.class);
         return clazz;
     }
 }

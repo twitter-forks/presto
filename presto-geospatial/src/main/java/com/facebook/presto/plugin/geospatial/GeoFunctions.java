@@ -36,6 +36,8 @@ import com.facebook.presto.geospatial.serde.GeometrySerde;
 import com.facebook.presto.geospatial.serde.GeometrySerializationType;
 import com.facebook.presto.geospatial.serde.JtsGeometrySerde;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.function.Description;
 import com.facebook.presto.spi.function.ScalarFunction;
 import com.facebook.presto.spi.function.SqlNullable;
@@ -71,6 +73,7 @@ import static com.facebook.presto.geospatial.serde.GeometrySerde.deserialize;
 import static com.facebook.presto.geospatial.serde.GeometrySerde.deserializeEnvelope;
 import static com.facebook.presto.geospatial.serde.GeometrySerde.deserializeType;
 import static com.facebook.presto.geospatial.serde.GeometrySerde.serialize;
+import static com.facebook.presto.plugin.geospatial.GeometryType.GEOMETRY;
 import static com.facebook.presto.plugin.geospatial.GeometryType.GEOMETRY_TYPE_NAME;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
 import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
@@ -81,6 +84,7 @@ import static java.lang.Math.atan2;
 import static java.lang.Math.cos;
 import static java.lang.Math.sin;
 import static java.lang.Math.sqrt;
+import static java.lang.Math.toIntExact;
 import static java.lang.Math.toRadians;
 import static java.lang.String.format;
 import static org.locationtech.jts.simplify.TopologyPreservingSimplifier.simplify;
@@ -132,13 +136,28 @@ public final class GeoFunctions
         return serialize(geometry);
     }
 
-    @Description("Returns the area of a polygon using Euclidean measurement on a 2D plane (based on spatial ref) in projected units")
+    @Description("Returns the 2D Euclidean area of a geometry")
     @ScalarFunction("ST_Area")
     @SqlType(DOUBLE)
     public static double stArea(@SqlType(GEOMETRY_TYPE_NAME) Slice input)
     {
         OGCGeometry geometry = deserialize(input);
-        validateType("ST_Area", geometry, EnumSet.of(POLYGON, MULTI_POLYGON));
+
+        // The Esri geometry library does not support area for geometry collections. We compute the area
+        // of collections by summing the area of the individual components.
+        GeometryType type = GeometryType.getForEsriGeometryType(geometry.geometryType());
+        if (type == GeometryType.GEOMETRY_COLLECTION) {
+            double area = 0.0;
+            GeometryCursor cursor = geometry.getEsriGeometryCursor();
+            while (true) {
+                com.esri.core.geometry.Geometry esriGeometry = cursor.next();
+                if (esriGeometry == null) {
+                    return area;
+                }
+
+                area += esriGeometry.calculateArea2D();
+            }
+        }
         return geometry.getEsriGeometry().calculateArea2D();
     }
 
@@ -462,6 +481,26 @@ public final class GeoFunctions
         return Long.valueOf(((OGCPolygon) geometry).numInteriorRing());
     }
 
+    @SqlNullable
+    @Description("Returns an array of interior rings of a polygon")
+    @ScalarFunction("ST_InteriorRings")
+    @SqlType("array(" + GEOMETRY_TYPE_NAME + ")")
+    public static Block stInteriorRings(@SqlType(GEOMETRY_TYPE_NAME) Slice input)
+    {
+        OGCGeometry geometry = deserialize(input);
+        validateType("ST_InteriorRings", geometry, EnumSet.of(POLYGON));
+        if (geometry.isEmpty()) {
+            return null;
+        }
+
+        OGCPolygon polygon = (OGCPolygon) geometry;
+        BlockBuilder blockBuilder = GEOMETRY.createBlockBuilder(null, polygon.numInteriorRing());
+        for (int i = 0; i < polygon.numInteriorRing(); i++) {
+            GEOMETRY.writeSlice(blockBuilder, serialize(polygon.interiorRingN(i)));
+        }
+        return blockBuilder.build();
+    }
+
     @Description("Returns the cardinality of the geometry collection")
     @ScalarFunction("ST_NumGeometries")
     @SqlType(StandardTypes.INTEGER)
@@ -476,6 +515,29 @@ public final class GeoFunctions
             return 1;
         }
         return ((OGCGeometryCollection) geometry).numGeometries();
+    }
+
+    @Description("Returns a geometry that represents the point set union of the input geometries. This function doesn't support geometry collections.")
+    @ScalarFunction("ST_Union")
+    @SqlType(GEOMETRY_TYPE_NAME)
+    public static Slice stUnion(@SqlType(GEOMETRY_TYPE_NAME) Slice left, @SqlType(GEOMETRY_TYPE_NAME) Slice right)
+    {
+        // Only supports Geometry but not GeometryCollection due to ESRI library limitation
+        // https://github.com/Esri/geometry-api-java/issues/176
+        // https://github.com/Esri/geometry-api-java/issues/177
+        OGCGeometry leftGeometry = deserialize(left);
+        validateType("ST_Union", leftGeometry, EnumSet.of(POINT, MULTI_POINT, LINE_STRING, MULTI_LINE_STRING, POLYGON, MULTI_POLYGON));
+        if (leftGeometry.isEmpty()) {
+            return right;
+        }
+
+        OGCGeometry rightGeometry = deserialize(right);
+        validateType("ST_Union", rightGeometry, EnumSet.of(POINT, MULTI_POINT, LINE_STRING, MULTI_LINE_STRING, POLYGON, MULTI_POLYGON));
+        if (rightGeometry.isEmpty()) {
+            return left;
+        }
+
+        return serialize(leftGeometry.union(rightGeometry));
     }
 
     @SqlNullable
@@ -501,6 +563,64 @@ public final class GeoFunctions
         }
         OGCGeometry ogcGeometry = geometryCollection.geometryN((int) index - 1);
         return serialize(ogcGeometry);
+    }
+
+    @SqlNullable
+    @Description("Returns the vertex of a linestring at the specified index (indices started with 1) ")
+    @ScalarFunction("ST_PointN")
+    @SqlType(GEOMETRY_TYPE_NAME)
+    public static Slice stPointN(@SqlType(GEOMETRY_TYPE_NAME) Slice input, @SqlType(INTEGER) long index)
+    {
+        OGCGeometry geometry = deserialize(input);
+        validateType("ST_PointN", geometry, EnumSet.of(LINE_STRING));
+
+        OGCLineString linestring = (OGCLineString) geometry;
+        if (index < 1 || index > linestring.numPoints()) {
+            return null;
+        }
+        return serialize(linestring.pointN(toIntExact(index) - 1));
+    }
+
+    @SqlNullable
+    @Description("Returns an array of geometries in the specified collection")
+    @ScalarFunction("ST_Geometries")
+    @SqlType("array(" + GEOMETRY_TYPE_NAME + ")")
+    public static Block stGeometries(@SqlType(GEOMETRY_TYPE_NAME) Slice input)
+    {
+        OGCGeometry geometry = deserialize(input);
+        if (geometry.isEmpty()) {
+            return null;
+        }
+
+        GeometryType type = GeometryType.getForEsriGeometryType(geometry.geometryType());
+        if (!type.isMultitype()) {
+            BlockBuilder blockBuilder = GEOMETRY.createBlockBuilder(null, 1);
+            GEOMETRY.writeSlice(blockBuilder, serialize(geometry));
+            return blockBuilder.build();
+        }
+
+        OGCGeometryCollection collection = (OGCGeometryCollection) geometry;
+        BlockBuilder blockBuilder = GEOMETRY.createBlockBuilder(null, collection.numGeometries());
+        for (int i = 0; i < collection.numGeometries(); i++) {
+            GEOMETRY.writeSlice(blockBuilder, serialize(collection.geometryN(i)));
+        }
+        return blockBuilder.build();
+    }
+
+    @SqlNullable
+    @Description("Returns the interior ring element at the specified index (indices start at 1)")
+    @ScalarFunction("ST_InteriorRingN")
+    @SqlType(GEOMETRY_TYPE_NAME)
+    public static Slice stInteriorRingN(@SqlType(GEOMETRY_TYPE_NAME) Slice input, @SqlType(INTEGER) long index)
+    {
+        OGCGeometry geometry = deserialize(input);
+        validateType("ST_InteriorRingN", geometry, EnumSet.of(POLYGON));
+        OGCPolygon polygon = (OGCPolygon) geometry;
+        if (index < 1 || index > polygon.numInteriorRing()) {
+            return null;
+        }
+        OGCGeometry interiorRing = polygon.interiorRingN(toIntExact(index) - 1);
+        return serialize(interiorRing);
     }
 
     @Description("Returns the number of points in a Geometry")
@@ -629,6 +749,24 @@ public final class GeoFunctions
         return serialize(envelope);
     }
 
+    @SqlNullable
+    @Description("Returns the lower left and upper right corners of bounding rectangular polygon of a Geometry")
+    @ScalarFunction("ST_EnvelopeAsPts")
+    @SqlType("array(" + GEOMETRY_TYPE_NAME + ")")
+    public static Block stEnvelopeAsPts(@SqlType(GEOMETRY_TYPE_NAME) Slice input)
+    {
+        Envelope envelope = deserializeEnvelope(input);
+        if (envelope == null) {
+            return null;
+        }
+        BlockBuilder blockBuilder = GEOMETRY.createBlockBuilder(null, 2);
+        Point lowerLeftCorner = new Point(envelope.getXMin(), envelope.getYMin());
+        Point upperRightCorner = new Point(envelope.getXMax(), envelope.getYMax());
+        GEOMETRY.writeSlice(blockBuilder, serialize(createFromEsriGeometry(lowerLeftCorner, null, false)));
+        GEOMETRY.writeSlice(blockBuilder, serialize(createFromEsriGeometry(upperRightCorner, null, false)));
+        return blockBuilder.build();
+    }
+
     @Description("Returns the Geometry value that represents the point set difference of two geometries")
     @ScalarFunction("ST_Difference")
     @SqlType(GEOMETRY_TYPE_NAME)
@@ -658,7 +796,7 @@ public final class GeoFunctions
     public static Slice stExteriorRing(@SqlType(GEOMETRY_TYPE_NAME) Slice input)
     {
         OGCGeometry geometry = deserialize(input);
-        validateType("ST_ExteriorRing", geometry, EnumSet.of(POLYGON, MULTI_POLYGON));
+        validateType("ST_ExteriorRing", geometry, EnumSet.of(POLYGON));
         if (geometry.isEmpty()) {
             return null;
         }

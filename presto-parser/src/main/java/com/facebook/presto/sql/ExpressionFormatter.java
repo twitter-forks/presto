@@ -28,6 +28,7 @@ import com.facebook.presto.sql.tree.CharLiteral;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.Cube;
+import com.facebook.presto.sql.tree.CurrentPath;
 import com.facebook.presto.sql.tree.CurrentTime;
 import com.facebook.presto.sql.tree.CurrentUser;
 import com.facebook.presto.sql.tree.DecimalLiteral;
@@ -171,11 +172,17 @@ public final class ExpressionFormatter
         }
 
         @Override
+        protected String visitCurrentPath(CurrentPath node, Void context)
+        {
+            return "CURRENT_PATH";
+        }
+
+        @Override
         protected String visitCurrentTime(CurrentTime node, Void context)
         {
             StringBuilder builder = new StringBuilder();
 
-            builder.append(node.getType().getName());
+            builder.append(node.getFunction().getName());
 
             if (node.getPrecision() != null) {
                 builder.append('(')
@@ -411,7 +418,7 @@ public final class ExpressionFormatter
         @Override
         protected String visitLogicalBinaryExpression(LogicalBinaryExpression node, Void context)
         {
-            return formatBinaryExpression(node.getType().toString(), node.getLeft(), node.getRight());
+            return formatBinaryExpression(node.getOperator().toString(), node.getLeft(), node.getRight());
         }
 
         @Override
@@ -423,7 +430,7 @@ public final class ExpressionFormatter
         @Override
         protected String visitComparisonExpression(ComparisonExpression node, Void context)
         {
-            return formatBinaryExpression(node.getType().getValue(), node.getLeft(), node.getRight());
+            return formatBinaryExpression(node.getOperator().getValue(), node.getLeft(), node.getRight());
         }
 
         @Override
@@ -492,7 +499,7 @@ public final class ExpressionFormatter
         @Override
         protected String visitArithmeticBinary(ArithmeticBinaryExpression node, Void context)
         {
-            return formatBinaryExpression(node.getType().getValue(), node.getLeft(), node.getRight());
+            return formatBinaryExpression(node.getOperator().getValue(), node.getLeft(), node.getRight());
         }
 
         @Override
@@ -505,10 +512,10 @@ public final class ExpressionFormatter
                     .append(" LIKE ")
                     .append(process(node.getPattern(), context));
 
-            if (node.getEscape() != null) {
+            node.getEscape().ifPresent(escape -> {
                 builder.append(" ESCAPE ")
-                        .append(process(node.getEscape(), context));
-            }
+                        .append(process(escape, context));
+            });
 
             builder.append(')');
 
@@ -662,7 +669,7 @@ public final class ExpressionFormatter
                     .append("(")
                     .append(process(node.getValue(), context))
                     .append(' ')
-                    .append(node.getComparisonType().getValue())
+                    .append(node.getOperator().getValue())
                     .append(' ')
                     .append(node.getQuantifier().toString())
                     .append(' ')

@@ -15,19 +15,18 @@ package com.facebook.presto.cost;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.matching.Pattern;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.TypeProvider;
 import com.facebook.presto.sql.planner.iterative.Lookup;
 import com.facebook.presto.sql.planner.plan.EnforceSingleRowNode;
-import com.facebook.presto.sql.planner.plan.PlanNode;
 
-import java.util.Map;
 import java.util.Optional;
 
+import static com.facebook.presto.sql.planner.plan.Patterns.enforceSingleRow;
+
 public class EnforceSingleRowStatsRule
-        extends SimpleStatsRule
+        extends SimpleStatsRule<EnforceSingleRowNode>
 {
-    private static final Pattern<EnforceSingleRowNode> PATTERN = Pattern.typeOf(EnforceSingleRowNode.class);
+    private static final Pattern<EnforceSingleRowNode> PATTERN = enforceSingleRow();
 
     public EnforceSingleRowStatsRule(StatsNormalizer normalizer)
     {
@@ -41,10 +40,9 @@ public class EnforceSingleRowStatsRule
     }
 
     @Override
-    protected Optional<PlanNodeStatsEstimate> doCalculate(PlanNode node, StatsProvider sourceStats, Lookup lookup, Session session, Map<Symbol, Type> types)
+    protected Optional<PlanNodeStatsEstimate> doCalculate(EnforceSingleRowNode node, StatsProvider sourceStats, Lookup lookup, Session session, TypeProvider types)
     {
-        EnforceSingleRowNode enforceSingleRow = (EnforceSingleRowNode) node;
-        return Optional.of(PlanNodeStatsEstimate.buildFrom(sourceStats.getStats(enforceSingleRow.getSource()))
+        return Optional.of(PlanNodeStatsEstimate.buildFrom(sourceStats.getStats(node.getSource()))
                 .setOutputRowCount(1)
                 .build());
     }

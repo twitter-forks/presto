@@ -161,7 +161,7 @@ public class ScalarAggregationToJoinRewriter
     {
         Set<Symbol> applySymbols = new HashSet<>(lateralJoinNode.getOutputSymbols());
         return aggregationNode.getOutputSymbols().stream()
-                .filter(symbol -> applySymbols.contains(symbol))
+                .filter(applySymbols::contains)
                 .collect(toImmutableList());
     }
 
@@ -197,6 +197,7 @@ public class ScalarAggregationToJoinRewriter
                 leftOuterJoin,
                 aggregations.build(),
                 ImmutableList.of(groupBySymbols),
+                ImmutableList.of(),
                 scalarAggregation.getStep(),
                 scalarAggregation.getHashSymbol(),
                 Optional.empty()));

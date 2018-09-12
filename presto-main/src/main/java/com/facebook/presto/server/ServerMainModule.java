@@ -22,8 +22,11 @@ import com.facebook.presto.client.NodeVersion;
 import com.facebook.presto.client.ServerInfo;
 import com.facebook.presto.connector.ConnectorManager;
 import com.facebook.presto.connector.system.SystemConnectorModule;
+import com.facebook.presto.cost.AggregationStatsRule;
+import com.facebook.presto.cost.AssignUniqueIdStatsRule;
 import com.facebook.presto.cost.CoefficientBasedStatsCalculator;
 import com.facebook.presto.cost.ComposableStatsCalculator;
+import com.facebook.presto.cost.ComposableStatsCalculator.Rule;
 import com.facebook.presto.cost.CostCalculator;
 import com.facebook.presto.cost.CostCalculator.EstimatedExchanges;
 import com.facebook.presto.cost.CostCalculatorUsingExchanges;
@@ -40,9 +43,12 @@ import com.facebook.presto.cost.ProjectStatsRule;
 import com.facebook.presto.cost.ScalarStatsCalculator;
 import com.facebook.presto.cost.SelectingStatsCalculator;
 import com.facebook.presto.cost.SelectingStatsCalculator.New;
+import com.facebook.presto.cost.SemiJoinStatsRule;
+import com.facebook.presto.cost.SimpleFilterProjectSemiJoinStatsRule;
 import com.facebook.presto.cost.StatsCalculator;
 import com.facebook.presto.cost.StatsNormalizer;
 import com.facebook.presto.cost.TableScanStatsRule;
+import com.facebook.presto.cost.UnionStatsRule;
 import com.facebook.presto.cost.ValuesStatsRule;
 import com.facebook.presto.event.query.QueryMonitor;
 import com.facebook.presto.event.query.QueryMonitorConfig;
@@ -82,6 +88,7 @@ import com.facebook.presto.memory.MemoryResource;
 import com.facebook.presto.memory.NodeMemoryConfig;
 import com.facebook.presto.memory.ReservedSystemMemoryConfig;
 import com.facebook.presto.metadata.CatalogManager;
+import com.facebook.presto.metadata.ColumnPropertyManager;
 import com.facebook.presto.metadata.DiscoveryNodeManager;
 import com.facebook.presto.metadata.ForNodeManager;
 import com.facebook.presto.metadata.HandleJsonModule;
@@ -128,6 +135,7 @@ import com.facebook.presto.split.SplitManager;
 import com.facebook.presto.sql.Serialization.ExpressionDeserializer;
 import com.facebook.presto.sql.Serialization.ExpressionSerializer;
 import com.facebook.presto.sql.Serialization.FunctionCallDeserializer;
+import com.facebook.presto.sql.SqlEnvironmentConfig;
 import com.facebook.presto.sql.analyzer.FeaturesConfig;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.JoinCompiler;
@@ -139,7 +147,6 @@ import com.facebook.presto.sql.parser.SqlParserOptions;
 import com.facebook.presto.sql.planner.CompilerConfig;
 import com.facebook.presto.sql.planner.LocalExecutionPlanner;
 import com.facebook.presto.sql.planner.NodePartitioningManager;
-import com.facebook.presto.sql.planner.PlanOptimizers;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
 import com.facebook.presto.transaction.ForTransactionManager;
@@ -159,7 +166,6 @@ import io.airlift.concurrent.BoundedExecutor;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.discovery.client.ServiceDescriptor;
 import io.airlift.discovery.server.EmbeddedDiscoveryModule;
-import io.airlift.http.client.HttpClientConfig;
 import io.airlift.slice.Slice;
 import io.airlift.stats.GcMonitor;
 import io.airlift.stats.JmxGcMonitor;
@@ -179,7 +185,6 @@ import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.presto.execution.scheduler.NodeSchedulerConfig.NetworkTopologyType.FLAT;
 import static com.facebook.presto.execution.scheduler.NodeSchedulerConfig.NetworkTopologyType.LEGACY;
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.nullToEmpty;
 import static com.google.common.reflect.Reflection.newProxy;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
@@ -206,7 +211,8 @@ public class ServerMainModule
 
     public ServerMainModule(SqlParserOptions sqlParserOptions)
     {
-        this.sqlParserOptions = requireNonNull(sqlParserOptions, "sqlParserOptions is null");
+        requireNonNull(sqlParserOptions, "sqlParserOptions is null");
+        this.sqlParserOptions = SqlParserOptions.copyOf(sqlParserOptions);
     }
 
     @Override
@@ -237,22 +243,21 @@ public class ServerMainModule
         // TODO: move to CoordinatorModule
         install(installModuleIf(EmbeddedDiscoveryConfig.class, EmbeddedDiscoveryConfig::isEnabled, new EmbeddedDiscoveryModule()));
 
-        InternalCommunicationConfig internalCommunicationConfig = buildConfigObject(InternalCommunicationConfig.class);
-        configBinder(binder).bindConfigGlobalDefaults(HttpClientConfig.class, config -> {
-            config.setKeyStorePath(internalCommunicationConfig.getKeyStorePath());
-            config.setKeyStorePassword(internalCommunicationConfig.getKeyStorePassword());
-        });
+        install(new InternalCommunicationModule());
 
         configBinder(binder).bindConfig(FeaturesConfig.class);
 
         binder.bind(SqlParser.class).in(Scopes.SINGLETON);
         binder.bind(SqlParserOptions.class).toInstance(sqlParserOptions);
+        sqlParserOptions.useEnhancedErrorHandler(serverConfig.isEnhancedErrorReporting());
 
         bindFailureDetector(binder, serverConfig.isCoordinator());
 
         jaxrsBinder(binder).bind(ThrowableMapper.class);
 
         configBinder(binder).bindConfig(QueryManagerConfig.class);
+
+        configBinder(binder).bindConfig(SqlEnvironmentConfig.class);
 
         jsonCodecBinder(binder).bindJsonCodec(ViewDefinition.class);
 
@@ -268,6 +273,9 @@ public class ServerMainModule
 
         // table properties
         binder.bind(TablePropertyManager.class).in(Scopes.SINGLETON);
+
+        // column properties
+        binder.bind(ColumnPropertyManager.class).in(Scopes.SINGLETON);
 
         // node manager
         discoveryBinder(binder).bindSelector("presto");
@@ -440,13 +448,7 @@ public class ServerMainModule
         binder.bind(QueryMonitor.class).in(Scopes.SINGLETON);
 
         // Determine the NodeVersion
-        String prestoVersion = serverConfig.getPrestoVersion();
-        if (prestoVersion == null) {
-            prestoVersion = getClass().getPackage().getImplementationVersion();
-        }
-        checkState(prestoVersion != null, "presto.version must be provided when it cannot be automatically determined");
-
-        NodeVersion nodeVersion = new NodeVersion(prestoVersion);
+        NodeVersion nodeVersion = new NodeVersion(serverConfig.getPrestoVersion());
         binder.bind(NodeVersion.class).toInstance(nodeVersion);
 
         // presto announcement
@@ -468,9 +470,6 @@ public class ServerMainModule
         configBinder(binder).bindConfig(PluginManagerConfig.class);
 
         binder.bind(CatalogManager.class).in(Scopes.SINGLETON);
-
-        // optimizers
-        binder.bind(PlanOptimizers.class).in(Scopes.SINGLETON);
 
         // block encodings
         binder.bind(BlockEncodingManager.class).in(Scopes.SINGLETON);
@@ -513,9 +512,10 @@ public class ServerMainModule
         ScalarStatsCalculator scalarStatsCalculator = new ScalarStatsCalculator(metadata);
         FilterStatsCalculator filterStatsCalculator = new FilterStatsCalculator(metadata, scalarStatsCalculator, normalizer);
 
-        ImmutableList.Builder<ComposableStatsCalculator.Rule> rules = ImmutableList.builder();
+        ImmutableList.Builder<Rule<?>> rules = ImmutableList.builder();
         rules.add(new OutputStatsRule());
         rules.add(new TableScanStatsRule(metadata, normalizer));
+        rules.add(new SimpleFilterProjectSemiJoinStatsRule(normalizer, filterStatsCalculator)); // this must be before FilterStatsRule
         rules.add(new FilterStatsRule(filterStatsCalculator));
         rules.add(new ValuesStatsRule(metadata));
         rules.add(new LimitStatsRule(normalizer));
@@ -523,6 +523,10 @@ public class ServerMainModule
         rules.add(new ProjectStatsRule(scalarStatsCalculator, normalizer));
         rules.add(new ExchangeStatsRule(normalizer));
         rules.add(new JoinStatsRule(filterStatsCalculator, normalizer));
+        rules.add(new AggregationStatsRule(normalizer));
+        rules.add(new UnionStatsRule(normalizer));
+        rules.add(new AssignUniqueIdStatsRule());
+        rules.add(new SemiJoinStatsRule());
 
         return new ComposableStatsCalculator(rules.build());
     }

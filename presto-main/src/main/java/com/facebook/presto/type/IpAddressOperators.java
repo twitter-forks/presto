@@ -34,10 +34,12 @@ import static com.facebook.presto.spi.function.OperatorType.EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN;
 import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN_OR_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
+import static com.facebook.presto.spi.function.OperatorType.INDETERMINATE;
 import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
 import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
 import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.XX_HASH_64;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.slice.Slices.wrappedBuffer;
 import static java.lang.System.arraycopy;
@@ -104,6 +106,13 @@ public final class IpAddressOperators
         return XxHash64.hash(value);
     }
 
+    @ScalarOperator(XX_HASH_64)
+    @SqlType(StandardTypes.BIGINT)
+    public static long xxHash64(@SqlType(StandardTypes.IPADDRESS) Slice value)
+    {
+        return XxHash64.hash(value);
+    }
+
     @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.IPADDRESS)
@@ -146,6 +155,33 @@ public final class IpAddressOperators
         }
     }
 
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.IPADDRESS)
+    public static Slice castFromVarbinaryToIpAddress(@SqlType("varbinary") Slice slice)
+    {
+        if (slice.length() == 4) {
+            byte[] address = slice.getBytes();
+            byte[] bytes = new byte[16];
+            bytes[10] = (byte) 0xff;
+            bytes[11] = (byte) 0xff;
+            arraycopy(address, 0, bytes, 12, 4);
+            return wrappedBuffer(bytes);
+        }
+        else if (slice.length() == 16) {
+            return slice;
+        }
+        else {
+            throw new PrestoException(INVALID_CAST_ARGUMENT, "Invalid IP address binary length: " + slice.length());
+        }
+    }
+
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.VARBINARY)
+    public static Slice castFromIpAddressToVarbinary(@SqlType(StandardTypes.IPADDRESS) Slice slice)
+    {
+        return wrappedBuffer(slice.getBytes());
+    }
+
     @ScalarOperator(IS_DISTINCT_FROM)
     @SqlType(StandardTypes.BOOLEAN)
     public static boolean isDistinctFrom(@SqlType(StandardTypes.IPADDRESS) Slice left,
@@ -160,5 +196,12 @@ public final class IpAddressOperators
             return false;
         }
         return notEqual(left, right);
+    }
+
+    @ScalarOperator(INDETERMINATE)
+    @SqlType(StandardTypes.BOOLEAN)
+    public static boolean indeterminate(@SqlType(StandardTypes.IPADDRESS) Slice value, @IsNull boolean isNull)
+    {
+        return isNull;
     }
 }

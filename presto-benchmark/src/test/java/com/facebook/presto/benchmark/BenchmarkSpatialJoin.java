@@ -97,6 +97,13 @@ public class BenchmarkSpatialJoin
         {
             queryRunner.dropTable("memory.default.points");
         }
+
+        @TearDown
+        public void tearDown()
+        {
+            queryRunner.close();
+            queryRunner = null;
+        }
     }
 
     @Benchmark
@@ -118,12 +125,17 @@ public class BenchmarkSpatialJoin
             throws IOException
     {
         Context context = new Context();
-        context.setUp();
-        context.createPointsTable();
+        try {
+            context.setUp();
+            context.createPointsTable();
 
-        BenchmarkSpatialJoin benchmark = new BenchmarkSpatialJoin();
-        benchmark.benchmarkJoin(context);
-        benchmark.benchmarkUserOptimizedJoin(context);
+            BenchmarkSpatialJoin benchmark = new BenchmarkSpatialJoin();
+            benchmark.benchmarkJoin(context);
+            benchmark.benchmarkUserOptimizedJoin(context);
+        }
+        finally {
+            context.queryRunner.close();
+        }
     }
 
     public static void main(String[] args)

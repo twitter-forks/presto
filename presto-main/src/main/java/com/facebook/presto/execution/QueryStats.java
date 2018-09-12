@@ -26,6 +26,8 @@ import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.joda.time.DateTime;
 
+import javax.annotation.Nullable;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.Set;
@@ -47,6 +49,7 @@ public class QueryStats
 
     private final Duration elapsedTime;
     private final Duration queuedTime;
+    private final Duration resourceWaitingTime;
     private final Duration analysisTime;
     private final Duration distributedPlanningTime;
     private final Duration totalPlanningTime;
@@ -101,6 +104,7 @@ public class QueryStats
         this.endTime = null;
         this.elapsedTime = null;
         this.queuedTime = null;
+        this.resourceWaitingTime = null;
         this.analysisTime = null;
         this.distributedPlanningTime = null;
         this.totalPlanningTime = null;
@@ -146,6 +150,7 @@ public class QueryStats
 
             @JsonProperty("elapsedTime") Duration elapsedTime,
             @JsonProperty("queuedTime") Duration queuedTime,
+            @JsonProperty("resourceWaitingTime") Duration resourceWaitingTime,
             @JsonProperty("analysisTime") Duration analysisTime,
             @JsonProperty("distributedPlanningTime") Duration distributedPlanningTime,
             @JsonProperty("totalPlanningTime") Duration totalPlanningTime,
@@ -198,6 +203,7 @@ public class QueryStats
 
         this.elapsedTime = elapsedTime;
         this.queuedTime = queuedTime;
+        this.resourceWaitingTime = resourceWaitingTime;
         this.analysisTime = analysisTime;
         this.distributedPlanningTime = distributedPlanningTime;
         this.totalPlanningTime = totalPlanningTime;
@@ -272,6 +278,7 @@ public class QueryStats
         return lastHeartbeat;
     }
 
+    @Nullable
     @JsonProperty
     public DateTime getEndTime()
     {
@@ -282,6 +289,12 @@ public class QueryStats
     public Duration getElapsedTime()
     {
         return elapsedTime;
+    }
+
+    @JsonProperty
+    public Duration getResourceWaitingTime()
+    {
+        return resourceWaitingTime;
     }
 
     @JsonProperty
@@ -502,7 +515,7 @@ public class QueryStats
     {
         return operatorSummaries.stream()
                 .filter(stats -> stats.getOperatorType().equals(TableWriterOperator.class.getSimpleName()))
-                .mapToLong(stats -> stats.getInputPositions())
+                .mapToLong(OperatorStats::getInputPositions)
                 .sum();
     }
 

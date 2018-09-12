@@ -27,6 +27,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import java.util.OptionalInt;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.presto.SessionTestUtils.TEST_SESSION;
@@ -81,6 +82,7 @@ public class TestQueryContext
                     new SpillSpaceTracker(new DataSize(0, BYTE)));
 
             // Use memory
+            queryContext.getQueryMemoryContext().initializeLocalMemoryContexts("test");
             LocalMemoryContext userMemoryContext = queryContext.getQueryMemoryContext().localUserMemoryContext();
             LocalMemoryContext revocableMemoryContext = queryContext.getQueryMemoryContext().localRevocableMemoryContext();
             assertTrue(userMemoryContext.setBytes(3).isDone());
@@ -115,7 +117,7 @@ public class TestQueryContext
                     new DataSize(0, BYTE),
                     new SpillSpaceTracker(new DataSize(0, BYTE)));
             TaskStateMachine taskStateMachine = new TaskStateMachine(TaskId.valueOf("task-id"), taskNotificationExecutor);
-            TaskContext taskContext = queryContext.addTaskContext(taskStateMachine, TEST_SESSION, false, false);
+            TaskContext taskContext = queryContext.addTaskContext(taskStateMachine, TEST_SESSION, false, false, OptionalInt.empty());
             LocalMemoryContext systemContext = taskContext.localSystemMemoryContext();
             ListenableFuture<?> blocked = systemContext.setBytes(10_000);
 
