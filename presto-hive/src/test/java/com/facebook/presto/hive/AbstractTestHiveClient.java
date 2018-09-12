@@ -799,7 +799,7 @@ public abstract class AbstractTestHiveClient
 
     protected Transaction newTransaction()
     {
-        return new HiveTransaction(transactionManager, metadataFactory.create());
+        return new HiveTransaction(transactionManager, metadataFactory.get());
     }
 
     interface Transaction
@@ -2276,6 +2276,7 @@ public abstract class AbstractTestHiveClient
             throws IOException
     {
         int bucketCount = 3;
+        int expectedRowCount = 0;
 
         try (Transaction transaction = newTransaction()) {
             ConnectorSession session = newSession();
@@ -2317,6 +2318,7 @@ public abstract class AbstractTestHiveClient
                             "test" + random.nextInt(100),
                             random.nextLong(100_000),
                             "2018-04-01");
+                    expectedRowCount++;
                 }
                 sink.appendPage(builder.build().toPage());
             }
@@ -2333,7 +2335,7 @@ public abstract class AbstractTestHiveClient
 
             // verify there are no temporary files
             for (String file : listAllDataFiles(context, stagingPathRoot)) {
-                assertThat(file).doesNotStartWith(".tmp-sort.");
+                assertThat(file).doesNotContain(".tmp-sort.");
             }
 
             // finish creating table
@@ -2353,6 +2355,7 @@ public abstract class AbstractTestHiveClient
             List<ConnectorSplit> splits = getAllSplits(tableHandle, TupleDomain.all());
             assertThat(splits).hasSize(bucketCount);
 
+            int actualRowCount = 0;
             for (ConnectorSplit split : splits) {
                 try (ConnectorPageSource pageSource = pageSourceProvider.createPageSource(transaction.getTransactionHandle(), session, split, columnHandles)) {
                     String lastValueAsc = null;
@@ -2384,10 +2387,12 @@ public abstract class AbstractTestHiveClient
                                 }
                             }
                             lastValueAsc = valueAsc;
+                            actualRowCount++;
                         }
                     }
                 }
             }
+            assertThat(actualRowCount).isEqualTo(expectedRowCount);
         }
     }
 

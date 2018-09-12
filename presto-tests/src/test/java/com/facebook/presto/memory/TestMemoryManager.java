@@ -125,7 +125,7 @@ public class TestMemoryManager
             QueryId fakeQueryId = new QueryId("fake");
             for (TestingPrestoServer server : queryRunner.getServers()) {
                 for (MemoryPool pool : server.getLocalMemoryManager().getPools()) {
-                    assertTrue(pool.tryReserve(fakeQueryId, pool.getMaxBytes()));
+                    assertTrue(pool.tryReserve(fakeQueryId, "test", pool.getMaxBytes()));
                 }
             }
 
@@ -152,7 +152,7 @@ public class TestMemoryManager
             for (TestingPrestoServer server : queryRunner.getServers()) {
                 MemoryPool reserved = server.getLocalMemoryManager().getPool(RESERVED_POOL);
                 // Free up the entire pool
-                reserved.free(fakeQueryId, reserved.getMaxBytes());
+                reserved.free(fakeQueryId, "test", reserved.getMaxBytes());
                 assertTrue(reserved.getFreeBytes() > 0);
             }
 
@@ -208,7 +208,7 @@ public class TestMemoryManager
             QueryId fakeQueryId = new QueryId("fake");
             for (TestingPrestoServer server : queryRunner.getServers()) {
                 for (MemoryPool pool : server.getLocalMemoryManager().getPools()) {
-                    assertTrue(pool.tryReserve(fakeQueryId, pool.getMaxBytes()));
+                    assertTrue(pool.tryReserve(fakeQueryId, "test", pool.getMaxBytes()));
                 }
             }
 
@@ -252,7 +252,7 @@ public class TestMemoryManager
             for (TestingPrestoServer server : queryRunner.getServers()) {
                 MemoryPool reserved = server.getLocalMemoryManager().getPool(RESERVED_POOL);
                 // Free up the entire pool
-                reserved.free(fakeQueryId, reserved.getMaxBytes());
+                reserved.free(fakeQueryId, "test", reserved.getMaxBytes());
                 assertTrue(reserved.getFreeBytes() > 0);
             }
 
@@ -273,7 +273,7 @@ public class TestMemoryManager
                 assertEquals(reserved.getMaxBytes(), reserved.getFreeBytes());
                 MemoryPool general = worker.getLocalMemoryManager().getPool(GENERAL_POOL);
                 // Free up the memory we reserved earlier
-                general.free(fakeQueryId, general.getMaxBytes());
+                general.free(fakeQueryId, "test", general.getMaxBytes());
                 assertEquals(general.getMaxBytes(), general.getFreeBytes());
             }
         }
@@ -306,7 +306,7 @@ public class TestMemoryManager
         return new Object[][] {{true}, {false}};
     }
 
-    @Test(timeOut = 60_000, dataProvider = "legacy_system_pool_enabled", expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded max user memory size of 1kB.*")
+    @Test(timeOut = 60_000, dataProvider = "legacy_system_pool_enabled", expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded distributed user memory limit of 1kB.*")
     public void testQueryUserMemoryLimit(boolean systemPoolEnabled)
             throws Exception
     {
@@ -321,7 +321,7 @@ public class TestMemoryManager
         }
     }
 
-    @Test(timeOut = 60_000, expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded max total memory size of 2kB.*")
+    @Test(timeOut = 60_000, expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded distributed total memory limit of 2kB.*")
     public void testQueryTotalMemoryLimit()
             throws Exception
     {
@@ -334,7 +334,7 @@ public class TestMemoryManager
         }
     }
 
-    @Test(timeOut = 60_000, expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded local user memory limit of 1kB.*")
+    @Test(timeOut = 60_000, expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*Query exceeded per-node user memory limit of 1kB.*")
     public void testQueryMemoryPerNodeLimit()
             throws Exception
     {

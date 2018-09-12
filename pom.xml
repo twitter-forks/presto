@@ -5,12 +5,12 @@
     <parent>
         <groupId>io.airlift</groupId>
         <artifactId>airbase</artifactId>
-        <version>82</version>
+        <version>83</version>
     </parent>
 
     <groupId>com.facebook.presto</groupId>
     <artifactId>presto-root</artifactId>
-    <version>0.210</version>
+    <version>0.210-tw-0.54</version>
     <packaging>pom</packaging>
 
     <name>presto-root</name>
@@ -30,7 +30,7 @@
     <scm>
         <connection>scm:git:git://github.com/twitter-forks/presto.git</connection>
         <url>https://github.com/twitter-forks/presto</url>
-        <tag>0.210</tag>
+        <tag>0.210-tw-0.54</tag>
     </scm>
 
     <properties>
@@ -40,10 +40,10 @@
         <air.check.skip-pmd>true</air.check.skip-pmd>
         <air.check.skip-jacoco>true</air.check.skip-jacoco>
 
-        <air.java.version>1.8.0-60</air.java.version>
+        <air.java.version>1.8.0-151</air.java.version>
         <air.maven.version>3.3.9</air.maven.version>
 
-        <dep.antlr.version>4.6</dep.antlr.version>
+        <dep.antlr.version>4.7.1</dep.antlr.version>
         <dep.airlift.version>0.172</dep.airlift.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.36</dep.slice.version>
@@ -120,6 +120,7 @@
         <module>presto-twitter-functions</module>
         <module>presto-memory-context</module>
         <module>presto-proxy</module>
+        <module>presto-kudu</module>
     </modules>
 
     <dependencyManagement>
@@ -549,7 +550,7 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>bytecode</artifactId>
-                <version>1.0</version>
+                <version>1.1</version>
             </dependency>
 
             <dependency>
@@ -621,7 +622,7 @@
             <dependency>
                 <groupId>org.ow2.asm</groupId>
                 <artifactId>asm</artifactId>
-                <version>6.1.1</version>
+                <version>6.2.1</version>
             </dependency>
 
             <dependency>
@@ -1062,12 +1063,6 @@
                 <groupId>com.facebook.presto.hive</groupId>
                 <artifactId>hive-apache-jdbc</artifactId>
                 <version>0.13.1-5</version>
-            </dependency>
-
-            <dependency>
-                <groupId>dnsjava</groupId>
-                <artifactId>dnsjava</artifactId>
-                <version>2.1.7</version>
             </dependency>
 
             <dependency>

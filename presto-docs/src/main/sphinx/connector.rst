@@ -16,6 +16,8 @@ from different data sources.
     connector/jmx
     connector/kafka
     connector/kafka-tutorial
+    connector/kudu
+    connector/avro-schema-evolution
     connector/localfile
     connector/memory
     connector/mongodb

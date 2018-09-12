@@ -404,8 +404,8 @@ public class ExpressionAnalyzer
                 }
             }
 
-            if (field.getOriginTable().isPresent() && field.getName().isPresent()) {
-                tableColumnReferences.put(field.getOriginTable().get(), field.getName().get());
+            if (field.getOriginTable().isPresent() && field.getOriginColumnName().isPresent()) {
+                tableColumnReferences.put(field.getOriginTable().get(), field.getOriginColumnName().get());
             }
 
             FieldId previous = columnReferences.put(NodeRef.of(node), fieldId);
@@ -730,13 +730,14 @@ public class ExpressionAnalyzer
         @Override
         protected Type visitTimeLiteral(TimeLiteral node, StackableAstVisitorContext<Context> context)
         {
-            Type type;
-            if (timeHasTimeZone(node.getValue())) {
-                type = TIME_WITH_TIME_ZONE;
+            boolean hasTimeZone;
+            try {
+                hasTimeZone = timeHasTimeZone(node.getValue());
             }
-            else {
-                type = TIME;
+            catch (IllegalArgumentException e) {
+                throw new SemanticException(INVALID_LITERAL, node, "'%s' is not a valid time literal", node.getValue());
             }
+            Type type = hasTimeZone ? TIME_WITH_TIME_ZONE : TIME;
             return setExpressionType(node, type);
         }
 

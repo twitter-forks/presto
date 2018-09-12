@@ -14,7 +14,6 @@
 package com.facebook.presto.execution;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.client.FailureInfo;
 import com.facebook.presto.execution.QueryExecution.QueryOutputInfo;
 import com.facebook.presto.execution.StateMachine.StateChangeListener;
 import com.facebook.presto.memory.VersionedMemoryPoolId;
@@ -322,13 +321,11 @@ public class QueryStateMachine
             elapsedTime = nanosSince(createNanos);
         }
 
-        // don't report failure info is query is marked as success
-        FailureInfo failureInfo = null;
+        ExecutionFailureInfo failureCause = null;
         ErrorCode errorCode = null;
         if (state == FAILED) {
-            ExecutionFailureInfo failureCause = this.failureCause.get();
+            failureCause = this.failureCause.get();
             if (failureCause != null) {
-                failureInfo = failureCause.toFailureInfo();
                 errorCode = failureCause.getErrorCode();
             }
         }
@@ -349,7 +346,6 @@ public class QueryStateMachine
 
         long totalScheduledTime = 0;
         long totalCpuTime = 0;
-        long totalUserTime = 0;
         long totalBlockedTime = 0;
 
         long rawInputDataSize = 0;
@@ -387,7 +383,6 @@ public class QueryStateMachine
             totalMemoryReservation += stageStats.getTotalMemoryReservation().toBytes();
             totalScheduledTime += stageStats.getTotalScheduledTime().roundTo(MILLISECONDS);
             totalCpuTime += stageStats.getTotalCpuTime().roundTo(MILLISECONDS);
-            totalUserTime += stageStats.getTotalUserTime().roundTo(MILLISECONDS);
             totalBlockedTime += stageStats.getTotalBlockedTime().roundTo(MILLISECONDS);
             if (!stageInfo.getState().isDone()) {
                 fullyBlocked &= stageStats.isFullyBlocked();
@@ -454,7 +449,6 @@ public class QueryStateMachine
 
                 new Duration(totalScheduledTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalCpuTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
-                new Duration(totalUserTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 new Duration(totalBlockedTime, MILLISECONDS).convertToMostSuccinctTimeUnit(),
                 fullyBlocked,
                 blockedReasons,
@@ -492,7 +486,7 @@ public class QueryStateMachine
                 clearTransactionId.get(),
                 updateType.get(),
                 rootStage,
-                failureInfo,
+                failureCause,
                 errorCode,
                 inputs.get(),
                 output.get(),
@@ -926,7 +920,6 @@ public class QueryStateMachine
                 queryStats.isScheduled(),
                 queryStats.getTotalScheduledTime(),
                 queryStats.getTotalCpuTime(),
-                queryStats.getTotalUserTime(),
                 queryStats.getTotalBlockedTime(),
                 queryStats.isFullyBlocked(),
                 queryStats.getBlockedReasons(),
