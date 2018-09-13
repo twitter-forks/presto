@@ -14,7 +14,6 @@
 package com.facebook.presto.twitter.hive.thrift;
 
 import io.airlift.log.Logger;
-import org.apache.commons.lang.ArrayUtils;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;
 import org.apache.thrift.TFieldIdEnum;
@@ -30,12 +29,9 @@ import org.apache.thrift.transport.TMemoryInputTransport;
 import org.apache.thrift.transport.TTransport;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 public class ThriftGenericRow
         implements TBase<ThriftGenericRow, ThriftGenericRow.Fields>
@@ -88,16 +84,9 @@ public class ThriftGenericRow
         len = trans.getBufferPosition() - off;
     }
 
-    public void parse()
+    public void parse(HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
-        parse(null);
-    }
-
-    public void parse(short[] thriftIds)
-            throws TException
-    {
-        Set<Short> idSet = thriftIds == null ? null : new HashSet(Arrays.asList(ArrayUtils.toObject(thriftIds)));
         TMemoryInputTransport trans = new TMemoryInputTransport(buf, off, len);
         TBinaryProtocol iprot = new TBinaryProtocol(trans);
         TField field;
@@ -107,18 +96,18 @@ public class ThriftGenericRow
             if (field.type == TType.STOP) {
                 break;
             }
-            if (idSet != null && !idSet.remove(Short.valueOf(field.id))) {
+            if (fieldIdGroup != null && fieldIdGroup.getFieldIdGroup(field.id) == null) {
                 TProtocolUtil.skip(iprot, field.type);
             }
             else {
-                values.put(field.id, readElem(iprot, field.type));
+                values.put(field.id, readElem(iprot, field.type, fieldIdGroup == null ? null : fieldIdGroup.getFieldIdGroup(field.id)));
             }
             iprot.readFieldEnd();
         }
         iprot.readStructEnd();
     }
 
-    private Object readElem(TProtocol iprot, byte type)
+    private Object readElem(TProtocol iprot, byte type, HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
         switch (type) {
@@ -138,59 +127,60 @@ public class ThriftGenericRow
             case TType.STRING:
                 return iprot.readString();
             case TType.STRUCT:
-                return readStruct(iprot);
+                return readStruct(iprot, fieldIdGroup);
             case TType.LIST:
-                return readList(iprot);
+                return readList(iprot, fieldIdGroup);
             case TType.SET:
-                return readSet(iprot);
+                return readSet(iprot, fieldIdGroup);
             case TType.MAP:
-                return readMap(iprot);
+                return readMap(iprot, fieldIdGroup);
             default:
                 TProtocolUtil.skip(iprot, type);
                 return null;
         }
     }
 
-    private Object readStruct(TProtocol iprot)
+    private Object readStruct(TProtocol iprot, HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
         ThriftGenericRow elem = new ThriftGenericRow();
         elem.read(iprot);
-        elem.parse();
+        elem.parse(fieldIdGroup);
         return elem;
     }
 
-    private Object readList(TProtocol iprot)
+    private Object readList(TProtocol iprot, HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
         TList ilist = iprot.readListBegin();
         List<Object> listValue = new ArrayList<>();
         for (int i = 0; i < ilist.size; i++) {
-            listValue.add(readElem(iprot, ilist.elemType));
+            listValue.add(readElem(iprot, ilist.elemType, fieldIdGroup == null ? null : fieldIdGroup.getFieldIdGroup((short) 0)));
         }
         iprot.readListEnd();
         return listValue;
     }
 
-    private Object readSet(TProtocol iprot)
+    private Object readSet(TProtocol iprot, HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
         TSet iset = iprot.readSetBegin();
         List<Object> setValue = new ArrayList<>();
         for (int i = 0; i < iset.size; i++) {
-            setValue.add(readElem(iprot, iset.elemType));
+            setValue.add(readElem(iprot, iset.elemType, fieldIdGroup == null ? null : fieldIdGroup.getFieldIdGroup((short) 0)));
         }
         iprot.readSetEnd();
         return setValue;
     }
 
-    private Object readMap(TProtocol iprot)
+    private Object readMap(TProtocol iprot, HiveThriftFieldIdGroup fieldIdGroup)
             throws TException
     {
         TMap imap = iprot.readMapBegin();
         Map<Object, Object> mapValue = new HashMap<>();
         for (int i = 0; i < imap.size; i++) {
-            mapValue.put(readElem(iprot, imap.keyType), readElem(iprot, imap.valueType));
+            mapValue.put(readElem(iprot, imap.keyType, fieldIdGroup == null ? null : fieldIdGroup.getFieldIdGroup((short) 0)),
+                    readElem(iprot, imap.valueType, fieldIdGroup == null ? null : fieldIdGroup.getFieldIdGroup((short) 1)));
         }
         iprot.readMapEnd();
         return mapValue;

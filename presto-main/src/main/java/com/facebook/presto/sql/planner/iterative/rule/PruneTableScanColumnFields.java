@@ -48,8 +48,7 @@ public class PruneTableScanColumnFields
                         filteredCopy(tableScanNode.getOutputSymbols(), referencedOutputsMap),
                         filterKeys(tableScanNode.getAssignments(), referencedOutputsMap),
                         tableScanNode.getLayout(),
-                        tableScanNode.getCurrentConstraint(),
-                        tableScanNode.getEnforcedConstraint()));
+                        tableScanNode.getOriginalConstraint()));
     }
 
     private List<Symbol> filteredCopy(List<Symbol> outputSymbols, Map<String, Symbol> referencedOutputsMap)

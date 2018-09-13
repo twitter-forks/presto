@@ -23,6 +23,7 @@ import com.facebook.presto.spi.type.DecimalType;
 import com.facebook.presto.spi.type.Decimals;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
+import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
@@ -90,6 +91,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private final HiveType[] hiveTypes;
     private final int[] hiveIndexs;
     private final short[] thriftIds;
+    private final HiveThriftFieldIdGroup thriftFieldIdGroup;
 
     private final boolean[] loaded;
     private final boolean[] booleans;
@@ -156,6 +158,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         this.objects = new Object[size];
         this.nulls = new boolean[size];
 
+        ImmutableMap.Builder<Short, HiveThriftFieldIdGroup> thriftFieldIdGroupBuilder = ImmutableMap.builder();
         // initialize data columns
         for (int i = 0; i < columns.size(); i++) {
             HiveColumnHandle column = columns.get(i);
@@ -165,7 +168,15 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             hiveTypes[i] = column.getHiveType();
             hiveIndexs[i] = column.getHiveColumnIndex();
             thriftIds[i] = getThriftIdWithFailOver(thriftFieldIdResolver, hiveIndexs[i]);
+            if (column.getFieldSet().isPresent()) {
+                thriftFieldIdGroupBuilder.put(thriftIds[i], HiveThriftFieldIdGroup.create(types[i], column.getFieldSet().get(), thriftFieldIdResolver));
+            }
+            else {
+                thriftFieldIdGroupBuilder.put(thriftIds[i], new HiveThriftFieldIdGroup(ImmutableMap.of()));
+            }
         }
+
+        this.thriftFieldIdGroup = new HiveThriftFieldIdGroup(thriftFieldIdGroupBuilder.build());
 
         // close immediately if the number of totalBytes is zero
         if (totalBytes == 0) {
@@ -217,7 +228,7 @@ class ThriftHiveRecordCursor<K, V extends Writable>
             Arrays.fill(loaded, false);
 
             // decode value
-            rowData = deserializer.deserialize(value, thriftIds);
+            rowData = deserializer.deserialize(value, thriftFieldIdGroup);
 
             return true;
         }
