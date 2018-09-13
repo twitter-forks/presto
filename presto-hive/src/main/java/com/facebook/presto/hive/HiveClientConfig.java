@@ -119,6 +119,8 @@ public class HiveClientConfig
     private boolean rcfileOptimizedWriterEnabled = true;
     private boolean rcfileWriterValidate;
 
+    private DataSize thriftMaxOutstandingSplitSize = new DataSize(256, MEGABYTE);
+
     private HiveMetastoreAuthenticationType hiveMetastoreAuthenticationType = HiveMetastoreAuthenticationType.NONE;
     private HdfsAuthenticationType hdfsAuthenticationType = HdfsAuthenticationType.NONE;
     private boolean hdfsImpersonationEnabled;
@@ -877,6 +879,19 @@ public class HiveClientConfig
     public HiveClientConfig setRcfileWriterValidate(boolean rcfileWriterValidate)
     {
         this.rcfileWriterValidate = rcfileWriterValidate;
+        return this;
+    }
+
+    @NotNull
+    public DataSize getThriftMaxOutstandingSplitSize()
+    {
+        return thriftMaxOutstandingSplitSize;
+    }
+
+    @Config("hive.thrift.max-outstanding-split-size")
+    public HiveClientConfig setThriftMaxOutstandingSplitSize(DataSize thriftMaxOutstandingSplitSize)
+    {
+        this.thriftMaxOutstandingSplitSize = thriftMaxOutstandingSplitSize;
         return this;
     }
 

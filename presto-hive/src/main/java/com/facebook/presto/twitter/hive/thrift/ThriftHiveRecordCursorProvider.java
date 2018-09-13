@@ -14,9 +14,11 @@
 package com.facebook.presto.twitter.hive.thrift;
 
 import com.facebook.presto.hive.HdfsEnvironment;
+import com.facebook.presto.hive.HiveClientConfig;
 import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.HiveRecordCursorProvider;
 import com.facebook.presto.spi.ConnectorSession;
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.TypeManager;
@@ -37,12 +39,14 @@ import java.util.Properties;
 import java.util.Set;
 
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_SPLIT_TOO_LARGE;
 import static com.facebook.presto.hive.HiveStorageFormat.THRIFTBINARY;
 import static com.facebook.presto.hive.HiveUtil.checkCondition;
 import static com.facebook.presto.hive.HiveUtil.createRecordReader;
 import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static com.facebook.presto.hive.HiveUtil.getLzopIndexPath;
 import static com.facebook.presto.hive.HiveUtil.isLzopCompressedFile;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
@@ -56,12 +60,14 @@ public class ThriftHiveRecordCursorProvider
             .build();
     private final HdfsEnvironment hdfsEnvironment;
     private final ThriftFieldIdResolverFactory thriftFieldIdResolverFactory;
+    private final long maxOutstandingSplitSize;
 
     @Inject
-    public ThriftHiveRecordCursorProvider(HdfsEnvironment hdfsEnvironment, ThriftFieldIdResolverFactory thriftFieldIdResolverFactory)
+    public ThriftHiveRecordCursorProvider(HdfsEnvironment hdfsEnvironment, ThriftFieldIdResolverFactory thriftFieldIdResolverFactory, HiveClientConfig hiveClientConfig)
     {
         this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
         this.thriftFieldIdResolverFactory = requireNonNull(thriftFieldIdResolverFactory, "thriftFieldIdResolverFactory is null");
+        this.maxOutstandingSplitSize = hiveClientConfig.getThriftMaxOutstandingSplitSize().toBytes();
     }
 
     @Override
@@ -126,6 +132,13 @@ public class ThriftHiveRecordCursorProvider
 
         long finalStart = start;
         long finalLength = length;
+
+        if (finalLength > maxOutstandingSplitSize) {
+            throw new PrestoException(HIVE_SPLIT_TOO_LARGE, format(
+                    "Final size of split [%s %d:%d] exceeds max outstanding split size: %d vs %d",
+                    path, start, start + length, finalLength, maxOutstandingSplitSize));
+        }
+
         RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
                 () -> createRecordReader(configuration, path, finalStart, finalLength, schema, columns));
 
