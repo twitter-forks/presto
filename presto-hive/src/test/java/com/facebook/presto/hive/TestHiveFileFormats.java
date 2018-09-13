@@ -502,8 +502,7 @@ public class TestHiveFileFormats
         testCursorProvider(cursorProvider, split, PARQUET, testColumns, SESSION, 1);
     }
 
-    @Test(dataProvider = "rowCount")
-    public void testLZOThrift(int rowCount)
+    public void testLZOThrift()
             throws Exception
     {
         RowType nameType = RowType.anonymous(ImmutableList.of(createUnboundedVarcharType(), createUnboundedVarcharType()));

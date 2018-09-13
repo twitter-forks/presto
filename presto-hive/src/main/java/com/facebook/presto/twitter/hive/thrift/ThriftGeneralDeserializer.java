@@ -35,12 +35,12 @@ public class ThriftGeneralDeserializer
         checkCondition(thriftClassName.equals(REQUIRED_SERIALIZATION_CLASS), HIVE_INVALID_METADATA, SERIALIZATION_CLASS + thriftClassName + " cannot match " + REQUIRED_SERIALIZATION_CLASS);
     }
 
-    public ThriftGenericRow deserialize(Writable writable, short[] thriftIds)
+    public ThriftGenericRow deserialize(Writable writable, HiveThriftFieldIdGroup thriftFieldIdGroup)
     {
         checkCondition(writable instanceof ThriftWritable, HIVE_UNKNOWN_ERROR, "Not an instance of ThriftWritable: " + writable);
         ThriftGenericRow row = (ThriftGenericRow) ((ThriftWritable) writable).get();
         try {
-            row.parse(thriftIds);
+            row.parse(thriftFieldIdGroup);
         }
         catch (TException e) {
             throw new IllegalStateException("ThriftGenericRow failed to parse values", e);
