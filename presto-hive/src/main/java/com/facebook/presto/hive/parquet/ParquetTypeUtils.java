@@ -38,6 +38,7 @@ import parquet.io.MessageColumnIO;
 import parquet.io.ParquetDecodingException;
 import parquet.io.PrimitiveColumnIO;
 import parquet.schema.DecimalMetadata;
+import parquet.schema.GroupType;
 import parquet.schema.MessageType;
 
 import java.util.Arrays;
@@ -242,10 +243,38 @@ public final class ParquetTypeUtils
         Map<String, Set<String>> fields = groupFields(requiredFields);
 
         List<parquet.schema.Type> newFields = fields.entrySet().stream()
-                .map(entry -> pruneParquetType(type.asGroupType().getType(entry.getKey()), entry.getValue()))
+                .map(entry -> pruneParquetType(findParquetTypeByName(type.asGroupType(), entry.getKey()), entry.getValue()))
                 .collect(toImmutableList());
 
         return type.asGroupType().withNewFields(newFields);
+    }
+
+    private static parquet.schema.Type findParquetTypeByName(GroupType groupType, String name)
+    {
+        parquet.schema.Type type = getParquetTypeByName(groupType, name);
+
+        // when a parquet field is a hive keyword we append an _ to it in hive. When doing
+        // a name-based lookup, we need to strip it off again if we didn't get a direct match.
+        if (type == null && name.endsWith("_")) {
+            type = getParquetTypeByName(groupType, name.substring(0, name.length() - 1));
+        }
+
+        return type;
+    }
+
+    private static parquet.schema.Type getParquetTypeByName(GroupType groupType, String fieldName)
+    {
+        if (groupType.containsField(fieldName)) {
+            return groupType.getType(fieldName);
+        }
+
+        for (parquet.schema.Type type : groupType.getFields()) {
+            if (type.getName().equalsIgnoreCase(fieldName)) {
+                return type;
+            }
+        }
+
+        return null;
     }
 
     private static Map<String, Set<String>> groupFields(Set<String> requiredFields)
