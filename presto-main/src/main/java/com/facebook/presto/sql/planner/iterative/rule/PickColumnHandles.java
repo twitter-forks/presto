@@ -96,6 +96,7 @@ public class PickColumnHandles
                 node.getOutputSymbols(),
                 assignments,
                 node.getLayout(),
+                node.getCurrentConstraint(),
                 node.getOriginalConstraint()));
     }
 }
