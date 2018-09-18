@@ -35,6 +35,8 @@ public class SecurityConfig
 
     private String httpAuthenticationPathRegex = "^\b$";
 
+    private boolean allowByPass;
+
     public enum AuthenticationType
     {
         CERTIFICATE,
@@ -81,6 +83,19 @@ public class SecurityConfig
     public SecurityConfig setHttpAuthenticationPathRegex(String regex)
     {
         httpAuthenticationPathRegex = regex;
+        return this;
+    }
+
+    public boolean getAllowByPass()
+    {
+        return allowByPass;
+    }
+
+    @Config("http-server.authentication.allow-by-pass")
+    @ConfigDescription("Allow authentication by pass")
+    public SecurityConfig setAllowByPass(boolean allowByPass)
+    {
+        this.allowByPass = allowByPass;
         return this;
     }
 }

@@ -30,7 +30,8 @@ public class TestSecurityConfig
     {
         ConfigAssertions.assertRecordedDefaults(ConfigAssertions.recordDefaults(SecurityConfig.class)
                 .setAuthenticationTypes("")
-                .setHttpAuthenticationPathRegex("^\b$"));
+                .setHttpAuthenticationPathRegex("^\b$")
+                .setAllowByPass(false));
     }
 
     @Test
@@ -39,11 +40,13 @@ public class TestSecurityConfig
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("http-server.authentication.type", "KERBEROS,PASSWORD")
                 .put("http-server.http.authentication.path.regex", "^/v1/statement")
+                .put("http-server.authentication.allow-by-pass", "true")
                 .build();
 
         SecurityConfig expected = new SecurityConfig()
                 .setAuthenticationTypes(ImmutableList.of(KERBEROS, PASSWORD))
-                .setHttpAuthenticationPathRegex("^/v1/statement");
+                .setHttpAuthenticationPathRegex("^/v1/statement")
+                .setAllowByPass(true);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }
