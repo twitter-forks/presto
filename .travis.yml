@@ -48,6 +48,10 @@ before_install:
     if [[ ! -e /usr/local/bin/thrift ]]; then
       sudo ln -s $HOME/.thrift/bin/thrift /usr/local/bin/thrift
     fi
+  - |
+    git clone https://github.com/airlift/aircompressor.git
+    cd aircompressor && mvn clean install -DskipTests
+    cd ..
 
 install:
   - ./mvnw -v
