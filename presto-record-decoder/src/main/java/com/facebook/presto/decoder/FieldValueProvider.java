@@ -42,10 +42,10 @@ public abstract class FieldValueProvider
         throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to Slice not supported");
     }
 
-    public abstract boolean isNull();
-
     public Block getBlock()
     {
-        throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to block not supported");
+        throw new PrestoException(DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED, "conversion to Block not supported");
     }
+
+    public abstract boolean isNull();
 }

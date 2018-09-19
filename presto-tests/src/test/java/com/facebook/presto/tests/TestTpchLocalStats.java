@@ -157,7 +157,7 @@ public class TestTpchLocalStats
         statisticsAssertion.check("SELECT n1.n_nationkey FROM nation n1, nation n2 WHERE n1.n_nationkey + 1 = n2.n_nationkey - 1 AND n1.n_nationkey > 5 AND n2.n_nationkey < 20",
                 // Join is over expressions so that predicate push down doesn't unify ranges of n_nationkey coming from n1 and n2. This, however, makes symbols
                 // stats inaccurate (rules can't update them), so we don't verify them.
-                checks -> checks.estimate(OUTPUT_ROW_COUNT, absoluteError(3)));
+                checks -> checks.estimate(OUTPUT_ROW_COUNT, absoluteError(8)));
 
         // two joins on different keys
         statisticsAssertion.check("SELECT * FROM nation, supplier, partsupp WHERE n_nationkey = s_nationkey AND s_suppkey = ps_suppkey",
@@ -389,11 +389,11 @@ public class TestTpchLocalStats
                         .estimate(nullsFraction("o_orderkey"), relativeError(.3, .35))
                         .estimate(lowValue("o_orderkey"), noError())
                         .estimate(highValue("o_orderkey"), noError())
-                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.2))
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.5))
                         .estimate(nullsFraction("o_custkey"), relativeError(.45, .55))
                         .estimate(lowValue("o_custkey"), noError())
                         .estimate(highValue("o_custkey"), noError())
-                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.2))
+                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.5))
                         .estimate(nullsFraction("o_orderstatus"), noError())
                         .estimate(lowValue("o_orderstatus"), noError())
                         .estimate(highValue("o_orderstatus"), noError()));
@@ -405,11 +405,11 @@ public class TestTpchLocalStats
                         .estimate(nullsFraction("o_orderkey"), relativeError(.3, .35))
                         .estimate(lowValue("o_orderkey"), noError())
                         .estimate(highValue("o_orderkey"), noError())
-                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.2))
+                        .estimate(distinctValuesCount("o_custkey"), relativeError(0.5))
                         .estimate(nullsFraction("o_custkey"), relativeError(.45, .55))
                         .estimate(lowValue("o_custkey"), noError())
                         .estimate(highValue("o_custkey"), noError())
-                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.2))
+                        .estimate(distinctValuesCount("o_orderstatus"), relativeError(0.5))
                         .estimate(nullsFraction("o_orderstatus"), noError())
                         .estimate(lowValue("o_orderstatus"), noError())
                         .estimate(highValue("o_orderstatus"), noError()));
@@ -471,7 +471,7 @@ public class TestTpchLocalStats
                 checks -> checks.estimate(OUTPUT_ROW_COUNT, absoluteError(45, 45)));
 
         statisticsAssertion.check("SELECT * FROM orders WHERE o_custkey < 900 EXCEPT SELECT * FROM orders WHERE o_custkey > 600",
-                // TODO fix EXCEPT stats calculation as custkey values distirbution is pretty linear
+                // TODO fix EXCEPT stats calculation as custkey values distribution is pretty linear
                 checks -> checks
                         .estimate(OUTPUT_ROW_COUNT, relativeError(1.5, 2))
                         .estimate(distinctValuesCount("o_orderkey"), relativeError(0.5, 1))

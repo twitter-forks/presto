@@ -17,6 +17,7 @@ import com.facebook.presto.execution.LocationFactory;
 import com.facebook.presto.execution.QueryExecution;
 import com.facebook.presto.execution.QueryIdGenerator;
 import com.facebook.presto.execution.QueryInfo;
+import com.facebook.presto.execution.scheduler.NodeSchedulerConfig;
 import com.facebook.presto.memory.LowMemoryKiller.QueryMemoryInfo;
 import com.facebook.presto.metadata.InternalNodeManager;
 import com.facebook.presto.server.ServerConfig;
@@ -72,7 +73,7 @@ import static com.facebook.presto.memory.LocalMemoryManager.SYSTEM_POOL;
 import static com.facebook.presto.spi.NodeState.ACTIVE;
 import static com.facebook.presto.spi.NodeState.SHUTTING_DOWN;
 import static com.facebook.presto.spi.StandardErrorCode.CLUSTER_OUT_OF_MEMORY;
-import static com.facebook.presto.spi.StandardErrorCode.EXCEEDED_MEMORY_LIMIT;
+import static com.facebook.presto.spi.StandardErrorCode.EXCEEDED_GLOBAL_MEMORY_LIMIT;
 import static com.google.common.base.Verify.verify;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
@@ -111,6 +112,7 @@ public class ClusterMemoryManager
     private final AtomicLong clusterTotalMemoryReservation = new AtomicLong();
     private final AtomicLong clusterMemoryBytes = new AtomicLong();
     private final AtomicLong queriesKilledDueToOutOfMemory = new AtomicLong();
+    private final boolean isWorkScheduledOnCoordinator;
 
     private final Map<QueryId, Long> preAllocations = new HashMap<>();
     private final Map<QueryId, Long> preAllocationsConsumed = new HashMap<>();
@@ -145,11 +147,13 @@ public class ClusterMemoryManager
             LowMemoryKiller lowMemoryKiller,
             ServerConfig serverConfig,
             MemoryManagerConfig config,
-            NodeMemoryConfig nodeMemoryConfig)
+            NodeMemoryConfig nodeMemoryConfig,
+            NodeSchedulerConfig schedulerConfig)
     {
         requireNonNull(config, "config is null");
         requireNonNull(nodeMemoryConfig, "nodeMemoryConfig is null");
         requireNonNull(serverConfig, "serverConfig is null");
+        requireNonNull(schedulerConfig, "schedulerConfig is null");
         this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
         this.locationFactory = requireNonNull(locationFactory, "locationFactory is null");
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
@@ -163,6 +167,7 @@ public class ClusterMemoryManager
         this.enabled = serverConfig.isCoordinator();
         this.killOnOutOfMemoryDelay = config.getKillOnOutOfMemoryDelay();
         this.isLegacySystemPoolEnabled = nodeMemoryConfig.isLegacySystemPoolEnabled();
+        this.isWorkScheduledOnCoordinator = schedulerConfig.isIncludeCoordinator();
 
         verify(maxQueryMemory.toBytes() <= maxQueryTotalMemory.toBytes(),
                 "maxQueryMemory cannot be greater than maxQueryTotalMemory");
@@ -209,8 +214,8 @@ public class ClusterMemoryManager
         long totalMemoryBytes = 0L;
         for (QueryExecution query : runningQueries) {
             boolean resourceOvercommit = resourceOvercommit(query.getSession());
-            long userMemoryReservation = query.getUserMemoryReservation();
-            long totalMemoryReservation = query.getTotalMemoryReservation();
+            long userMemoryReservation = query.getUserMemoryReservation().toBytes();
+            long totalMemoryReservation = query.getTotalMemoryReservation().toBytes();
 
             if (resourceOvercommit && outOfMemory) {
                 // If a query has requested resource overcommit, only kill it if the cluster has run out of memory
@@ -343,7 +348,7 @@ public class ClusterMemoryManager
     public synchronized boolean preAllocateQueryMemory(QueryId queryId, long requiredBytes)
     {
         if (requiredBytes > maxQueryMemory.toBytes()) {
-            throw new PrestoException(EXCEEDED_MEMORY_LIMIT, format("Cannot pre-allocate memory, exceeds maximum limit %s", maxQueryMemory));
+            throw new PrestoException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Cannot pre-allocate user memory, exceeds maximum limit %s", maxQueryMemory));
         }
 
         ClusterMemoryPool generalPool = pools.get(GENERAL_POOL);
@@ -438,18 +443,18 @@ public class ClusterMemoryManager
     {
         // when the legacy system pool is enabled we use the user memory instead of the total memory
         if (isLegacySystemPoolEnabled) {
-            return new QueryMemoryInfo(query.getQueryId(), query.getMemoryPool().getId(), query.getUserMemoryReservation());
+            return new QueryMemoryInfo(query.getQueryId(), query.getMemoryPool().getId(), query.getUserMemoryReservation().toBytes());
         }
-        return new QueryMemoryInfo(query.getQueryId(), query.getMemoryPool().getId(), query.getTotalMemoryReservation());
+        return new QueryMemoryInfo(query.getQueryId(), query.getMemoryPool().getId(), query.getTotalMemoryReservation().toBytes());
     }
 
     private long getQueryMemoryReservation(QueryExecution query)
     {
         // when the legacy system pool is enabled we use the user memory instead of the total memory
         if (isLegacySystemPoolEnabled) {
-            return query.getUserMemoryReservation();
+            return query.getUserMemoryReservation().toBytes();
         }
-        return query.getTotalMemoryReservation();
+        return query.getTotalMemoryReservation().toBytes();
     }
 
     private synchronized boolean allAssignmentsHavePropagated(Iterable<QueryExecution> queries)
@@ -494,6 +499,12 @@ public class ClusterMemoryManager
             if (!nodes.containsKey(node.getNodeIdentifier())) {
                 nodes.put(node.getNodeIdentifier(), new RemoteNodeMemory(node, httpClient, memoryInfoCodec, assignmentsRequestJsonCodec, locationFactory.createMemoryInfoLocation(node)));
             }
+        }
+
+        // If work isn't scheduled on the coordinator (the current node) there is no point
+        // in polling or updating (when moving queries to the reserved pool) its memory pools
+        if (!isWorkScheduledOnCoordinator) {
+            nodes.remove(nodeManager.getCurrentNode().getNodeIdentifier());
         }
 
         // Schedule refresh

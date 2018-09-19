@@ -15,9 +15,8 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
-import com.facebook.presto.cost.CostCalculator;
-import com.facebook.presto.cost.StatsCalculator;
-import com.facebook.presto.execution.QueryPerformanceFetcher;
+import com.facebook.presto.cost.CostCalculatorUsingExchanges;
+import com.facebook.presto.execution.ExplainAnalyzeContext;
 import com.facebook.presto.execution.StageId;
 import com.facebook.presto.execution.TaskManagerConfig;
 import com.facebook.presto.execution.buffer.OutputBuffer;
@@ -68,6 +67,7 @@ import com.facebook.presto.operator.SourceOperatorFactory;
 import com.facebook.presto.operator.SpatialIndexBuilderOperator.SpatialIndexBuilderOperatorFactory;
 import com.facebook.presto.operator.SpatialIndexBuilderOperator.SpatialPredicate;
 import com.facebook.presto.operator.SpatialJoinOperator.SpatialJoinOperatorFactory;
+import com.facebook.presto.operator.StageExecutionStrategy;
 import com.facebook.presto.operator.StreamingAggregationOperator.StreamingAggregationOperatorFactory;
 import com.facebook.presto.operator.TableScanOperator.TableScanOperatorFactory;
 import com.facebook.presto.operator.TaskContext;
@@ -274,10 +274,7 @@ public class LocalExecutionPlanner
 
     private final Metadata metadata;
     private final SqlParser sqlParser;
-    private final StatsCalculator statsCalculator;
-    private final CostCalculator costCalculator;
-
-    private final Optional<QueryPerformanceFetcher> queryPerformanceFetcher;
+    private final Optional<ExplainAnalyzeContext> explainAnalyzeContext;
     private final PageSourceProvider pageSourceProvider;
     private final IndexManager indexManager;
     private final NodePartitioningManager nodePartitioningManager;
@@ -304,9 +301,7 @@ public class LocalExecutionPlanner
     public LocalExecutionPlanner(
             Metadata metadata,
             SqlParser sqlParser,
-            StatsCalculator statsCalculator,
-            CostCalculator costCalculator,
-            Optional<QueryPerformanceFetcher> queryPerformanceFetcher,
+            Optional<ExplainAnalyzeContext> explainAnalyzeContext,
             PageSourceProvider pageSourceProvider,
             IndexManager indexManager,
             NodePartitioningManager nodePartitioningManager,
@@ -326,15 +321,13 @@ public class LocalExecutionPlanner
             LookupJoinOperators lookupJoinOperators,
             OrderingCompiler orderingCompiler)
     {
-        this.queryPerformanceFetcher = requireNonNull(queryPerformanceFetcher, "queryPerformanceFetcher is null");
+        this.explainAnalyzeContext = requireNonNull(explainAnalyzeContext, "explainAnalyzeContext is null");
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
         this.indexManager = requireNonNull(indexManager, "indexManager is null");
         this.nodePartitioningManager = requireNonNull(nodePartitioningManager, "nodePartitioningManager is null");
         this.exchangeClientSupplier = exchangeClientSupplier;
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.sqlParser = requireNonNull(sqlParser, "sqlParser is null");
-        this.statsCalculator = requireNonNull(statsCalculator, "statsCalculator is null");
-        this.costCalculator = requireNonNull(costCalculator, "costCalculator is null");
         this.pageSinkManager = requireNonNull(pageSinkManager, "pageSinkManager is null");
         this.expressionCompiler = requireNonNull(expressionCompiler, "compiler is null");
         this.pageFunctionCompiler = requireNonNull(pageFunctionCompiler, "pageFunctionCompiler is null");
@@ -359,7 +352,7 @@ public class LocalExecutionPlanner
             PlanNode plan,
             TypeProvider types,
             PartitioningScheme partitioningScheme,
-            boolean planGrouped,
+            StageExecutionStrategy stageExecutionStrategy,
             List<PlanNodeId> partitionedSourceOrder,
             OutputBuffer outputBuffer)
     {
@@ -370,7 +363,7 @@ public class LocalExecutionPlanner
                 partitioningScheme.getPartitioning().getHandle().equals(SCALED_WRITER_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(SINGLE_DISTRIBUTION) ||
                 partitioningScheme.getPartitioning().getHandle().equals(COORDINATOR_DISTRIBUTION)) {
-            return plan(taskContext, planGrouped, plan, outputLayout, types, partitionedSourceOrder, new TaskOutputFactory(outputBuffer));
+            return plan(taskContext, stageExecutionStrategy, plan, outputLayout, types, partitionedSourceOrder, new TaskOutputFactory(outputBuffer));
         }
 
         // We can convert the symbols directly into channels, because the root must be a sink and therefore the layout is fixed
@@ -417,7 +410,7 @@ public class LocalExecutionPlanner
 
         return plan(
                 taskContext,
-                planGrouped,
+                stageExecutionStrategy,
                 plan,
                 outputLayout,
                 types,
@@ -434,7 +427,7 @@ public class LocalExecutionPlanner
 
     public LocalExecutionPlan plan(
             TaskContext taskContext,
-            boolean planGrouped,
+            StageExecutionStrategy stageExecutionStrategy,
             PlanNode plan,
             List<Symbol> outputLayout,
             TypeProvider types,
@@ -444,7 +437,7 @@ public class LocalExecutionPlanner
         Session session = taskContext.getSession();
         LocalExecutionPlanContext context = new LocalExecutionPlanContext(taskContext, types);
 
-        PhysicalOperation physicalOperation = plan.accept(new Visitor(session, planGrouped), context);
+        PhysicalOperation physicalOperation = plan.accept(new Visitor(session, stageExecutionStrategy), context);
 
         Function<Page, Page> pagePreprocessor = enforceLayoutProcessor(outputLayout, physicalOperation.getLayout());
 
@@ -477,7 +470,7 @@ public class LocalExecutionPlanner
                 .map(LocalPlannerAware.class::cast)
                 .forEach(LocalPlannerAware::localPlannerComplete);
 
-        return new LocalExecutionPlan(context.getDriverFactories(), partitionedSourceOrder);
+        return new LocalExecutionPlan(context.getDriverFactories(), partitionedSourceOrder, stageExecutionStrategy);
     }
 
     private static void addLookupOuterDrivers(LocalExecutionPlanContext context)
@@ -647,11 +640,13 @@ public class LocalExecutionPlanner
     {
         private final List<DriverFactory> driverFactories;
         private final List<PlanNodeId> partitionedSourceOrder;
+        private final StageExecutionStrategy stageExecutionStrategy;
 
-        public LocalExecutionPlan(List<DriverFactory> driverFactories, List<PlanNodeId> partitionedSourceOrder)
+        public LocalExecutionPlan(List<DriverFactory> driverFactories, List<PlanNodeId> partitionedSourceOrder, StageExecutionStrategy stageExecutionStrategy)
         {
             this.driverFactories = ImmutableList.copyOf(requireNonNull(driverFactories, "driverFactories is null"));
             this.partitionedSourceOrder = ImmutableList.copyOf(requireNonNull(partitionedSourceOrder, "partitionedSourceOrder is null"));
+            this.stageExecutionStrategy = requireNonNull(stageExecutionStrategy, "stageExecutionStrategy is null");
         }
 
         public List<DriverFactory> getDriverFactories()
@@ -663,18 +658,23 @@ public class LocalExecutionPlanner
         {
             return partitionedSourceOrder;
         }
+
+        public StageExecutionStrategy getStageExecutionStrategy()
+        {
+            return stageExecutionStrategy;
+        }
     }
 
     private class Visitor
             extends PlanVisitor<PhysicalOperation, LocalExecutionPlanContext>
     {
         private final Session session;
-        private final boolean groupEnumerable;
+        private final StageExecutionStrategy stageExecutionStrategy;
 
-        private Visitor(Session session, boolean groupEnumerable)
+        private Visitor(Session session, StageExecutionStrategy stageExecutionStrategy)
         {
             this.session = session;
-            this.groupEnumerable = groupEnumerable;
+            this.stageExecutionStrategy = stageExecutionStrategy;
         }
 
         @Override
@@ -736,16 +736,19 @@ public class LocalExecutionPlanner
         @Override
         public PhysicalOperation visitExplainAnalyze(ExplainAnalyzeNode node, LocalExecutionPlanContext context)
         {
-            checkState(queryPerformanceFetcher.isPresent(), "ExplainAnalyze can only run on coordinator");
+            ExplainAnalyzeContext analyzeContext = explainAnalyzeContext
+                    .orElseThrow(() -> new IllegalStateException("ExplainAnalyze can only run on coordinator"));
             PhysicalOperation source = node.getSource().accept(this, context);
-
+            verify(analyzeContext.getCostCalculator() instanceof CostCalculatorUsingExchanges, "costCalculator not instance of CostCalculatorUsingExchanges but plan is distributed");
             OperatorFactory operatorFactory = new ExplainAnalyzeOperatorFactory(
                     context.getNextOperatorId(),
                     node.getId(),
-                    queryPerformanceFetcher.get(),
+                    analyzeContext.getQueryPerformanceFetcher(),
                     metadata.getFunctionRegistry(),
-                    statsCalculator,
-                    costCalculator,
+                    analyzeContext.getStatsCalculator(),
+                    analyzeContext.getCostCalculator(),
+                    analyzeContext.getNodeManager(),
+                    analyzeContext.getNodeSchedulerConfig(),
                     node.isVerbose());
             return new PhysicalOperation(operatorFactory, makeLayout(node), context, source);
         }
@@ -1223,7 +1226,7 @@ public class LocalExecutionPlanner
                             getFilterAndProjectMinOutputPageSize(session),
                             getFilterAndProjectMinOutputPageRowCount(session));
 
-                    return new PhysicalOperation(operatorFactory, outputMappings, context, groupEnumerable ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
+                    return new PhysicalOperation(operatorFactory, outputMappings, context, stageExecutionStrategy.isGroupedExecution(sourceNode.getId()) ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
                 }
                 else {
                     Supplier<PageProcessor> pageProcessor = expressionCompiler.compilePageProcessor(translatedFilter, translatedProjections, Optional.of(context.getStageId() + "_" + planNodeId));
@@ -1268,7 +1271,7 @@ public class LocalExecutionPlanner
             }
 
             OperatorFactory operatorFactory = new TableScanOperatorFactory(context.getNextOperatorId(), node.getId(), pageSourceProvider, columns);
-            return new PhysicalOperation(operatorFactory, makeLayout(node), context, groupEnumerable ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
+            return new PhysicalOperation(operatorFactory, makeLayout(node), context, stageExecutionStrategy.isGroupedExecution(node.getId()) ? GROUPED_EXECUTION : UNGROUPED_EXECUTION);
         }
 
         @Override
@@ -2161,7 +2164,7 @@ public class LocalExecutionPlanner
                 return createHashAggregationOperatorFactory(
                         node.getId(),
                         aggregation.getAggregations(),
-                        ImmutableList.of(groupingSymbols),
+                        ImmutableSet.of(),
                         groupingSymbols,
                         PARTIAL,
                         Optional.empty(),
@@ -2215,7 +2218,7 @@ public class LocalExecutionPlanner
                 return createHashAggregationOperatorFactory(
                         node.getId(),
                         aggregation.getAggregations(),
-                        ImmutableList.of(groupingSymbols),
+                        ImmutableSet.of(),
                         groupingSymbols,
                         FINAL,
                         Optional.empty(),
@@ -2531,7 +2534,7 @@ public class LocalExecutionPlanner
             OperatorFactory operatorFactory = createHashAggregationOperatorFactory(
                     node.getId(),
                     node.getAggregations(),
-                    node.getGroupingSets(),
+                    node.getGlobalGroupingSets(),
                     node.getGroupingKeys(),
                     node.getStep(),
                     node.getHashSymbol(),
@@ -2550,7 +2553,7 @@ public class LocalExecutionPlanner
         private OperatorFactory createHashAggregationOperatorFactory(
                 PlanNodeId planNodeId,
                 Map<Symbol, Aggregation> aggregations,
-                List<List<Symbol>> groupingSets,
+                Set<Integer> globalGroupingSets,
                 List<Symbol> groupBySymbols,
                 Step step,
                 Optional<Symbol> hashSymbol,
@@ -2572,13 +2575,6 @@ public class LocalExecutionPlanner
 
                 accumulatorFactories.add(buildAccumulatorFactory(source, aggregation));
                 aggregationOutputSymbols.add(symbol);
-            }
-
-            ImmutableList.Builder<Integer> globalAggregationGroupIds = ImmutableList.builder();
-            for (int i = 0; i < groupingSets.size(); i++) {
-                if (groupingSets.get(i).isEmpty()) {
-                    globalAggregationGroupIds.add(i);
-                }
             }
 
             // add group-by key fields each in a separate channel
@@ -2608,8 +2604,6 @@ public class LocalExecutionPlanner
                     .map(entry -> source.getTypes().get(entry))
                     .collect(toImmutableList());
 
-            Map<Symbol, Integer> mappings = outputMappings.build();
-
             if (isStreamable) {
                 return new StreamingAggregationOperatorFactory(
                         context.getNextOperatorId(),
@@ -2628,7 +2622,7 @@ public class LocalExecutionPlanner
                         planNodeId,
                         groupByTypes,
                         groupByChannels,
-                        globalAggregationGroupIds.build(),
+                        ImmutableList.copyOf(globalGroupingSets),
                         step,
                         hasDefaultOutput,
                         accumulatorFactories,
