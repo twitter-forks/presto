@@ -45,12 +45,14 @@ public class AuthenticationFilter
 {
     private final List<Authenticator> authenticators;
     private final String httpAuthenticationPathRegex;
+    private final boolean allowByPass;
 
     @Inject
     public AuthenticationFilter(Set<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableList.copyOf(authenticators);
         this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
+        this.allowByPass = securityConfig.getAllowByPass();
     }
 
     @Override
@@ -91,6 +93,12 @@ public class AuthenticationFilter
 
             // authentication succeeded
             nextFilter.doFilter(withPrincipal(request, principal), response);
+            return;
+        }
+
+        // if authentication by pass allowed.
+        if (allowByPass) {
+            nextFilter.doFilter(request, response);
             return;
         }
 
