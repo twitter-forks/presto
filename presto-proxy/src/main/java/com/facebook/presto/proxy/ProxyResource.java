@@ -14,6 +14,8 @@
 package com.facebook.presto.proxy;
 
 import com.facebook.presto.proxy.ProxyResponseHandler.ProxyResponse;
+import com.facebook.presto.server.HttpRequestSessionContext;
+import com.facebook.presto.server.SessionContext;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -95,6 +97,8 @@ public class ProxyResource
     private static final Duration ASYNC_TIMEOUT = new Duration(2, MINUTES);
     private static final JsonFactory JSON_FACTORY = new JsonFactory().disable(CANONICALIZE_FIELD_NAMES);
 
+    private static final PrestoSanitizer sanitizer = new PrestoSanitizer();
+
     private final ExecutorService executor = newCachedThreadPool(daemonThreadsNamed("proxy-%s"));
     private final HttpClient httpClient;
     private final JsonWebTokenHandler jwtHandler;
@@ -139,11 +143,18 @@ public class ProxyResource
             @Context UriInfo uriInfo,
             @Suspended AsyncResponse asyncResponse)
     {
-        Request.Builder request = preparePost()
-                .setUri(uriBuilderFrom(remoteUri).replacePath("/v1/statement").build())
-                .setBodyGenerator(createStaticBodyGenerator(statement, UTF_8));
+        SessionContext sessionContext = new HttpRequestSessionContext(servletRequest);
 
-        performRequest(servletRequest, asyncResponse, request, response -> buildResponse(uriInfo, response));
+        if (sanitizer.checkValidity(statement, sessionContext.getCatalog(), sessionContext.getSchema())) {
+            Request.Builder request = preparePost()
+                    .setUri(uriBuilderFrom(remoteUri).replacePath("/v1/statement").build())
+                    .setBodyGenerator(createStaticBodyGenerator(statement, UTF_8));
+
+            performRequest(servletRequest, asyncResponse, request, response -> buildResponse(uriInfo, response));
+        }
+        else {
+            throw new ProxyException("Query is highly likely to exceed resource cap, please try optimize you query.");
+        }
     }
 
     @GET
