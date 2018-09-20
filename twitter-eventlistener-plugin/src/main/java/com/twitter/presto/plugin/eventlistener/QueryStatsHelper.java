@@ -83,7 +83,6 @@ public class QueryStatsHelper
             stageInfo.peak_memory_reservation_bytes = getBytesOrNegativeOne(stageStats.getString("peakUserMemoryReservation"));
             stageInfo.total_scheduled_time_millis = getMillisOrNegativeOne(stageStats.getString("totalScheduledTime"));
             stageInfo.total_cpu_time_millis = getMillisOrNegativeOne(stageStats.getString("totalCpuTime"));
-            stageInfo.total_user_time_millis = getMillisOrNegativeOne(stageStats.getString("totalUserTime"));
             stageInfo.total_blocked_time_millis = getMillisOrNegativeOne(stageStats.getString("totalBlockedTime"));
         }
         catch (Exception e) {
@@ -120,21 +119,18 @@ public class QueryStatsHelper
             operatorStats.add_input_calls = obj.getJsonNumber("addInputCalls").longValue();
             operatorStats.add_input_wall_millis = getMillisOrNegativeOne(obj.getString("addInputWall"));
             operatorStats.add_input_cpu_millis = getMillisOrNegativeOne(obj.getString("addInputCpu"));
-            operatorStats.add_input_user_millis = getMillisOrNegativeOne(obj.getString("addInputUser"));
             operatorStats.input_data_size_bytes = getBytesOrNegativeOne(obj.getString("inputDataSize"));
             operatorStats.input_positions = obj.getJsonNumber("inputPositions").longValue();
             operatorStats.sum_squared_input_positions = obj.getJsonNumber("sumSquaredInputPositions").doubleValue();
             operatorStats.get_output_calls = obj.getJsonNumber("getOutputCalls").longValue();
             operatorStats.get_output_wall_millis = getMillisOrNegativeOne(obj.getString("getOutputWall"));
             operatorStats.get_output_cpu_millis = getMillisOrNegativeOne(obj.getString("getOutputCpu"));
-            operatorStats.get_output_user_millis = getMillisOrNegativeOne(obj.getString("getOutputUser"));
             operatorStats.output_data_size_bytes = getBytesOrNegativeOne(obj.getString("outputDataSize"));
             operatorStats.output_positions = obj.getJsonNumber("outputPositions").longValue();
             operatorStats.blocked_wall_millis = getMillisOrNegativeOne(obj.getString("blockedWall"));
             operatorStats.finish_calls = obj.getJsonNumber("finishCalls").longValue();
             operatorStats.finish_wall_millis = getMillisOrNegativeOne(obj.getString("finishWall"));
             operatorStats.finish_cpu_millis = getMillisOrNegativeOne(obj.getString("finishCpu"));
-            operatorStats.finish_user_millis = getMillisOrNegativeOne(obj.getString("finishUser"));
             operatorStats.memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("userMemoryReservation"));
             operatorStats.system_memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("systemMemoryReservation"));
         }
