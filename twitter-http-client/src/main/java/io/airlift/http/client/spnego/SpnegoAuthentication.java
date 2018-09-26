@@ -1,3 +1,16 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package io.airlift.http.client.spnego;
 
 import com.google.common.collect.ImmutableMap;
@@ -69,6 +82,7 @@ public class SpnegoAuthentication
     private final File credentialCache;
     private final String principal;
     private final String remoteServiceName;
+    private final boolean isCompleteServicePrinciple;
     private final boolean useCanonicalHostname;
 
     @GuardedBy("this")
@@ -83,6 +97,7 @@ public class SpnegoAuthentication
         this.credentialCache = credentialCache;
         this.principal = principal;
         this.remoteServiceName = remoteServiceName;
+        this.isCompleteServicePrinciple = remoteServiceName.contains("@");
         this.useCanonicalHostname = useCanonicalHostname;
 
         System.setProperty("java.security.krb5.conf", kerberosConfig.getAbsolutePath());
@@ -106,11 +121,11 @@ public class SpnegoAuthentication
             {
                 GSSContext context = null;
                 try {
-                    String servicePrincipal = makeServicePrincipal(remoteServiceName, normalizedUri.getHost(), useCanonicalHostname);
+                    String servicePrincipal = isCompleteServicePrinciple ? remoteServiceName : makeServicePrincipal(remoteServiceName, normalizedUri.getHost(), useCanonicalHostname);
                     Session session = getSession();
                     context = doAs(session.getLoginContext().getSubject(), () -> {
                         GSSContext result = GSS_MANAGER.createContext(
-                                GSS_MANAGER.createName(servicePrincipal, NT_HOSTBASED_SERVICE),
+                                GSS_MANAGER.createName(servicePrincipal, isCompleteServicePrinciple ? NT_USER_NAME : NT_HOSTBASED_SERVICE),
                                 SPNEGO_OID,
                                 session.getClientCredential(),
                                 INDEFINITE_LIFETIME);
