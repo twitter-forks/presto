@@ -45,6 +45,7 @@
 
         <dep.antlr.version>4.7.1</dep.antlr.version>
         <dep.airlift.version>0.172</dep.airlift.version>
+        <dep.airlift.twitter.version>0.172-tw-0.1</dep.airlift.twitter.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.36</dep.slice.version>
         <dep.aws-sdk.version>1.11.293</dep.aws-sdk.version>
@@ -121,6 +122,7 @@
         <module>presto-memory-context</module>
         <module>presto-proxy</module>
         <module>presto-kudu</module>
+        <module>twitter-http-client</module>
     </modules>
 
     <dependencyManagement>
@@ -539,7 +541,7 @@
             <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>http-client</artifactId>
-                <version>${dep.airlift.version}</version>
+                <version>${dep.airlift.twitter.version}</version>
             </dependency>
 
             <dependency>
