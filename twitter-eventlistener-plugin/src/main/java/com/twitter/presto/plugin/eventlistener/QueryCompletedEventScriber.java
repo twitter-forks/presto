@@ -23,21 +23,34 @@ import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TException;
 
+import javax.inject.Inject;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Class that scribes query completion events
  */
 public class QueryCompletedEventScriber
+        implements TwitterEventHandler
 {
     private static final String DASH = "-";
     private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
 
-    private TwitterScriber scriber = new TwitterScriber("presto_query_completion");
+    private final TwitterScriber scriber;
 
-    public void handle(QueryCompletedEvent event)
+    @Inject
+    public QueryCompletedEventScriber(TwitterEventListenerConfig config)
+    {
+        requireNonNull(config.getScribeCategory(), "scribe category is null");
+        this.scriber = new TwitterScriber(config.getScribeCategory());
+    }
+
+    @Override
+    public void handleQueryCompleted(QueryCompletedEvent event)
     {
         try {
             scriber.scribe(toThriftQueryCompletionEvent(event));

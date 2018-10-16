@@ -15,8 +15,12 @@ package com.twitter.presto.plugin.eventlistener;
 
 import com.facebook.presto.spi.eventlistener.EventListener;
 import com.facebook.presto.spi.eventlistener.EventListenerFactory;
+import com.google.inject.Injector;
+import io.airlift.bootstrap.Bootstrap;
 
 import java.util.Map;
+
+import static com.google.common.base.Throwables.throwIfUnchecked;
 
 public class TwitterEventListenerFactory
         implements EventListenerFactory
@@ -30,6 +34,24 @@ public class TwitterEventListenerFactory
     @Override
     public EventListener create(Map<String, String> config)
     {
-        return new TwitterEventListener();
+        try {
+            Bootstrap app = new Bootstrap(new TwitterEventListenerModule());
+
+            Injector injector = app
+                    .strictConfig()
+                    .doNotInitializeLogging()
+                    .setRequiredConfigurationProperties(config)
+                    .initialize();
+
+            return injector.getInstance(TwitterEventListener.class);
+        }
+        catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while creating connector", ie);
+        }
+        catch (Exception e) {
+            throwIfUnchecked(e);
+            throw new RuntimeException(e);
+        }
     }
 }
