@@ -26,11 +26,12 @@ import com.twitter.presto.plugin.eventlistener.slack.SlackImOpenRequest;
 import com.twitter.presto.plugin.eventlistener.slack.SlackImOpenResponse;
 import com.twitter.presto.plugin.eventlistener.slack.SlackMessage;
 import com.twitter.presto.plugin.eventlistener.slack.SlackResponse;
-import com.twitter.presto.plugin.eventlistener.slack.SlackUser;
 import com.twitter.presto.plugin.eventlistener.slack.SlackUsersLookupByEmailResponse;
 import io.airlift.json.ObjectMapperProvider;
 import io.airlift.log.Logger;
 import okhttp3.Authenticator;
+import okhttp3.Call;
+import okhttp3.Callback;
 import okhttp3.Credentials;
 import okhttp3.FormBody;
 import okhttp3.HttpUrl;
@@ -49,6 +50,7 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.google.common.net.HttpHeaders.AUTHORIZATION;
@@ -64,7 +66,6 @@ public class SlackBot
 {
     private static final MediaType JSON_CONTENT_TYPE = MediaType.parse("Content-type: application/json; charset=utf-8");
     private static final String USER = "\\$\\{USER}";
-    private static final String REAL_NAME = "\\$\\{REAL_NAME}";
     private static final String QUERY_ID = "\\$\\{QUERY_ID}";
     private static final String PRINCIPAL = "\\$\\{PRINCIPAL}";
     private static final String STATE = "\\$\\{STATE}";
@@ -148,125 +149,144 @@ public class SlackBot
         }
         try {
             String email = emailTemplate.replaceAll(USER, user);
-            SlackUser slackUser = userLookupByEmail(email).getUser().orElseThrow(() -> new RuntimeException("Failed to get user info"));
-            SlackChannel channel = openChannel(slackUser.getId()).getChannel().orElseThrow(() -> new RuntimeException("Failed to open the user channel"));
-            if (!shouldSend(channel.getId(), event, principal, state)) {
-                return;
-            }
             String text = template
-                    .replaceAll(REAL_NAME, slackUser.getRealName())
                     .replaceAll(QUERY_ID, queryId)
                     .replaceAll(STATE, state)
                     .replaceAll(PRINCIPAL, principal.orElse(DASH));
-            SlackChatPostMessageResponse response = postMessage(channel.getId(), text);
-            log.debug(format("sent the following message to user %s:\n%s\n", slackUser.getRealName(), response.getMessage().map(SlackMessage::getText).orElse("unknown")));
+            Consumer<String> sender = userLookupByEmail(openChannel(slackImOpenResponse -> {
+                shouldSend(slackImOpenResponse, Optional.empty(), event, principal, state, postMessage(text, slackChatPostMessageResponse -> {
+                    log.debug(format("sent the following message to user %s:\n%s\n", user, slackChatPostMessageResponse.getMessage().map(SlackMessage::getText).orElse("unknown")));
+                }));
+            }));
+            sender.accept(email);
         }
         catch (Exception e) {
             log.warn(e, "Failed to send the slack notification");
         }
     }
 
-    private SlackUsersLookupByEmailResponse userLookupByEmail(String email)
-            throws IOException
+    private Consumer<String> userLookupByEmail(Consumer<SlackUsersLookupByEmailResponse> next)
     {
-        log.debug("email: " + email);
-        FormBody body = new FormBody.Builder(UTF_8)
-                .add("email", email)
-                .build();
-        return postForm("/api/users.lookupByEmail",
-                body,
-                SlackUsersLookupByEmailResponse.class);
+        return email -> {
+            FormBody body = new FormBody.Builder(UTF_8)
+                    .add("email", email)
+                    .build();
+            postForm("/api/users.lookupByEmail",
+                    body,
+                    SlackUsersLookupByEmailResponse.class,
+                    next);
+        };
     }
 
-    private SlackImOpenResponse openChannel(String userId)
-            throws IOException
+    private Consumer<SlackUsersLookupByEmailResponse> openChannel(Consumer<SlackImOpenResponse> next)
     {
-        return postJson("/api/im.open",
-                encode(new SlackImOpenRequest(userId), SlackImOpenRequest.class),
-                SlackImOpenResponse.class);
+        return slackUsersLookupByEmailResponse -> {
+            String userId = slackUsersLookupByEmailResponse.getUser().orElseThrow(() -> new RuntimeException("Failed to get user info")).getId();
+            postJson("/api/im.open",
+                    encode(new SlackImOpenRequest(userId), SlackImOpenRequest.class),
+                    SlackImOpenResponse.class,
+                    next);
+        };
     }
 
-    private boolean shouldSend(String channel, String event, Optional<String> principal, String state)
-            throws IOException
+    private void shouldSend(SlackImOpenResponse response, Optional<String> latest, String event, Optional<String> principal, String state, Consumer<SlackImOpenResponse> postMessage)
     {
-        SlackImHistoryResponse history;
-        Optional<String> latest = Optional.empty();
-        while (true) {
-            history = getChannelHistory(channel, latest);
+        SlackChannel channel = response.getChannel().orElseThrow(() -> new RuntimeException("Failed to open the user channel"));
+        Consumer<Optional<String>> checker = getChannelHistory(channel.getId(), history -> {
+            Optional<String> newLatest = latest;
             if (!history.getMessages().isPresent()) {
-                return true;
+                postMessage.accept(response);
+                return;
             }
             for (SlackMessage message : history.getMessages().get()) {
-                String text = message.getText().trim();
-                if (message.getText().trim().equalsIgnoreCase(RESUME)) {
-                    return true;
+                Optional<Boolean> result = shouldSend(message, event, principal, state);
+                if (result.isPresent()) {
+                    if (result.get()) {
+                        postMessage.accept(response);
+                    }
+                    return;
                 }
-                if (principal.isPresent() && text.equalsIgnoreCase(format(RESUME_PRINCIPAL, principal.get()))) {
-                    return true;
-                }
-                if (text.equalsIgnoreCase(format(RESUME_EVENT, event))) {
-                    return true;
-                }
-                if (text.equalsIgnoreCase(format(RESUME_STATE, state))) {
-                    return true;
-                }
-                if (text.equalsIgnoreCase(STOP)) {
-                    return false;
-                }
-                if (principal.isPresent() && text.equalsIgnoreCase(format(STOP_PRINCIPAL, principal.get()))) {
-                    return false;
-                }
-                if (text.equalsIgnoreCase(format(STOP_EVENT, event))) {
-                    return false;
-                }
-                if (text.equalsIgnoreCase(format(STOP_STATE, state))) {
-                    return false;
-                }
-                if (!latest.isPresent() || Double.valueOf(latest.get()) > Double.valueOf(message.getTs())) {
-                    latest = Optional.of(message.getTs());
+                if (!newLatest.isPresent() || Double.valueOf(newLatest.get()) > Double.valueOf(message.getTs())) {
+                    newLatest = Optional.of(message.getTs());
                 }
             }
             if (!history.getHasMore().isPresent() || !history.getHasMore().get()) {
-                return true;
+                postMessage.accept(response);
+                return;
             }
+            shouldSend(response, newLatest, event, principal, state, postMessage);
+        });
+        checker.accept(latest);
+    }
+
+    private Optional<Boolean> shouldSend(SlackMessage message, String event, Optional<String> principal, String state)
+    {
+        String text = message.getText().trim();
+        if (message.getText().trim().equalsIgnoreCase(RESUME)) {
+            return Optional.of(true);
         }
+        if (principal.isPresent() && text.equalsIgnoreCase(format(RESUME_PRINCIPAL, principal.get()))) {
+            return Optional.of(true);
+        }
+        if (text.equalsIgnoreCase(format(RESUME_EVENT, event))) {
+            return Optional.of(true);
+        }
+        if (text.equalsIgnoreCase(format(RESUME_STATE, state))) {
+            return Optional.of(true);
+        }
+        if (text.equalsIgnoreCase(STOP)) {
+            return Optional.of(false);
+        }
+        if (principal.isPresent() && text.equalsIgnoreCase(format(STOP_PRINCIPAL, principal.get()))) {
+            return Optional.of(false);
+        }
+        if (text.equalsIgnoreCase(format(STOP_EVENT, event))) {
+            return Optional.of(false);
+        }
+        if (text.equalsIgnoreCase(format(STOP_STATE, state))) {
+            return Optional.of(false);
+        }
+
+        return Optional.empty();
     }
 
-    private SlackImHistoryResponse getChannelHistory(String channel, Optional<String> latest)
-            throws IOException
+    private Consumer<Optional<String>> getChannelHistory(String channel, Consumer<SlackImHistoryResponse> next)
     {
-        FormBody.Builder body = new FormBody.Builder(UTF_8)
-                .add("channel", channel);
-        latest.ifPresent(s -> body.add("latest", s));
-        return postForm("/api/im.history",
-                body.build(),
-                SlackImHistoryResponse.class);
+        return latest -> {
+            FormBody.Builder body = new FormBody.Builder(UTF_8)
+                    .add("channel", channel);
+            latest.ifPresent(ts -> body.add("latest", ts));
+            postForm("/api/im.history",
+                    body.build(),
+                    SlackImHistoryResponse.class,
+                    next);
+        };
     }
 
-    private SlackChatPostMessageResponse postMessage(String channel, String text)
-            throws IOException
+    private Consumer<SlackImOpenResponse> postMessage(String text, Consumer<SlackChatPostMessageResponse> next)
     {
-        return postJson("/api/chat.postMessage",
-                encode(new SlackChatPostMessageRequest(channel, text), SlackChatPostMessageRequest.class),
-                SlackChatPostMessageResponse.class);
+        return slackImOpenResponse -> {
+            String channel = slackImOpenResponse.getChannel().orElseThrow(() -> new RuntimeException("Failed to open the user channel")).getId();
+            postJson("/api/chat.postMessage",
+                    encode(new SlackChatPostMessageRequest(channel, text), SlackChatPostMessageRequest.class),
+                    SlackChatPostMessageResponse.class,
+                    next);
+        };
     }
 
-    private <R extends RequestBody, T extends SlackResponse> T postForm(String path, R body, Class<T> javaType)
-            throws IOException
+    private <R extends RequestBody, T extends SlackResponse> void postForm(String path, R body, Class<T> javaType, Consumer<T> next)
     {
         String type = "application/x-www-form-urlencoded; charset=utf-8";
-        return post(path, type, body, javaType);
+        post(path, type, body, javaType, next);
     }
 
-    private <R extends RequestBody, T extends SlackResponse> T postJson(String path, R body, Class<T> javaType)
-            throws IOException
+    private <R extends RequestBody, T extends SlackResponse> void postJson(String path, R body, Class<T> javaType, Consumer<T> next)
     {
         String type = "application/json; charset=utf-8";
-        return post(path, type, body, javaType);
+        post(path, type, body, javaType, next);
     }
 
-    private <T extends SlackResponse> T post(String path, String type, RequestBody body, Class<T> javaType)
-            throws IOException
+    private <T extends SlackResponse> void post(String path, String type, RequestBody body, Class<T> javaType, Consumer<T> next)
     {
         HttpUrl url = HttpUrl.get(URI.create(slackUri.toString() + path));
 
@@ -276,13 +296,26 @@ public class SlackBot
                 .header(AUTHORIZATION, "Bearer " + slackBotCredentials.getToken())
                 .post(body)
                 .build();
-        Response response = client.newCall(request).execute();
-        requireNonNull(response.body(), "response.body() is null");
-        T content = parse(response.body().bytes(), javaType);
-        if (!content.isOk()) {
-            throw new RuntimeException(format("Slack responded an error message: %s", content.getError().orElse("unknown")));
-        }
-        return content;
+        client.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.warn(e, "Failed to send the slack notification");
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+                    throws IOException
+            {
+                requireNonNull(response.body(), "response.body() is null");
+                T content = parse(response.body().bytes(), javaType);
+                if (!content.isOk()) {
+                    throw new RuntimeException(format("Slack responded an error message: %s", content.getError().orElse("unknown")));
+                }
+                next.accept(content);
+            }
+        });
     }
 
     private static void setupHttpProxy(OkHttpClient.Builder clientBuilder, Optional<HostAndPort> httpProxy)
