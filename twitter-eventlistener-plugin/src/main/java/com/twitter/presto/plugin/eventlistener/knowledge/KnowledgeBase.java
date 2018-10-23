@@ -11,45 +11,45 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.plugin.eventlistener;
+package com.twitter.presto.plugin.eventlistener.knowledge;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.Optional;
+import java.util.regex.Pattern;
 
-public class SlackBotCredentials
+public class KnowledgeBase
 {
-    private final String token;
-    private final Optional<String> proxyUser;
-    private final Optional<String> proxyPassword;
+    private final Pattern failureMessageRegex;
+    private final String treatment;
 
     @JsonCreator
-    public SlackBotCredentials(
-            @JsonProperty("token") String token,
-            @JsonProperty("proxyUser") Optional<String> proxyUser,
-            @JsonProperty("proxyPassword") Optional<String> proxyPassword)
+    public KnowledgeBase(
+            @JsonProperty("failure_message") Pattern failureMessageRegex,
+            @JsonProperty("treatment") String treatment)
     {
-        this.token = token;
-        this.proxyUser = proxyUser;
-        this.proxyPassword = proxyPassword;
+        this.failureMessageRegex = failureMessageRegex;
+        this.treatment = treatment;
     }
 
     @JsonProperty
-    public String getToken()
+    public Pattern getFailureMessageRegex()
     {
-        return token;
+        return failureMessageRegex;
     }
 
     @JsonProperty
-    public Optional<String> getProxyUser()
+    public String getTreatment()
     {
-        return proxyUser;
+        return treatment;
     }
 
-    @JsonProperty
-    public Optional<String> getProxyPassword()
+    public Optional<String> match(String failureMessage)
     {
-        return proxyPassword;
+        if (failureMessageRegex.matcher(failureMessage).matches()) {
+            return Optional.of(treatment);
+        }
+        return Optional.empty();
     }
 }

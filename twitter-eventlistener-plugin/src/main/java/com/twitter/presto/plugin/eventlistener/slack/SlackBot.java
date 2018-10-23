@@ -11,22 +11,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.plugin.eventlistener;
+package com.twitter.presto.plugin.eventlistener.slack;
 
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryCreatedEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.net.HostAndPort;
-import com.twitter.presto.plugin.eventlistener.slack.SlackChannel;
-import com.twitter.presto.plugin.eventlistener.slack.SlackChatPostMessageRequest;
-import com.twitter.presto.plugin.eventlistener.slack.SlackChatPostMessageResponse;
-import com.twitter.presto.plugin.eventlistener.slack.SlackImHistoryResponse;
-import com.twitter.presto.plugin.eventlistener.slack.SlackImOpenRequest;
-import com.twitter.presto.plugin.eventlistener.slack.SlackImOpenResponse;
-import com.twitter.presto.plugin.eventlistener.slack.SlackMessage;
-import com.twitter.presto.plugin.eventlistener.slack.SlackResponse;
-import com.twitter.presto.plugin.eventlistener.slack.SlackUsersLookupByEmailResponse;
+import com.twitter.presto.plugin.eventlistener.TwitterEventHandler;
+import com.twitter.presto.plugin.eventlistener.TwitterEventListenerConfig;
+import com.twitter.presto.plugin.eventlistener.knowledge.KnowledgeBases;
 import io.airlift.json.ObjectMapperProvider;
 import io.airlift.log.Logger;
 import okhttp3.Authenticator;
@@ -69,6 +63,8 @@ public class SlackBot
     private static final String QUERY_ID = "\\$\\{QUERY_ID}";
     private static final String PRINCIPAL = "\\$\\{PRINCIPAL}";
     private static final String STATE = "\\$\\{STATE}";
+    private static final String FAILURE_MESSAGE = "\\$\\{FAILURE_MESSAGE}";
+    private static final String FAILURE_TREATMENT = "\\$\\{FAILURE_TREATMENT}";
     private static final String DASH = "-";
     private static final String CREATED = "created";
     private static final String COMPLETED = "completed";
@@ -85,8 +81,8 @@ public class SlackBot
     private final Pattern slackUsers;
     private final URI slackUri;
     private final String emailTemplate;
-    private final String notificationTemplateQueryCreated;
-    private final String notificationTemplateQueryCompleted;
+    private final SlackNotificationTemplates notificationTemplates;
+    private final Optional<KnowledgeBases> knowledgeBases;
     private final OkHttpClient client;
 
     @Inject
@@ -98,13 +94,18 @@ public class SlackBot
         this.slackUsers = Pattern.compile(requireNonNull(config.getSlackUsers()));
         this.slackUri = requireNonNull(config.getSlackUri());
         this.emailTemplate = requireNonNull(config.getSlackEmailTemplate());
-        this.notificationTemplateQueryCreated = config.getSlackNotificationTemplateQueryCreated();
-        this.notificationTemplateQueryCompleted = config.getSlackNotificationTemplateQueryCompleted();
+        this.notificationTemplates = parse(Files.readAllBytes(Paths.get(config.getSlackNotificationTemplateFile())), SlackNotificationTemplates.class);
+        if (config.getKnowledgeBaseFile() != null) {
+            this.knowledgeBases = Optional.of(parse(Files.readAllBytes(Paths.get(config.getKnowledgeBaseFile())), KnowledgeBases.class));
+        }
+        else {
+            this.knowledgeBases = Optional.empty();
+        }
 
         OkHttpClient.Builder builder = new OkHttpClient.Builder();
 
         if (slackBotCredentials.getProxyUser().isPresent() && slackBotCredentials.getProxyPassword().isPresent() && config.getSlackHttpProxy() != null) {
-            setupHttpProxy(builder, Optional.of(config.getSlackHttpProxy()));
+            setupHttpProxy(builder, config.getSlackHttpProxy());
             builder.proxyAuthenticator(basicAuth(PROXY_AUTHORIZATION, slackBotCredentials.getProxyUser().get(), slackBotCredentials.getProxyPassword().get()));
         }
 
@@ -118,7 +119,8 @@ public class SlackBot
                 queryCreatedEvent.getContext().getUser(),
                 queryCreatedEvent.getMetadata().getQueryId(),
                 queryCreatedEvent.getContext().getPrincipal(),
-                queryCreatedEvent.getMetadata().getQueryState());
+                queryCreatedEvent.getMetadata().getQueryState(),
+                Optional.empty());
     }
 
     @Override
@@ -128,31 +130,28 @@ public class SlackBot
                 queryCompletedEvent.getContext().getUser(),
                 queryCompletedEvent.getMetadata().getQueryId(),
                 queryCompletedEvent.getContext().getPrincipal(),
-                queryCompletedEvent.getMetadata().getQueryState());
+                queryCompletedEvent.getMetadata().getQueryState(),
+                queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getFailureMessage().orElse("unknown")));
     }
 
-    private void handleSlackNotification(String event, String user, String queryId, Optional<String> principal, String state)
+    private void handleSlackNotification(String event, String user, String queryId, Optional<String> principal, String state, Optional<String> failureMessage)
     {
         if (!slackUsers.matcher(user).matches()) {
             return;
         }
-        String template;
-        switch (event) {
-            case CREATED:
-                template = notificationTemplateQueryCreated;
-                break;
-            case COMPLETED:
-                template = notificationTemplateQueryCompleted;
-                break;
-            default:
-                return;
+        Optional<String> template = notificationTemplates.getText(user, event, state);
+        if (!template.isPresent()) {
+            return;
         }
+        Optional<String> treatment = failureMessage.map(message -> knowledgeBases.map(knowledge -> knowledge.getTreatment(message).orElse(DASH)).orElse(DASH));
         try {
             String email = emailTemplate.replaceAll(USER, user);
-            String text = template
+            String text = template.get()
                     .replaceAll(QUERY_ID, queryId)
                     .replaceAll(STATE, state)
-                    .replaceAll(PRINCIPAL, principal.orElse(DASH));
+                    .replaceAll(PRINCIPAL, principal.orElse(DASH))
+                    .replaceAll(FAILURE_MESSAGE, failureMessage.orElse(DASH))
+                    .replaceAll(FAILURE_TREATMENT, treatment.orElse(DASH));
             Consumer<String> sender = userLookupByEmail(openChannel(slackImOpenResponse -> {
                 shouldSend(slackImOpenResponse, Optional.empty(), event, principal, state, postMessage(text, slackChatPostMessageResponse -> {
                     log.debug(format("sent the following message to user %s:\n%s\n", user, slackChatPostMessageResponse.getMessage().map(SlackMessage::getText).orElse("unknown")));
@@ -318,16 +317,9 @@ public class SlackBot
         });
     }
 
-    private static void setupHttpProxy(OkHttpClient.Builder clientBuilder, Optional<HostAndPort> httpProxy)
+    private static void setupHttpProxy(OkHttpClient.Builder clientBuilder, HostAndPort httpProxy)
     {
-        setupProxy(clientBuilder, httpProxy, HTTP);
-    }
-
-    private static void setupProxy(OkHttpClient.Builder clientBuilder, Optional<HostAndPort> proxy, Proxy.Type type)
-    {
-        proxy.map(SlackBot::toUnresolvedAddress)
-                .map(address -> new Proxy(type, address))
-                .ifPresent(clientBuilder::proxy);
+        clientBuilder.proxy(new Proxy(HTTP, toUnresolvedAddress(httpProxy)));
     }
 
     private static InetSocketAddress toUnresolvedAddress(HostAndPort address)

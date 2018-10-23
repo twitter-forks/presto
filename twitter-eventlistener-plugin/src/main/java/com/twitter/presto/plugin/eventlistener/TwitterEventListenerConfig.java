@@ -25,8 +25,8 @@ public class TwitterEventListenerConfig
     private HostAndPort slackHttpProxy;
     private URI slackUri;
     private String slackEmailTemplate;
-    private String slackNotificationTemplateQueryCreated;
-    private String slackNotificationTemplateQueryCompleted;
+    private String slackNotificationTemplateFile;
+    private String knowledgeBaseFile;
     private String scribeCategory;
 
     public String getSlackConfigFile()
@@ -89,27 +89,27 @@ public class TwitterEventListenerConfig
         return this;
     }
 
-    public String getSlackNotificationTemplateQueryCreated()
+    public String getSlackNotificationTemplateFile()
     {
-        return slackNotificationTemplateQueryCreated;
+        return slackNotificationTemplateFile;
     }
 
-    @Config("event-listener.slack-notification-template-query-created")
-    public TwitterEventListenerConfig setSlackNotificationTemplateQueryCreated(String slackNotificationTemplateQueryCreated)
+    @Config("event-listener.slack-notification-template-file")
+    public TwitterEventListenerConfig setSlackNotificationTemplateFile(String slackNotificationTemplateFile)
     {
-        this.slackNotificationTemplateQueryCreated = slackNotificationTemplateQueryCreated;
+        this.slackNotificationTemplateFile = slackNotificationTemplateFile;
         return this;
     }
 
-    public String getSlackNotificationTemplateQueryCompleted()
+    public String getKnowledgeBaseFile()
     {
-        return slackNotificationTemplateQueryCompleted;
+        return knowledgeBaseFile;
     }
 
-    @Config("event-listener.slack-notification-template-query-completed")
-    public TwitterEventListenerConfig setSlackNotificationTemplateQueryCompleted(String slackNotificationTemplateQueryCompleted)
+    @Config("event-listener.knowledge-base-file")
+    public TwitterEventListenerConfig setKnowledgeBaseFile(String knowledgeBaseFile)
     {
-        this.slackNotificationTemplateQueryCompleted = slackNotificationTemplateQueryCompleted;
+        this.knowledgeBaseFile = knowledgeBaseFile;
         return this;
     }
 

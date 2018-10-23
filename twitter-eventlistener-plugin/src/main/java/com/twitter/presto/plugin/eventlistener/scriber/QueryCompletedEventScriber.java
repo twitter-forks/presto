@@ -11,13 +11,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.plugin.eventlistener;
+package com.twitter.presto.plugin.eventlistener.scriber;
 
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryContext;
 import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
+import com.twitter.presto.plugin.eventlistener.TwitterEventHandler;
+import com.twitter.presto.plugin.eventlistener.TwitterEventListenerConfig;
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;

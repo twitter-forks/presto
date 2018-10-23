@@ -31,8 +31,8 @@ public class TestTwitterEventListenerConfig
                 .setSlackConfigFile(null)
                 .setSlackEmailTemplate(null)
                 .setSlackHttpProxy(null)
-                .setSlackNotificationTemplateQueryCompleted(null)
-                .setSlackNotificationTemplateQueryCreated(null)
+                .setSlackNotificationTemplateFile(null)
+                .setKnowledgeBaseFile(null)
                 .setSlackUri(null)
                 .setSlackUsers(null));
     }
@@ -42,22 +42,22 @@ public class TestTwitterEventListenerConfig
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
                 .put("event-listener.scribe-category", "test")
+                .put("event-listener.knowledge-base-file", "/etc/config/knowledge.json")
                 .put("event-listener.slack-config-file", "/etc/config/slack.json")
                 .put("event-listener.slack-email-template", "${USER}@domain.top")
                 .put("event-listener.slack-http-proxy", "localhost:1008")
-                .put("event-listener.slack-notification-template-query-completed", "query completed!")
-                .put("event-listener.slack-notification-template-query-created", "query created!")
+                .put("event-listener.slack-notification-template-file", "/etc/config/notification.json")
                 .put("event-listener.slack-uri", "https://slack.com")
                 .put("event-listener.slack-users", "user1|user2")
                 .build();
 
         TwitterEventListenerConfig expected = new TwitterEventListenerConfig()
                 .setScribeCategory("test")
+                .setKnowledgeBaseFile("/etc/config/knowledge.json")
                 .setSlackConfigFile("/etc/config/slack.json")
                 .setSlackEmailTemplate("${USER}@domain.top")
                 .setSlackHttpProxy(HostAndPort.fromString("localhost:1008"))
-                .setSlackNotificationTemplateQueryCompleted("query completed!")
-                .setSlackNotificationTemplateQueryCreated("query created!")
+                .setSlackNotificationTemplateFile("/etc/config/notification.json")
                 .setSlackUri(URI.create("https://slack.com"))
                 .setSlackUsers("user1|user2");
 

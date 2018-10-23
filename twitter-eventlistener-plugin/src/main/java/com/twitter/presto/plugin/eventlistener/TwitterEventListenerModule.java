@@ -16,6 +16,8 @@ package com.twitter.presto.plugin.eventlistener;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+import com.twitter.presto.plugin.eventlistener.scriber.QueryCompletedEventScriber;
+import com.twitter.presto.plugin.eventlistener.slack.SlackBot;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
