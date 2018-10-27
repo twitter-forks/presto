@@ -19,25 +19,45 @@ import com.facebook.presto.spi.eventlistener.QueryCreatedEvent;
 import com.facebook.presto.spi.eventlistener.SplitCompletedEvent;
 import io.airlift.log.Logger;
 
+import javax.inject.Inject;
+
+import java.util.Set;
+
+import static java.util.Objects.requireNonNull;
+
 public class TwitterEventListener
         implements EventListener
 {
     private static final Logger log = Logger.get(TwitterEventListener.class);
-    private final QueryCompletedEventScriber scriber = new QueryCompletedEventScriber();
+    private final Set<TwitterEventHandler> handlers;
+
+    @Inject
+    public TwitterEventListener(Set<TwitterEventHandler> handlers)
+    {
+        this.handlers = requireNonNull(handlers, "handlers is null");
+    }
 
     @Override
     public void queryCreated(QueryCreatedEvent queryCreatedEvent)
     {
+        for (TwitterEventHandler handler : handlers) {
+            handler.handleQueryCreated(queryCreatedEvent);
+        }
     }
 
     @Override
     public void queryCompleted(QueryCompletedEvent queryCompletedEvent)
     {
-        scriber.handle(queryCompletedEvent);
+        for (TwitterEventHandler handler : handlers) {
+            handler.handleQueryCompleted(queryCompletedEvent);
+        }
     }
 
     @Override
     public void splitCompleted(SplitCompletedEvent splitCompletedEvent)
     {
+        for (TwitterEventHandler handler : handlers) {
+            handler.handleSplitCompleted(splitCompletedEvent);
+        }
     }
 }

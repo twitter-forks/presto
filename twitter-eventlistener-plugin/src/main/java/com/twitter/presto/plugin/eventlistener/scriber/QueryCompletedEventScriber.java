@@ -11,33 +11,48 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.plugin.eventlistener;
+package com.twitter.presto.plugin.eventlistener.scriber;
 
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryContext;
 import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
+import com.twitter.presto.plugin.eventlistener.TwitterEventHandler;
+import com.twitter.presto.plugin.eventlistener.TwitterEventListenerConfig;
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
 import io.airlift.log.Logger;
 import org.apache.thrift.TException;
 
+import javax.inject.Inject;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Class that scribes query completion events
  */
 public class QueryCompletedEventScriber
+        implements TwitterEventHandler
 {
     private static final String DASH = "-";
     private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
 
-    private TwitterScriber scriber = new TwitterScriber("presto_query_completion");
+    private final TwitterScriber scriber;
 
-    public void handle(QueryCompletedEvent event)
+    @Inject
+    public QueryCompletedEventScriber(TwitterEventListenerConfig config)
+    {
+        requireNonNull(config.getScribeCategory(), "scribe category is null");
+        this.scriber = new TwitterScriber(config.getScribeCategory());
+    }
+
+    @Override
+    public void handleQueryCompleted(QueryCompletedEvent event)
     {
         try {
             scriber.scribe(toThriftQueryCompletionEvent(event));
