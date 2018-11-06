@@ -376,6 +376,11 @@
             <artifactId>jaxrs-testing</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>com.twitter.presto</groupId>
+            <artifactId>maintenance</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

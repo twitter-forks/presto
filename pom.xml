@@ -123,6 +123,7 @@
         <module>presto-proxy</module>
         <module>presto-kudu</module>
         <module>twitter-http-client</module>
+        <module>maintenance</module>
     </modules>
 
     <dependencyManagement>
@@ -409,6 +410,12 @@
                 <artifactId>presto-thrift-connector</artifactId>
                 <version>${project.version}</version>
                 <type>zip</type>
+            </dependency>
+
+            <dependency>
+                <groupId>com.twitter.presto</groupId>
+                <artifactId>maintenance</artifactId>
+                <version>${project.version}</version>
             </dependency>
 
             <dependency>
