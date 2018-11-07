@@ -48,6 +48,7 @@ public class TestServerConfig
                 .put("http.include-exception-in-response", "false")
                 .put("shutdown.grace-period", "5m")
                 .put("sql.parser.enhanced-error-reporting", "false")
+                .put("maintenance.coordinator", "true")
                 .build();
 
         ServerConfig expected = new ServerConfig()

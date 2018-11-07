@@ -66,7 +66,7 @@ public class MaintenanceCoordinatorResource
         // check the state of the target node
         Optional<NodeState> state = getNodeState(nodeUri);
 
-        if (state.isPresent() && state.get() != NodeState.INACTIVE) {
+        if (state.isPresent()) {
             // if the node is active, we send the shutdown request
             if (state.get() == NodeState.ACTIVE) {
                 shutdownNode(nodeUri);
@@ -74,7 +74,11 @@ public class MaintenanceCoordinatorResource
             return new DrainResponse(false);
         }
 
-        // otherwise, we consider the node down and allow COp to drain this node
+        // By design we should NEVER return true to drain request. What will happen is that the first request will request graceful shutdown in the target and the target node
+        // state will transfer from ACTIVE to SHUTTING_DOWN. When the shutdown is completed, getNodeState() will fail and the exception will propagate to aurora COp.
+        // COp always list active tasks before requesting drain, but there is a race condition which may expose a small window where the task finishes between COp list the
+        // active tasks and maintenance coordinator query the state of the target. COp will treat the exception as a NO, and the next retry should proceed without requesting
+        // maintenance coordinator.
         return new DrainResponse(true);
     }
 
@@ -89,9 +93,6 @@ public class MaintenanceCoordinatorResource
 
         JsonResponse<NodeState> response = httpClient.execute(request, createFullJsonResponseHandler(NODE_STATE_CODEC));
 
-        if (response.getStatusCode() != OK.code() || !response.hasValue()) {
-            return Optional.empty();
-        }
         log.info("Node " + nodeUri + " in state : " + response.getValue());
         return Optional.of(response.getValue());
     }
@@ -106,10 +107,7 @@ public class MaintenanceCoordinatorResource
                 .setBodyGenerator(jsonBodyGenerator(jsonCodec(NodeState.class), NodeState.SHUTTING_DOWN))
                 .build();
 
-        StatusResponseHandler.StatusResponse response = httpClient.execute(request, createStatusResponseHandler());
-        if (response.getStatusCode() != OK.code()) {
-            log.info("failed to shut down node : " + nodeUri);
-        }
+        httpClient.execute(request, createStatusResponseHandler());
     }
 
     // extract the worker node URI from the request body
