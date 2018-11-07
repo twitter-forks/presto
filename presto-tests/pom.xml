@@ -184,7 +184,11 @@
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>http-client</artifactId>
-            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.twitter.presto</groupId>
+            <artifactId>maintenance</artifactId>
         </dependency>
 
         <!-- for testing -->
@@ -198,12 +202,6 @@
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-resource-group-managers</artifactId>
             <type>test-jar</type>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.twitter.presto</groupId>
-            <artifactId>maintenance</artifactId>
             <scope>test</scope>
         </dependency>
 
