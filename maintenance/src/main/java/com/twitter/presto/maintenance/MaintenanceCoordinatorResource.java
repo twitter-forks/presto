@@ -17,7 +17,6 @@ import com.facebook.presto.spi.NodeState;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.inject.Inject;
-import io.airlift.http.client.FullJsonResponseHandler.JsonResponse;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 import io.airlift.json.JsonCodec;
@@ -31,9 +30,9 @@ import java.net.URI;
 import java.util.Optional;
 
 import static com.google.common.net.MediaType.JSON_UTF_8;
-import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonResponseHandler;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static io.airlift.http.client.JsonBodyGenerator.jsonBodyGenerator;
+import static io.airlift.http.client.JsonResponseHandler.createJsonResponseHandler;
 import static io.airlift.http.client.Request.Builder.prepareGet;
 import static io.airlift.http.client.Request.Builder.preparePut;
 import static io.airlift.http.client.StatusResponseHandler.createStatusResponseHandler;
@@ -62,45 +61,40 @@ public class MaintenanceCoordinatorResource
         log.info("Try draining node : " + nodeUri);
 
         // check the state of the target node
-        Optional<NodeState> state = getNodeState(nodeUri);
+        NodeState state = getNodeState(nodeUri);
 
-        if (state.isPresent()) {
-            // if the node is active, we send the shutdown request
-            if (state.get() == NodeState.ACTIVE) {
-                shutdownNode(nodeUri);
-            }
-            return new DrainResponse(false);
+        // if the node is active, we send the shutdown request
+        if (state == NodeState.ACTIVE) {
+            shutdownNode(nodeUri);
         }
+        return new DrainResponse(false);
 
-        // By design we should NEVER return true to drain request. What will happen is that the first request will request graceful shutdown in the target and the target node
+        // We should NEVER return "true" to drain request. What will happen is that the first request will request graceful shutdown in the target and the target node
         // state will transfer from ACTIVE to SHUTTING_DOWN. When the shutdown is completed, getNodeState() will fail and the exception will propagate to aurora COp.
         // COp always list active tasks before requesting drain, but there is a race condition which may expose a small window where the task finishes between COp list the
         // active tasks and maintenance coordinator query the state of the target. COp will treat the exception as a NO, and the next retry should proceed without requesting
         // maintenance coordinator.
-        return new DrainResponse(true);
     }
 
-    private Optional<NodeState> getNodeState(URI nodeUri)
+    private NodeState getNodeState(URI nodeUri)
     {
-        URI stateInfoUri = uriBuilderFrom(nodeUri).appendPath("/v1/info/state").build();
         // synchronously send SHUTTING_DOWN request to worker node
         Request request = prepareGet()
-                .setUri(stateInfoUri)
+                .setUri(getNodeStateUri(nodeUri))
                 .setHeader(CONTENT_TYPE, JSON_UTF_8.toString())
                 .build();
 
-        JsonResponse<NodeState> response = httpClient.execute(request, createFullJsonResponseHandler(NODE_STATE_CODEC));
+        NodeState nodeState = httpClient.execute(request, createJsonResponseHandler(NODE_STATE_CODEC));
 
-        log.info("Node " + nodeUri + " in state : " + response.getValue());
-        return Optional.of(response.getValue());
+        log.info("Node " + nodeUri + " in state : " + nodeState);
+        return nodeState;
     }
 
     private void shutdownNode(URI nodeUri)
     {
         log.info("Shutting down node : " + nodeUri);
-        URI stateInfoUri = uriBuilderFrom(nodeUri).appendPath("/v1/info/state").build();
         Request request = preparePut()
-                .setUri(stateInfoUri)
+                .setUri(getNodeStateUri(nodeUri))
                 .setHeader(CONTENT_TYPE, JSON_UTF_8.toString())
                 .setBodyGenerator(jsonBodyGenerator(jsonCodec(NodeState.class), NodeState.SHUTTING_DOWN))
                 .build();
@@ -123,6 +117,11 @@ public class MaintenanceCoordinatorResource
                 .getJSONObject("assignedPorts")
                 .get("http");
         return URI.create("http://" + hostName + ":" + port);
+    }
+
+    private URI getNodeStateUri(URI nodeUri)
+    {
+        return uriBuilderFrom(nodeUri).appendPath("/v1/info/state").build();
     }
 
     public static class DrainResponse

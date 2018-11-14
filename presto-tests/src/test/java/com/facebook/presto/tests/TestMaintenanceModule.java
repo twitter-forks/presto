@@ -16,6 +16,7 @@ package com.facebook.presto.tests;
 import com.facebook.presto.Session;
 import com.facebook.presto.execution.TaskManager;
 import com.facebook.presto.server.testing.TestingPrestoServer;
+import com.facebook.presto.spi.NodeState;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -44,8 +45,11 @@ import static io.airlift.http.client.FullJsonResponseHandler.createFullJsonRespo
 import static io.airlift.http.client.HttpStatus.INTERNAL_SERVER_ERROR;
 import static io.airlift.http.client.HttpStatus.OK;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
+import static io.airlift.http.client.JsonResponseHandler.createJsonResponseHandler;
+import static io.airlift.http.client.Request.Builder.prepareGet;
 import static io.airlift.http.client.Request.Builder.preparePost;
 import static io.airlift.http.client.StaticBodyGenerator.createStaticBodyGenerator;
+import static io.airlift.json.JsonCodec.jsonCodec;
 import static java.lang.Thread.sleep;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.Executors.newCachedThreadPool;
@@ -58,6 +62,8 @@ public class TestMaintenanceModule
 {
     private static final long SHUTDOWN_TIMEOUT_MILLIS = 240_000;
     private static final JsonCodec<DrainResponse> DRAIN_RESPONSE_CODEC = JsonCodec.jsonCodec(DrainResponse.class);
+    private static final JsonCodec<NodeState> NODE_STATE_CODEC = jsonCodec(NodeState.class);
+
     private static final Session TINY_SESSION = testSessionBuilder()
             .setCatalog("tpch")
             .setSchema("tiny")
@@ -112,6 +118,8 @@ public class TestMaintenanceModule
                 JsonResponse<DrainResponse> response = tryDrain(queryRunner.getCoordinator().getBaseUrl(), worker.getBaseUrl());
                 if (response.getStatusCode() == OK.code()) {
                     assertTrue(response.getValue().getDrain() == false);
+                    // check the remote node state to make sure node is shutting down
+                    assertTrue(getNodeState(worker.getBaseUrl()) == NodeState.SHUTTING_DOWN);
                 }
                 else if (response.getStatusCode() == INTERNAL_SERVER_ERROR.code()) {
                     // 500 code indicates that the node is down and unreachable
@@ -147,5 +155,17 @@ public class TestMaintenanceModule
                 .setBodyGenerator(createStaticBodyGenerator(stringBuilder.toString(), UTF_8))
                 .build();
         return client.execute(request, createFullJsonResponseHandler(DRAIN_RESPONSE_CODEC));
+    }
+
+    private NodeState getNodeState(URI nodeUri)
+    {
+        URI nodeStateUri = uriBuilderFrom(nodeUri).appendPath("/v1/info/state").build();
+        // synchronously send SHUTTING_DOWN request to worker node
+        Request request = prepareGet()
+                .setUri(nodeStateUri)
+                .setHeader(CONTENT_TYPE, JSON_UTF_8.toString())
+                .build();
+
+        return client.execute(request, createJsonResponseHandler(NODE_STATE_CODEC));
     }
 }
