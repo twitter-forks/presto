@@ -21,6 +21,7 @@ env:
     - PRODUCT_TESTS_BASIC_ENVIRONMENT=true
     - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT=true
     - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_2=true
+    - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3=true
     - HIVE_TESTS=true
     - KUDU_TESTS=true
 
@@ -123,12 +124,12 @@ script:
         singlenode-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation
     fi
   - |
-    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
+    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3 ]]; then
       presto-product-tests/bin/run_on_docker.sh \
         singlenode-kerberos-hdfs-impersonation -g storage_formats,cli,hdfs_impersonation,authorization,hive_file_header
     fi
   - |
-    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
+    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3 ]]; then
       presto-product-tests/bin/run_on_docker.sh \
         singlenode-kerberos-hdfs-impersonation-cross-realm -g storage_formats,cli,hdfs_impersonation
     fi
@@ -165,7 +166,7 @@ script:
       presto-product-tests/bin/run_on_docker.sh \
         singlenode-cassandra -g cassandra
     fi
-    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
+    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3 ]]; then
       presto-product-tests/bin/run_on_docker.sh \
         multinode-tls-kerberos -g cli,group-by,join,tls
     fi
