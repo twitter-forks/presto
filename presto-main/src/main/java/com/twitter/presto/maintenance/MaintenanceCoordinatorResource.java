@@ -27,7 +27,6 @@ import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 
 import java.net.URI;
-import java.util.Optional;
 
 import static com.google.common.net.MediaType.JSON_UTF_8;
 import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;

@@ -123,7 +123,6 @@
         <module>presto-proxy</module>
         <module>presto-kudu</module>
         <module>twitter-http-client</module>
-        <module>maintenance</module>
     </modules>
 
     <dependencyManagement>
