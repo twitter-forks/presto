@@ -16,16 +16,20 @@ package com.twitter.presto.maintenance;
 import com.facebook.presto.spi.NodeState;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
-import org.json.JSONObject;
 
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Response;
 
+import java.io.IOException;
 import java.net.URI;
 
 import static com.google.common.net.MediaType.JSON_UTF_8;
@@ -38,13 +42,14 @@ import static io.airlift.http.client.StatusResponseHandler.createStatusResponseH
 import static io.airlift.json.JsonCodec.jsonCodec;
 import static java.util.Objects.requireNonNull;
 import static javax.ws.rs.core.HttpHeaders.CONTENT_TYPE;
+import static javax.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 
 @Path("/canDrain")
 public class MaintenanceCoordinatorResource
 {
     private static final Logger log = Logger.get(MaintenanceCoordinatorResource.class);
     private static final JsonCodec<NodeState> NODE_STATE_CODEC = jsonCodec(NodeState.class);
-
+    private static final ObjectMapper jsonObjectMapper = new ObjectMapper();
     private final HttpClient httpClient;
 
     @Inject
@@ -104,18 +109,30 @@ public class MaintenanceCoordinatorResource
     // extract the worker node URI from the request body
     private URI extractHostUri(String message)
     {
-        JSONObject jsonBody = new JSONObject(message);
-        String hostName = jsonBody
-                .getJSONObject("taskConfig")
-                .getJSONObject("assignedTask")
-                .get("slaveHost")
-                .toString();
-        int port = (Integer) jsonBody
-                .getJSONObject("taskConfig")
-                .getJSONObject("assignedTask")
-                .getJSONObject("assignedPorts")
-                .get("http");
-        return URI.create("http://" + hostName + ":" + port);
+        try {
+            JsonNode jsonRoot = jsonObjectMapper.readTree(message);
+            String hostName = jsonRoot
+                    .get("taskConfig")
+                    .get("assignedTask")
+                    .get("slaveHost")
+                    .asText();
+            int port = jsonRoot
+                    .get("taskConfig")
+                    .get("assignedTask")
+                    .get("assignedPorts")
+                    .get("http")
+                    .asInt();
+            return URI.create("http://" + hostName + ":" + port);
+        }
+        catch (IOException e) {
+            String errorMessage = "Malformed Json body in drain request " + message;
+            log.info(errorMessage);
+            throw new WebApplicationException(
+                    Response.status(Response.Status.BAD_REQUEST)
+                            .type(TEXT_PLAIN_TYPE)
+                            .entity(errorMessage)
+                            .build());
+        }
     }
 
     private URI getNodeStateUri(URI nodeUri)
