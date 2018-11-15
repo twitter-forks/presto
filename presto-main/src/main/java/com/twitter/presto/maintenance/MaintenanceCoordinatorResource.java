@@ -126,7 +126,7 @@ public class MaintenanceCoordinatorResource
         }
         catch (IOException e) {
             String errorMessage = "Malformed Json body in drain request " + message;
-            log.info(errorMessage);
+            log.warn(e, errorMessage);
             throw new WebApplicationException(
                     Response.status(Response.Status.BAD_REQUEST)
                             .type(TEXT_PLAIN_TYPE)

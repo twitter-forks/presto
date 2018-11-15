@@ -412,12 +412,6 @@
             </dependency>
 
             <dependency>
-                <groupId>com.twitter.presto</groupId>
-                <artifactId>maintenance</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-
-            <dependency>
                 <groupId>com.facebook.hive</groupId>
                 <artifactId>hive-dwrf</artifactId>
                 <version>0.8.2</version>
