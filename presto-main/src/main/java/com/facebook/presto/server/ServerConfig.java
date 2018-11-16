@@ -30,6 +30,7 @@ public class ServerConfig
     private boolean includeExceptionInResponse = true;
     private Duration gracePeriod = new Duration(2, MINUTES);
     private boolean enhancedErrorReporting = true;
+    private boolean maintenanceCoordinator;
     private boolean queryResultsCompressionEnabled = true;
 
     public boolean isResourceManager()
@@ -143,6 +144,18 @@ public class ServerConfig
     public ServerConfig setQueryResultsCompressionEnabled(boolean queryResultsCompressionEnabled)
     {
         this.queryResultsCompressionEnabled = queryResultsCompressionEnabled;
+        return this;
+    }
+
+    public boolean isMaintenanceCoordinator()
+    {
+        return maintenanceCoordinator;
+    }
+
+    @Config("maintenance.coordinator")
+    public ServerConfig setMaintenanceCoordinator(boolean maintenanceCoordinator)
+    {
+        this.maintenanceCoordinator = maintenanceCoordinator;
         return this;
     }
 }
