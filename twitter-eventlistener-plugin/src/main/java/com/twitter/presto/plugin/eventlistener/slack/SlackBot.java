@@ -139,7 +139,7 @@ public class SlackBot
         if (!slackUsers.matcher(user).matches()) {
             return;
         }
-        Optional<String> template = notificationTemplates.getText(user, event, state);
+        Optional<String> template = notificationTemplates.getText(user, principal.orElse(DASH), event, state);
         if (!template.isPresent()) {
             return;
         }
