@@ -38,9 +38,10 @@ import static org.testng.Assert.assertEquals;
 public class TestTwitterEventListener
 {
     private static final int SPLITS_PER_NODE = 3;
+    private final TestingTwitterEventHandler handler = new TestingTwitterEventHandler();
+
     private DistributedQueryRunner queryRunner;
     private Session session;
-    private TestingTwitterEventHandler handler = new TestingTwitterEventHandler();
 
     @BeforeClass
     private void setUp()
