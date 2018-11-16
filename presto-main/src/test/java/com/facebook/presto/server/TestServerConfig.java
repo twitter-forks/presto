@@ -35,6 +35,7 @@ public class TestServerConfig
                 .setDataSources(null)
                 .setIncludeExceptionInResponse(true)
                 .setGracePeriod(new Duration(2, MINUTES))
+                .setMaintenanceCoordinator(false)
                 .setEnhancedErrorReporting(true));
     }
 
@@ -48,6 +49,7 @@ public class TestServerConfig
                 .put("http.include-exception-in-response", "false")
                 .put("shutdown.grace-period", "5m")
                 .put("sql.parser.enhanced-error-reporting", "false")
+                .put("maintenance.coordinator", "true")
                 .build();
 
         ServerConfig expected = new ServerConfig()
@@ -56,6 +58,7 @@ public class TestServerConfig
                 .setDataSources("jmx")
                 .setIncludeExceptionInResponse(false)
                 .setGracePeriod(new Duration(5, MINUTES))
+                .setMaintenanceCoordinator(true)
                 .setEnhancedErrorReporting(false);
 
         assertFullMapping(properties, expected);
