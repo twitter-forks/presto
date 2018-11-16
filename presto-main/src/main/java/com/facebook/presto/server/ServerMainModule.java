@@ -149,6 +149,7 @@ import com.google.inject.Binder;
 import com.google.inject.Key;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import com.twitter.presto.maintenance.MaintenanceCoordinatorModule;
 import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
@@ -200,6 +201,9 @@ public class ServerMainModule
 
         if (serverConfig.isCoordinator()) {
             install(new CoordinatorModule());
+            if (serverConfig.isMaintenanceCoordinator()) {
+                install(new MaintenanceCoordinatorModule());
+            }
         }
         else {
             install(new WorkerModule());
