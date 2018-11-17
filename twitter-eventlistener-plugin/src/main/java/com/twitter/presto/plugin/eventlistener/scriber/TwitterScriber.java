@@ -71,7 +71,7 @@ public class TwitterScriber
         return Base64.getEncoder().encodeToString(serializer.get().serialize(thriftMessage));
     }
 
-    private void scribe(String message)
+    protected void scribe(String message)
     {
         LogRecord logRecord = new LogRecord(Level.ALL, message);
         queueingHandler.publish(logRecord);

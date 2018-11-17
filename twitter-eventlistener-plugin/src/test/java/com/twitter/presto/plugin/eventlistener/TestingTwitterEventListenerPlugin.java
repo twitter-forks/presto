@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableSet;
 
 import java.util.Map;
 
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class TestingTwitterEventListenerPlugin
@@ -28,9 +29,9 @@ public class TestingTwitterEventListenerPlugin
 {
     private EventListenerFactory factory;
 
-    public TestingTwitterEventListenerPlugin(TwitterEventHandler handler)
+    public TestingTwitterEventListenerPlugin(TwitterEventHandler... handlers)
     {
-        this.factory = new TestingTwitterEventListenerFactory(requireNonNull(handler, "handler is null"));
+        this.factory = new TestingTwitterEventListenerFactory(requireNonNull(handlers, "handler is null"));
     }
 
     @Override
@@ -42,11 +43,14 @@ public class TestingTwitterEventListenerPlugin
     private class TestingTwitterEventListenerFactory
             implements EventListenerFactory
     {
-        private TwitterEventHandler handler;
+        private TwitterEventHandler[] handlers;
 
-        public TestingTwitterEventListenerFactory(TwitterEventHandler handler)
+        public TestingTwitterEventListenerFactory(TwitterEventHandler... handlers)
         {
-            this.handler = requireNonNull(handler, "handler is null");
+            for (TwitterEventHandler handler : handlers) {
+                requireNonNull(handler, format("handler is null"));
+            }
+            this.handlers = handlers;
         }
 
         @Override
@@ -58,7 +62,7 @@ public class TestingTwitterEventListenerPlugin
         @Override
         public EventListener create(Map<String, String> config)
         {
-            return new TwitterEventListener(ImmutableSet.of(handler));
+            return new TwitterEventListener(ImmutableSet.copyOf(handlers));
         }
     }
 }

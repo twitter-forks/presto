@@ -51,6 +51,11 @@ public class QueryCompletedEventScriber
         this.scriber = new TwitterScriber(config.getScribeCategory());
     }
 
+    public QueryCompletedEventScriber(TwitterScriber scriber)
+    {
+        this.scriber = requireNonNull(scriber, "scriber is null");
+    }
+
     @Override
     public void handleQueryCompleted(QueryCompletedEvent event)
     {
