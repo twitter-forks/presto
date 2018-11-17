@@ -23,6 +23,7 @@ public class SlackNotificationTemplate
 {
     private final String text;
     private final Optional<Pattern> userRegex;
+    private final Optional<Pattern> principalRegex;
     private final Optional<Pattern> eventRegex;
     private final Optional<Pattern> stateRegex;
 
@@ -30,18 +31,21 @@ public class SlackNotificationTemplate
     public SlackNotificationTemplate(
             @JsonProperty("text") String text,
             @JsonProperty("user") Optional<Pattern> userRegex,
+            @JsonProperty("principal") Optional<Pattern> principalRegex,
             @JsonProperty("event") Optional<Pattern> eventRegex,
             @JsonProperty("state") Optional<Pattern> stateRegex)
     {
         this.text = text;
         this.userRegex = userRegex;
+        this.principalRegex = principalRegex;
         this.eventRegex = eventRegex;
         this.stateRegex = stateRegex;
     }
 
-    public Optional<String> match(String user, String event, String state)
+    public Optional<String> match(String user, String principal, String event, String state)
     {
         if (userRegex.map(regex -> regex.matcher(user).matches()).orElse(true) &&
+                principalRegex.map(regex -> regex.matcher(principal).matches()).orElse(true) &&
                 eventRegex.map(regex -> regex.matcher(event).matches()).orElse(true) &&
                 stateRegex.map(regex -> regex.matcher(state).matches()).orElse(true)) {
             return Optional.of(text);

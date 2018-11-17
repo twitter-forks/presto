@@ -36,10 +36,10 @@ public class SlackNotificationTemplates
         return templates;
     }
 
-    public Optional<String> getText(String user, String event, String state)
+    public Optional<String> getText(String user, String principal, String event, String state)
     {
         return templates.stream()
-                .map(template -> template.match(user, event, state))
+                .map(template -> template.match(user, principal, event, state))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .findFirst();
