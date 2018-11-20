@@ -60,7 +60,7 @@ public class TestSlackBot
     private DistributedQueryRunner queryRunner;
     private Session session;
 
-    private SlackResource resource;
+    private TestingSlackResource resource;
     private LifeCycleManager lifeCycleManager;
     private TestingHttpServer server;
 
@@ -73,7 +73,7 @@ public class TestSlackBot
                 new TestingHttpServerModule(),
                 new JsonModule(),
                 new JaxrsModule(true),
-                binder -> jaxrsBinder(binder).bind(SlackResource.class));
+                binder -> jaxrsBinder(binder).bind(TestingSlackResource.class));
 
         Injector injector = app
                 .strictConfig()
@@ -82,7 +82,7 @@ public class TestSlackBot
 
         lifeCycleManager = injector.getInstance(LifeCycleManager.class);
         server = injector.getInstance(TestingHttpServer.class);
-        resource = injector.getInstance(SlackResource.class);
+        resource = injector.getInstance(TestingSlackResource.class);
         resource.initialize(imOpenResponses, chatPostMessageResponses, usersLookupByEmailResponses, imHistoryResponses);
 
         session = testSessionBuilder()
@@ -194,11 +194,15 @@ public class TestSlackBot
         String failureMessage;
         // Run a query with Syntax Error
         try {
-            runQueryAndWaitForEvents(session, "SELECT notexistcolumn FROM lineitem", 1);
+            runQueryAndWaitForEvents(session, "SELECT notexistcolumn FROM lineitem", 8);
             failureMessage = "";
         }
         catch (Exception e) {
             failureMessage = e.getMessage();
+        }
+        finally {
+            // make sure it consumed all slack requests
+            resource.waitForCalls(20);
         }
 
         assertEqualsIgnoreOrder(resource.getUsersLookupByEmailRequests(), ImmutableList.of("user@example.com", "user@example.com"));

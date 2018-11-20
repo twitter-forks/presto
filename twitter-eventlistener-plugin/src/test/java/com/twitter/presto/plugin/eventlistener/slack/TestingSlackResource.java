@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit;
 import static java.util.Objects.requireNonNull;
 
 @Path("/api")
-public class SlackResource
+public class TestingSlackResource
 {
     private Map<String, SlackImOpenResponse> imOpenResponses;
     private Map<Map.Entry<String, String>, SlackChatPostMessageResponse> chatPostMessageResponses;
