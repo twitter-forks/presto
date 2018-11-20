@@ -359,7 +359,7 @@ public class SlackBot
             return mapper.readValue(json, javaType);
         }
         catch (IOException e) {
-            throw new IllegalArgumentException(format("Invalid JSON string for %s", javaType), e);
+            throw new IllegalArgumentException(format("Invalid JSON string [%s] for %s", new String(json), javaType), e);
         }
     }
 

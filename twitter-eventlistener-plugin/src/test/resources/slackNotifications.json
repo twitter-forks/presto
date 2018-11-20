@@ -1,0 +1,18 @@
+{
+  "templates": [
+    {
+      "event": "created",
+      "text": "Hi there, I just started a new query."
+    },
+    {
+      "event": "completed",
+      "state": "FINISHED",
+      "text": "I just completed your query."
+    },
+    {
+      "event": "completed",
+      "state": "FAILED",
+      "text": "Unfortunately, your query was failed due to error: ${FAILURE_MESSAGE}"
+    }
+  ]
+}
