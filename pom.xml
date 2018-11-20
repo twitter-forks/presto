@@ -123,6 +123,8 @@
         <module>presto-proxy</module>
         <module>presto-kudu</module>
         <module>twitter-http-client</module>
+        <module>twitter-eventlistener-plugin</module>
+        <module>presto-twitter-server</module>
     </modules>
 
     <dependencyManagement>
@@ -1297,16 +1299,6 @@
     </build>
 
     <profiles>
-        <profile>
-            <id>twitter-modules</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <modules>
-                <module>twitter-eventlistener-plugin</module>
-                <module>presto-twitter-server</module>
-            </modules>
-        </profile>
         <profile>
             <id>tests-with-dependencies</id>
             <!--

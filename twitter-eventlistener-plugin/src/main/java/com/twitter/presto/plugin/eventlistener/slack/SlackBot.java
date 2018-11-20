@@ -197,17 +197,25 @@ public class SlackBot
                 postMessage.accept(response);
                 return;
             }
+            Optional<Boolean> decision = Optional.empty();
+            Optional<String> decisionTs = Optional.empty();
             for (SlackMessage message : history.getMessages().get()) {
                 Optional<Boolean> result = shouldSend(message, event, principal, state);
                 if (result.isPresent()) {
-                    if (result.get()) {
-                        postMessage.accept(response);
+                    if (!decisionTs.isPresent() || Double.valueOf(decisionTs.get()) < Double.valueOf(message.getTs())) {
+                        decision = result;
+                        decisionTs = Optional.of(message.getTs());
                     }
-                    return;
                 }
                 if (!newLatest.isPresent() || Double.valueOf(newLatest.get()) > Double.valueOf(message.getTs())) {
                     newLatest = Optional.of(message.getTs());
                 }
+            }
+            if (decision.isPresent()) {
+                if (decision.get()) {
+                    postMessage.accept(response);
+                }
+                return;
             }
             if (!history.getHasMore().isPresent() || !history.getHasMore().get()) {
                 postMessage.accept(response);
@@ -359,7 +367,7 @@ public class SlackBot
             return mapper.readValue(json, javaType);
         }
         catch (IOException e) {
-            throw new IllegalArgumentException(format("Invalid JSON string for %s", javaType), e);
+            throw new IllegalArgumentException(format("Invalid JSON string [%s] for %s", new String(json), javaType), e);
         }
     }
 
