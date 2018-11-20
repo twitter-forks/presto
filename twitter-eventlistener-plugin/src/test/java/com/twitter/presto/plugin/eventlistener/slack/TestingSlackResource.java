@@ -96,8 +96,8 @@ public class TestingSlackResource
     @Consumes(MediaType.APPLICATION_JSON)
     public Response ImOpen(SlackImOpenRequest request)
     {
-        numCallsExpected.countDown();
         imOpenRequests.add(request.getUser());
+        numCallsExpected.countDown();
         SlackImOpenResponse response = imOpenResponses.get(request.getUser());
         if (response == null) {
             response = imOpenResponses.get("*");
@@ -113,9 +113,9 @@ public class TestingSlackResource
     @Consumes(MediaType.APPLICATION_JSON)
     public Response ChatPostMessage(SlackChatPostMessageRequest request)
     {
-        numCallsExpected.countDown();
         Map.Entry<String, String> entry = new AbstractMap.SimpleImmutableEntry<>(request.getChannel(), request.getText());
         chatPostMessageRequests.add(entry);
+        numCallsExpected.countDown();
         SlackChatPostMessageResponse response = chatPostMessageResponses.get(entry);
         if (response == null) {
             response = chatPostMessageResponses.get(new AbstractMap.SimpleImmutableEntry<>("*", "*"));
@@ -131,8 +131,8 @@ public class TestingSlackResource
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     public Response UsersLookupByEmail(@FormParam("email") String email)
     {
-        numCallsExpected.countDown();
         usersLookupByEmailRequests.add(email);
+        numCallsExpected.countDown();
         SlackUsersLookupByEmailResponse response = usersLookupByEmailResponses.get(email);
         if (response == null) {
             response = usersLookupByEmailResponses.get("*");
@@ -148,9 +148,9 @@ public class TestingSlackResource
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     public Response ImHistory(@FormParam("channel") String channel, @FormParam("latest") String latest)
     {
-        numCallsExpected.countDown();
         Map.Entry<String, String> entry = new AbstractMap.SimpleImmutableEntry<>(channel, latest);
         imHistoryRequests.add(entry);
+        numCallsExpected.countDown();
         SlackImHistoryResponse response = imHistoryResponses.get(entry);
         if (response == null) {
             response = imHistoryResponses.get(new AbstractMap.SimpleImmutableEntry<>("*", "*"));

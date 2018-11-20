@@ -28,6 +28,7 @@ import io.airlift.http.server.testing.TestingHttpServer;
 import io.airlift.http.server.testing.TestingHttpServerModule;
 import io.airlift.jaxrs.JaxrsModule;
 import io.airlift.json.JsonModule;
+import io.airlift.log.Logger;
 import io.airlift.node.testing.TestingNodeModule;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -48,6 +49,7 @@ import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 @Test(singleThreaded = true)
 public class TestSlackBot
 {
+    private static Logger log = Logger.get(TestSlackBot.class);
     private static final Optional<String> CREATED = Optional.of("Hi there, I just started a new query.");
     private static final Optional<String> FINISHED = Optional.of("I just completed your query.");
     private static final Optional<String> FAILED = Optional.of("Unfortunately, your query was failed due to error: ${FAILURE_MESSAGE}");
