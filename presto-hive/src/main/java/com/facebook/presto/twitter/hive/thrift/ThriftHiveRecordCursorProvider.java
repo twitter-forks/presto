@@ -91,6 +91,9 @@ public class ThriftHiveRecordCursorProvider
         setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.check.only.in.close", Boolean.toString(false));
         setPropertyIfUnset(schema, "elephantbird.mapred.input.bad.record.threshold", Float.toString(0.0f));
 
+        long originalStart = start;
+        long originalLength = length;
+
         // re-align split range
         if (isLzopCompressedFile(path)) {
             LzoIndex index = new LzoIndex();
@@ -120,7 +123,7 @@ public class ThriftHiveRecordCursorProvider
             else {
                 // if index is empty but start is not NOT_FOUND, read the whole file, otherwise align split end.
                 length = index.isEmpty() ? fileSize :
-                        (Math.min(index.alignSliceEndToIndex(start + length, fileSize), fileSize) - start);
+                        (Math.min(index.alignSliceEndToIndex(originalStart + length, fileSize), fileSize) - start);
             }
         }
 
