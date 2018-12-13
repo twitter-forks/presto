@@ -4,6 +4,13 @@ Twitter Functions
 
 These functions provide some convenience functionality commonly used at Twitter.
 
+Map Functions
+-----------------
+
+.. function:: key_of_max_value(map<K,bigint>) -> K
+
+    Get the key of the entry of map that holding max value. If more than one entry holds the same max value, return null.
+
 String Functions
 -----------------
 

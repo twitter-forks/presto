@@ -23,6 +23,7 @@ import org.testng.annotations.Test;
 import static com.facebook.presto.metadata.FunctionExtractor.extractFunctions;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
 import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
@@ -78,5 +79,16 @@ public class TestTwitterFunctions
 
         assertFunction("SEQUENCE_NUM_FROM_SNOWFLAKE(265605588183052288)", BIGINT, 0L);
         assertInvalidFunction("SEQUENCE_NUM_FROM_SNOWFLAKE(1000)", "Not a Snowflake Id: 1000");
+    }
+
+    @Test
+    public void testKeyOfMaxValue()
+    {
+        assertFunction("KEY_OF_MAX_VALUE(MAP(ARRAY['foo', 'bar'], ARRAY[1, 2]))", createVarcharType(3), "bar");
+        assertFunction("KEY_OF_MAX_VALUE(CAST(MAP(ARRAY[100.0, 200.0], ARRAY[1, 2]) AS MAP(DOUBLE, BIGINT)))", DOUBLE, 200.0);
+        assertFunction("KEY_OF_MAX_VALUE(CAST(MAP(ARRAY[100, 200], ARRAY[1, 2]) AS MAP(BIGINT, BIGINT)))", BIGINT, 200L);
+        assertFunction("KEY_OF_MAX_VALUE(CAST(MAP(ARRAY[1, 0], ARRAY[1,2]) AS MAP(BOOLEAN, BIGINT)))", BOOLEAN, false);
+
+        assertFunction("KEY_OF_MAX_VALUE(CAST(MAP(ARRAY[1, 0], ARRAY[2,2]) AS MAP(BOOLEAN, BIGINT)))", BOOLEAN, null);
     }
 }

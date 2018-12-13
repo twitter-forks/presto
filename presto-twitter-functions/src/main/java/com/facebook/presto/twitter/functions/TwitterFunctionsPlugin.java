@@ -26,6 +26,7 @@ public class TwitterFunctionsPlugin
     {
         return ImmutableSet.<Class<?>>builder()
                 .add(TwitterStringFunctions.class)
+                .add(TwitterMapFunctions.class)
                 .add(SnowflakeFunctions.class)
                 .build();
     }
