@@ -28,6 +28,7 @@ public class TwitterEventListenerConfig
     private String slackNotificationTemplateFile;
     private String knowledgeBaseFile;
     private String scribeCategory;
+    private String bqTableFullName;
 
     public String getSlackConfigFile()
     {
@@ -122,6 +123,18 @@ public class TwitterEventListenerConfig
     public TwitterEventListenerConfig setScribeCategory(String scribeCategory)
     {
         this.scribeCategory = scribeCategory;
+        return this;
+    }
+
+    public String getBqTableFullName()
+    {
+        return bqTableFullName;
+    }
+
+    @Config("event-listener.bq-table-full-name")
+    public TwitterEventListenerConfig setBqTableFullName(String bqTableFullName)
+    {
+        this.bqTableFullName = bqTableFullName;
         return this;
     }
 }

@@ -16,6 +16,7 @@ package com.twitter.presto.plugin.eventlistener;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+import com.twitter.presto.plugin.eventlistener.bq.BqStreamer;
 import com.twitter.presto.plugin.eventlistener.scriber.QueryCompletedEventScriber;
 import com.twitter.presto.plugin.eventlistener.slack.SlackBot;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
@@ -38,6 +39,9 @@ public class TwitterEventListenerModule
         }
         if (config.getSlackConfigFile() != null) {
             twitterEventHandlerBinder.addBinding().to(SlackBot.class).in(Scopes.SINGLETON);
+        }
+        if (config.getBqTableFullName() != null) {
+            twitterEventHandlerBinder.addBinding().to(BqStreamer.class).in(Scopes.SINGLETON);
         }
     }
 }
