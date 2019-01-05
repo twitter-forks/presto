@@ -7,11 +7,25 @@
     {
       "event": "completed",
       "state": "FINISHED",
+      "minWallTime": "1h",
+      "text": "The wall time should never reach 1 hour. So we should never see this message in tests."
+    },
+    {
+      "event": "completed",
+      "state": "FINISHED",
+      "minWallTime": "1ms",
       "text": "I just completed your query."
     },
     {
       "event": "completed",
       "state": "FAILED",
+      "errorType": "^(?!USER_ERROR).*$",
+      "text": "This should never reach because we only use USER_ERROR in tests."
+    },
+    {
+      "event": "completed",
+      "state": "FAILED",
+      "errorType": "USER_ERROR",
       "text": "Unfortunately, your query was failed due to error: ${FAILURE_MESSAGE}"
     }
   ]

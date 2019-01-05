@@ -17,6 +17,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public class SlackNotificationTemplates
@@ -36,10 +37,10 @@ public class SlackNotificationTemplates
         return templates;
     }
 
-    public Optional<String> getText(String user, String principal, String event, String state)
+    public Optional<String> getText(String user, String event, String state, Map<String, Optional<String>> fields)
     {
         return templates.stream()
-                .map(template -> template.match(user, principal, event, state))
+                .map(template -> template.match(user, event, state, fields))
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .findFirst();
