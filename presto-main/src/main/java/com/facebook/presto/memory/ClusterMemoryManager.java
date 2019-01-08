@@ -348,7 +348,7 @@ public class ClusterMemoryManager
     public synchronized boolean preAllocateQueryMemory(QueryId queryId, long requiredBytes)
     {
         if (requiredBytes > maxQueryMemory.toBytes()) {
-            throw new PrestoException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Cannot pre-allocate user memory, exceeds maximum limit %s", maxQueryMemory));
+            throw new PrestoException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Cannot pre-allocate user memory, exceeds maximum limit %s. Please use Hive for running this query. You can check go/hive-users for details on how to use Hive", maxQueryMemory));
         }
 
         ClusterMemoryPool generalPool = pools.get(GENERAL_POOL);

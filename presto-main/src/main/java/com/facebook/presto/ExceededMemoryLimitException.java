@@ -26,12 +26,12 @@ public class ExceededMemoryLimitException
 {
     public static ExceededMemoryLimitException exceededGlobalUserLimit(DataSize maxMemory)
     {
-        return new ExceededMemoryLimitException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Query exceeded distributed user memory limit of %s", maxMemory));
+        return new ExceededMemoryLimitException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Query exceeded distributed user memory limit of %s. Please use Hive for running this query. You can check go/hive-users for details on how to use Hive.", maxMemory));
     }
 
     public static ExceededMemoryLimitException exceededGlobalTotalLimit(DataSize maxMemory)
     {
-        return new ExceededMemoryLimitException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Query exceeded distributed total memory limit of %s", maxMemory));
+        return new ExceededMemoryLimitException(EXCEEDED_GLOBAL_MEMORY_LIMIT, format("Query exceeded distributed total memory limit of %s. Please use Hive for running this query. You can check go/hive-users for details on how to use Hive", maxMemory));
     }
 
     public static ExceededMemoryLimitException exceededLocalUserMemoryLimit(DataSize maxMemory)
