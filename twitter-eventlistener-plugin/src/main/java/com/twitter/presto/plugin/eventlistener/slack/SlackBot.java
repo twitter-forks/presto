@@ -13,6 +13,7 @@
  */
 package com.twitter.presto.plugin.eventlistener.slack;
 
+import com.facebook.presto.spi.ErrorType;
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryCreatedEvent;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -23,6 +24,7 @@ import com.twitter.presto.plugin.eventlistener.TwitterEventListenerConfig;
 import com.twitter.presto.plugin.eventlistener.knowledge.KnowledgeBases;
 import io.airlift.json.ObjectMapperProvider;
 import io.airlift.log.Logger;
+import io.airlift.units.Duration;
 import okhttp3.Authenticator;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -43,6 +45,8 @@ import java.net.Proxy;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -61,10 +65,10 @@ public class SlackBot
     private static final MediaType JSON_CONTENT_TYPE = MediaType.parse("Content-type: application/json; charset=utf-8");
     private static final String USER = "\\$\\{USER}";
     private static final String QUERY_ID = "\\$\\{QUERY_ID}";
-    private static final String PRINCIPAL = "\\$\\{PRINCIPAL}";
     private static final String STATE = "\\$\\{STATE}";
-    private static final String FAILURE_MESSAGE = "\\$\\{FAILURE_MESSAGE}";
-    private static final String FAILURE_TREATMENT = "\\$\\{FAILURE_TREATMENT}";
+    public static final String PRINCIPAL = "\\$\\{PRINCIPAL}";
+    public static final String FAILURE_MESSAGE = "\\$\\{FAILURE_MESSAGE}";
+    public static final String FAILURE_TREATMENT = "\\$\\{FAILURE_TREATMENT}";
     private static final String DASH = "-";
     private static final String CREATED = "created";
     private static final String COMPLETED = "completed";
@@ -120,6 +124,8 @@ public class SlackBot
                 queryCreatedEvent.getMetadata().getQueryId(),
                 queryCreatedEvent.getContext().getPrincipal(),
                 queryCreatedEvent.getMetadata().getQueryState(),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -131,19 +137,27 @@ public class SlackBot
                 queryCompletedEvent.getMetadata().getQueryId(),
                 queryCompletedEvent.getContext().getPrincipal(),
                 queryCompletedEvent.getMetadata().getQueryState(),
-                queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getFailureMessage().orElse("unknown")));
+                queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getFailureMessage().orElse("unknown")),
+                Optional.of(Duration.succinctNanos(queryCompletedEvent.getStatistics().getWallTime().toNanos())),
+                queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getErrorCode().getType()));
     }
 
-    private void handleSlackNotification(String event, String user, String queryId, Optional<String> principal, String state, Optional<String> failureMessage)
+    private void handleSlackNotification(String event, String user, String queryId, Optional<String> principal, String state, Optional<String> failureMessage, Optional<Duration> wallTime, Optional<ErrorType> errorType)
     {
         if (!slackUsers.matcher(user).matches()) {
             return;
         }
-        Optional<String> template = notificationTemplates.getText(user, principal.orElse(DASH), event, state);
+        Optional<String> treatment = failureMessage.map(message -> knowledgeBases.map(knowledge -> knowledge.getTreatment(message).orElse(DASH)).orElse(DASH));
+        Map<String, Optional<String>> fields = new HashMap<>();
+        fields.put("principal", principal);
+        fields.put("failure_message", failureMessage);
+        fields.put("failure_treatment", treatment);
+        fields.put("wall_time", wallTime.map(Duration::toString));
+        fields.put("error_type", errorType.map(ErrorType::toString));
+        Optional<String> template = notificationTemplates.getText(user, event, state, fields);
         if (!template.isPresent()) {
             return;
         }
-        Optional<String> treatment = failureMessage.map(message -> knowledgeBases.map(knowledge -> knowledge.getTreatment(message).orElse(DASH)).orElse(DASH));
         try {
             String email = emailTemplate.replaceAll(USER, user);
             String text = template.get()
