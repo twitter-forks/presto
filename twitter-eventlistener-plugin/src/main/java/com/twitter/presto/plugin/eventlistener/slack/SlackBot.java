@@ -48,6 +48,7 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -138,7 +139,7 @@ public class SlackBot
                 queryCompletedEvent.getContext().getPrincipal(),
                 queryCompletedEvent.getMetadata().getQueryState(),
                 queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getFailureMessage().orElse("unknown")),
-                Optional.of(Duration.succinctNanos(queryCompletedEvent.getStatistics().getWallTime().toNanos())),
+                Optional.of(Duration.succinctDuration(queryCompletedEvent.getEndTime().toEpochMilli() - queryCompletedEvent.getCreateTime().toEpochMilli(), TimeUnit.MILLISECONDS)),
                 queryCompletedEvent.getFailureInfo().map(queryFailureInfo -> queryFailureInfo.getErrorCode().getType()));
     }
 
