@@ -125,6 +125,7 @@
         <module>twitter-http-client</module>
         <module>twitter-eventlistener-plugin</module>
         <module>presto-twitter-server</module>
+        <module>presto-twitter-server-rpm</module>
     </modules>
 
     <dependencyManagement>
