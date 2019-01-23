@@ -91,7 +91,7 @@ public class KerberosAuthenticator
     public void shutdown()
     {
         try {
-            getSession().getLoginContext().logout();
+            getSession(false).getLoginContext().logout();
         }
         catch (LoginException | GSSException e) {
             throw new RuntimeException(e);
@@ -132,7 +132,7 @@ public class KerberosAuthenticator
     private Optional<Principal> authenticate(String token)
     {
         try {
-            Session session = getSession();
+            Session session = getSession(false);
             LOG.debug("session remaining lift time: %d seconds", session.getRemainingLifetime());
             GSSContext context = doAs(session.getLoginContext().getSubject(), () -> gssManager.createContext(session.getServerCredential()));
 
@@ -150,6 +150,11 @@ public class KerberosAuthenticator
             catch (GSSException e) {
                 // ignore and fail the authentication
                 LOG.debug(e, "Authentication failed for token %s", token);
+                // try force session refresh for certain conditions
+                if (session.getAge() > MIN_CREDENTIAL_LIFE_TIME.getValue(TimeUnit.SECONDS)
+                        && e.getMessage().contains("Cannot find key of appropriate type")) {
+                    getSession(true);
+                }
             }
             finally {
                 try {
@@ -168,10 +173,10 @@ public class KerberosAuthenticator
         return Optional.empty();
     }
 
-    private synchronized Session getSession()
+    private synchronized Session getSession(boolean isForceRefresh)
             throws LoginException, GSSException
     {
-        if (serverSession == null || serverSession.getRemainingLifetime() < MIN_CREDENTIAL_LIFE_TIME.getValue(TimeUnit.SECONDS)) {
+        if (isForceRefresh || serverSession == null || serverSession.getRemainingLifetime() < MIN_CREDENTIAL_LIFE_TIME.getValue(TimeUnit.SECONDS)) {
             // TODO: do we need to call logout() on the LoginContext?
 
             LoginContext loginContext = new LoginContext("", null, null, new Configuration()
@@ -235,6 +240,7 @@ public class KerberosAuthenticator
     {
         private final LoginContext loginContext;
         private final GSSCredential serverCredential;
+        private final DateTime createdTime;
         private final DateTime expiredTime;
 
         public Session(LoginContext loginContext, GSSCredential serverCredential, int lifetime)
@@ -244,7 +250,8 @@ public class KerberosAuthenticator
 
             this.loginContext = loginContext;
             this.serverCredential = serverCredential;
-            this.expiredTime = DateTime.now().plusSeconds(lifetime);
+            this.createdTime = DateTime.now();
+            this.expiredTime = createdTime.plusSeconds(lifetime);
         }
 
         public LoginContext getLoginContext()
@@ -255,6 +262,11 @@ public class KerberosAuthenticator
         public GSSCredential getServerCredential()
         {
             return serverCredential;
+        }
+
+        public int getAge()
+        {
+            return (int) Duration.succinctDuration(DateTime.now().getMillis() - createdTime.getMillis(), TimeUnit.MILLISECONDS).getValue(TimeUnit.SECONDS);
         }
 
         public int getRemainingLifetime()
