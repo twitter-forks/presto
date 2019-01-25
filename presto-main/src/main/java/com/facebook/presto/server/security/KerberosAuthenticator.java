@@ -64,9 +64,8 @@ public class KerberosAuthenticator
         System.setProperty("java.security.krb5.conf", config.getKerberosConfig().getAbsolutePath());
 
         try {
-            boolean isCompleteServicePrinciple = config.getServiceName().contains("@");
             String hostname = InetAddress.getLocalHost().getCanonicalHostName().toLowerCase(Locale.US);
-            String servicePrincipal = isCompleteServicePrinciple ? config.getServiceName() : config.getServiceName() + "/" + hostname;
+            String servicePrincipal = config.getServiceName() + "/" + hostname;
             loginContext = new LoginContext("", null, null, new Configuration()
             {
                 @Override
@@ -92,7 +91,7 @@ public class KerberosAuthenticator
             loginContext.login();
 
             serverCredential = doAs(loginContext.getSubject(), () -> gssManager.createCredential(
-                    isCompleteServicePrinciple ? gssManager.createName(config.getServiceName(), GSSName.NT_USER_NAME) : gssManager.createName(config.getServiceName() + "@" + hostname, GSSName.NT_HOSTBASED_SERVICE),
+                    gssManager.createName(config.getServiceName() + "@" + hostname, GSSName.NT_HOSTBASED_SERVICE),
                     INDEFINITE_LIFETIME,
                     new Oid[] {
                             new Oid("1.2.840.113554.1.2.2"), // kerberos 5
