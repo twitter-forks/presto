@@ -34,6 +34,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_SOURCE;
 import static com.google.common.io.ByteStreams.copy;
 import static com.google.common.io.ByteStreams.nullOutputStream;
 import static com.google.common.net.HttpHeaders.WWW_AUTHENTICATE;
@@ -43,16 +44,17 @@ import static javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED;
 public class AuthenticationFilter
         implements Filter
 {
+    private static final String statementGetPathRegex = "\\/v1\\/statement\\/\\d{8}_\\d{6}_\\d{5}_\\w{5}\\/\\d+";
     private final List<Authenticator> authenticators;
     private final String httpAuthenticationPathRegex;
-    private final boolean allowByPass;
+    private final String statementSourceByPassRegex;
 
     @Inject
     public AuthenticationFilter(Set<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableList.copyOf(authenticators);
         this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
-        this.allowByPass = securityConfig.getAllowByPass();
+        this.statementSourceByPassRegex = requireNonNull(securityConfig.getStatementSourceByPassRegex(), "statementSourceByPassRegex is null");
     }
 
     @Override
@@ -97,7 +99,8 @@ public class AuthenticationFilter
         }
 
         // if authentication by pass allowed.
-        if (allowByPass) {
+        if ((request.getMethod().matches("GET") && request.getPathInfo().matches(statementGetPathRegex))
+                || ((request.getHeader(PRESTO_SOURCE) != null && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex)))) {
             nextFilter.doFilter(request, response);
             return;
         }
