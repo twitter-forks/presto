@@ -27,6 +27,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableSet;
+import io.airlift.units.DataSize;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -54,6 +55,7 @@ import java.util.Set;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CANNOT_OPEN_SPLIT;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_MISSING_DATA;
+import static com.facebook.presto.hive.HiveSessionProperties.getParquetMaxReadBlockSize;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetOptimizedReaderEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isParquetPredicatePushdownEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isUseParquetColumnNames;
@@ -123,6 +125,7 @@ public class ParquetPageSourceFactory
                 schema,
                 columns,
                 isUseParquetColumnNames(session),
+                getParquetMaxReadBlockSize(session),
                 typeManager,
                 isParquetPredicatePushdownEnabled(session),
                 effectivePredicate,
@@ -140,6 +143,7 @@ public class ParquetPageSourceFactory
             Properties schema,
             List<HiveColumnHandle> columns,
             boolean useParquetColumnNames,
+            DataSize maxReadBlockSize,
             TypeManager typeManager,
             boolean predicatePushdownEnabled,
             TupleDomain<HiveColumnHandle> effectivePredicate,
@@ -186,7 +190,8 @@ public class ParquetPageSourceFactory
                     messageColumnIO,
                     blocks,
                     dataSource,
-                    systemMemoryContext);
+                    systemMemoryContext,
+                    maxReadBlockSize);
 
             return new ParquetPageSource(
                     parquetReader,
