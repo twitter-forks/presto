@@ -1530,7 +1530,6 @@ public abstract class AbstractTestParquetReader
         tester.testMaxReadBytes(getStandardMapObjectInspector(javaStringObjectInspector, javaLongObjectInspector), values, values, mapType(VARCHAR, BIGINT), maxReadBlockSize);
     }
 
-
     private static <T> Iterable<T> repeatEach(int n, Iterable<T> iterable)
     {
         return () -> new AbstractIterator<T>()
