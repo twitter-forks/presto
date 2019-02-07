@@ -99,6 +99,7 @@ public class HiveClientConfig
     private boolean useParquetColumnNames;
     private boolean parquetOptimizedReaderEnabled = true;
     private boolean parquetPredicatePushdownEnabled = true;
+    private DataSize parquetMaxReadBlockSize = new DataSize(16, MEGABYTE);
 
     private boolean assumeCanonicalPartitionKeys;
 
@@ -690,6 +691,19 @@ public class HiveClientConfig
     public HiveClientConfig setParquetOptimizedReaderEnabled(boolean parquetOptimizedReaderEnabled)
     {
         this.parquetOptimizedReaderEnabled = parquetOptimizedReaderEnabled;
+        return this;
+    }
+
+    @NotNull
+    public DataSize getParquetMaxReadBlockSize()
+    {
+        return parquetMaxReadBlockSize;
+    }
+
+    @Config("hive.parquet.max-read-block-size")
+    public HiveClientConfig setParquetMaxReadBlockSize(DataSize parquetMaxReadBlockSize)
+    {
+        this.parquetMaxReadBlockSize = parquetMaxReadBlockSize;
         return this;
     }
 
