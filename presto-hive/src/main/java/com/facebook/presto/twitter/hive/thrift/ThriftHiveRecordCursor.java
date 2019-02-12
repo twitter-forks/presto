@@ -14,6 +14,7 @@
 package com.facebook.presto.twitter.hive.thrift;
 
 import com.facebook.presto.hive.HiveColumnHandle;
+import com.facebook.presto.hive.HiveErrorCode;
 import com.facebook.presto.hive.HiveType;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.RecordCursor;
@@ -466,6 +467,22 @@ class ThriftHiveRecordCursor<K, V extends Writable>
     private void parseColumn(int column)
     {
         Type type = types[column];
+        try {
+            parseColumn(column, type);
+        }
+        catch (ClassCastException cause) {
+            Object rawValue = rowData.getFieldValueForThriftId(thriftIds[column]);
+            String actualTypeName = rawValue.getClass().getTypeName();
+            throw new PrestoException(
+                HiveErrorCode.HIVE_BAD_DATA,
+                String.format("Schema mismatched on column %d: expected type is %s, but actual type is %s, value is %s",
+                    column, type.getDisplayName(), actualTypeName, rawValue),
+                cause);
+        }
+    }
+
+    private void parseColumn(int column, Type type)
+    {
         if (BOOLEAN.equals(type)) {
             parseBooleanColumn(column);
         }
