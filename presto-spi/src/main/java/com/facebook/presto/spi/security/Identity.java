@@ -14,25 +14,39 @@
 package com.facebook.presto.spi.security;
 
 import java.security.Principal;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
+import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 
 public class Identity
 {
     private final String user;
     private final Optional<Principal> principal;
+    private final Map<String, String> extraCredentials;
 
     public Identity(String user, Optional<Principal> principal)
     {
+        this(user, principal, emptyMap());
+    }
+
+    public Identity(String user, Optional<Principal> principal, Map<String, String> extraCredentials)
+    {
         this.user = requireNonNull(user, "user is null");
         this.principal = requireNonNull(principal, "principal is null");
+        this.extraCredentials = requireNonNull(extraCredentials, "extraCredentials is null");
     }
 
     public String getUser()
     {
         return user;
+    }
+
+    public Map<String, String> getExtraCredentials()
+    {
+        return extraCredentials;
     }
 
     public Optional<Principal> getPrincipal()
