@@ -16,6 +16,7 @@ package com.facebook.presto.jdbc;
 import com.facebook.presto.client.ClientSession;
 import com.facebook.presto.client.ServerInfo;
 import com.facebook.presto.client.StatementClient;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -83,6 +84,7 @@ public class PrestoConnection
     private final URI jdbcUri;
     private final URI httpUri;
     private final String user;
+    private final Map<String, String> extraCredentials;
     private final Optional<String> applicationNamePrefix;
     private final Map<String, String> clientInfo = new ConcurrentHashMap<>();
     private final Map<String, String> sessionProperties = new ConcurrentHashMap<>();
@@ -100,6 +102,7 @@ public class PrestoConnection
         this.catalog.set(uri.getCatalog());
         this.user = uri.getUser();
         this.applicationNamePrefix = uri.getApplicationNamePrefix();
+        this.extraCredentials = uri.getExtraCredentials();
 
         this.queryExecutor = requireNonNull(queryExecutor, "queryExecutor is null");
 
@@ -608,6 +611,12 @@ public class PrestoConnection
         return user;
     }
 
+    @VisibleForTesting
+    Map<String, String> getExtraCredentials()
+    {
+        return ImmutableMap.copyOf(extraCredentials);
+    }
+
     ServerInfo getServerInfo()
             throws SQLException
     {
@@ -676,7 +685,7 @@ public class PrestoConnection
                 ImmutableMap.of(),
                 ImmutableMap.copyOf(allProperties),
                 ImmutableMap.copyOf(preparedStatements),
-                ImmutableMap.of(),
+                extraCredentials,
                 transactionId.get(),
                 timeout);
 
