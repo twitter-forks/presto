@@ -16,6 +16,8 @@ package com.facebook.presto.hive;
 import com.facebook.presto.PagesIndexPageSorter;
 import com.facebook.presto.block.BlockEncodingManager;
 import com.facebook.presto.hive.authentication.NoHdfsAuthentication;
+import com.facebook.presto.hive.gcs.GoogleGcsConfigurationInitializer;
+import com.facebook.presto.hive.gcs.HiveGcsConfig;
 import com.facebook.presto.hive.orc.DwrfPageSourceFactory;
 import com.facebook.presto.hive.orc.OrcPageSourceFactory;
 import com.facebook.presto.hive.parquet.ParquetPageSourceFactory;
@@ -113,7 +115,12 @@ public final class HiveTestUtils
 
     public static HdfsEnvironment createTestHdfsEnvironment(HiveClientConfig config)
     {
-        HdfsConfiguration hdfsConfig = new HiveHdfsConfiguration(new HdfsConfigurationInitializer(config, new PrestoS3ConfigurationUpdater(new HiveS3Config())), ImmutableSet.of());
+        HdfsConfiguration hdfsConfig = new HiveHdfsConfiguration(
+                new HdfsConfigurationInitializer(
+                        config,
+                        new PrestoS3ConfigurationUpdater(new HiveS3Config()),
+                        new GoogleGcsConfigurationInitializer(new HiveGcsConfig())),
+                ImmutableSet.of());
         return new HdfsEnvironment(hdfsConfig, config, new NoHdfsAuthentication());
     }
 

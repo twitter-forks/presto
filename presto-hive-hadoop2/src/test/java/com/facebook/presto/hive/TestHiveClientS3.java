@@ -60,7 +60,7 @@ public class TestHiveClientS3
         S3ConfigurationUpdater s3Config = new PrestoS3ConfigurationUpdater(new HiveS3Config()
                 .setS3AwsAccessKey(awsAccessKey)
                 .setS3AwsSecretKey(awsSecretKey));
-        return new HiveHdfsConfiguration(new HdfsConfigurationInitializer(config, s3Config), emptySet());
+        return new HiveHdfsConfiguration(new HdfsConfigurationInitializer(config, s3Config, ignored -> {}), emptySet());
     }
 
     @Override
