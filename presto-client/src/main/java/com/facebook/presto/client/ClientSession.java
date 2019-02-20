@@ -47,6 +47,7 @@ public class ClientSession
     private final Map<String, String> resourceEstimates;
     private final Map<String, String> properties;
     private final Map<String, String> preparedStatements;
+    private final Map<String, String> extraCredentials;
     private final String transactionId;
     private final Duration clientRequestTimeout;
 
@@ -77,6 +78,7 @@ public class ClientSession
             Map<String, String> resourceEstimates,
             Map<String, String> properties,
             Map<String, String> preparedStatements,
+            Map<String, String> extraCredentials,
             String transactionId,
             Duration clientRequestTimeout)
     {
@@ -95,6 +97,7 @@ public class ClientSession
         this.resourceEstimates = ImmutableMap.copyOf(requireNonNull(resourceEstimates, "resourceEstimates is null"));
         this.properties = ImmutableMap.copyOf(requireNonNull(properties, "properties is null"));
         this.preparedStatements = ImmutableMap.copyOf(requireNonNull(preparedStatements, "preparedStatements is null"));
+        this.extraCredentials = ImmutableMap.copyOf(requireNonNull(extraCredentials, "extraCredentials is null"));
         this.clientRequestTimeout = clientRequestTimeout;
 
         for (String clientTag : clientTags) {
@@ -115,6 +118,14 @@ public class ClientSession
             checkArgument(entry.getKey().indexOf('=') < 0, "Session property name must not contain '=': %s", entry.getKey());
             checkArgument(charsetEncoder.canEncode(entry.getKey()), "Session property name is not US_ASCII: %s", entry.getKey());
             checkArgument(charsetEncoder.canEncode(entry.getValue()), "Session property value is not US_ASCII: %s", entry.getValue());
+        }
+
+        // verify the extra credentials are valid
+        for (Entry<String, String> entry : extraCredentials.entrySet()) {
+            checkArgument(!entry.getKey().isEmpty(), "Credential name is empty");
+            checkArgument(entry.getKey().indexOf('=') < 0, "Credential name must not contain '=': %s", entry.getKey());
+            checkArgument(charsetEncoder.canEncode(entry.getKey()), "Credential name is not US_ASCII: %s", entry.getKey());
+            checkArgument(charsetEncoder.canEncode(entry.getValue()), "Credential value is not US_ASCII: %s", entry.getValue());
         }
     }
 
@@ -188,6 +199,11 @@ public class ClientSession
         return preparedStatements;
     }
 
+    public Map<String, String> getExtraCredentials()
+    {
+        return extraCredentials;
+    }
+
     public String getTransactionId()
     {
         return transactionId;
@@ -239,6 +255,7 @@ public class ClientSession
         private Map<String, String> resourceEstimates;
         private Map<String, String> properties;
         private Map<String, String> preparedStatements;
+        private Map<String, String> credentials;
         private String transactionId;
         private Duration clientRequestTimeout;
 
@@ -259,6 +276,7 @@ public class ClientSession
             resourceEstimates = clientSession.getResourceEstimates();
             properties = clientSession.getProperties();
             preparedStatements = clientSession.getPreparedStatements();
+            credentials = clientSession.getExtraCredentials();
             transactionId = clientSession.getTransactionId();
             clientRequestTimeout = clientSession.getClientRequestTimeout();
         }
@@ -284,6 +302,12 @@ public class ClientSession
         public Builder withProperties(Map<String, String> properties)
         {
             this.properties = requireNonNull(properties, "properties is null");
+            return this;
+        }
+
+        public Builder withCredentials(Map<String, String> credentials)
+        {
+            this.credentials = requireNonNull(credentials, "extraCredentials is null");
             return this;
         }
 
@@ -322,6 +346,7 @@ public class ClientSession
                     resourceEstimates,
                     properties,
                     preparedStatements,
+                    credentials,
                     transactionId,
                     clientRequestTimeout);
         }
