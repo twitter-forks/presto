@@ -50,7 +50,7 @@ import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.COMPRESSRESULT;
 import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.HIVE_ORC_DEFAULT_COMPRESS;
 import static org.apache.hadoop.io.SequenceFile.CompressionType.BLOCK;
 
-public class HdfsConfigurationUpdater
+public class HdfsConfigurationInitializer
 {
     private final HostAndPort socksProxy;
     private final Duration ipcPingInterval;
@@ -65,13 +65,13 @@ public class HdfsConfigurationUpdater
     private final boolean isHdfsWireEncryptionEnabled;
 
     @VisibleForTesting
-    public HdfsConfigurationUpdater(HiveClientConfig config)
+    public HdfsConfigurationInitializer(HiveClientConfig config)
     {
         this(config, ignored -> {});
     }
 
     @Inject
-    public HdfsConfigurationUpdater(HiveClientConfig config, S3ConfigurationUpdater s3ConfigurationUpdater)
+    public HdfsConfigurationInitializer(HiveClientConfig config, S3ConfigurationUpdater s3ConfigurationUpdater)
     {
         requireNonNull(config, "config is null");
         checkArgument(config.getDfsTimeout().toMillis() >= 1, "dfsTimeout must be at least 1 ms");
