@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.hive.authentication;
 
-import com.facebook.presto.hive.HdfsConfigurationUpdater;
+import com.facebook.presto.hive.HdfsConfigurationInitializer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 
@@ -28,7 +28,7 @@ public class KerberosHadoopAuthentication
 {
     private final KerberosAuthentication kerberosAuthentication;
 
-    public static KerberosHadoopAuthentication createKerberosHadoopAuthentication(KerberosAuthentication kerberosAuthentication, HdfsConfigurationUpdater updater)
+    public static KerberosHadoopAuthentication createKerberosHadoopAuthentication(KerberosAuthentication kerberosAuthentication, HdfsConfigurationInitializer updater)
     {
         Configuration configuration = getInitialConfiguration();
         updater.updateConfiguration(configuration);
