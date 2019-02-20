@@ -22,6 +22,7 @@ import org.testng.annotations.Parameters;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.lang.String.format;
+import static java.util.Collections.emptySet;
 import static org.testng.util.Strings.isNullOrEmpty;
 
 public class TestHiveClientS3
@@ -59,7 +60,7 @@ public class TestHiveClientS3
         S3ConfigurationUpdater s3Config = new PrestoS3ConfigurationUpdater(new HiveS3Config()
                 .setS3AwsAccessKey(awsAccessKey)
                 .setS3AwsSecretKey(awsSecretKey));
-        return new HiveHdfsConfiguration(new HdfsConfigurationUpdater(config, s3Config));
+        return new HiveHdfsConfiguration(new HdfsConfigurationUpdater(config, s3Config), emptySet());
     }
 
     @Override
