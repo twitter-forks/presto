@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.hive.gcs.GcsConfigurationInitializer;
 import com.facebook.presto.hive.s3.S3ConfigurationUpdater;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -62,16 +63,17 @@ public class HdfsConfigurationInitializer
     private final HiveCompressionCodec compressionCodec;
     private final int fileSystemMaxCacheSize;
     private final S3ConfigurationUpdater s3ConfigurationUpdater;
+    private final GcsConfigurationInitializer gcsConfigurationInitialize;
     private final boolean isHdfsWireEncryptionEnabled;
 
     @VisibleForTesting
     public HdfsConfigurationInitializer(HiveClientConfig config)
     {
-        this(config, ignored -> {});
+        this(config, ignored -> {}, ignored -> {});
     }
 
     @Inject
-    public HdfsConfigurationInitializer(HiveClientConfig config, S3ConfigurationUpdater s3ConfigurationUpdater)
+    public HdfsConfigurationInitializer(HiveClientConfig config, S3ConfigurationUpdater s3ConfigurationUpdater, GcsConfigurationInitializer gcsConfigurationInitialize)
     {
         requireNonNull(config, "config is null");
         checkArgument(config.getDfsTimeout().toMillis() >= 1, "dfsTimeout must be at least 1 ms");
@@ -88,6 +90,7 @@ public class HdfsConfigurationInitializer
         this.isHdfsWireEncryptionEnabled = config.isHdfsWireEncryptionEnabled();
 
         this.s3ConfigurationUpdater = requireNonNull(s3ConfigurationUpdater, "s3ConfigurationUpdater is null");
+        this.gcsConfigurationInitialize = requireNonNull(gcsConfigurationInitialize, "gcsConfigurationInitialize is null");
     }
 
     private static Configuration readConfiguration(List<String> resourcePaths)
@@ -139,6 +142,7 @@ public class HdfsConfigurationInitializer
         configureCompression(config, compressionCodec);
 
         s3ConfigurationUpdater.updateConfiguration(config);
+        gcsConfigurationInitialize.updateConfiguration(config);
     }
 
     public static void configureCompression(Configuration config, HiveCompressionCodec compressionCodec)
