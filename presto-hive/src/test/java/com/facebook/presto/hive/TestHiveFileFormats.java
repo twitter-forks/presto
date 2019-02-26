@@ -536,7 +536,7 @@ public class TestHiveFileFormats
 
         File file = new File(this.getClass().getClassLoader().getResource("addressbook.thrift.lzo").getPath());
         FileSplit split = new FileSplit(new Path(file.getAbsolutePath()), 0, file.length(), new String[0]);
-        HiveRecordCursorProvider cursorProvider = new ThriftHiveRecordCursorProvider(HDFS_ENVIRONMENT, new HiveThriftFieldIdResolverFactory());
+        HiveRecordCursorProvider cursorProvider = new ThriftHiveRecordCursorProvider(HDFS_ENVIRONMENT, new HiveThriftFieldIdResolverFactory(), new HiveClientConfig());
         testCursorProvider(cursorProvider, split, THRIFTBINARY, testColumns, SESSION, 1);
     }
 
