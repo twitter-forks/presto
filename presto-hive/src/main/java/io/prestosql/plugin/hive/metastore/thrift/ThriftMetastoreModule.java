@@ -16,6 +16,8 @@ package io.prestosql.plugin.hive.metastore.thrift;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+import com.twitter.presto.hive.ZookeeperMetastoreLocator;
+import com.twitter.presto.hive.ZookeeperServersetMetastoreConfig;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.prestosql.plugin.hive.ForCachingHiveMetastore;
 import io.prestosql.plugin.hive.ForRecordingHiveMetastore;
@@ -27,6 +29,7 @@ import io.prestosql.plugin.hive.metastore.WriteHiveMetastoreRecordingProcedure;
 import io.prestosql.spi.procedure.Procedure;
 
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
+import static io.airlift.configuration.ConditionalModule.installModuleIf;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
@@ -37,8 +40,7 @@ public class ThriftMetastoreModule
     protected void setup(Binder binder)
     {
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
-        binder.bind(MetastoreLocator.class).to(StaticMetastoreLocator.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(StaticMetastoreConfig.class);
+        setupMetastoreLocator();
         configBinder(binder).bindConfig(ThriftHiveMetastoreConfig.class);
 
         binder.bind(ThriftMetastore.class).to(ThriftHiveMetastore.class).in(Scopes.SINGLETON);
@@ -70,5 +72,23 @@ public class ThriftMetastoreModule
                 .as(generator -> generator.generatedNameOf(ThriftHiveMetastore.class));
         newExporter(binder).export(HiveMetastore.class)
                 .as(generator -> generator.generatedNameOf(CachingHiveMetastore.class));
+    }
+
+    private void setupMetastoreLocator()
+    {
+        install(installModuleIf(
+                ZookeeperServersetMetastoreConfig.class,
+                serversetMetastoreConfig -> serversetMetastoreConfig.getZookeeperServerHostAndPort() == null,
+                binder -> {
+                    binder.bind(MetastoreLocator.class).to(StaticMetastoreLocator.class).in(Scopes.SINGLETON);
+                    configBinder(binder).bindConfig(StaticMetastoreConfig.class);
+                }));
+        install(installModuleIf(
+                ZookeeperServersetMetastoreConfig.class,
+                serversetMetastoreConfig -> serversetMetastoreConfig.getZookeeperServerHostAndPort() != null,
+                binder -> {
+                    binder.bind(MetastoreLocator.class).to(ZookeeperMetastoreLocator.class).in(Scopes.SINGLETON);
+                    configBinder(binder).bindConfig(ZookeeperServersetMetastoreConfig.class);
+                }));
     }
 }
