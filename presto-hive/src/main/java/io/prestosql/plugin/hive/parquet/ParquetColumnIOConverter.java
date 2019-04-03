@@ -30,9 +30,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import static com.twitter.presto.parquet.ParquetTypeUtils.findColumnIObyName;
 import static io.prestosql.parquet.ParquetTypeUtils.getArrayElementColumn;
 import static io.prestosql.parquet.ParquetTypeUtils.getMapKeyValueColumn;
-import static io.prestosql.parquet.ParquetTypeUtils.lookupColumnByName;
 import static io.prestosql.spi.type.StandardTypes.ARRAY;
 import static io.prestosql.spi.type.StandardTypes.MAP;
 import static io.prestosql.spi.type.StandardTypes.ROW;
@@ -61,7 +61,7 @@ final class ParquetColumnIOConverter
             for (int i = 0; i < fields.size(); i++) {
                 NamedTypeSignature namedTypeSignature = fields.get(i).getNamedTypeSignature();
                 String name = namedTypeSignature.getName().get().toLowerCase(Locale.ENGLISH);
-                Optional<Field> field = constructField(parameters.get(i), lookupColumnByName(groupColumnIO, name));
+                Optional<Field> field = constructField(parameters.get(i), findColumnIObyName(groupColumnIO, name));
                 structHasParameters |= field.isPresent();
                 fieldsBuilder.add(field);
             }

@@ -60,10 +60,10 @@ import java.util.Properties;
 import java.util.Set;
 
 import static com.google.common.base.Strings.nullToEmpty;
+import static com.twitter.presto.parquet.ParquetTypeUtils.findParquetTypeByName;
 import static io.prestosql.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static io.prestosql.parquet.ParquetTypeUtils.getColumnIO;
 import static io.prestosql.parquet.ParquetTypeUtils.getDescriptors;
-import static io.prestosql.parquet.ParquetTypeUtils.getParquetTypeByName;
 import static io.prestosql.parquet.predicate.PredicateUtils.buildPredicate;
 import static io.prestosql.parquet.predicate.PredicateUtils.predicateMatches;
 import static io.prestosql.plugin.hive.HiveColumnHandle.ColumnType.REGULAR;
@@ -258,7 +258,7 @@ public class ParquetPageSourceFactory
     public static org.apache.parquet.schema.Type getParquetType(HiveColumnHandle column, MessageType messageType, boolean useParquetColumnNames)
     {
         if (useParquetColumnNames) {
-            return getParquetTypeByName(column.getName(), messageType);
+            return findParquetTypeByName(column.getName(), messageType);
         }
 
         if (column.getHiveColumnIndex() < messageType.getFieldCount()) {
