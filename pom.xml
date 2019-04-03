@@ -138,6 +138,7 @@
         <module>presto-twitter-event-listener</module>
         <module>presto-twitter-gateway</module>
         <module>presto-twitter-server</module>
+        <module>presto-twitter-server-rpm</module>
     </modules>
 
     <dependencyManagement>
