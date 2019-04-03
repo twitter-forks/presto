@@ -38,8 +38,8 @@ import java.util.Optional;
 import java.util.Properties;
 
 import static com.google.common.base.Preconditions.checkState;
-import static io.prestosql.parquet.ParquetTypeUtils.getFieldIndex;
-import static io.prestosql.parquet.ParquetTypeUtils.lookupColumnByName;
+import static com.twitter.presto.parquet.ParquetTypeUtils.findColumnIObyName;
+import static com.twitter.presto.parquet.ParquetTypeUtils.findFieldIndexByName;
 import static io.prestosql.plugin.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static io.prestosql.plugin.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static io.prestosql.plugin.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
@@ -107,7 +107,7 @@ public class ParquetPageSource
             }
             else {
                 String columnName = useParquetColumnNames ? name : fileSchema.getFields().get(column.getHiveColumnIndex()).getName();
-                fieldsBuilder.add(constructField(type, lookupColumnByName(messageColumnIO, columnName)));
+                fieldsBuilder.add(constructField(type, findColumnIObyName(messageColumnIO, columnName)));
             }
         }
         types = typesBuilder.build();
@@ -161,7 +161,7 @@ public class ParquetPageSource
                     Optional<Field> field = fields.get(fieldId);
                     int fieldIndex;
                     if (useParquetColumnNames) {
-                        fieldIndex = getFieldIndex(fileSchema, columnNames.get(fieldId));
+                        fieldIndex = findFieldIndexByName(fileSchema, columnNames.get(fieldId));
                     }
                     else {
                         fieldIndex = hiveColumnIndexes[fieldId];
