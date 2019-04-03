@@ -185,6 +185,7 @@ import static io.prestosql.plugin.hive.HiveStorageFormat.RCBINARY;
 import static io.prestosql.plugin.hive.HiveStorageFormat.RCTEXT;
 import static io.prestosql.plugin.hive.HiveStorageFormat.SEQUENCEFILE;
 import static io.prestosql.plugin.hive.HiveStorageFormat.TEXTFILE;
+import static io.prestosql.plugin.hive.HiveStorageFormat.THRIFTBINARY;
 import static io.prestosql.plugin.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static io.prestosql.plugin.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
 import static io.prestosql.plugin.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
@@ -429,7 +430,7 @@ public abstract class AbstractTestHive
                             }).collect(toList()))
                     .build();
 
-    protected Set<HiveStorageFormat> createTableFormats = difference(ImmutableSet.copyOf(HiveStorageFormat.values()), ImmutableSet.of(AVRO));
+    protected Set<HiveStorageFormat> createTableFormats = difference(ImmutableSet.copyOf(HiveStorageFormat.values()), ImmutableSet.of(AVRO, THRIFTBINARY));
 
     private static final JoinCompiler JOIN_COMPILER = new JoinCompiler(MetadataManager.createTestMetadataManager());
 

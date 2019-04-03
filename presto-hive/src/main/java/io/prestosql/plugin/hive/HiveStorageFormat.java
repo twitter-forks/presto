@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.hive;
 
+import com.twitter.presto.hive.thrift.ThriftGeneralInputFormat;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import io.prestosql.spi.PrestoException;
@@ -32,6 +33,7 @@ import org.apache.hadoop.hive.serde2.avro.AvroSerDe;
 import org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe;
 import org.apache.hadoop.hive.serde2.columnar.LazyBinaryColumnarSerDe;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
 import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
@@ -87,6 +89,11 @@ public enum HiveStorageFormat
     TEXTFILE(
             LazySimpleSerDe.class.getName(),
             TextInputFormat.class.getName(),
+            HiveIgnoreKeyTextOutputFormat.class.getName(),
+            new DataSize(8, Unit.MEGABYTE)),
+    THRIFTBINARY(
+            LazyBinarySerDe.class.getName(),
+            ThriftGeneralInputFormat.class.getName(),
             HiveIgnoreKeyTextOutputFormat.class.getName(),
             new DataSize(8, Unit.MEGABYTE));
 
