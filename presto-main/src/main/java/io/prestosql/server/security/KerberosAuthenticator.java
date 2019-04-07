@@ -15,6 +15,7 @@ package io.prestosql.server.security;
 
 import com.sun.security.auth.module.Krb5LoginModule;
 import io.airlift.log.Logger;
+import io.prestosql.spi.PrestoException;
 import org.ietf.jgss.GSSContext;
 import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
@@ -43,9 +44,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.net.HttpHeaders.AUTHORIZATION;
+import static io.prestosql.spi.StandardErrorCode.NOT_SUPPORTED;
 import static javax.security.auth.login.AppConfigurationEntry.LoginModuleControlFlag.REQUIRED;
 import static org.ietf.jgss.GSSCredential.ACCEPT_ONLY;
 import static org.ietf.jgss.GSSCredential.INDEFINITE_LIFETIME;
+import static org.ietf.jgss.GSSName.NT_HOSTBASED_SERVICE;
+import static org.ietf.jgss.GSSName.NT_USER_NAME;
 
 public class KerberosAuthenticator
         implements Authenticator
@@ -68,7 +72,7 @@ public class KerberosAuthenticator
                     .orElseGet(() -> getLocalHost().getCanonicalHostName())
                     .toLowerCase(Locale.US);
 
-            String servicePrincipal = config.getServiceName() + "/" + hostname;
+            String servicePrincipal = makeServicePrincipal(config, hostname);
             loginContext = new LoginContext("", null, null, new Configuration()
             {
                 @Override
@@ -94,7 +98,7 @@ public class KerberosAuthenticator
             loginContext.login();
 
             serverCredential = doAs(loginContext.getSubject(), () -> gssManager.createCredential(
-                    gssManager.createName(config.getServiceName() + "@" + hostname, GSSName.NT_HOSTBASED_SERVICE),
+                    getGSSName(config, hostname),
                     INDEFINITE_LIFETIME,
                     new Oid[] {
                             new Oid("1.2.840.113554.1.2.2"), // kerberos 5
@@ -205,6 +209,31 @@ public class KerberosAuthenticator
         }
         catch (UnknownHostException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private GSSName getGSSName(KerberosConfig config, String hostname)
+            throws GSSException
+    {
+        switch (config.getNameType()) {
+            case "NT_HOSTBASED_SERVICE":
+                return gssManager.createName(config.getServiceName() + "@" + hostname, NT_HOSTBASED_SERVICE);
+            case "NT_USER_NAME":
+                return gssManager.createName(config.getServiceName(), NT_USER_NAME);
+            default:
+                throw new PrestoException(NOT_SUPPORTED, "Unsupported GSS Name");
+        }
+    }
+
+    private String makeServicePrincipal(KerberosConfig config, String hostname)
+    {
+        switch (config.getNameType()) {
+            case "NT_HOSTBASED_SERVICE":
+                return config.getServiceName() + "/" + hostname;
+            case "NT_USER_NAME":
+                return config.getServiceName();
+            default:
+                throw new PrestoException(NOT_SUPPORTED, "Unsupported GSS Name");
         }
     }
 }

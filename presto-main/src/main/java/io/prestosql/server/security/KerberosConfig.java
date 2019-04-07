@@ -27,6 +27,7 @@ public class KerberosConfig
     private String serviceName;
     private File keytab;
     private String principalHostname;
+    private String nameType = "NT_HOSTBASED_SERVICE";
 
     @NotNull
     public File getKerberosConfig()
@@ -75,6 +76,19 @@ public class KerberosConfig
     public KerberosConfig setPrincipalHostname(String principalHostname)
     {
         this.principalHostname = principalHostname;
+        return this;
+    }
+
+    @NotNull
+    public String getNameType()
+    {
+        return nameType;
+    }
+
+    @Config("http.server.authentication.krb5.name-type")
+    public KerberosConfig setNameType(String nameType)
+    {
+        this.nameType = nameType;
         return this;
     }
 }

@@ -29,7 +29,8 @@ public class TestKerberosConfig
                 .setKerberosConfig(null)
                 .setServiceName(null)
                 .setKeytab(null)
-                .setPrincipalHostname(null));
+                .setPrincipalHostname(null)
+                .setNameType("NT_HOSTBASED_SERVICE"));
     }
 
     @Test
@@ -40,13 +41,15 @@ public class TestKerberosConfig
                 .put("http.server.authentication.krb5.service-name", "airlift")
                 .put("http.server.authentication.krb5.keytab", "/tmp/presto.keytab")
                 .put("http.server.authentication.krb5.principal-hostname", "presto.prestosql.io")
+                .put("http.server.authentication.krb5.name-type", "NT_USER_NAME")
                 .build();
 
         KerberosConfig expected = new KerberosConfig()
                 .setKerberosConfig(new File("/etc/krb5.conf"))
                 .setServiceName("airlift")
                 .setKeytab(new File("/tmp/presto.keytab"))
-                .setPrincipalHostname("presto.prestosql.io");
+                .setPrincipalHostname("presto.prestosql.io")
+                .setNameType("NT_USER_NAME");
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }
