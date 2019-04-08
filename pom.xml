@@ -135,6 +135,8 @@
         <module>presto-kudu</module>
         <module>presto-elasticsearch</module>
         <module>presto-twitter-functions</module>
+        <module>presto-twitter-event-listener</module>
+
     </modules>
 
     <dependencyManagement>
