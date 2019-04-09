@@ -43,6 +43,7 @@ import java.util.Properties;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static com.twitter.presto.hive.thrift.HiveLZOThriftUtil.isLzopIndexFile;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.prestosql.plugin.hive.HiveColumnHandle.isPathColumnHandle;
 import static io.prestosql.plugin.hive.HiveUtil.isSplittable;
@@ -244,6 +245,10 @@ public class InternalHiveSplitFactory
 
     private static boolean pathMatchesPredicate(Optional<Domain> pathDomain, String path)
     {
+        if (isLzopIndexFile(new Path(path))) {
+            return false;
+        }
+
         if (!pathDomain.isPresent()) {
             return true;
         }
