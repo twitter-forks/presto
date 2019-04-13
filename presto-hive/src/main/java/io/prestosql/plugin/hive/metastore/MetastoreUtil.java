@@ -45,6 +45,7 @@ import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_NAME;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMNS;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_PARTITION_COLUMN_TYPES;
+import static org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_CLASS;
 import static org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_DDL;
 import static org.apache.hadoop.hive.serde.serdeConstants.SERIALIZATION_LIB;
 
@@ -162,6 +163,13 @@ public class MetastoreUtil
                     schema.setProperty(entry.getKey(), entry.getValue());
                 }
             }
+        }
+
+        //patch on SERIALIZATION_CLASS in hive table since we changed package name for IQ-1592
+        String name = schema.getProperty(SERIALIZATION_CLASS);
+        if (name != null && name.startsWith("com.facebook.presto.twitter.hive.thrift")) {
+            name = name.replace("com.facebook.presto.twitter.hive.thrift", "com.twitter.presto.hive.thrift");
+            schema.setProperty(SERIALIZATION_CLASS, name);
         }
 
         return schema;

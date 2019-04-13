@@ -57,9 +57,6 @@ public class ThriftGeneralInputFormat
     {
         String thriftClassName = job.get(SERIALIZATION_CLASS);
         checkCondition(thriftClassName != null, HIVE_INVALID_METADATA, "Table or partition is missing Hive deserializer property: %s", SERIALIZATION_CLASS);
-        if (thriftClassName.startsWith("com.facebook.presto.twitter.hive.thrift")) {
-            thriftClassName = thriftClassName.replace("com.facebook.presto.twitter.hive.thrift", "com.twitter.presto.hive.thrift");
-        }
         try {
             Class thriftClass = job.getClassByName(thriftClassName);
             setInputFormatInstance(new MultiInputFormat(new TypeRef(thriftClass) {}));
