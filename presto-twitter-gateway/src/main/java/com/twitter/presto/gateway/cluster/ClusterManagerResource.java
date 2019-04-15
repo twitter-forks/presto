@@ -11,28 +11,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.gateway;
+package com.twitter.presto.gateway.cluster;
 
 import com.google.inject.Inject;
+import io.airlift.log.Logger;
+
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
 
 import java.net.URI;
 import java.util.List;
-import java.util.Random;
 
-public class StaticRandomClusterManager
-        implements ClusterManager
+import static java.util.Objects.requireNonNull;
+
+@Path("/v1/gateway/managers")
+public class ClusterManagerResource
 {
-    private final List<URI> clusters;
+    private static final Logger log = Logger.get(ClusterStatusResource.class);
+
+    private final ClusterManager clusterManager;
 
     @Inject
-    public StaticRandomClusterManager(GatewayConfig config)
+    public ClusterManagerResource(ClusterManager clusterManager)
     {
-        clusters = config.getClusters();
+        this.clusterManager = requireNonNull(clusterManager, "clusterManager is null");
     }
 
-    @Override
-    public URI getPrestoCluster(RequestInfo request)
+    @GET
+    public List<URI> getAllClusters()
     {
-        return clusters.get(new Random().nextInt(clusters.size()));
+        return clusterManager.getAllClusters();
     }
 }

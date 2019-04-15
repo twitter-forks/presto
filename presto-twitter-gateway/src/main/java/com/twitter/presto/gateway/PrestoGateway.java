@@ -24,6 +24,7 @@ import io.airlift.json.JsonModule;
 import io.airlift.log.LogJmxModule;
 import io.airlift.log.Logger;
 import io.airlift.node.NodeModule;
+import io.airlift.tracetoken.TraceTokenModule;
 import org.weakref.jmx.guice.MBeanModule;
 
 public class PrestoGateway
@@ -40,6 +41,7 @@ public class PrestoGateway
                 .add(new MBeanModule())
                 .add(new JmxModule())
                 .add(new LogJmxModule())
+                .add(new TraceTokenModule())
                 .add(new EventModule())
                 .add(new GatewayModule())
                 .add(extraModules)

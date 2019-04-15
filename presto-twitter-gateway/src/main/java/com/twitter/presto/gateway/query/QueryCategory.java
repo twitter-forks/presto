@@ -11,11 +11,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.twitter.presto.gateway;
+package com.twitter.presto.gateway.query;
 
-import java.net.URI;
-
-public interface ClusterManager
+public enum QueryCategory
 {
-    URI getPrestoCluster(RequestInfo request);
+    REALTIME,
+    INTERACTIVE,
+    BATCH
 }

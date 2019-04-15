@@ -15,6 +15,7 @@ package com.twitter.presto.gateway;
 
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Injector;
+import com.twitter.presto.gateway.cluster.ClusterStatusTracker;
 import io.airlift.bootstrap.Bootstrap;
 import io.airlift.bootstrap.LifeCycleManager;
 import io.airlift.http.server.HttpServerInfo;
@@ -44,8 +45,9 @@ import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterrup
 import static java.lang.String.format;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
-public class TestStaticRandomClusterManager
+public class TestStaticClusterManager
 {
     private static final int NUM_CLUSTERS = 2;
     private static final int NUM_QUERIES = 7;
@@ -53,6 +55,7 @@ public class TestStaticRandomClusterManager
     private List<TestingPrestoServer> prestoServers;
     private LifeCycleManager lifeCycleManager;
     private HttpServerInfo httpServerInfo;
+    private ClusterStatusTracker clusterStatusTracker;
 
     @BeforeClass
     public void setupServer()
@@ -75,6 +78,7 @@ public class TestStaticRandomClusterManager
         Injector injector = app
                 .strictConfig()
                 .doNotInitializeLogging()
+                .setRequiredConfigurationProperty("gateway.version", "testversion")
                 .setRequiredConfigurationProperty("gateway.cluster-manager.type", "STATIC")
                 .setRequiredConfigurationProperty("gateway.cluster-manager.static.cluster-list", getClusterList(prestoServers))
                 .quiet()
@@ -82,6 +86,7 @@ public class TestStaticRandomClusterManager
 
         lifeCycleManager = injector.getInstance(LifeCycleManager.class);
         httpServerInfo = injector.getInstance(HttpServerInfo.class);
+        clusterStatusTracker = injector.getInstance(ClusterStatusTracker.class);
     }
 
     @AfterClass(alwaysRun = true)
@@ -114,6 +119,7 @@ public class TestStaticRandomClusterManager
         }
 
         sleepUninterruptibly(10, SECONDS);
+        assertEquals(clusterStatusTracker.getAllQueryInfos().size(), NUM_QUERIES);
         assertQueryState();
     }
 
@@ -127,12 +133,15 @@ public class TestStaticRandomClusterManager
                     Statement statement = connection.createStatement();
                     ResultSet rs = statement.executeQuery(sql)) {
                 String id = rs.unwrap(PrestoResultSet.class).getQueryId();
+                int count = 0;
                 while (rs.next()) {
                     if (!rs.getString("query_id").equals(id)) {
                         assertEquals(QueryState.valueOf(rs.getString("state")), QueryState.FINISHED);
-                        total++;
+                        count++;
                     }
                 }
+                assertTrue(count > 0);
+                total += count;
             }
         }
         assertEquals(total, NUM_QUERIES);
