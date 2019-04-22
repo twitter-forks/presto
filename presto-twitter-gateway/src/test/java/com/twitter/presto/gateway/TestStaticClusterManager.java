@@ -49,7 +49,7 @@ import static org.testng.Assert.assertTrue;
 
 public class TestStaticClusterManager
 {
-    private static final int NUM_CLUSTERS = 2;
+    private static final int NUM_CLUSTERS = 3;
     private static final int NUM_QUERIES = 7;
 
     private List<TestingPrestoServer> prestoServers;
@@ -121,6 +121,9 @@ public class TestStaticClusterManager
         sleepUninterruptibly(10, SECONDS);
         assertEquals(clusterStatusTracker.getAllQueryInfos().size(), NUM_QUERIES);
         assertQueryState();
+        while (true) {
+            Thread.sleep(10000);
+        }
     }
 
     private void assertQueryState()
@@ -144,7 +147,7 @@ public class TestStaticClusterManager
                 total += count;
             }
         }
-        assertEquals(total, NUM_QUERIES);
+       assertEquals(total, NUM_QUERIES);
     }
 
     private static TestingPrestoServer createPrestoServer()

@@ -31,6 +31,7 @@ import io.prestosql.client.NodeVersion;
 import static com.twitter.presto.gateway.GatewayConfig.ClusterManagerType;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
+import static io.airlift.http.server.HttpServerBinder.httpServerBinder;
 import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -40,6 +41,7 @@ public class GatewayModule
     @Override
     protected void setup(Binder binder)
     {
+        httpServerBinder(binder).bindResource("/ui", "gateway_ui").withWelcomeFile("index.html");
         configBinder(binder).bindConfig(GatewayConfig.class);
         binder.bind(ClusterSelector.class).to(RandomSelector.class).in(Scopes.SINGLETON);
 
