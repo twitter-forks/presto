@@ -30,9 +30,7 @@ public class TestGatewayConfig
         assertRecordedDefaults(recordDefaults(GatewayConfig.class)
                 .setVersion(null)
                 .setClusterManagerType(null)
-                .setClusters(null)
-                .setZookeeperPath(null)
-                .setZookeeperUri(null));
+                .setClusters(null));
     }
 
     @Test
@@ -42,16 +40,12 @@ public class TestGatewayConfig
                 .put("gateway.version", "testversion")
                 .put("gateway.cluster-manager.type", "STATIC")
                 .put("gateway.cluster-manager.static.cluster-list", "http://example.net/,http://twitter.com/")
-                .put("gateway.cluster-manager.zookeeper.path", "/foo/bar")
-                .put("gateway.cluster-manager.zookeeper.uri", "abc:123")
                 .build();
 
         GatewayConfig expected = new GatewayConfig()
                 .setVersion("testversion")
                 .setClusterManagerType("STATIC")
-                .setClusters("http://example.net/,http://twitter.com/")
-                .setZookeeperPath("/foo/bar")
-                .setZookeeperUri("abc:123");
+                .setClusters("http://example.net/,http://twitter.com/");
 
         assertFullMapping(properties, expected);
     }
