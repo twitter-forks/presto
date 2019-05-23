@@ -147,7 +147,7 @@ public class TestStaticClusterManager
                 total += count;
             }
         }
-       assertEquals(total, NUM_QUERIES);
+        assertEquals(total, NUM_QUERIES);
     }
 
     private static TestingPrestoServer createPrestoServer()
