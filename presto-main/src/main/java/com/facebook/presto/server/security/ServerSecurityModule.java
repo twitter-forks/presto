@@ -19,7 +19,6 @@ import com.google.inject.Binder;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
-import com.twitter.presto.server.security.KerberosAuthenticator;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.http.server.TheServlet;
 
