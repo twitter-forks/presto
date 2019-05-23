@@ -121,9 +121,6 @@ public class TestStaticClusterManager
         sleepUninterruptibly(10, SECONDS);
         assertEquals(clusterStatusTracker.getAllQueryInfos().size(), NUM_QUERIES);
         assertQueryState();
-        while (true) {
-            Thread.sleep(10000);
-        }
     }
 
     private void assertQueryState()
@@ -147,7 +144,7 @@ public class TestStaticClusterManager
                 total += count;
             }
         }
-       assertEquals(total, NUM_QUERIES);
+        assertEquals(total, NUM_QUERIES);
     }
 
     private static TestingPrestoServer createPrestoServer()
