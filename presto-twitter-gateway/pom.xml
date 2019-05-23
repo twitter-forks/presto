@@ -178,13 +178,6 @@
             <artifactId>curator-client</artifactId>
         </dependency>
 
-        <!-- used by tests but also needed transitively -->
-        <dependency>
-            <groupId>org.apache.zookeeper</groupId>
-            <artifactId>zookeeper</artifactId>
-            <scope>runtime</scope>
-        </dependency>
-
         <!-- test dependencies-->
         <dependency>
             <groupId>org.testng</groupId>
