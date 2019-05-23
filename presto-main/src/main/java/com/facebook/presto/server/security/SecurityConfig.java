@@ -33,8 +33,9 @@ public class SecurityConfig
 
     private List<AuthenticationType> authenticationTypes = ImmutableList.of();
 
-    private String httpAuthenticationPathRegex = "^\\b$";
-    private String statementSourceByPassRegex = "^\\b$";
+    private String httpAuthenticationPathRegex = "^\b$";
+
+    private boolean allowByPass;
 
     public enum AuthenticationType
     {
@@ -85,16 +86,16 @@ public class SecurityConfig
         return this;
     }
 
-    public String getStatementSourceByPassRegex()
+    public boolean getAllowByPass()
     {
-        return statementSourceByPassRegex;
+        return allowByPass;
     }
 
-    @Config("http-server.statement.source.allow-by-pass-authentication")
-    @ConfigDescription("Regex of the statement source that allows bypass authentication")
-    public SecurityConfig setStatementSourceByPassRegex(String regex)
+    @Config("http-server.authentication.allow-by-pass")
+    @ConfigDescription("Allow authentication by pass")
+    public SecurityConfig setAllowByPass(boolean allowByPass)
     {
-        this.statementSourceByPassRegex = regex;
+        this.allowByPass = allowByPass;
         return this;
     }
 }
