@@ -161,7 +161,7 @@ export class ClusterHUD extends React.Component {
                     </div>
                     <div className="col-xs-6">
                         <div className="stat-title">
-                            <span className="text" data-toggle="tooltip" data-placement="right" title="Total number of active worker nodes">
+                            <span className="text" data-toggle="tooltip" data-placement="right" title="Total number of active cluster">
                                 Cluster Count
                             </span>
                         </div>
@@ -195,7 +195,7 @@ export class ClusterHUD extends React.Component {
                     </div>
                     <div className="col-xs-6">
                         <div className="stat-title">
-                            <span className="text" data-toggle="tooltip" data-placement="right" title="Moving average of total running drivers">
+                            <span className="text" data-toggle="tooltip" data-placement="right" title="Total number of active worker nodes">
                                 Active Workers
                             </span>
                         </div>
@@ -230,7 +230,7 @@ export class ClusterHUD extends React.Component {
                     </div>
                     <div className="col-xs-6">
                         <div className="stat-title">
-                            <span className="text" data-toggle="tooltip" data-placement="right" title="Total amount of memory reserved by all running queries">
+                            <span className="text" data-toggle="tooltip" data-placement="right" title="Moving average of total running drivers">
                                 Running Drivers
                             </span>
                         </div>
@@ -248,7 +248,7 @@ export class ClusterHUD extends React.Component {
                     <div className="col-xs-6">
                         <div className="stat stat-large">
                             <span className="stat-text">
-                                {this.state.runningDrivers[this.state.runningDrivers.length - 1]}
+                                {formatCount(this.state.runningDrivers[this.state.runningDrivers.length - 1])}
                             </span>
                             <span className="sparkline" id="running-drivers-sparkline"><div className="loader">Loading ...</div></span>
                         </div>

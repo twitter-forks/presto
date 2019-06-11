@@ -123,12 +123,6 @@ export class PageTitle extends React.Component<Props, State> {
                             <ul className="nav navbar-nav navbar-right">
                                 <li>
                                     <span className="navbar-cluster-info">
-                                        <span className="uppercase">Version</span><br/>
-                                        <span className="text uppercase" id="version-number">{info.nodeVersion.version}</span>
-                                    </span>
-                                </li>
-                                <li>
-                                    <span className="navbar-cluster-info">
                                         <span className="uppercase">Environment</span><br/>
                                         <span className="text uppercase" id="environment">{info.environment}</span>
                                     </span>

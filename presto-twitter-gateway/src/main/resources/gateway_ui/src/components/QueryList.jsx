@@ -153,14 +153,6 @@ export class QueryListItem extends React.Component {
                             </div>
                         </div>
                         <div className="row stat-row">
-                            <div className="col-xs-12">
-                                <span data-toggle="tooltip" data-placement="right" title="Resource Group">
-                                    <span className="glyphicon glyphicon-road" style={GLYPHICON_DEFAULT}/>&nbsp;&nbsp;
-                                    <span>{truncateString(query.resourceGroupId ? query.resourceGroupId.join(".") : "n/a", 35)}</span>
-                                </span>
-                            </div>
-                        </div>
-                        <div className="row stat-row">
                             {splitDetails}
                         </div>
                         <div className="row stat-row">
