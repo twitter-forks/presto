@@ -19,6 +19,7 @@ import io.airlift.bootstrap.Bootstrap;
 import io.airlift.event.client.EventModule;
 import io.airlift.http.server.HttpServerModule;
 import io.airlift.jaxrs.JaxrsModule;
+import io.airlift.jmx.JmxHttpModule;
 import io.airlift.jmx.JmxModule;
 import io.airlift.json.JsonModule;
 import io.airlift.log.LogJmxModule;
@@ -40,6 +41,7 @@ public class PrestoGateway
                 .add(new JaxrsModule(true))
                 .add(new MBeanModule())
                 .add(new JmxModule())
+                .add(new JmxHttpModule())
                 .add(new LogJmxModule())
                 .add(new TraceTokenModule())
                 .add(new EventModule())
