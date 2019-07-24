@@ -23,8 +23,11 @@ import io.prestosql.spi.connector.ConnectorSession;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTableMetadata;
 import io.prestosql.spi.connector.ConnectorTableProperties;
+import io.prestosql.spi.connector.Constraint;
+import io.prestosql.spi.connector.ConstraintApplicationResult;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.SchemaTablePrefix;
+import io.prestosql.spi.predicate.TupleDomain;
 import io.prestosql.spi.type.Type;
 
 import javax.inject.Inject;
@@ -67,7 +70,7 @@ public class DruidMetadata
     {
         return druidClient.getTables().stream()
                 .filter(name -> name.equals(tableName.getTableName()))
-                .map(name -> new DruidTableHandle(DRUID_SCHEMA, name))
+                .map(name -> fromSchemaTableName(tableName))
                 .findFirst()
                 .orElse(null);
     }
@@ -136,6 +139,21 @@ public class DruidMetadata
     public ConnectorTableProperties getTableProperties(ConnectorSession session, ConnectorTableHandle table)
     {
         return new ConnectorTableProperties();
+    }
+
+    @Override
+    public Optional<ConstraintApplicationResult<ConnectorTableHandle>> applyFilter(ConnectorSession session, ConnectorTableHandle handle, Constraint constraint)
+    {
+        DruidTableHandle table = (DruidTableHandle) handle;
+
+        TupleDomain<ColumnHandle> oldDomain = table.getConstraint();
+        TupleDomain<ColumnHandle> newDomain = oldDomain.intersect(constraint.getSummary());
+        if (oldDomain.equals(newDomain)) {
+            return Optional.empty();
+        }
+
+        table = new DruidTableHandle(table.getSchemaName(), table.getTableName(), newDomain);
+        return Optional.of(new ConstraintApplicationResult<>(table, constraint.getSummary()));
     }
 
     private List<SchemaTableName> listTables(ConnectorSession session, SchemaTablePrefix prefix)

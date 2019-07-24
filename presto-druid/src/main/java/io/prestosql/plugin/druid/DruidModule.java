@@ -38,9 +38,11 @@ public class DruidModule
         binder.bind(TypeManager.class).toInstance(typeManager);
 
         binder.bind(DruidConnector.class).in(Scopes.SINGLETON);
+        binder.bind(DruidMetadata.class).in(Scopes.SINGLETON);
         binder.bind(DruidHandleResolver.class).in(Scopes.SINGLETON);
         binder.bind(DruidClient.class).in(Scopes.SINGLETON);
-        binder.bind(DruidMetadata.class).in(Scopes.SINGLETON);
+        binder.bind(DruidSplitManager.class).in(Scopes.SINGLETON);
+        binder.bind(DruidPageSourceProvider.class).in(Scopes.SINGLETON);
 
         configBinder(binder).bindConfig(DruidConfig.class);
         httpClientBinder(binder).bindHttpClient("druid-client", ForDruidClient.class);

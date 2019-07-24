@@ -35,6 +35,7 @@ public class DruidQueryRunnerBuilder
             .build();
 
     private String broker = "http://localhost:8082";
+    private String coordinator = "http://localhost:8081";
 
     private DruidQueryRunnerBuilder()
     {
@@ -52,6 +53,12 @@ public class DruidQueryRunnerBuilder
         return this;
     }
 
+    public DruidQueryRunnerBuilder withCoordinator(String coordinator)
+    {
+        this.coordinator = coordinator;
+        return this;
+    }
+
     @Override
     public DistributedQueryRunner build()
             throws Exception
@@ -59,7 +66,7 @@ public class DruidQueryRunnerBuilder
         DistributedQueryRunner queryRunner = super.build();
         try {
             queryRunner.installPlugin(new DruidPlugin());
-            Map<String, String> properties = ImmutableMap.of("druid-broker-url", broker);
+            Map<String, String> properties = ImmutableMap.of("druid-broker-url", broker, "druid-coordinator-url", coordinator);
             queryRunner.createCatalog("druid", "druid", properties);
 
             return queryRunner;
