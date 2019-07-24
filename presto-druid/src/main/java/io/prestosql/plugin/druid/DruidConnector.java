@@ -17,6 +17,8 @@ import io.airlift.bootstrap.LifeCycleManager;
 import io.airlift.log.Logger;
 import io.prestosql.spi.connector.Connector;
 import io.prestosql.spi.connector.ConnectorMetadata;
+import io.prestosql.spi.connector.ConnectorPageSourceProvider;
+import io.prestosql.spi.connector.ConnectorSplitManager;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.transaction.IsolationLevel;
 
@@ -32,14 +34,20 @@ public class DruidConnector
 
     private final LifeCycleManager lifeCycleManager;
     private final DruidMetadata metadata;
+    private final DruidSplitManager splitManager;
+    private final DruidPageSourceProvider pageSourceProvider;
 
     @Inject
     public DruidConnector(
             LifeCycleManager lifeCycleManager,
-            DruidMetadata metadata)
+            DruidMetadata metadata,
+            DruidSplitManager splitManager,
+            DruidPageSourceProvider pageSourceProvider)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
+        this.splitManager = requireNonNull(splitManager, "splitManager is null");
+        this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
     }
 
     @Override
@@ -52,6 +60,18 @@ public class DruidConnector
     public ConnectorMetadata getMetadata(ConnectorTransactionHandle transactionHandle)
     {
         return metadata;
+    }
+
+    @Override
+    public ConnectorSplitManager getSplitManager()
+    {
+        return splitManager;
+    }
+
+    @Override
+    public ConnectorPageSourceProvider getPageSourceProvider()
+    {
+        return pageSourceProvider;
     }
 
     @Override

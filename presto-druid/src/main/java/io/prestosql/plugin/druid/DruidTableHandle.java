@@ -16,8 +16,10 @@ package io.prestosql.plugin.druid;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Joiner;
+import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.SchemaTableName;
+import io.prestosql.spi.predicate.TupleDomain;
 
 import java.util.Objects;
 
@@ -28,14 +30,17 @@ public class DruidTableHandle
 {
     private final String schemaName;
     private final String tableName;
+    private final TupleDomain<ColumnHandle> constraint;
 
     @JsonCreator
     public DruidTableHandle(
             @JsonProperty("schemaName") String schemaName,
-            @JsonProperty("tableName") String tableName)
+            @JsonProperty("tableName") String tableName,
+            @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
+        this.constraint = requireNonNull(constraint, "constraint is null");
     }
 
     @JsonProperty
@@ -48,6 +53,12 @@ public class DruidTableHandle
     public String getTableName()
     {
         return tableName;
+    }
+
+    @JsonProperty
+    public TupleDomain<ColumnHandle> getConstraint()
+    {
+        return constraint;
     }
 
     @Override
@@ -79,7 +90,7 @@ public class DruidTableHandle
 
     public static DruidTableHandle fromSchemaTableName(SchemaTableName schemaTableName)
     {
-        return new DruidTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName());
+        return new DruidTableHandle(schemaTableName.getSchemaName(), schemaTableName.getTableName(), TupleDomain.all());
     }
 
     public SchemaTableName toSchemaTableName()
