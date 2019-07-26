@@ -34,7 +34,9 @@ public class TestTwitterEventListenerConfig
                 .setSlackNotificationTemplateFile(null)
                 .setKnowledgeBaseFile(null)
                 .setSlackUri(null)
-                .setSlackUsers(null));
+                .setSlackUsers(null)
+                .setBqTableFullName(null)
+                .setServiceAccountKeyFile(null));
     }
 
     @Test
@@ -49,6 +51,8 @@ public class TestTwitterEventListenerConfig
                 .put("event-listener.slack-notification-template-file", "/etc/config/notification.json")
                 .put("event-listener.slack-uri", "https://slack.com")
                 .put("event-listener.slack-users", "user1|user2")
+                .put("event-listener.bq-table-full-name", "test-bq")
+                .put("event-listener.bq-json-key-file", "key.json")
                 .build();
 
         TwitterEventListenerConfig expected = new TwitterEventListenerConfig()
@@ -59,7 +63,9 @@ public class TestTwitterEventListenerConfig
                 .setSlackHttpProxy(HostAndPort.fromString("localhost:1008"))
                 .setSlackNotificationTemplateFile("/etc/config/notification.json")
                 .setSlackUri(URI.create("https://slack.com"))
-                .setSlackUsers("user1|user2");
+                .setSlackUsers("user1|user2")
+                .setBqTableFullName("test-bq")
+                .setServiceAccountKeyFile("key.json");
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

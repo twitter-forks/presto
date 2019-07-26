@@ -18,6 +18,8 @@ import com.facebook.presto.spi.eventlistener.QueryContext;
 import com.facebook.presto.spi.eventlistener.QueryIOMetadata;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
 import com.facebook.presto.spi.eventlistener.QueryStatistics;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryOptions;
 import com.google.cloud.bigquery.InsertAllRequest;
@@ -30,6 +32,9 @@ import io.airlift.log.Logger;
 
 import javax.inject.Inject;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +62,7 @@ public class BqStreamer
         String datasetName = parts.get(1);
         String tableName = parts.get(2);
 
-        this.bigquery = BigQueryOptions.getDefaultInstance().getService();
+        this.bigquery = createInstance(config.getServiceAccountKeyFile());
         this.tableId = TableId.of(projectId, datasetName, tableName);
     }
 
@@ -76,6 +81,24 @@ public class BqStreamer
                             .collect(toList())
                             .toString());
         }
+    }
+
+    private static BigQuery createInstance(String jsonKeyPath)
+    {
+        if (jsonKeyPath == null) {
+            // fall back to default Instance by looking up the VM metadata
+            return BigQueryOptions.getDefaultInstance().getService();
+        }
+
+        GoogleCredentials credentials;
+        try (FileInputStream serviceAccountStream = new FileInputStream(new File(jsonKeyPath))) {
+            credentials = ServiceAccountCredentials.fromStream(serviceAccountStream);
+        }
+        catch (IOException e) {
+            throw new IllegalArgumentException();
+        }
+
+        return BigQueryOptions.newBuilder().setCredentials(credentials).build().getService();
     }
 
     private static Map<String, Object> prepareRowContent(QueryCompletedEvent queryCompletedEvent)
