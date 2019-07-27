@@ -29,6 +29,7 @@ public class TwitterEventListenerConfig
     private String knowledgeBaseFile;
     private String scribeCategory;
     private String bqTableFullName;
+    private String serviceAccountKeyFile;
 
     public String getSlackConfigFile()
     {
@@ -135,6 +136,18 @@ public class TwitterEventListenerConfig
     public TwitterEventListenerConfig setBqTableFullName(String bqTableFullName)
     {
         this.bqTableFullName = bqTableFullName;
+        return this;
+    }
+
+    public String getServiceAccountKeyFile()
+    {
+        return serviceAccountKeyFile;
+    }
+
+    @Config("event-listener.bq-json-key-file")
+    public TwitterEventListenerConfig setServiceAccountKeyFile(String serviceAccountKeyFile)
+    {
+        this.serviceAccountKeyFile = serviceAccountKeyFile;
         return this;
     }
 }
