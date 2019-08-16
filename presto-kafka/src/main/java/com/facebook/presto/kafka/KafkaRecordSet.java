@@ -27,6 +27,7 @@ import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
+import kafka.api.OffsetRequest;
 import kafka.javaapi.FetchResponse;
 import kafka.javaapi.consumer.SimpleConsumer;
 import kafka.message.MessageAndOffset;
@@ -55,7 +56,7 @@ public class KafkaRecordSet
 {
     private static final Logger log = Logger.get(KafkaRecordSet.class);
 
-    private static final int KAFKA_READ_BUFFER_SIZE = 100_000;
+    private final int fetchSize;
     private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
 
     private final KafkaSplit split;
@@ -71,7 +72,8 @@ public class KafkaRecordSet
             KafkaSimpleConsumerManager consumerManager,
             List<KafkaColumnHandle> columnHandles,
             RowDecoder keyDecoder,
-            RowDecoder messageDecoder)
+            RowDecoder messageDecoder,
+                   int fetchSize)
     {
         this.split = requireNonNull(split, "split is null");
 
@@ -88,6 +90,7 @@ public class KafkaRecordSet
             typeBuilder.add(handle.getType());
         }
 
+        this.fetchSize = fetchSize;
         this.columnTypes = typeBuilder.build();
     }
 
@@ -100,7 +103,7 @@ public class KafkaRecordSet
     @Override
     public RecordCursor cursor()
     {
-        return new KafkaRecordCursor();
+        return new KafkaRecordCursor(split.getStartTs(), split.getEndTs());
     }
 
     public class KafkaRecordCursor
@@ -114,8 +117,13 @@ public class KafkaRecordSet
 
         private final FieldValueProvider[] currentRowValues = new FieldValueProvider[columnHandles.size()];
 
-        KafkaRecordCursor()
+        private final long startTs;
+        private final long endTs;
+
+        KafkaRecordCursor(long startTs, long endTs)
         {
+            this.startTs = startTs;
+            this.endTs = endTs;
         }
 
         @Override
@@ -235,6 +243,9 @@ public class KafkaRecordSet
                         case SEGMENT_END_FIELD:
                             currentRowValuesMap.put(columnHandle, longValueProvider(split.getEnd()));
                             break;
+                        case OFFSET_TIMESTAMP_FIELD:
+                            currentRowValuesMap.put(columnHandle, longValueProvider(populateOffsetTimestamp(startTs, endTs)));
+                            break;
                         default:
                             throw new IllegalArgumentException("unknown internal field " + fieldDescription);
                     }
@@ -250,6 +261,19 @@ public class KafkaRecordSet
             }
 
             return true; // Advanced successfully.
+        }
+
+        private long populateOffsetTimestamp(long startTs, long endTs)
+        {
+            if (startTs == OffsetRequest.EarliestTime()) {
+                startTs = 0;
+            }
+
+            if (endTs == OffsetRequest.LatestTime()) {
+                endTs = System.currentTimeMillis();
+            }
+
+            return startTs + (endTs - startTs) / 2;
         }
 
         @Override
@@ -311,10 +335,10 @@ public class KafkaRecordSet
         {
             try {
                 if (messageAndOffsetIterator == null) {
-                    log.debug("Fetching %d bytes from offset %d (%d - %d). %d messages read so far", KAFKA_READ_BUFFER_SIZE, cursorOffset, split.getStart(), split.getEnd(), totalMessages);
+                    log.debug("Fetching %d bytes from offset %d (%d - %d). %d messages read so far", fetchSize, cursorOffset, split.getStart(), split.getEnd(), totalMessages);
                     FetchRequest req = new FetchRequestBuilder()
                             .clientId("presto-worker-" + Thread.currentThread().getName())
-                            .addFetch(split.getTopicName(), split.getPartitionId(), cursorOffset, KAFKA_READ_BUFFER_SIZE)
+                            .addFetch(split.getTopicName(), split.getPartitionId(), cursorOffset, fetchSize)
                             .build();
 
                     // TODO - this should look at the actual node this is running on and prefer

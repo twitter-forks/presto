@@ -45,6 +45,8 @@ public class KafkaSplit
     private final long start;
     private final long end;
     private final HostAddress leader;
+    private final long startTs;
+    private final long endTs;
 
     @JsonCreator
     public KafkaSplit(
@@ -57,7 +59,9 @@ public class KafkaSplit
             @JsonProperty("partitionId") int partitionId,
             @JsonProperty("start") long start,
             @JsonProperty("end") long end,
-            @JsonProperty("leader") HostAddress leader)
+            @JsonProperty("leader") HostAddress leader,
+            @JsonProperty("startTs") long startTs,
+            @JsonProperty("endTs") long endTs)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.topicName = requireNonNull(topicName, "topicName is null");
@@ -69,6 +73,8 @@ public class KafkaSplit
         this.start = start;
         this.end = end;
         this.leader = requireNonNull(leader, "leader address is null");
+        this.startTs = startTs;
+        this.endTs = endTs;
     }
 
     @JsonProperty
@@ -129,6 +135,18 @@ public class KafkaSplit
     public HostAddress getLeader()
     {
         return leader;
+    }
+
+    @JsonProperty
+    public long getStartTs()
+    {
+        return startTs;
+    }
+
+    @JsonProperty
+    public long getEndTs()
+    {
+        return endTs;
     }
 
     @Override

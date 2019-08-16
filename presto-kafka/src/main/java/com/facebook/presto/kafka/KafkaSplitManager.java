@@ -70,18 +70,21 @@ public class KafkaSplitManager
     private final String connectorId;
     private final KafkaSimpleConsumerManager consumerManager;
     private final Set<HostAddress> nodes;
+    private final KafkaZookeeperServerset servers;
 
     @Inject
     public KafkaSplitManager(
             KafkaConnectorId connectorId,
             KafkaConnectorConfig kafkaConnectorConfig,
-            KafkaSimpleConsumerManager consumerManager)
+            KafkaSimpleConsumerManager consumerManager,
+            KafkaZookeeperServerset servers)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
 
         requireNonNull(kafkaConnectorConfig, "kafkaConfig is null");
         this.nodes = ImmutableSet.copyOf(kafkaConnectorConfig.getNodes());
+        this.servers = servers;
     }
 
     @Override
@@ -89,7 +92,8 @@ public class KafkaSplitManager
     {
         KafkaTableHandle kafkaTableHandle = convertLayout(layout).getTable();
         try {
-            SimpleConsumer simpleConsumer = consumerManager.getConsumer(selectRandom(nodes));
+            HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
+            SimpleConsumer simpleConsumer = consumerManager.getConsumer(node);
 
             TopicMetadataRequest topicMetadataRequest = new TopicMetadataRequest(ImmutableList.of(kafkaTableHandle.getTopicName()));
             TopicMetadataResponse topicMetadataResponse = simpleConsumer.send(topicMetadataRequest);
@@ -98,8 +102,6 @@ public class KafkaSplitManager
 
             for (TopicMetadata metadata : topicMetadataResponse.topicsMetadata()) {
                 for (PartitionMetadata part : metadata.partitionsMetadata()) {
-                    log.debug("Adding Partition %s/%s", metadata.topic(), part.partitionId());
-
                     Broker leader = part.leader();
                     if (leader == null) {
                         throw new PrestoException(GENERIC_INTERNAL_ERROR, format("Leader election in progress for Kafka topic '%s' partition %s", metadata.topic(), part.partitionId()));
@@ -110,8 +112,11 @@ public class KafkaSplitManager
                     SimpleConsumer leaderConsumer = consumerManager.getConsumer(partitionLeader);
                     // Kafka contains a reverse list of "end - start" pairs for the splits
 
-                    long[] offsets = findAllOffsets(leaderConsumer, metadata.topic(), part.partitionId());
+                    KafkaTableLayoutHandle layoutHandle = (KafkaTableLayoutHandle) layout;
+                    long startTs = layoutHandle.getOffsetStartTs();
+                    long endTs = layoutHandle.getOffsetEndTs();
 
+                    long[] offsets = findAllOffsets(leaderConsumer, metadata.topic(), part.partitionId(), startTs, endTs);
                     for (int i = offsets.length - 1; i > 0; i--) {
                         KafkaSplit split = new KafkaSplit(
                                 connectorId,
@@ -123,7 +128,9 @@ public class KafkaSplitManager
                                 part.partitionId(),
                                 offsets[i],
                                 offsets[i - 1],
-                                partitionLeader);
+                                partitionLeader,
+                                startTs,
+                                endTs);
                         splits.add(split);
                     }
                 }
@@ -185,6 +192,52 @@ public class KafkaSplitManager
             return false;
         }
         return true;
+    }
+
+    private static long[] findAllOffsets(SimpleConsumer consumer, String topicName, int partitionId, long startTs, long endTs)
+    {
+        // startTs: start timestamp, or -2/null as earliest
+        // endTs: end timestamp, or -1/null as latest
+        if (startTs >= endTs && endTs != kafka.api.OffsetRequest.LatestTime()) {
+            throw new IllegalArgumentException(String.format("Invalid Kafka Offset start/end pair: %s - %s", startTs, endTs));
+        }
+
+        long[] offsetsBeforeStartTs = findOffsetsByTimestamp(consumer, topicName, partitionId, startTs);
+        long[] offsetsBeforeEndTs = findOffsetsByTimestamp(consumer, topicName, partitionId, endTs);
+
+        log.debug("NumOffsetsBeforeStartTs=%s, NumOffsetsBeforeEndTs=%s", offsetsBeforeStartTs.length, offsetsBeforeEndTs.length);
+
+        if (offsetsBeforeStartTs.length == 0) {
+            return offsetsBeforeEndTs;
+        }
+
+        long[] offsets = new long[offsetsBeforeEndTs.length - offsetsBeforeStartTs.length + 1];
+        long startOffset = offsetsBeforeStartTs[0];
+
+        for (int i = 0; i < offsetsBeforeEndTs.length; i++) {
+            if (offsetsBeforeEndTs[i] == startOffset) {
+                offsets[i] = startOffset;
+                break;
+            }
+            offsets[i] = offsetsBeforeEndTs[i];
+        }
+
+        return offsets;
+    }
+
+    private static long[] findOffsetsByTimestamp(SimpleConsumer consumer, String topicName, int partitionId, long timestamp)
+    {
+        TopicAndPartition topicAndPartition = new TopicAndPartition(topicName, partitionId);
+        PartitionOffsetRequestInfo partitionOffsetRequestInfo = new PartitionOffsetRequestInfo(timestamp, Integer.MAX_VALUE);
+        OffsetRequest offsetRequest = new OffsetRequest(ImmutableMap.of(topicAndPartition, partitionOffsetRequestInfo), kafka.api.OffsetRequest.CurrentVersion(), consumer.clientId());
+        OffsetResponse offsetResponse = consumer.getOffsetsBefore(offsetRequest);
+
+        if (offsetResponse.hasError()) {
+            short errorCode = offsetResponse.errorCode(topicName, partitionId);
+            throw new RuntimeException("could not fetch data from Kafka, error code is '" + errorCode + "'");
+        }
+
+        return offsetResponse.offsets(topicName, partitionId);
     }
 
     private static long[] findAllOffsets(SimpleConsumer consumer, String topicName, int partitionId)
