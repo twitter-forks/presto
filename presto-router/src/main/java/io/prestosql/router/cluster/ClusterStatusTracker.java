@@ -17,7 +17,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
-import io.airlift.http.client.HttpClient;
 import io.airlift.log.Logger;
 
 import javax.annotation.PostConstruct;
@@ -33,18 +32,15 @@ import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.Sets.difference;
 import static com.google.common.collect.Sets.newHashSet;
 import static io.airlift.concurrent.Threads.threadsNamed;
-import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 
 public class ClusterStatusTracker
 {
     private static final Logger log = Logger.get(ClusterStatusTracker.class);
-    private static final String QUERY_INFO = "/v1/query";
-    private static final String CLUSTER_INFO = "/v1/cluster";
 
     private final ClusterManager clusterManager;
-    private final HttpClient httpClient;
+    private final RemoteInfoFactory remoteInfoFactory;
     private final ScheduledExecutorService queryInfoUpdateExecutor;
 
     // Cluster status
@@ -54,10 +50,10 @@ public class ClusterStatusTracker
     @Inject
     public ClusterStatusTracker(
             ClusterManager clusterManager,
-            @ForQueryTracker HttpClient httpClient)
+            RemoteInfoFactory remoteInfoFactory)
     {
-        this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.clusterManager = requireNonNull(clusterManager, "clusterManager is null");
+        this.remoteInfoFactory = requireNonNull(remoteInfoFactory, "remoteInfoFactory is null");
         this.queryInfoUpdateExecutor = newSingleThreadScheduledExecutor(threadsNamed("query-info-poller-%s"));
     }
 
@@ -66,8 +62,8 @@ public class ClusterStatusTracker
     {
         clusterManager.getAllClusters().stream()
                 .forEach(uri -> {
-                    remoteClusterInfos.put(uri, createRemoteClusterInfo(uri));
-                    remoteQueryInfos.put(uri, createRemoteQueryInfo(uri));
+                    remoteClusterInfos.put(uri, remoteInfoFactory.createRemoteClusterInfo(uri));
+                    remoteQueryInfos.put(uri, remoteInfoFactory.createRemoteQueryInfo(uri));
                 });
 
         queryInfoUpdateExecutor.scheduleWithFixedDelay(() -> {
@@ -90,8 +86,8 @@ public class ClusterStatusTracker
 
         allClusters.stream()
                 .forEach(uri -> {
-                    remoteClusterInfos.putIfAbsent(uri, createRemoteClusterInfo(uri));
-                    remoteQueryInfos.putIfAbsent(uri, createRemoteQueryInfo(uri));
+                    remoteClusterInfos.putIfAbsent(uri, remoteInfoFactory.createRemoteClusterInfo(uri));
+                    remoteQueryInfos.putIfAbsent(uri, remoteInfoFactory.createRemoteQueryInfo(uri));
                 });
 
         remoteClusterInfos.values().forEach(RemoteClusterInfo::asyncRefresh);
@@ -146,15 +142,5 @@ public class ClusterStatusTracker
                         .map(queryInfo -> ((ObjectNode) queryInfo).put("coordinatorUri", coordinator.toASCIIString()))
                         .collect(toImmutableList())));
         return builder.build();
-    }
-
-    private RemoteQueryInfo createRemoteQueryInfo(URI uri)
-    {
-        return new RemoteQueryInfo(httpClient, uriBuilderFrom(uri).appendPath(QUERY_INFO).build());
-    }
-
-    private RemoteClusterInfo createRemoteClusterInfo(URI uri)
-    {
-        return new RemoteClusterInfo(httpClient, uriBuilderFrom(uri).appendPath(CLUSTER_INFO).build());
     }
 }

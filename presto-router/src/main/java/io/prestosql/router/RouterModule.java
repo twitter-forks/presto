@@ -20,7 +20,9 @@ import io.airlift.units.Duration;
 import io.prestosql.router.cluster.ClusterManager;
 import io.prestosql.router.cluster.ClusterStatusResource;
 import io.prestosql.router.cluster.ClusterStatusTracker;
-import io.prestosql.router.cluster.ForQueryTracker;
+import io.prestosql.router.cluster.ForClusterInfoTracker;
+import io.prestosql.router.cluster.ForQueryInfoTracker;
+import io.prestosql.router.cluster.RemoteInfoFactory;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
@@ -38,8 +40,14 @@ public class RouterModule
         configBinder(binder).bindConfig(RouterConfig.class);
 
         binder.bind(ClusterManager.class).in(Scopes.SINGLETON);
+        binder.bind(RemoteInfoFactory.class).in(Scopes.SINGLETON);
 
-        httpClientBinder(binder).bindHttpClient("query-tracker", ForQueryTracker.class)
+        httpClientBinder(binder).bindHttpClient("query-tracker", ForQueryInfoTracker.class)
+                .withConfigDefaults(config -> {
+                    config.setIdleTimeout(new Duration(30, SECONDS));
+                    config.setRequestTimeout(new Duration(10, SECONDS));
+                });
+        httpClientBinder(binder).bindHttpClient("query-tracker", ForClusterInfoTracker.class)
                 .withConfigDefaults(config -> {
                     config.setIdleTimeout(new Duration(30, SECONDS));
                     config.setRequestTimeout(new Duration(10, SECONDS));
