@@ -66,6 +66,12 @@
             <artifactId>lucene-analyzers-common</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math3</artifactId>
+            <version>3.6.1</version>
+        </dependency>
+
         <!-- Presto SPI -->
         <dependency>
             <groupId>com.facebook.presto</groupId>
