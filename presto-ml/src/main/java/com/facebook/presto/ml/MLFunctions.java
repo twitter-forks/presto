@@ -24,6 +24,9 @@ import com.google.common.hash.HashCode;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 
+import java.util.Arrays;
+import java.util.stream.Collectors;
+
 import static com.facebook.presto.ml.type.ClassifierType.BIGINT_CLASSIFIER;
 import static com.facebook.presto.ml.type.ClassifierType.VARCHAR_CLASSIFIER;
 import static com.facebook.presto.ml.type.RegressorType.REGRESSOR;
@@ -69,6 +72,25 @@ public final class MLFunctions
         checkArgument(model.getType().equals(REGRESSOR), "model is not a regressor");
         Regressor regressor = (Regressor) model;
         return regressor.regress(features);
+    }
+
+    @ScalarFunction("remove_punc")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice removePunc(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    {
+        return Slices.utf8Slice(slice.toStringUtf8().replaceAll("[^a-zA-Z ]", " "));
+    }
+
+    @ScalarFunction("stem")
+    @SqlType(StandardTypes.VARCHAR)
+    public static Slice stem(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    {
+        String[] words = slice.toStringUtf8().split(" ");
+        String stemmed = Arrays
+                .stream(words)
+                .map(word -> WordStemFunction.wordStem(Slices.utf8Slice(word)).toStringUtf8())
+                .collect(Collectors.joining(" "));
+        return Slices.utf8Slice(stemmed);
     }
 
     private static Model getOrLoadModel(Slice slice)

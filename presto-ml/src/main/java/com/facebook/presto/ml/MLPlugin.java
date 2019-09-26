@@ -53,7 +53,6 @@ public class MLPlugin
                 .add(LearnLibSvmRegressorAggregation.class)
                 .add(EvaluateClassifierPredictionsAggregation.class)
                 .add(MLFunctions.class)
-                .add(NLPFunctions.class)
                 .addAll(ML_FEATURE_FUNCTIONS)
                 .build();
     }
