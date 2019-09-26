@@ -50,6 +50,7 @@ public class MLPlugin
                 .add(LearnRegressorAggregation.class)
                 .add(LearnLibSvmClassifierAggregation.class)
                 .add(LearnLibSvmVarcharClassifierAggregation.class)
+                .add(LearnMultiVariateLinearRegressorAggregation.class)
                 .add(LearnLibSvmRegressorAggregation.class)
                 .add(EvaluateClassifierPredictionsAggregation.class)
                 .add(MLFunctions.class)
