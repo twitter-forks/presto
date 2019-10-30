@@ -241,7 +241,7 @@ public class ThriftColumnDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = elementType.createBlockBuilder(null, list.size());
+                currentBuilder = elementType.createBlockBuilder(null, list.size()).beginBlockEntry();
             }
 
             for (Object element : list) {
@@ -252,10 +252,8 @@ public class ThriftColumnDecoder
                 builder.closeEntry();
                 return null;
             }
-            else {
-                Block resultBlock = currentBuilder.build();
-                return resultBlock;
-            }
+
+            return currentBuilder;
         }
 
         private static Block serializeMap(Type type, BlockBuilder builder, Object object)
@@ -276,7 +274,7 @@ public class ThriftColumnDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = type.createBlockBuilder(null, map.size());
+                currentBuilder = type.createBlockBuilder(null, map.size()).beginBlockEntry();
             }
 
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -291,10 +289,8 @@ public class ThriftColumnDecoder
                 builder.closeEntry();
                 return null;
             }
-            else {
-                Block resultBlock = currentBuilder.build();
-                return resultBlock;
-            }
+
+            return currentBuilder;
         }
 
         private static Block serializeStruct(Type type, BlockBuilder builder, Object object)
@@ -311,7 +307,7 @@ public class ThriftColumnDecoder
                 currentBuilder = builder.beginBlockEntry();
             }
             else {
-                currentBuilder = type.createBlockBuilder(null, typeParameters.size());
+                currentBuilder = type.createBlockBuilder(null, typeParameters.size()).beginBlockEntry();
             }
 
             for (int i = 0; i < typeParameters.size(); i++) {
@@ -324,10 +320,8 @@ public class ThriftColumnDecoder
                 builder.closeEntry();
                 return null;
             }
-            else {
-                Block resultBlock = currentBuilder.build();
-                return resultBlock;
-            }
+
+            return currentBuilder;
         }
 
         private static void serializePrimitive(Type type, BlockBuilder builder, Object object)

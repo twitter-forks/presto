@@ -87,6 +87,11 @@ public enum KafkaInternalFieldDescription
     KEY_FIELD("_key", createUnboundedVarcharType(), "Key text"),
 
     /**
+     * <tt>_timestamp</tt> - offset timestamp, used to narrow scan range
+     */
+    OFFSET_TIMESTAMP_FIELD("_timestamp", BigintType.BIGINT, "Offset Timestamp"),
+
+    /**
      * <tt>_key_length</tt> - length in bytes of the key.
      */
     KEY_LENGTH_FIELD("_key_length", BigintType.BIGINT, "Total number of key bytes");

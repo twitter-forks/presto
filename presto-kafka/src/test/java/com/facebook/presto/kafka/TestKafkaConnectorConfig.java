@@ -28,7 +28,6 @@ public class TestKafkaConnectorConfig
         ConfigAssertions.assertRecordedDefaults(ConfigAssertions.recordDefaults(KafkaConnectorConfig.class)
                 .setNodes("")
                 .setKafkaConnectTimeout("10s")
-                .setKafkaBufferSize("64kB")
                 .setDefaultSchema("default")
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka/"))
@@ -44,7 +43,6 @@ public class TestKafkaConnectorConfig
                 .put("kafka.default-schema", "kafka")
                 .put("kafka.nodes", "localhost:12345,localhost:23456")
                 .put("kafka.connect-timeout", "1h")
-                .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
                 .build();
 
@@ -54,7 +52,6 @@ public class TestKafkaConnectorConfig
                 .setDefaultSchema("kafka")
                 .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
-                .setKafkaBufferSize("1MB")
                 .setHideInternalColumns(false);
 
         ConfigAssertions.assertFullMapping(properties, expected);
