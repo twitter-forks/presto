@@ -89,7 +89,8 @@ public class KafkaRecordSet
             typeBuilder.add(handle.getType());
         }
 
-        KafkaPartitionHostAddress consumerId = new KafkaPartitionHostAddress(split.getPartitionId(), split.getLeader());
+        KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
+
         KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
         findOffsetRange(consumer, split);
         this.columnTypes = typeBuilder.build();
@@ -97,28 +98,42 @@ public class KafkaRecordSet
 
     private static void findOffsetRange(KafkaConsumer<Long, String> consumer, KafkaSplit split)
     {
-        if (split.getStartTs() >= split.getEndTs()) {
+        if (split.getStartTs() > split.getEndTs()) {
             throw new IllegalArgumentException(String.format("Invalid Kafka Offset start/end pair: %s - %s", split.getStartTs(), split.getEndTs()));
         }
 
-        split.setStart(findOffsetsByTimestamp(consumer, split, split.getStartTs()));
-        split.setEnd(findOffsetsByTimestamp(consumer, split, split.getEndTs()));
+        TopicPartition topicPartition = new TopicPartition(split.getTopicName(), split.getPartitionId());
+        consumer.assign(ImmutableList.of(topicPartition));
+
+        if (split.getStartTs() == 0) {
+            consumer.seekToBeginning(ImmutableList.of(topicPartition));
+            split.setStart(consumer.position(topicPartition));
+        }
+        else {
+            split.setStart(findOffsetsByTimestamp(consumer, topicPartition, split.getStartTs()));
+        }
+
+        if (split.getEndTs() == 0) {
+            consumer.seekToEnd(ImmutableList.of(topicPartition));
+            split.setEnd(consumer.position(topicPartition));
+        }
+        else {
+            split.setEnd(findOffsetsByTimestamp(consumer, topicPartition, split.getEndTs()));
+        }
     }
 
-    private static long findOffsetsByTimestamp(KafkaConsumer<Long, String> consumer, KafkaSplit split, long timestamp)
+    private static long findOffsetsByTimestamp(KafkaConsumer<Long, String> consumer, TopicPartition tp, long timestamp)
     {
-        TopicPartition topicPartition = new TopicPartition(split.getTopicName(), split.getPartitionId());
-
         try {
-            Map<TopicPartition, OffsetAndTimestamp> tpOffsets = consumer.offsetsForTimes(ImmutableMap.of(topicPartition, timestamp));
+            Map<TopicPartition, OffsetAndTimestamp> tpOffsets = consumer.offsetsForTimes(ImmutableMap.of(tp, timestamp));
             if (tpOffsets == null || tpOffsets.values().size() == 0) {
                 return 0;
             }
-
-            return new ArrayList<>(tpOffsets.values()).get(0).offset();
+            OffsetAndTimestamp offsetAndTimestamp = new ArrayList<>(tpOffsets.values()).get(0);
+            return (offsetAndTimestamp == null) ? 0 : offsetAndTimestamp.offset();
         }
         catch (Exception e) {
-            log.error(e, String.format("Failed to find offset by timestamp: %d for partition %d", timestamp, split.getPartitionId()));
+            log.error(e, String.format("Failed to find offset by timestamp: %d for partition %d", timestamp, tp.partition()));
             throw new RuntimeException(e);
         }
     }
@@ -209,7 +224,8 @@ public class KafkaRecordSet
             }
 
             // Clean up thread
-            KafkaPartitionHostAddress consumerId = new KafkaPartitionHostAddress(split.getPartitionId(), split.getLeader());
+            KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
+
             consumerManager.getConsumer(consumerId).close();
             consumerManager.consumerCache.invalidate(consumerId);
             return false;
@@ -358,7 +374,7 @@ public class KafkaRecordSet
         {
             try {
                 if (messageAndOffsetIterator == null) {
-                    KafkaPartitionHostAddress consumerId = new KafkaPartitionHostAddress(split.getPartitionId(), split.getLeader());
+                    KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
                     KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());

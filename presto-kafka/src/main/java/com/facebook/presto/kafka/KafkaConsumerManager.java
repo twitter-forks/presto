@@ -13,7 +13,6 @@
  */
 package com.facebook.presto.kafka;
 
-import com.facebook.presto.spi.NodeManager;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -28,7 +27,6 @@ import javax.inject.Inject;
 import java.util.Map;
 import java.util.Properties;
 
-import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -38,26 +36,14 @@ import static java.util.Objects.requireNonNull;
 public class KafkaConsumerManager
 {
     private static final Logger log = Logger.get(KafkaConsumerManager.class);
-
-    public final LoadingCache<KafkaPartitionHostAddress, KafkaConsumer> consumerCache;
-
-    private final String connectorId;
-    private final NodeManager nodeManager;
-    private final int connectTimeoutMillis;
+    public final LoadingCache<KafkaThreadHostAddress, KafkaConsumer> consumerCache;
     private final int maxPartitionFetchBytes;
     private final int maxPollRecords;
 
     @Inject
-    public KafkaConsumerManager(
-            KafkaConnectorId connectorId,
-            KafkaConnectorConfig kafkaConnectorConfig,
-            NodeManager nodeManager)
+    public KafkaConsumerManager(KafkaConnectorConfig kafkaConnectorConfig)
     {
-        this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
-        this.nodeManager = requireNonNull(nodeManager, "nodeManager is null");
-
         requireNonNull(kafkaConnectorConfig, "kafkaConfig is null");
-        this.connectTimeoutMillis = toIntExact(kafkaConnectorConfig.getKafkaConnectTimeout().toMillis());
         this.maxPartitionFetchBytes = kafkaConnectorConfig.getMaxPartitionFetchBytes();
 
         this.consumerCache = CacheBuilder.newBuilder().build(CacheLoader.from(this::createConsumer));
@@ -67,7 +53,7 @@ public class KafkaConsumerManager
     @PreDestroy
     public void tearDown()
     {
-        for (Map.Entry<KafkaPartitionHostAddress, KafkaConsumer> entry : consumerCache.asMap().entrySet()) {
+        for (Map.Entry<KafkaThreadHostAddress, KafkaConsumer> entry : consumerCache.asMap().entrySet()) {
             try {
                 entry.getValue().close();
                 consumerCache.invalidate(entry.getKey());
@@ -78,13 +64,13 @@ public class KafkaConsumerManager
         }
     }
 
-    public KafkaConsumer getConsumer(KafkaPartitionHostAddress consumerId)
+    public KafkaConsumer getConsumer(KafkaThreadHostAddress consumerId)
     {
         requireNonNull(consumerId, "host is null");
         return consumerCache.getUnchecked(consumerId);
     }
 
-    private KafkaConsumer createConsumer(KafkaPartitionHostAddress consumerId)
+    private KafkaConsumer createConsumer(KafkaThreadHostAddress consumerId)
     {
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
@@ -97,11 +83,7 @@ public class KafkaConsumerManager
                 ByteBufferDeserializer.class.getName());
         props.put("max.poll.records", Integer.toString(maxPollRecords));
         props.put("max.partition.fetch.bytes", maxPartitionFetchBytes);
-        String clientId = String.join("-",
-                connectorId,
-                nodeManager.getCurrentNode().getHostAndPort().getHostText(),
-                consumerId.toString());
-        props.put("client.id", clientId);
+        props.put("client.id", consumerId.toString());
 
         Thread.currentThread().setContextClassLoader(null);
         KafkaConsumer<Long, String> consumer = new KafkaConsumer<>(props);

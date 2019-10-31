@@ -86,7 +86,7 @@ public class KafkaSplitManager
         try {
             HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
 
-            KafkaPartitionHostAddress consumerId = new KafkaPartitionHostAddress(0, node);
+            KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), node);
             KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
             String topic = kafkaTableHandle.getTopicName();
@@ -102,11 +102,6 @@ public class KafkaSplitManager
                 }
 
                 HostAddress partitionLeader = HostAddress.fromParts(leader.host(), leader.port());
-                consumerId = new KafkaPartitionHostAddress(part.partition(), partitionLeader);
-
-                KafkaConsumer leaderConsumer = consumerManager.getConsumer(consumerId);
-                leaderConsumer.subscribe(ImmutableList.of(topic));
-
                 KafkaTableLayoutHandle layoutHandle = (KafkaTableLayoutHandle) layout;
                 long startTs = layoutHandle.getOffsetStartTs();
                 long endTs = layoutHandle.getOffsetEndTs();
