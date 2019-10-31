@@ -67,13 +67,13 @@ public class KafkaConnectorConfig
      * The Zookeeper URI.
      * Example: hostAddress:2181
      */
-    private String kafkaZookeeperUri = "sdzookeeper.smf1.twitter.com:2181";
+    private String kafkaZookeeperUri;
 
     /**
      * The Zookeeper path for Kafka services.
      * Example: /twitter/service/kafka/prod/tfe
      */
-    private String kafkaServicePath = "/twitter/service/kafka/prod/tfe";
+    private String kafkaServicePath;
 
     /**
      * Maximum number of records per poll()

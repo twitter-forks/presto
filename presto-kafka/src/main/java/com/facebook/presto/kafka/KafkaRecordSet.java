@@ -110,8 +110,12 @@ public class KafkaRecordSet
         TopicPartition topicPartition = new TopicPartition(split.getTopicName(), split.getPartitionId());
 
         try {
-            Map<TopicPartition, OffsetAndTimestamp> offsets = consumer.offsetsForTimes(ImmutableMap.of(topicPartition, timestamp));
-            return (offsets.values().size() == 0) ? 0 : new ArrayList<>(offsets.values()).get(0).offset();
+            Map<TopicPartition, OffsetAndTimestamp> tpOffsets = consumer.offsetsForTimes(ImmutableMap.of(topicPartition, timestamp));
+            if (tpOffsets == null || tpOffsets.values().size() == 0) {
+                return 0;
+            }
+
+            return new ArrayList<>(tpOffsets.values()).get(0).offset();
         }
         catch (Exception e) {
             log.error(e, String.format("Failed to find offset by timestamp: %d for partition %d", timestamp, split.getPartitionId()));
@@ -231,6 +235,8 @@ public class KafkaRecordSet
                 message.get(messageData);
             }
 
+            long timeStamp = messageAndOffset.timestamp();
+
             Map<ColumnHandle, FieldValueProvider> currentRowValuesMap = new HashMap<>();
 
             Optional<Map<DecoderColumnHandle, FieldValueProvider>> decodedKey = keyDecoder.decodeRow(keyData, null);
@@ -274,7 +280,7 @@ public class KafkaRecordSet
                             currentRowValuesMap.put(columnHandle, longValueProvider(split.getEnd()));
                             break;
                         case OFFSET_TIMESTAMP_FIELD:
-                            currentRowValuesMap.put(columnHandle, longValueProvider(populateOffsetTimestamp(startTs, endTs)));
+                            currentRowValuesMap.put(columnHandle, longValueProvider(timeStamp));
                             break;
                         default:
                             throw new IllegalArgumentException("unknown internal field " + fieldDescription);
@@ -291,11 +297,6 @@ public class KafkaRecordSet
             }
 
             return true; // Advanced successfully.
-        }
-
-        private long populateOffsetTimestamp(long startTs, long endTs)
-        {
-            return startTs + (endTs - startTs) / 2;
         }
 
         @Override
