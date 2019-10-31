@@ -31,7 +31,13 @@ public class TestKafkaConnectorConfig
                 .setDefaultSchema("default")
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka/"))
-                .setHideInternalColumns(true));
+                .setHideInternalColumns(true)
+                .setMaxPartitionFetchBytes(1048576)
+                .setMaxPollRecords(500)
+                .setZookeeperMaxRetries(3)
+                .setZookeeperUri("localhost:2181")
+                .setZookeeperPath("/kafka/abc")
+                .setZookeeperRetrySleepTime(100));
     }
 
     @Test
@@ -44,6 +50,12 @@ public class TestKafkaConnectorConfig
                 .put("kafka.nodes", "localhost:12345,localhost:23456")
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.hide-internal-columns", "false")
+                .put("kafka.max.partition.fetch.bytes", "1024")
+                .put("kafka.max.poll.records", "1000")
+                .put("kafka.zookeeper.max.retries", "5")
+                .put("kafka.zookeeper.uri", "brokerhost:2181")
+                .put("kafka.zookeeper.path", "/kafka/abcd")
+                .put("kafka.zookeeper.retry.sleeptime", "200")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
@@ -52,7 +64,13 @@ public class TestKafkaConnectorConfig
                 .setDefaultSchema("kafka")
                 .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
-                .setHideInternalColumns(false);
+                .setHideInternalColumns(false)
+                .setMaxPartitionFetchBytes(1024)
+                .setMaxPollRecords(1000)
+                .setZookeeperMaxRetries(5)
+                .setZookeeperUri("brokerhost:2181")
+                .setZookeeperPath("/kafka/abcd")
+                .setZookeeperRetrySleepTime(200);
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

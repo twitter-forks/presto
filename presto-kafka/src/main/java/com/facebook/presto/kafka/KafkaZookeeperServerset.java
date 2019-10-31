@@ -33,8 +33,8 @@ public class KafkaZookeeperServerset
     @Inject
     public KafkaZookeeperServerset(KafkaConnectorConfig config)
     {
-        String zkServerHostAndPort = requireNonNull(config.getZkUri(), "zkServerHostAndPort is null");
-        String zkKafkaBrokerPath = requireNonNull(config.getZkPath(), "zkKafkaBrokerPath is null");
+        String zkServerHostAndPort = requireNonNull(config.getZookeeperUri(), "zkServerHostAndPort is null");
+        String zkKafkaBrokerPath = requireNonNull(config.getZookeeperPath(), "zkKafkaBrokerPath is null");
         int zkRetries = requireNonNull(config.getZookeeperMaxRetries(), "zkMaxRetried is null");
         int zkRetrySleepTime = requireNonNull(config.getZookeeperRetrySleepTime(), "zkRetrySleepTime is null");
         this.zkMonitor = new KafkaZookeeperMonitor(zkServerHostAndPort, zkKafkaBrokerPath, zkRetries, zkRetrySleepTime);

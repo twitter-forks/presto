@@ -73,7 +73,7 @@ public class KafkaConnectorConfig
      * The Zookeeper path for Kafka services.
      * Example: /twitter/service/kafka/prod/tfe
      */
-    private String kafkaServicePath = "/kafka/abc";
+    private String kafkaZookeeperPath = "/kafka/abc";
 
     /**
      * Maximum number of records per poll()
@@ -160,25 +160,25 @@ public class KafkaConnectorConfig
     }
 
     @Config("kafka.zookeeper.path")
-    public KafkaConnectorConfig setZkPath(String zkPath)
+    public KafkaConnectorConfig setZookeeperPath(String zkPath)
     {
-        this.kafkaServicePath = zkPath;
+        this.kafkaZookeeperPath = zkPath;
         return this;
     }
 
-    public String getZkPath()
+    public String getZookeeperPath()
     {
-        return kafkaServicePath;
+        return kafkaZookeeperPath;
     }
 
     @Config("kafka.zookeeper.uri")
-    public KafkaConnectorConfig setZkUri(String zkUri)
+    public KafkaConnectorConfig setZookeeperUri(String setZookeeperUri)
     {
-        this.kafkaZookeeperUri = zkUri;
+        this.kafkaZookeeperUri = setZookeeperUri;
         return this;
     }
 
-    public String getZkUri()
+    public String getZookeeperUri()
     {
         return kafkaZookeeperUri;
     }
@@ -198,7 +198,7 @@ public class KafkaConnectorConfig
     @NotNull
     public int getZookeeperRetrySleepTime()
     {
-        return zookeeperRetrySleepTime;
+        return Integer.valueOf(zookeeperRetrySleepTime);
     }
 
     @Config("kafka.zookeeper.retry.sleeptime")
