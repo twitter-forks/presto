@@ -90,13 +90,15 @@ public class KafkaRecordSet
         }
 
         KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
-
         KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-        findOffsetRange(consumer, split);
+        long test = Thread.currentThread().getId();
+        String test2 = Thread.currentThread().getName();
+        setOffsetRange(consumer, split);
+
         this.columnTypes = typeBuilder.build();
     }
 
-    private static void findOffsetRange(KafkaConsumer<Long, String> consumer, KafkaSplit split)
+    private static void setOffsetRange(KafkaConsumer<Long, String> consumer, KafkaSplit split)
     {
         if (split.getStartTs() > split.getEndTs()) {
             throw new IllegalArgumentException(String.format("Invalid Kafka Offset start/end pair: %s - %s", split.getStartTs(), split.getEndTs()));
@@ -105,21 +107,17 @@ public class KafkaRecordSet
         TopicPartition topicPartition = new TopicPartition(split.getTopicName(), split.getPartitionId());
         consumer.assign(ImmutableList.of(topicPartition));
 
-        if (split.getStartTs() == 0) {
-            consumer.seekToBeginning(ImmutableList.of(topicPartition));
-            split.setStart(consumer.position(topicPartition));
-        }
-        else {
-            split.setStart(findOffsetsByTimestamp(consumer, topicPartition, split.getStartTs()));
-        }
+        long beginningOffset =
+                (split.getStartTs() == 0) ?
+                        consumer.beginningOffsets(ImmutableList.of(topicPartition)).values().iterator().next() :
+                        findOffsetsByTimestamp(consumer, topicPartition, split.getStartTs());
+        long endOffset =
+                (split.getEndTs() == 0) ?
+                        consumer.endOffsets(ImmutableList.of(topicPartition)).values().iterator().next() :
+                        findOffsetsByTimestamp(consumer, topicPartition, split.getEndTs());
 
-        if (split.getEndTs() == 0) {
-            consumer.seekToEnd(ImmutableList.of(topicPartition));
-            split.setEnd(consumer.position(topicPartition));
-        }
-        else {
-            split.setEnd(findOffsetsByTimestamp(consumer, topicPartition, split.getEndTs()));
-        }
+        split.setStart(beginningOffset);
+        split.setEnd(endOffset);
     }
 
     private static long findOffsetsByTimestamp(KafkaConsumer<Long, String> consumer, TopicPartition tp, long timestamp)
@@ -147,7 +145,7 @@ public class KafkaRecordSet
     @Override
     public RecordCursor cursor()
     {
-        return new KafkaRecordCursor(split.getStartTs(), split.getEndTs());
+        return new KafkaRecordCursor();
     }
 
     public class KafkaRecordCursor
@@ -160,15 +158,6 @@ public class KafkaRecordSet
         private final AtomicBoolean reported = new AtomicBoolean();
 
         private final FieldValueProvider[] currentRowValues = new FieldValueProvider[columnHandles.size()];
-
-        private final long startTs;
-        private final long endTs;
-
-        KafkaRecordCursor(long startTs, long endTs)
-        {
-            this.startTs = startTs;
-            this.endTs = endTs;
-        }
 
         @Override
         public long getCompletedBytes()

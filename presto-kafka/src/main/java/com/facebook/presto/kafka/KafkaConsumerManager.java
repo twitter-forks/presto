@@ -76,7 +76,7 @@ public class KafkaConsumerManager
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
                 consumerId.hostAddress.toString());
 
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "PRESTO_KAFKA_CONSUMERS");
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerId.toString());
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
                 ByteBufferDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
