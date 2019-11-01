@@ -89,7 +89,7 @@ public class KafkaRecordSet
             typeBuilder.add(handle.getType());
         }
 
-        KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
+        KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
 
         KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
         findOffsetRange(consumer, split);
@@ -224,8 +224,7 @@ public class KafkaRecordSet
             }
 
             // Clean up thread
-            KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
-
+            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
             consumerManager.getConsumer(consumerId).close();
             consumerManager.consumerCache.invalidate(consumerId);
             return false;
@@ -374,7 +373,7 @@ public class KafkaRecordSet
         {
             try {
                 if (messageAndOffsetIterator == null) {
-                    KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), split.getLeader());
+                    KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
                     KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());

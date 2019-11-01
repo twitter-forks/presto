@@ -17,24 +17,27 @@ import com.facebook.presto.spi.HostAddress;
 
 import java.util.Objects;
 
-public class KafkaThreadHostAddress
+public class KafkaThreadPartitionIdentifier
 {
     public final String threadName;
     public final HostAddress hostAddress;
+    public final String partitionId;
 
-    public KafkaThreadHostAddress(
+    public KafkaThreadPartitionIdentifier(
+            String partitionId,
             String threadName,
             HostAddress hostAddress)
     {
         this.threadName = threadName;
         this.hostAddress = hostAddress;
+        this.partitionId = partitionId;
     }
 
     @Override
     public String toString()
     {
-        StringBuilder builder = new StringBuilder(hostAddress.toString().length() + threadName.length() + 11);
-        builder.append(String.format("%s-%s", threadName, hostAddress.getHostText()));
+        StringBuilder builder = new StringBuilder(threadName.length() + hostAddress.toString().length() + partitionId.length());
+        builder.append(String.format("%s-%s-%s", threadName, hostAddress.getHostText(), partitionId));
         return builder.toString();
     }
 
@@ -47,7 +50,7 @@ public class KafkaThreadHostAddress
         if (obj == null || getClass() != obj.getClass()) {
             return false;
         }
-        final KafkaThreadHostAddress other = (KafkaThreadHostAddress) obj;
+        final KafkaThreadPartitionIdentifier other = (KafkaThreadPartitionIdentifier) obj;
         return Objects.equals(this.threadName, other.threadName) &&
                 Objects.equals(this.hostAddress, other.hostAddress);
     }
@@ -55,6 +58,6 @@ public class KafkaThreadHostAddress
     @Override
     public int hashCode()
     {
-        return Objects.hash(threadName, hostAddress.getHostText(), hostAddress.getPort());
+        return Objects.hash(threadName, hostAddress.getHostText(), hostAddress.getPort(), partitionId);
     }
 }

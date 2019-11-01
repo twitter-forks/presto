@@ -40,6 +40,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -86,7 +87,7 @@ public class KafkaSplitManager
         try {
             HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
 
-            KafkaThreadHostAddress consumerId = new KafkaThreadHostAddress(Thread.currentThread().getName(), node);
+            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(new Random().nextInt(nodes.size())), Thread.currentThread().getName(), node);
             KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
             String topic = kafkaTableHandle.getTopicName();

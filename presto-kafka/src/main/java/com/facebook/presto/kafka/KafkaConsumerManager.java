@@ -36,7 +36,7 @@ import static java.util.Objects.requireNonNull;
 public class KafkaConsumerManager
 {
     private static final Logger log = Logger.get(KafkaConsumerManager.class);
-    public final LoadingCache<KafkaThreadHostAddress, KafkaConsumer> consumerCache;
+    public final LoadingCache<KafkaThreadPartitionIdentifier, KafkaConsumer> consumerCache;
     private final int maxPartitionFetchBytes;
     private final int maxPollRecords;
 
@@ -53,7 +53,7 @@ public class KafkaConsumerManager
     @PreDestroy
     public void tearDown()
     {
-        for (Map.Entry<KafkaThreadHostAddress, KafkaConsumer> entry : consumerCache.asMap().entrySet()) {
+        for (Map.Entry<KafkaThreadPartitionIdentifier, KafkaConsumer> entry : consumerCache.asMap().entrySet()) {
             try {
                 entry.getValue().close();
                 consumerCache.invalidate(entry.getKey());
@@ -64,13 +64,13 @@ public class KafkaConsumerManager
         }
     }
 
-    public KafkaConsumer getConsumer(KafkaThreadHostAddress consumerId)
+    public KafkaConsumer getConsumer(KafkaThreadPartitionIdentifier consumerId)
     {
         requireNonNull(consumerId, "host is null");
         return consumerCache.getUnchecked(consumerId);
     }
 
-    private KafkaConsumer createConsumer(KafkaThreadHostAddress consumerId)
+    private KafkaConsumer createConsumer(KafkaThreadPartitionIdentifier consumerId)
     {
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
