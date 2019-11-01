@@ -29,6 +29,7 @@ import io.airlift.log.Logger;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 
 import javax.inject.Inject;
 
@@ -88,9 +89,14 @@ public class KafkaSplitManager
             HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
 
             KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(new Random().nextInt(nodes.size())), Thread.currentThread().getName(), node);
-            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
             String topic = kafkaTableHandle.getTopicName();
+
+            KafkaConsumer consumer;
+            synchronized (consumerManager) {
+                consumerManager.tp = new TopicPartition(topic, new Random().nextInt(nodes.size()));
+                consumer = consumerManager.getConsumer(consumerId);
+            }
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
 
             log.debug("Build a new consumer %s for topic: %s to broker %s part: %s", consumerId.toString(), topic, node.toString(), parts.toString());

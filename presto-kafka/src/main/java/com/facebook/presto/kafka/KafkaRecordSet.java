@@ -90,11 +90,14 @@ public class KafkaRecordSet
         }
 
         KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
-        KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-        long test = Thread.currentThread().getId();
-        String test2 = Thread.currentThread().getName();
-        setOffsetRange(consumer, split);
+        KafkaConsumer consumer;
 
+        synchronized (consumerManager) {
+            consumerManager.tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
+            consumer = consumerManager.getConsumer(consumerId);
+        }
+
+        setOffsetRange(consumer, split);
         this.columnTypes = typeBuilder.build();
     }
 
@@ -224,6 +227,9 @@ public class KafkaRecordSet
             cursorOffset = messageAndOffset.offset() + 1; // Cursor now points to the next message.
             totalBytes += messageAndOffset.serializedValueSize();
             totalMessages++;
+
+            long test5 = Thread.currentThread().getId();
+            String test6 = Thread.currentThread().getName();
 
             byte[] keyData = EMPTY_BYTE_ARRAY;
             byte[] messageData = EMPTY_BYTE_ARRAY;
@@ -363,14 +369,15 @@ public class KafkaRecordSet
             try {
                 if (messageAndOffsetIterator == null) {
                     KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
-                    KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
-                    consumer.assign(ImmutableList.of(tp));
+                    KafkaConsumer consumer;
+
+                    synchronized (consumerManager) {
+                        consumerManager.tp = tp;
+                        consumer = consumerManager.getConsumer(consumerId);
+                    }
                     consumer.seek(tp, cursorOffset);
-
                     ConsumerRecords<ByteBuffer, ByteBuffer> records = consumer.poll(3000);
-
                     messageAndOffsetIterator = records.records(tp).iterator();
                 }
             }

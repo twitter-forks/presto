@@ -16,9 +16,11 @@ package com.facebook.presto.kafka;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteBufferDeserializer;
 
 import javax.annotation.PreDestroy;
@@ -30,7 +32,7 @@ import java.util.Properties;
 import static java.util.Objects.requireNonNull;
 
 /**
- * Manages connections to the Kafka nodes. A worker may connect to multiple Kafka nodes depending on the segments and partitions
+ * Manages connections to the Kafka nodes. A worker may connect to multiple Kafka nodes depending on partitions
  * it needs to process.
  */
 public class KafkaConsumerManager
@@ -39,6 +41,7 @@ public class KafkaConsumerManager
     public final LoadingCache<KafkaThreadPartitionIdentifier, KafkaConsumer> consumerCache;
     private final int maxPartitionFetchBytes;
     private final int maxPollRecords;
+    public TopicPartition tp;
 
     @Inject
     public KafkaConsumerManager(KafkaConnectorConfig kafkaConnectorConfig)
@@ -87,6 +90,7 @@ public class KafkaConsumerManager
 
         Thread.currentThread().setContextClassLoader(null);
         KafkaConsumer<Long, String> consumer = new KafkaConsumer<>(props);
+        consumer.assign(ImmutableList.of(this.tp));
 
         return consumer;
     }
