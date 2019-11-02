@@ -15,7 +15,6 @@ package com.facebook.presto.kafka;
 
 import com.facebook.presto.spi.HostAddress;
 import com.google.common.collect.ImmutableList;
-import io.airlift.log.Logger;
 
 import javax.inject.Inject;
 
@@ -27,8 +26,7 @@ import static java.util.Objects.requireNonNull;
 
 public class KafkaZookeeperServerset
 {
-    private static final Logger log = Logger.get(KafkaZookeeperServerset.class);
-    private KafkaZookeeperMonitor zkMonitor;
+    public KafkaZookeeperMonitor zkMonitor;
 
     @Inject
     public KafkaZookeeperServerset(KafkaConnectorConfig config)

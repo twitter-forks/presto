@@ -41,7 +41,6 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -87,14 +86,16 @@ public class KafkaSplitManager
         KafkaTableHandle kafkaTableHandle = convertLayout(layout).getTable();
         try {
             HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
-
-            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(new Random().nextInt(nodes.size())), Thread.currentThread().getName(), node);
+            int partition = 0;
+            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(partition), Thread.currentThread().getName(), node);
 
             String topic = kafkaTableHandle.getTopicName();
 
-            consumerManager.tp = new TopicPartition(topic, new Random().nextInt(nodes.size()));
-            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-
+            KafkaConsumer consumer;
+            synchronized (consumerManager) {
+                consumerManager.tp = new TopicPartition(topic, partition);
+                consumer = consumerManager.getConsumer(consumerId);
+            }
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
 
             log.debug("Build a new consumer %s for topic: %s to broker %s part: %s", consumerId.toString(), topic, node.toString(), parts.toString());
