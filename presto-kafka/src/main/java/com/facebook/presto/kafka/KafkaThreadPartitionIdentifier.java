@@ -51,13 +51,12 @@ public class KafkaThreadPartitionIdentifier
             return false;
         }
         final KafkaThreadPartitionIdentifier other = (KafkaThreadPartitionIdentifier) obj;
-        return Objects.equals(this.threadName, other.threadName) &&
-                Objects.equals(this.hostAddress, other.hostAddress);
+        return Objects.equals(this.threadName, other.threadName);
     }
 
     @Override
     public int hashCode()
     {
-        return Objects.hash(threadName, hostAddress.getHostText(), hostAddress.getPort(), partitionId);
+        return Objects.hash(threadName);
     }
 }

@@ -16,11 +16,9 @@ package com.facebook.presto.kafka;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteBufferDeserializer;
 
 import javax.annotation.PreDestroy;
@@ -41,7 +39,6 @@ public class KafkaConsumerManager
     public final LoadingCache<KafkaThreadPartitionIdentifier, KafkaConsumer> consumerCache;
     private final int maxPartitionFetchBytes;
     private final int maxPollRecords;
-    public TopicPartition tp;
 
     @Inject
     public KafkaConsumerManager(KafkaConnectorConfig kafkaConnectorConfig)
@@ -89,9 +86,6 @@ public class KafkaConsumerManager
         props.put("client.id", consumerId.toString());
 
         Thread.currentThread().setContextClassLoader(null);
-        KafkaConsumer<Long, String> consumer = new KafkaConsumer<>(props);
-        consumer.assign(ImmutableList.of(this.tp));
-
-        return consumer;
+        return new KafkaConsumer<>(props);
     }
 }

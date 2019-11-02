@@ -90,12 +90,11 @@ public class KafkaRecordSet
         }
 
         KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
+        KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
-        KafkaConsumer consumer;
-        synchronized (consumerManager) {
-            consumerManager.tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
-            consumer = consumerManager.getConsumer(consumerId);
-        }
+        TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
+        consumer.assign(ImmutableList.of(tp));
+
         setOffsetRange(consumer, split);
         this.columnTypes = typeBuilder.build();
     }
@@ -370,11 +369,8 @@ public class KafkaRecordSet
                     KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
 
-                    KafkaConsumer consumer;
-                    synchronized (consumerManager) {
-                        consumerManager.tp = tp;
-                        consumer = consumerManager.getConsumer(consumerId);
-                    }
+                    KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
+                    consumer.assign(ImmutableList.of(tp));
                     consumer.seek(tp, cursorOffset);
                     ConsumerRecords<ByteBuffer, ByteBuffer> records = consumer.poll(3000);
                     messageAndOffsetIterator = records.records(tp).iterator();
