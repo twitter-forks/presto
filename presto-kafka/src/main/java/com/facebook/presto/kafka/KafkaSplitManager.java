@@ -92,11 +92,9 @@ public class KafkaSplitManager
 
             String topic = kafkaTableHandle.getTopicName();
 
-            KafkaConsumer consumer;
-            synchronized (consumerManager) {
-                consumerManager.tp = new TopicPartition(topic, new Random().nextInt(nodes.size()));
-                consumer = consumerManager.getConsumer(consumerId);
-            }
+            consumerManager.tp = new TopicPartition(topic, new Random().nextInt(nodes.size()));
+            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
+
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
 
             log.debug("Build a new consumer %s for topic: %s to broker %s part: %s", consumerId.toString(), topic, node.toString(), parts.toString());
