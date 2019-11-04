@@ -89,7 +89,7 @@ public class KafkaRecordSet
             typeBuilder.add(handle.getType());
         }
 
-        KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
+        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
         KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
 
         TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
@@ -214,7 +214,7 @@ public class KafkaRecordSet
             }
 
             // Clean up thread
-            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
+            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
             consumerManager.getConsumer(consumerId).close();
             consumerManager.consumerCache.invalidate(consumerId);
             return false;
@@ -366,7 +366,7 @@ public class KafkaRecordSet
         {
             try {
                 if (messageAndOffsetIterator == null) {
-                    KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getName(), split.getLeader());
+                    KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
 
                     KafkaConsumer consumer = consumerManager.getConsumer(consumerId);

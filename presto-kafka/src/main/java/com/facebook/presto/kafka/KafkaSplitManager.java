@@ -87,11 +87,11 @@ public class KafkaSplitManager
             HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
 
             int partition = 0;
-            KafkaThreadPartitionIdentifier consumerId = new KafkaThreadPartitionIdentifier(Integer.toString(partition), Thread.currentThread().getName(), node);
+            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(partition), Thread.currentThread().getId(), node);
             String topic = kafkaTableHandle.getTopicName();
             KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
+            consumer.close();
 
             log.debug("Build a new consumer %s for topic: %s to broker %s part: %s", consumerId.toString(), topic, node.toString(), parts.toString());
             ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
