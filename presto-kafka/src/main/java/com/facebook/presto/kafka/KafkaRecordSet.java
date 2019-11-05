@@ -89,14 +89,18 @@ public class KafkaRecordSet
             typeBuilder.add(handle.getType());
         }
 
-        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
-        KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-
-        TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
-        consumer.assign(ImmutableList.of(tp));
-
-        setOffsetRange(consumer, split);
         this.columnTypes = typeBuilder.build();
+
+        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+
+        synchronized (consumerManager) {
+            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
+
+            TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
+            consumer.assign(ImmutableList.of(tp));
+
+            setOffsetRange(consumer, split);
+        }
     }
 
     private static void setOffsetRange(KafkaConsumer<Long, String> consumer, KafkaSplit split)
@@ -214,9 +218,13 @@ public class KafkaRecordSet
             }
 
             // Clean up thread
-            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
-            consumerManager.getConsumer(consumerId).close();
-            consumerManager.consumerCache.invalidate(consumerId);
+/*            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+
+            synchronized (consumerManager) {
+                consumerManager.getConsumer(consumerId).close();
+                consumerManager.consumerCache.invalidate(consumerId);
+            }*/
+
             return false;
         }
 
@@ -360,6 +368,13 @@ public class KafkaRecordSet
         @Override
         public void close()
         {
+            log.info("closing recordset cursor by thread %d", Thread.currentThread().getId());
+
+            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+            synchronized (consumerManager) {
+                consumerManager.getConsumer(consumerId).close();
+                consumerManager.consumerCache.invalidate(consumerId);
+            }
         }
 
         private void openFetchRequest()
@@ -369,9 +384,13 @@ public class KafkaRecordSet
                     KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
 
-                    KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-                    consumer.assign(ImmutableList.of(tp));
-                    consumer.seek(tp, cursorOffset);
+                    KafkaConsumer consumer;
+                    synchronized (consumerManager) {
+                        consumer = consumerManager.getConsumer(consumerId);
+                        consumer.assign(ImmutableList.of(tp));
+                        consumer.seek(tp, cursorOffset);
+                    }
+
                     ConsumerRecords<ByteBuffer, ByteBuffer> records = consumer.poll(3000);
                     messageAndOffsetIterator = records.records(tp).iterator();
                 }
