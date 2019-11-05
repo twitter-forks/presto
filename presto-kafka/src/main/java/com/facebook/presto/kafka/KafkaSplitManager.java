@@ -40,6 +40,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -120,7 +121,6 @@ public class KafkaSplitManager
                         partitionLeader);
                 splits.add(split);
             }
-
             consumerManager.tearDown();
             return new FixedSplitSource(splits.build());
         }
@@ -128,7 +128,22 @@ public class KafkaSplitManager
             if (e instanceof PrestoException) {
                 throw e;
             }
-            throw new PrestoException(KAFKA_SPLIT_ERROR, format("Cannot list splits for table '%s' reading topic '%s'", kafkaTableHandle.getTableName(), kafkaTableHandle.getTopicName()), e);
+            StringBuilder builder = new StringBuilder();
+            for (Map.Entry<KafkaThreadIdentifier, KafkaConsumer> entry : consumerManager.consumerCache.asMap().entrySet()) {
+                builder.append(String.format("%s", entry.getKey().toString()));
+                builder.append(String.format("%s %s", entry.getValue().partitionsFor(kafkaTableHandle.getTopicName()), entry.getValue().metrics().toString()));
+            }
+
+            builder.append("Current thread:");
+            builder.append(Thread.currentThread().getId());
+            builder.append(Thread.currentThread().getName());
+
+            builder.append("All threads:");
+            for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                builder.append(entry.getKey().getId());
+                builder.append(entry.getKey().getName());
+            }
+            throw new PrestoException(KAFKA_SPLIT_ERROR, format("Cannot list splits for table '%s' reading topic '%s' cache contents: %s", kafkaTableHandle.getTableName(), kafkaTableHandle.getTopicName(), builder.toString()), e);
         }
     }
 
