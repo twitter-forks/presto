@@ -25,7 +25,6 @@ import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.CharStreams;
-import io.airlift.log.Logger;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -57,8 +56,6 @@ import static java.util.Objects.requireNonNull;
 public class KafkaSplitManager
         implements ConnectorSplitManager
 {
-    private static final Logger log = Logger.get(KafkaSplitManager.class);
-
     private final String connectorId;
     private final KafkaConsumerManager consumerManager;
     private final Set<HostAddress> nodes;
@@ -89,11 +86,11 @@ public class KafkaSplitManager
             int partition = 0;
             KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(partition), Thread.currentThread().getId(), node);
             String topic = kafkaTableHandle.getTopicName();
+
             KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
             consumer.close();
 
-            log.debug("Build a new consumer %s for topic: %s to broker %s part: %s", consumerId.toString(), topic, node.toString(), parts.toString());
             ImmutableList.Builder<ConnectorSplit> splits = ImmutableList.builder();
 
             for (PartitionInfo part : parts) {

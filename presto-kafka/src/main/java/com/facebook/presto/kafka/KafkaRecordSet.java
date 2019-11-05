@@ -88,14 +88,11 @@ public class KafkaRecordSet
 
         long threadId = Thread.currentThread().getId();
         KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
-        log.debug("starting thread %d, part %d", threadId, split.getPartitionId());
         KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
 
         TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
         consumer.assign(ImmutableList.of(tp));
-
         setOffsetRange(consumer, split);
-
         consumer.close();
     }
 
@@ -157,8 +154,7 @@ public class KafkaRecordSet
         private long cursorOffset = split.getStart();
         private Iterator<ConsumerRecord<ByteBuffer, ByteBuffer>> messageAndOffsetIterator;
         private final AtomicBoolean reported = new AtomicBoolean();
-        private KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
-        private KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
+        private KafkaConsumer consumer;
         private final FieldValueProvider[] currentRowValues = new FieldValueProvider[columnHandles.size()];
 
         @Override
@@ -356,8 +352,10 @@ public class KafkaRecordSet
         @Override
         public void close()
         {
-            log.info("Exiting thread %d, part %d", Thread.currentThread().getId(), split.getPartitionId());
-            this.consumer.close();
+            log.debug("Close consumer if exist: %d, partition %d", Thread.currentThread().getId(), split.getPartitionId());
+            if (this.consumer != null) {
+                this.consumer.close();
+            }
         }
 
         private void openFetchRequest()
@@ -365,7 +363,12 @@ public class KafkaRecordSet
             try {
                 if (messageAndOffsetIterator == null) {
                     long threadId = Thread.currentThread().getId();
-                    KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
+
+                    if (this.consumer == null) {
+                        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
+                        this.consumer = consumerManager.createConsumer(consumerId);
+                    }
+
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
                     this.consumer.assign(ImmutableList.of(tp));
                     this.consumer.seek(tp, cursorOffset);
