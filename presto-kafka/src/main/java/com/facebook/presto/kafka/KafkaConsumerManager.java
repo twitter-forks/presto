@@ -17,6 +17,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import io.airlift.log.Logger;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.ByteBufferDeserializer;
@@ -81,9 +82,9 @@ public class KafkaConsumerManager
                 ByteBufferDeserializer.class.getName());
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
                 ByteBufferDeserializer.class.getName());
-        props.put("max.poll.records", Integer.toString(maxPollRecords));
-        props.put("max.partition.fetch.bytes", maxPartitionFetchBytes);
-        props.put("client.id", consumerId.toString());
+        props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(maxPollRecords));
+        props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, maxPartitionFetchBytes);
+        props.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerId.toString());
 
         Thread.currentThread().setContextClassLoader(null);
         return new KafkaConsumer<>(props);

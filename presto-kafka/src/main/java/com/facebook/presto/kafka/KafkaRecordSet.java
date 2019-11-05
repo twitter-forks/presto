@@ -380,15 +380,33 @@ public class KafkaRecordSet
                 if (e instanceof PrestoException) {
                     throw e;
                 }
+
+                StringBuilder builder = new StringBuilder();
+                for (Map.Entry<KafkaThreadIdentifier, KafkaConsumer> entry : consumerManager.consumerCache.asMap().entrySet()) {
+                    builder.append(String.format("%s", entry.getKey().toString()));
+                    builder.append(String.format("%s %s", entry.getValue().partitionsFor(split.getTopicName()), entry.getValue().metrics().toString()));
+                }
+
+                builder.append("Current thread:");
+                builder.append(Thread.currentThread().getId());
+                builder.append(Thread.currentThread().getName());
+
+                builder.append("All threads:");
+                for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
+                    builder.append(entry.getKey().getId());
+                    builder.append(entry.getKey().getName());
+                }
+
                 throw new PrestoException(
                         KAFKA_SPLIT_ERROR,
                         format(
-                                "Cannot read data from topic '%s', partition '%s', startOffset %s, endOffset %s, leader %s ",
+                                "Cannot read data from topic '%s', partition '%s', startOffset %s, endOffset %s, leader %s, contents: %s",
                                 split.getTopicName(),
                                 split.getPartitionId(),
                                 split.getStart(),
                                 split.getEnd(),
-                                split.getLeader()),
+                                split.getLeader(),
+                                builder.toString()),
                         e);
             }
         }
