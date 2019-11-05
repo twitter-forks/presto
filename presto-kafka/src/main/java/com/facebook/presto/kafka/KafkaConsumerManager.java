@@ -70,8 +70,9 @@ public class KafkaConsumerManager
         return consumerCache.getUnchecked(consumerId);
     }
 
-    private KafkaConsumer createConsumer(KafkaThreadIdentifier consumerId)
+    public KafkaConsumer createConsumer(KafkaThreadIdentifier consumerId)
     {
+        log.info("Create new consumer %d", consumerId.threadId);
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
                 consumerId.hostAddress.toString());

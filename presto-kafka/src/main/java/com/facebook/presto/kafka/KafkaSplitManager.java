@@ -89,7 +89,7 @@ public class KafkaSplitManager
             int partition = 0;
             KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(partition), Thread.currentThread().getId(), node);
             String topic = kafkaTableHandle.getTopicName();
-            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
+            KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
             consumer.close();
 
@@ -120,7 +120,6 @@ public class KafkaSplitManager
                         partitionLeader);
                 splits.add(split);
             }
-            consumerManager.tearDown();
             return new FixedSplitSource(splits.build());
         }
         catch (Exception e) { // Catch all exceptions because Kafka library is written in scala and checked exceptions are not declared in method signature.

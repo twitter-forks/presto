@@ -82,7 +82,6 @@ public class KafkaRecordSet
         this.messageDecoder = requireNonNull(messageDecoder, "rowDecoder is null");
 
         this.columnHandles = requireNonNull(columnHandles, "columnHandles is null");
-
         ImmutableList.Builder<Type> typeBuilder = ImmutableList.builder();
 
         for (DecoderColumnHandle handle : columnHandles) {
@@ -91,16 +90,15 @@ public class KafkaRecordSet
 
         this.columnTypes = typeBuilder.build();
 
-        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+        long threadId = Thread.currentThread().getId();
+        KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
+        log.info("starting thread %d, part %d", threadId, split.getPartitionId());
 
-        synchronized (consumerManager) {
-            KafkaConsumer consumer = consumerManager.getConsumer(consumerId);
-
-            TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
-            consumer.assign(ImmutableList.of(tp));
-
-            setOffsetRange(consumer, split);
-        }
+        KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
+        TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
+        consumer.assign(ImmutableList.of(tp));
+        setOffsetRange(consumer, split);
+        consumer.close();
     }
 
     private static void setOffsetRange(KafkaConsumer<Long, String> consumer, KafkaSplit split)
@@ -161,7 +159,8 @@ public class KafkaRecordSet
         private long cursorOffset = split.getStart();
         private Iterator<ConsumerRecord<ByteBuffer, ByteBuffer>> messageAndOffsetIterator;
         private final AtomicBoolean reported = new AtomicBoolean();
-
+        private KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+        private KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
         private final FieldValueProvider[] currentRowValues = new FieldValueProvider[columnHandles.size()];
 
         @Override
@@ -216,15 +215,6 @@ public class KafkaRecordSet
                         totalMessages, totalBytes, split.getEnd() - split.getStart(),
                         cursorOffset, split.getStart(), split.getEnd());
             }
-
-            // Clean up thread
-/*            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
-
-            synchronized (consumerManager) {
-                consumerManager.getConsumer(consumerId).close();
-                consumerManager.consumerCache.invalidate(consumerId);
-            }*/
-
             return false;
         }
 
@@ -368,30 +358,21 @@ public class KafkaRecordSet
         @Override
         public void close()
         {
-            log.info("closing recordset cursor by thread %d", Thread.currentThread().getId());
-
-            KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
-            synchronized (consumerManager) {
-                consumerManager.getConsumer(consumerId).close();
-                consumerManager.consumerCache.invalidate(consumerId);
-            }
+            log.info("Exiting thread %d, part %d", Thread.currentThread().getId(), split.getPartitionId());
+            this.consumer.close();
         }
 
         private void openFetchRequest()
         {
             try {
                 if (messageAndOffsetIterator == null) {
-                    KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), Thread.currentThread().getId(), split.getLeader());
+                    long threadId = Thread.currentThread().getId();
+                    KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
+                    this.consumer.assign(ImmutableList.of(tp));
+                    this.consumer.seek(tp, cursorOffset);
 
-                    KafkaConsumer consumer;
-                    synchronized (consumerManager) {
-                        consumer = consumerManager.getConsumer(consumerId);
-                        consumer.assign(ImmutableList.of(tp));
-                        consumer.seek(tp, cursorOffset);
-                    }
-
-                    ConsumerRecords<ByteBuffer, ByteBuffer> records = consumer.poll(3000);
+                    ConsumerRecords<ByteBuffer, ByteBuffer> records = this.consumer.poll(3000);
                     messageAndOffsetIterator = records.records(tp).iterator();
                 }
             }
@@ -400,12 +381,13 @@ public class KafkaRecordSet
                     throw e;
                 }
 
-                StringBuilder builder = new StringBuilder();
+/*                StringBuilder builder = new StringBuilder();
                 for (Map.Entry<KafkaThreadIdentifier, KafkaConsumer> entry : consumerManager.consumerCache.asMap().entrySet()) {
                     builder.append(String.format("%s", entry.getKey().toString()));
-                    builder.append(String.format("%s %s", entry.getValue().partitionsFor(split.getTopicName()), entry.getValue().metrics().toString()));
-                }
+                    builder.append(String.format("%s", entry.getValue().metrics().toString()));
+                }*/
 
+/*
                 builder.append("Current thread:");
                 builder.append(Thread.currentThread().getId());
                 builder.append(Thread.currentThread().getName());
@@ -415,17 +397,17 @@ public class KafkaRecordSet
                     builder.append(entry.getKey().getId());
                     builder.append(entry.getKey().getName());
                 }
+*/
 
                 throw new PrestoException(
                         KAFKA_SPLIT_ERROR,
                         format(
-                                "Cannot read data from topic '%s', partition '%s', startOffset %s, endOffset %s, leader %s, contents: %s",
+                                "Cannot read data from topic '%s', partition '%s', startOffset %s, endOffset %s, leader %s",
                                 split.getTopicName(),
                                 split.getPartitionId(),
                                 split.getStart(),
                                 split.getEnd(),
-                                split.getLeader(),
-                                builder.toString()),
+                                split.getLeader()),
                         e);
             }
         }
