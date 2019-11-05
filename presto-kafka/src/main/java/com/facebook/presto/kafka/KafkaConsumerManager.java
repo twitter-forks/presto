@@ -72,7 +72,6 @@ public class KafkaConsumerManager
 
     public KafkaConsumer createConsumer(KafkaThreadIdentifier consumerId)
     {
-        log.info("Create new consumer %d", consumerId.threadId);
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
                 consumerId.hostAddress.toString());
@@ -87,6 +86,7 @@ public class KafkaConsumerManager
         props.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerId.toString());
 
         Thread.currentThread().setContextClassLoader(null);
+        log.debug("Creating KafkaConsumer for thread %s, partitionId %d", consumerId.threadId, consumerId.partitionId);
         return new KafkaConsumer<>(props);
     }
 }

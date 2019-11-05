@@ -75,29 +75,27 @@ public class KafkaRecordSet
             RowDecoder messageDecoder)
     {
         this.split = requireNonNull(split, "split is null");
-
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
-
+        this.columnHandles = requireNonNull(columnHandles, "columnHandles is null");
         this.keyDecoder = requireNonNull(keyDecoder, "rowDecoder is null");
         this.messageDecoder = requireNonNull(messageDecoder, "rowDecoder is null");
 
-        this.columnHandles = requireNonNull(columnHandles, "columnHandles is null");
         ImmutableList.Builder<Type> typeBuilder = ImmutableList.builder();
-
-        for (DecoderColumnHandle handle : columnHandles) {
+        for (DecoderColumnHandle handle : this.columnHandles) {
             typeBuilder.add(handle.getType());
         }
-
         this.columnTypes = typeBuilder.build();
 
         long threadId = Thread.currentThread().getId();
         KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(split.getPartitionId()), threadId, split.getLeader());
-        log.info("starting thread %d, part %d", threadId, split.getPartitionId());
-
+        log.debug("starting thread %d, part %d", threadId, split.getPartitionId());
         KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
+
         TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
         consumer.assign(ImmutableList.of(tp));
+
         setOffsetRange(consumer, split);
+
         consumer.close();
     }
 
@@ -187,9 +185,9 @@ public class KafkaRecordSet
         {
             while (true) {
                 if (cursorOffset >= split.getEnd()) {
-                    return endOfData(); // Split end is exclusive.
+                    return endOfData();
                 }
-                // Create a fetch request
+
                 openFetchRequest();
 
                 while (messageAndOffsetIterator.hasNext()) {
@@ -197,7 +195,7 @@ public class KafkaRecordSet
                     long messageOffset = currentMessageAndOffset.offset();
 
                     if (messageOffset >= split.getEnd()) {
-                        return endOfData(); // Past our split end. Bail.
+                        return endOfData();
                     }
 
                     if (messageOffset >= cursorOffset) {
