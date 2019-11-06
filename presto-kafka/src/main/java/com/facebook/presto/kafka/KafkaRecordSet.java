@@ -372,8 +372,8 @@ public class KafkaRecordSet
                     TopicPartition tp = new TopicPartition(split.getTopicName(), split.getPartitionId());
                     this.consumer.assign(ImmutableList.of(tp));
                     this.consumer.seek(tp, cursorOffset);
-
                     ConsumerRecords<ByteBuffer, ByteBuffer> records = this.consumer.poll(3000);
+                    this.consumer.commitSync();
                     messageAndOffsetIterator = records.records(tp).iterator();
                 }
             }
@@ -381,24 +381,6 @@ public class KafkaRecordSet
                 if (e instanceof PrestoException) {
                     throw e;
                 }
-
-/*                StringBuilder builder = new StringBuilder();
-                for (Map.Entry<KafkaThreadIdentifier, KafkaConsumer> entry : consumerManager.consumerCache.asMap().entrySet()) {
-                    builder.append(String.format("%s", entry.getKey().toString()));
-                    builder.append(String.format("%s", entry.getValue().metrics().toString()));
-                }*/
-
-/*
-                builder.append("Current thread:");
-                builder.append(Thread.currentThread().getId());
-                builder.append(Thread.currentThread().getName());
-
-                builder.append("All threads:");
-                for (Map.Entry<Thread, StackTraceElement[]> entry : Thread.getAllStackTraces().entrySet()) {
-                    builder.append(entry.getKey().getId());
-                    builder.append(entry.getKey().getName());
-                }
-*/
 
                 throw new PrestoException(
                         KAFKA_SPLIT_ERROR,

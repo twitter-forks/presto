@@ -84,6 +84,7 @@ public class KafkaConsumerManager
         props.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(maxPollRecords));
         props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, maxPartitionFetchBytes);
         props.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerId.toString());
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         Thread.currentThread().setContextClassLoader(null);
         log.debug("Creating KafkaConsumer for thread %s, partitionId %d", consumerId.threadId, consumerId.partitionId);
