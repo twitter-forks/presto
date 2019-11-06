@@ -1,8 +1,5 @@
 language: java
 
-git:
-  quiet: true
-
 env:
   global:
     - MAVEN_OPTS="-Xmx512M -XX:+ExitOnOutOfMemoryError"
@@ -38,6 +35,9 @@ cache:
 
 services:
   - docker
+
+git:
+  quiet: true
 
 before_install:
   - |
