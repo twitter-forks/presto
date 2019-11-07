@@ -103,14 +103,14 @@ public class TestZookeeperMetastoreMonitor
 
         addServerToZk("nameNode1", "host1", 10001);
         // Sleep for some time so that event can be propagated.
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(1000);
         servers = zkMetastoreMonitor.getServers();
         expected = ImmutableList.of(HostAndPort.fromParts("host1", 10001));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
 
         addServerToZk("nameNode2", "host2", 10002);
         // Sleep for some time so that event can be propagated.
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(1000);
         servers = zkMetastoreMonitor.getServers();
         expected = ImmutableList.of(HostAndPort.fromParts("host1", 10001), HostAndPort.fromParts("host2", 10002));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
@@ -118,7 +118,7 @@ public class TestZookeeperMetastoreMonitor
         // Change value of an existing name node
         addServerToZk("nameNode2", "host2", 10003);
         // Sleep for some time so that event can be propagated.
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(1000);
         servers = zkMetastoreMonitor.getServers();
         expected = ImmutableList.of(HostAndPort.fromParts("host1", 10001), HostAndPort.fromParts("host2", 10003));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
@@ -126,7 +126,7 @@ public class TestZookeeperMetastoreMonitor
         // Delete an existing name node
         zkClient.delete(getPathForNameNode("nameNode1"));
         // Sleep for some time so that event can be propagated.
-        TimeUnit.MILLISECONDS.sleep(100);
+        TimeUnit.MILLISECONDS.sleep(1000);
         servers = zkMetastoreMonitor.getServers();
         expected = ImmutableList.of(HostAndPort.fromParts("host2", 10003));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers), servers.toString());
