@@ -24,7 +24,6 @@ import com.google.inject.Scopes;
 
 import javax.inject.Inject;
 
-import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.json.JsonBinder.jsonBinder;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
@@ -45,8 +44,10 @@ public class KafkaConnectorModule
         binder.bind(KafkaSplitManager.class).in(Scopes.SINGLETON);
         binder.bind(KafkaRecordSetProvider.class).in(Scopes.SINGLETON);
 
-        binder.bind(KafkaSimpleConsumerManager.class).in(Scopes.SINGLETON);
+        binder.bind(KafkaZookeeperServerset.class).in(Scopes.SINGLETON);
+        binder.bind(KafkaConsumerManager.class).in(Scopes.SINGLETON);
 
+        binder.bind(KafkaRowTypeParser.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(KafkaConnectorConfig.class);
 
         jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
@@ -63,7 +64,7 @@ public class KafkaConnectorModule
         private final TypeManager typeManager;
 
         @Inject
-        public TypeDeserializer(TypeManager typeManager)
+        public TypeDeserializer(TypeManager typeManager, KafkaRowTypeParser nestedRowType)
         {
             super(Type.class);
             this.typeManager = requireNonNull(typeManager, "typeManager is null");
@@ -72,7 +73,7 @@ public class KafkaConnectorModule
         @Override
         protected Type _deserialize(String value, DeserializationContext context)
         {
-            return typeManager.getType(parseTypeSignature(value));
+            return KafkaRowTypeParser.getNestedRowType(value, typeManager);
         }
     }
 }
