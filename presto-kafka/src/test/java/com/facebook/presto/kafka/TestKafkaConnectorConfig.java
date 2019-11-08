@@ -26,7 +26,7 @@ public class TestKafkaConnectorConfig
     public void testDefaults()
     {
         ConfigAssertions.assertRecordedDefaults(ConfigAssertions.recordDefaults(KafkaConnectorConfig.class)
-                .setNodes("localhost:9092")
+                .setNodes("")
                 .setKafkaConnectTimeout("10s")
                 .setDefaultSchema("default")
                 .setTableNames("")
