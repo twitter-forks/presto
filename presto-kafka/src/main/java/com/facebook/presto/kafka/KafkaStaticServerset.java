@@ -18,33 +18,29 @@ import com.google.common.collect.ImmutableList;
 
 import javax.inject.Inject;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
-public class KafkaZookeeperServerset
+public class KafkaStaticServerset
         implements KafkaCluster
 {
-    public KafkaZookeeperServersetMonitor zkMonitor;
+    private final List<HostAddress> nodes;
 
     @Inject
-    public KafkaZookeeperServerset(KafkaConnectorConfig config)
+    public KafkaStaticServerset(KafkaConnectorConfig config)
     {
-        String zkServerHostAndPort = requireNonNull(config.getZookeeperUri(), "zkServerHostAndPort is null");
-        String zkKafkaBrokerPath = requireNonNull(config.getZookeeperPath(), "zkKafkaBrokerPath is null");
-        int zkRetries = requireNonNull(config.getZookeeperMaxRetries(), "zkMaxRetried is null");
-        int zkRetrySleepTime = requireNonNull(config.getZookeeperRetrySleepTime(), "zkRetrySleepTime is null");
-        this.zkMonitor = new KafkaZookeeperServersetMonitor(zkServerHostAndPort, zkKafkaBrokerPath, zkRetries, zkRetrySleepTime);
+        requireNonNull(config.getNodes(), "nodes is null");
+        checkArgument(!config.getNodes().isEmpty(), "nodes must specify at least one URI");
+        this.nodes = config.getNodes();
     }
 
+    @Override
     public HostAddress selectRandomServer()
     {
-        List<HostAddress> addresses = zkMonitor.getServers();
-        Collections.shuffle(addresses);
-
-        return selectRandom(addresses);
+        return selectRandom(this.nodes);
     }
 
     private static <T> T selectRandom(Iterable<T> iterable)

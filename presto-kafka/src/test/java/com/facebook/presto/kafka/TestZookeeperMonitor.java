@@ -33,16 +33,16 @@ import java.util.concurrent.TimeUnit;
 
 import static org.testng.Assert.assertTrue;
 
-public class TestKafkaZookeeperMonitor
+public class TestZookeeperMonitor
 {
-    private static final Logger log = Logger.get(TestKafkaZookeeperMonitor.class);
+    private static final Logger log = Logger.get(TestZookeeperMonitor.class);
 
-    private KafkaZookeeperMonitor kafkaZookeeperMonitor;
+    private KafkaZookeeperServersetMonitor kafkaZookeeperServersetMonitor;
     private TestingServer zkServer;
     private ZkClient zkClient;
     private final String zkPath = "/kafka";
 
-    public TestKafkaZookeeperMonitor()
+    public TestZookeeperMonitor()
             throws Exception
     {
         zkServer = new TestingServer(TestUtils.findUnusedPort());
@@ -74,7 +74,7 @@ public class TestKafkaZookeeperMonitor
     public void destroy()
             throws IOException
     {
-        kafkaZookeeperMonitor.close();
+        kafkaZookeeperServersetMonitor.close();
         zkClient.close();
         zkServer.close();
     }
@@ -91,7 +91,7 @@ public class TestKafkaZookeeperMonitor
         zkClient.unsubscribeAll();
 
         zkClient.createPersistent(zkPath);
-        kafkaZookeeperMonitor = new KafkaZookeeperMonitor(zkServer.getConnectString(), zkPath, 3, 500);
+        kafkaZookeeperServersetMonitor = new KafkaZookeeperServersetMonitor(zkServer.getConnectString(), zkPath, 3, 500);
     }
 
     @Test
@@ -99,19 +99,19 @@ public class TestKafkaZookeeperMonitor
     {
         List<HostAddress> servers;
         List<HostAddress> expected;
-        assertTrue(kafkaZookeeperMonitor.getServers().isEmpty());
+        assertTrue(kafkaZookeeperServersetMonitor.getServers().isEmpty());
 
         addServerToZk("nameNode1", "host1", 10001);
         // Sleep for some time so that event can be propagated.
         TimeUnit.MILLISECONDS.sleep(100);
-        servers = kafkaZookeeperMonitor.getServers();
+        servers = kafkaZookeeperServersetMonitor.getServers();
         expected = ImmutableList.of(HostAddress.fromParts("host1", 10001));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
 
         addServerToZk("nameNode2", "host2", 10002);
         // Sleep for some time so that event can be propagated.
         TimeUnit.MILLISECONDS.sleep(100);
-        servers = kafkaZookeeperMonitor.getServers();
+        servers = kafkaZookeeperServersetMonitor.getServers();
         expected = ImmutableList.of(HostAddress.fromParts("host1", 10001), HostAddress.fromParts("host2", 10002));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
 
@@ -119,7 +119,7 @@ public class TestKafkaZookeeperMonitor
         addServerToZk("nameNode2", "host2", 10003);
         // Sleep for some time so that event can be propagated.
         TimeUnit.MILLISECONDS.sleep(100);
-        servers = kafkaZookeeperMonitor.getServers();
+        servers = kafkaZookeeperServersetMonitor.getServers();
         expected = ImmutableList.of(HostAddress.fromParts("host1", 10001), HostAddress.fromParts("host2", 10003));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers));
 
@@ -127,7 +127,7 @@ public class TestKafkaZookeeperMonitor
         zkClient.delete(getPathForNameNode("nameNode1"));
         // Sleep for some time so that event can be propagated.
         TimeUnit.MILLISECONDS.sleep(100);
-        servers = kafkaZookeeperMonitor.getServers();
+        servers = kafkaZookeeperServersetMonitor.getServers();
         expected = ImmutableList.of(HostAddress.fromParts("host2", 10003));
         assertTrue(servers.containsAll(expected) && expected.containsAll(servers), servers.toString());
     }

@@ -70,7 +70,7 @@ public class KafkaConsumerManager
         return consumerCache.getUnchecked(consumerId);
     }
 
-    public KafkaConsumer createConsumer(KafkaThreadIdentifier consumerId)
+    KafkaConsumer<String, String> createConsumer(KafkaThreadIdentifier consumerId)
     {
         final Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
@@ -85,6 +85,7 @@ public class KafkaConsumerManager
         props.put(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG, maxPartitionFetchBytes);
         props.put(ConsumerConfig.CLIENT_ID_CONFIG, consumerId.toString());
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG, "org.apache.kafka.clients.consumer.RoundRobinAssignor");
 
         Thread.currentThread().setContextClassLoader(null);
         log.debug("Creating KafkaConsumer for thread %s, partitionId %d", consumerId.threadId, consumerId.partitionId);

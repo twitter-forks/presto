@@ -26,7 +26,7 @@ public class TestKafkaConnectorConfig
     public void testDefaults()
     {
         ConfigAssertions.assertRecordedDefaults(ConfigAssertions.recordDefaults(KafkaConnectorConfig.class)
-                .setNodes("")
+                .setNodes("localhost:9092")
                 .setKafkaConnectTimeout("10s")
                 .setDefaultSchema("default")
                 .setTableNames("")
@@ -36,41 +36,44 @@ public class TestKafkaConnectorConfig
                 .setMaxPollRecords(500)
                 .setZookeeperMaxRetries(3)
                 .setZookeeperUri("localhost:2181")
-                .setZookeeperPath("/kafka/abc")
-                .setZookeeperRetrySleepTime(100));
+                .setZookeeperPath(null)
+                .setZookeeperRetrySleepTime(100)
+                .setDiscoveryMode("static"));
     }
 
     @Test
     public void testExplicitPropertyMappings()
     {
         Map<String, String> properties = new ImmutableMap.Builder<String, String>()
+                .put("kafka.nodes", "localhost:9092")
                 .put("kafka.table-description-dir", "/var/lib/kafka")
                 .put("kafka.table-names", "table1, table2, table3")
                 .put("kafka.default-schema", "kafka")
-                .put("kafka.nodes", "localhost:12345,localhost:23456")
                 .put("kafka.connect-timeout", "1h")
                 .put("kafka.hide-internal-columns", "false")
                 .put("kafka.max.partition.fetch.bytes", "1024")
                 .put("kafka.max.poll.records", "1000")
                 .put("kafka.zookeeper.max.retries", "5")
-                .put("kafka.zookeeper.uri", "brokerhost:2181")
-                .put("kafka.zookeeper.path", "/kafka/abcd")
+                .put("kafka.zookeeper.uri", "localhost:2181")
+                .put("kafka.zookeeper.path", "/zookeeper/path/")
                 .put("kafka.zookeeper.retry.sleeptime", "200")
+                .put("kafka.discovery.mode", "static")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
+                .setNodes("localhost:9092")
                 .setTableDescriptionDir(new File("/var/lib/kafka"))
                 .setTableNames("table1, table2, table3")
                 .setDefaultSchema("kafka")
-                .setNodes("localhost:12345, localhost:23456")
                 .setKafkaConnectTimeout("1h")
                 .setHideInternalColumns(false)
                 .setMaxPartitionFetchBytes(1024)
                 .setMaxPollRecords(1000)
                 .setZookeeperMaxRetries(5)
-                .setZookeeperUri("brokerhost:2181")
-                .setZookeeperPath("/kafka/abcd")
-                .setZookeeperRetrySleepTime(200);
+                .setZookeeperUri("localhost:2181")
+                .setZookeeperPath("/zookeeper/path/")
+                .setZookeeperRetrySleepTime(200)
+                .setDiscoveryMode("static");
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }

@@ -23,7 +23,6 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.connector.ConnectorSplitManager;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.io.CharStreams;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.Node;
@@ -39,7 +38,6 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.facebook.presto.kafka.KafkaErrorCode.KAFKA_SPLIT_ERROR;
@@ -58,21 +56,19 @@ public class KafkaSplitManager
 {
     private final String connectorId;
     private final KafkaConsumerManager consumerManager;
-    private final Set<HostAddress> nodes;
-    private final KafkaZookeeperServerset servers;
+    private final KafkaCluster servers;
 
     @Inject
     public KafkaSplitManager(
             KafkaConnectorId connectorId,
             KafkaConnectorConfig kafkaConnectorConfig,
-            KafkaZookeeperServerset servers,
+            KafkaCluster servers,
             KafkaConsumerManager consumerManager)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
 
         requireNonNull(kafkaConnectorConfig, "kafkaConfig is null");
-        this.nodes = ImmutableSet.copyOf(kafkaConnectorConfig.getNodes());
         this.servers = servers;
     }
 
@@ -81,13 +77,13 @@ public class KafkaSplitManager
     {
         KafkaTableHandle kafkaTableHandle = convertLayout(layout).getTable();
         try {
-            HostAddress node = (!this.nodes.isEmpty()) ? selectRandom(this.nodes) : servers.selectRandomServer();
+            HostAddress node = this.servers.selectRandomServer();
 
             int partition = 0;
             KafkaThreadIdentifier consumerId = new KafkaThreadIdentifier(Integer.toString(partition), Thread.currentThread().getId(), node);
             String topic = kafkaTableHandle.getTopicName();
 
-            KafkaConsumer consumer = consumerManager.createConsumer(consumerId);
+            KafkaConsumer<String, String> consumer = consumerManager.createConsumer(consumerId);
             List<PartitionInfo> parts = consumer.partitionsFor(topic);
             consumer.close();
 

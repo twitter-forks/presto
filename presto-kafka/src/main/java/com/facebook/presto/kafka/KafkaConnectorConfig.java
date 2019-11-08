@@ -23,8 +23,10 @@ import io.airlift.units.MinDuration;
 
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Pattern;
 
 import java.io.File;
+import java.util.List;
 import java.util.Set;
 
 import static com.google.common.collect.Iterables.transform;
@@ -36,7 +38,7 @@ public class KafkaConnectorConfig
     /**
      * Seed nodes for Kafka cluster. At least one must exist.
      */
-    private Set<HostAddress> nodes = ImmutableSet.of();
+    private List<HostAddress> nodes;
 
     /**
      * Timeout to connect to Kafka.
@@ -64,6 +66,11 @@ public class KafkaConnectorConfig
     private boolean hideInternalColumns = true;
 
     /**
+     * Use either 'static' or 'zookeeper' to discover kafka brokers
+     */
+    private String discoveryMode = "static";
+
+    /**
      * The Zookeeper URI.
      * Example: hostAddress:2181
      */
@@ -73,7 +80,7 @@ public class KafkaConnectorConfig
      * The Zookeeper path for Kafka services.
      * Example: /company/service/kafka/prod/abc
      */
-    private String kafkaZookeeperPath = "/kafka/abc";
+    private String kafkaZookeeperPath = "/kafka";
 
     /**
      * Maximum number of records per poll()
@@ -134,15 +141,15 @@ public class KafkaConnectorConfig
         return this;
     }
 
-    public Set<HostAddress> getNodes()
+    public List<HostAddress> getNodes()
     {
-        return nodes;
+        return this.nodes;
     }
 
     @Config("kafka.nodes")
     public KafkaConnectorConfig setNodes(String nodes)
     {
-        this.nodes = (nodes == null) ? null : parseNodes(nodes);
+        this.nodes = (nodes == null) ? null : parseNodes(nodes).asList();
         return this;
     }
 
@@ -156,6 +163,19 @@ public class KafkaConnectorConfig
     public KafkaConnectorConfig setKafkaConnectTimeout(String kafkaConnectTimeout)
     {
         this.kafkaConnectTimeout = Duration.valueOf(kafkaConnectTimeout);
+        return this;
+    }
+
+    public String getDiscoveryMode()
+    {
+        return discoveryMode;
+    }
+
+    @Config("kafka.discovery.mode")
+    @Pattern(regexp = "static|zookeeper", flags = Pattern.Flag.CASE_INSENSITIVE)
+    public KafkaConnectorConfig setDiscoveryMode(String discoveryMode)
+    {
+        this.discoveryMode = discoveryMode;
         return this;
     }
 

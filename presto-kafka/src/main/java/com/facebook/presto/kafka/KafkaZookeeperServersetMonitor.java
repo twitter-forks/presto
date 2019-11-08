@@ -32,15 +32,15 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
-public class KafkaZookeeperMonitor
+public class KafkaZookeeperServersetMonitor
         implements PathChildrenCacheListener
 {
-    public static final Logger log = Logger.get(KafkaZookeeperMonitor.class);
+    public static final Logger log = Logger.get(KafkaZookeeperServersetMonitor.class);
     private CuratorFramework client;
     private PathChildrenCache cache;
     private ConcurrentMap<String, HostAddress> servers;  // (Node_Name->HostAndPort)
 
-    public KafkaZookeeperMonitor(String zkServer, String watchPath, int maxRetries, int retrySleepTime)
+    public KafkaZookeeperServersetMonitor(String zkServer, String watchPath, int maxRetries, int retrySleepTime)
     {
         client = CuratorFrameworkFactory.newClient(zkServer, new ExponentialBackoffRetry(retrySleepTime, maxRetries));
         client.start();
