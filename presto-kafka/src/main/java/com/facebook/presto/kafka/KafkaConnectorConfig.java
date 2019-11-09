@@ -80,7 +80,7 @@ public class KafkaConnectorConfig
      * The Zookeeper path for Kafka services.
      * Example: /company/service/kafka/prod/abc
      */
-    private String kafkaZookeeperPath = "/kafka";
+    private String kafkaZookeeperPath;
 
     /**
      * Maximum number of records per poll()

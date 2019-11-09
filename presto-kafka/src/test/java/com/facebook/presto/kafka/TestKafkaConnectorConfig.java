@@ -26,7 +26,7 @@ public class TestKafkaConnectorConfig
     public void testDefaults()
     {
         ConfigAssertions.assertRecordedDefaults(ConfigAssertions.recordDefaults(KafkaConnectorConfig.class)
-                .setNodes("")
+                .setNodes(null)
                 .setKafkaConnectTimeout("10s")
                 .setDefaultSchema("default")
                 .setTableNames("")
@@ -54,10 +54,10 @@ public class TestKafkaConnectorConfig
                 .put("kafka.max.partition.fetch.bytes", "1024")
                 .put("kafka.max.poll.records", "1000")
                 .put("kafka.zookeeper.max.retries", "5")
-                .put("kafka.zookeeper.uri", "localhost:2181")
+                .put("kafka.zookeeper.uri", "localhost1:2181")
                 .put("kafka.zookeeper.path", "/zookeeper/path/")
                 .put("kafka.zookeeper.retry.sleeptime", "200")
-                .put("kafka.discovery.mode", "static")
+                .put("kafka.discovery.mode", "zookeeper")
                 .build();
 
         KafkaConnectorConfig expected = new KafkaConnectorConfig()
@@ -70,10 +70,10 @@ public class TestKafkaConnectorConfig
                 .setMaxPartitionFetchBytes(1024)
                 .setMaxPollRecords(1000)
                 .setZookeeperMaxRetries(5)
-                .setZookeeperUri("localhost:2181")
+                .setZookeeperUri("localhost1:2181")
                 .setZookeeperPath("/zookeeper/path/")
                 .setZookeeperRetrySleepTime(200)
-                .setDiscoveryMode("static");
+                .setDiscoveryMode("zookeeper");
 
         ConfigAssertions.assertFullMapping(properties, expected);
     }
