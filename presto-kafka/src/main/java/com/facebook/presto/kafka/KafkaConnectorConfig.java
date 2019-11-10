@@ -74,11 +74,11 @@ public class KafkaConnectorConfig
      * The Zookeeper URI.
      * Example: hostAddress:2181
      */
-    private String kafkaZookeeperUri = "localhost:2181";
+    private String kafkaZookeeperUri;
 
     /**
      * The Zookeeper path for Kafka services.
-     * Example: /company/service/kafka/prod/abc
+     * Example: /company/service/kafka/prod/path
      */
     private String kafkaZookeeperPath;
 

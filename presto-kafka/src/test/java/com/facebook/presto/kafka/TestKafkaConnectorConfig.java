@@ -35,7 +35,7 @@ public class TestKafkaConnectorConfig
                 .setMaxPartitionFetchBytes(1048576)
                 .setMaxPollRecords(500)
                 .setZookeeperMaxRetries(3)
-                .setZookeeperUri("localhost:2181")
+                .setZookeeperUri(null)
                 .setZookeeperPath(null)
                 .setZookeeperRetrySleepTime(100)
                 .setDiscoveryMode("static"));
