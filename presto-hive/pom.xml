@@ -387,6 +387,9 @@
                                 <exclude>**/TestHiveRecoverableGroupedExecution.java</exclude>
                                 <exclude>**/TestHivePushdownFilterQueries.java</exclude>
                                 <exclude>**/TestParquetDistributedQueries.java</exclude>
+
+                                <!-- Exclude long running -->
+                                <exclude>**/TestHiveDistributedQueries.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>
@@ -468,6 +471,22 @@
                         <configuration>
                             <includes>
                                 <include>**/TestParquetDistributedQueries.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>test-distributed-queries</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/TestHiveFileFormats.java</include>
                             </includes>
                         </configuration>
                     </plugin>
