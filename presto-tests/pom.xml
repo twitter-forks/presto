@@ -221,6 +221,9 @@
                         <exclude>**/TestDistributedQueriesNoHashGeneration.java</exclude>
                         <exclude>**/TestLocalQueries.java</exclude>
                         <exclude>**/TestNonIterativeDistributedQueries.java</exclude>
+                        <exclude>**/TestDistributedQueriesIndexed.java</exclude>
+                        <exclude>**/TestDistributedSpilledQueries.java</exclude>
+                        <exclude>**/TestTpchDistributedQueries.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>

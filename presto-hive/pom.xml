@@ -387,7 +387,9 @@
                                 <exclude>**/TestHiveRecoverableGroupedExecution.java</exclude>
                                 <exclude>**/TestHivePushdownFilterQueries.java</exclude>
                                 <exclude>**/TestParquetDistributedQueries.java</exclude>
-                                <exclude>**/TestHiveFileFormats.java</exclude>
+
+                                <!-- Exclude long running -->
+                                <exclude>**/TestHiveDistributedQueries.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>
@@ -476,7 +478,7 @@
             </build>
         </profile>
         <profile>
-            <id>test-hive-file-formats</id>
+            <id>test-distributed-queries</id>
             <build>
                 <plugins>
                     <plugin>

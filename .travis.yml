@@ -22,7 +22,7 @@ env:
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-recoverable-grouped-execution"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-pushdown-filter-queries"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-parquet"
-    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-file-formats"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-distributed-queries"
     - TEST_SPECIFIC_MODULES=presto-main
     - TEST_SPECIFIC_MODULES=presto-mongodb
     - TEST_OTHER_MODULES=!presto-tests,!presto-raptor,!presto-accumulo,!presto-cassandra,!presto-hive,!presto-kudu,!presto-docs,!presto-server,!presto-server-rpm,!presto-main,!presto-mongodb
@@ -102,6 +102,7 @@ script:
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
       ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES
+    travis_wait 20
     fi
   - |
     if [[ -v PRODUCT_TESTS_BASIC_ENVIRONMENT ]]; then
