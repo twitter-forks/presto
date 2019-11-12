@@ -101,8 +101,7 @@ script:
     fi
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
-      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES
-    travis_wait 20
+      travis_wait 20 ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_OTHER_MODULES
     fi
   - |
     if [[ -v PRODUCT_TESTS_BASIC_ENVIRONMENT ]]; then
