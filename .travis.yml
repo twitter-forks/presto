@@ -23,7 +23,7 @@ env:
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-recoverable-grouped-execution"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-pushdown-filter-queries"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-parquet"
-    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-file-formats"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-distributed-queries"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-integration-smoke"
     - TEST_SPECIFIC_MODULES=presto-main
     - TEST_SPECIFIC_MODULES=presto-mongodb
