@@ -13,7 +13,7 @@ env:
     - WEBUI_CHECKS=true
     - TEST_SPECIFIC_MODULES=presto-tests
     - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P ci-only"
-    - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P ci-only-1"
+    - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P ci-only-2"
     - TEST_SPECIFIC_MODULES=presto-tests TEST_FLAGS="-P selected-tests"
     - TEST_SPECIFIC_MODULES=presto-raptor
     - TEST_SPECIFIC_MODULES=presto-accumulo
@@ -23,7 +23,8 @@ env:
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-recoverable-grouped-execution"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-pushdown-filter-queries"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-parquet"
-    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-distributed-queries"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-file-formats"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-integration-smoke"
     - TEST_SPECIFIC_MODULES=presto-main
     - TEST_SPECIFIC_MODULES=presto-mongodb
     - TEST_SPECIFIC_MODULES=presto-thrift-connector
@@ -100,7 +101,7 @@ script:
     fi
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then
-      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
+      travis_wait 40 ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
     fi
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
