@@ -271,6 +271,36 @@
             <artifactId>jackson-databind</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.twitter.elephantbird</groupId>
+            <artifactId>elephant-bird-core</artifactId>
+            <version>4.14</version>
+            <classifier>thrift9</classifier>
+            <exclusions>
+                <exclusion>
+                    <groupId>commons-logging</groupId>
+                    <artifactId>commons-logging</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.hadoop.gplcompression</groupId>
+                    <artifactId>hadoop-lzo</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.5</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.4</version>
+        </dependency>
+
         <!-- used by tests but also needed transitively -->
         <dependency>
             <groupId>com.facebook.airlift</groupId>
@@ -390,7 +420,6 @@
         <dependency>
             <groupId>org.anarres.lzo</groupId>
             <artifactId>lzo-hadoop</artifactId>
-            <scope>test</scope>
         </dependency>
 
         <!-- for benchmark -->

@@ -113,6 +113,9 @@ public class TestHivePageSink
         try {
             ExtendedHiveMetastore metastore = createTestingFileHiveMetastore(new File(tempDir, "metastore"));
             for (HiveStorageFormat format : HiveStorageFormat.values()) {
+                if (format.equals(HiveStorageFormat.THRIFTBINARY)) {
+                    continue;
+                }
                 config.setHiveStorageFormat(format);
                 config.setCompressionCodec(NONE);
                 long uncompressedLength = writeTestFile(config, metastoreClientConfig, metastore, makeFileName(tempDir, config));
