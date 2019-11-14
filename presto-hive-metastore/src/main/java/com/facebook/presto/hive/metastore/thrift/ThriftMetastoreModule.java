@@ -20,10 +20,14 @@ import com.facebook.presto.hive.MetastoreClientConfig;
 import com.facebook.presto.hive.metastore.CachingHiveMetastore;
 import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
 import com.facebook.presto.hive.metastore.RecordingHiveMetastore;
+import com.facebook.presto.twitter.hive.MetastoreStaticClusterModule;
+import com.facebook.presto.twitter.hive.MetastoreZkDiscoveryBasedModule;
+import com.facebook.presto.twitter.hive.ZookeeperServersetMetastoreConfig;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 
 import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
+import static com.facebook.airlift.configuration.ConditionalModule.installModuleIf;
 import static java.util.Objects.requireNonNull;
 import static org.weakref.jmx.ObjectNames.generatedNameOf;
 import static org.weakref.jmx.guice.ExportBinder.newExporter;
@@ -43,7 +47,7 @@ public class ThriftMetastoreModule
     {
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
         binder.bind(HiveCluster.class).to(StaticHiveCluster.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(StaticMetastoreConfig.class);
+        bindMetastoreClusterModule();
 
         binder.bind(HiveMetastore.class).to(ThriftHiveMetastore.class).in(Scopes.SINGLETON);
 
@@ -72,5 +76,17 @@ public class ThriftMetastoreModule
                 .as(generatedNameOf(ThriftHiveMetastore.class, connectorId));
         newExporter(binder).export(ExtendedHiveMetastore.class)
                 .as(generatedNameOf(CachingHiveMetastore.class, connectorId));
+    }
+
+    private void bindMetastoreClusterModule()
+    {
+        install(installModuleIf(
+                ZookeeperServersetMetastoreConfig.class,
+                zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() == null,
+                new MetastoreStaticClusterModule()));
+        install(installModuleIf(
+                ZookeeperServersetMetastoreConfig.class,
+                zkMetastoreConfig -> zkMetastoreConfig.getZookeeperServerHostAndPort() != null,
+                new MetastoreZkDiscoveryBasedModule()));
     }
 }
