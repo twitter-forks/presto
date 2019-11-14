@@ -30,6 +30,8 @@ env:
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-pushdown-filter-queries-advanced" 
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-repartitioning"
     - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-parquet"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-distributed-queries"
+    - TEST_SPECIFIC_MODULES=presto-hive TEST_FLAGS="-P test-hive-integration-smoke"
     - TEST_SPECIFIC_MODULES=presto-main
     - TEST_SPECIFIC_MODULES=presto-mongodb TEST_FLAGS="-P test-mongo-distributed-queries"
     - TEST_SPECIFIC_MODULES=presto-redis TEST_FLAGS="-P test-redis-integration-smoke-test"
@@ -41,6 +43,7 @@ env:
     - PRODUCT_TESTS_BASIC_ENVIRONMENT=true
     - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT=true
     - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_2=true
+    - PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3=true
     - HIVE_TESTS=true
     - KUDU_TESTS=true
     - SPARK_INTEGRATION_TESTS=true
@@ -114,7 +117,7 @@ script:
     fi
   - |
     if [[ -v TEST_SPECIFIC_MODULES ]]; then
-      ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
+      travis_wait 50 ./mvnw test $MAVEN_SKIP_CHECKS_AND_DOCS -B -pl $TEST_SPECIFIC_MODULES $TEST_FLAGS
     fi
   - |
     if [[ -v TEST_OTHER_MODULES ]]; then
@@ -183,7 +186,7 @@ script:
       presto-product-tests/bin/run_on_docker.sh \
         singlenode-cassandra -g cassandra
     fi
-    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT ]]; then
+    if [[ -v PRODUCT_TESTS_SPECIFIC_ENVIRONMENT_3 ]]; then
       presto-product-tests/bin/run_on_docker.sh \
         multinode-tls-kerberos -g cli,group-by,join,tls
     fi
