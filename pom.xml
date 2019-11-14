@@ -1049,6 +1049,12 @@
             </dependency>
 
             <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-pool2</artifactId>
+                <version>2.4.2</version>
+            </dependency>
+
+            <dependency>
                 <groupId>com.facebook.airlift.discovery</groupId>
                 <artifactId>discovery-server</artifactId>
                 <version>1.31</version>
@@ -1757,6 +1763,7 @@
                                     <exclude>org.alluxio:alluxio-shaded-client</exclude>
                                     <exclude>org.codehaus.plexus:plexus-utils</exclude>
                                     <exclude>com.google.guava:guava</exclude>
+                                    <exclude>io.netty:netty</exclude>
                                 </excludes>
                             </requireUpperBoundDeps>
                         </rules>
