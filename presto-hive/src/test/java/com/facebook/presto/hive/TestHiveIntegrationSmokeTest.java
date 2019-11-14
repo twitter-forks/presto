@@ -5404,7 +5404,7 @@ public class TestHiveIntegrationSmokeTest
         Session session = getSession();
         ImmutableList.Builder<TestingHiveStorageFormat> formats = ImmutableList.builder();
         for (HiveStorageFormat hiveStorageFormat : HiveStorageFormat.values()) {
-            if (hiveStorageFormat == HiveStorageFormat.CSV) {
+            if (hiveStorageFormat == HiveStorageFormat.CSV || hiveStorageFormat.equals(HiveStorageFormat.THRIFTBINARY)) {
                 // CSV supports only unbounded VARCHAR type
                 continue;
             }
