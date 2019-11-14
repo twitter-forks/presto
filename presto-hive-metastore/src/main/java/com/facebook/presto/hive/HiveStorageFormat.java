@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat;
 import io.airlift.units.DataSize;
 import io.airlift.units.DataSize.Unit;
 import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
@@ -31,6 +33,12 @@ import org.apache.hadoop.hive.serde2.avro.AvroSerDe;
 import org.apache.hadoop.hive.serde2.columnar.ColumnarSerDe;
 import org.apache.hadoop.hive.serde2.columnar.LazyBinaryColumnarSerDe;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+import org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
+import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector.PrimitiveCategory;
+import org.apache.hadoop.hive.serde2.typeinfo.MapTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.PrimitiveTypeInfo;
+import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.mapred.SequenceFileInputFormat;
 import org.apache.hadoop.mapred.TextInputFormat;
 import org.apache.hive.hcatalog.data.JsonSerDe;
@@ -88,7 +96,12 @@ public enum HiveStorageFormat
             "",  // SerDe is not applicable for PAGEFILE
             "PageInputFormat",
             "PageOutputFormat",
-            new DataSize(0, Unit.MEGABYTE));  // memory usage is not applicable for PAGEFILE
+            new DataSize(0, Unit.MEGABYTE)),  // memory usage is not applicable for PAGEFILE
+    THRIFTBINARY(
+            LazyBinarySerDe.class.getName(),
+            ThriftGeneralInputFormat.class.getName(),
+            HiveIgnoreKeyTextOutputFormat.class.getName(),
+            new DataSize(8, Unit.MEGABYTE));
 
     private final String serde;
     private final String inputFormat;
