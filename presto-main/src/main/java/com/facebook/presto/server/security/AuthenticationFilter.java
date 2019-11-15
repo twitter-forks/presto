@@ -44,11 +44,13 @@ public class AuthenticationFilter
         implements Filter
 {
     private final List<Authenticator> authenticators;
+    private final String httpAuthenticationPathRegex;
 
     @Inject
-    public AuthenticationFilter(List<Authenticator> authenticators)
+    public AuthenticationFilter(List<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableList.copyOf(authenticators);
+        this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
     }
 
     @Override
@@ -64,8 +66,8 @@ public class AuthenticationFilter
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-        // skip authentication if non-secure or not configured
-        if (!request.isSecure() || authenticators.isEmpty()) {
+        // skip authentication if (not configured) or (non-secure and not match
+        if (authenticators.isEmpty() || (!request.isSecure() && !request.getPathInfo().matches(httpAuthenticationPathRegex))) {
             nextFilter.doFilter(request, response);
             return;
         }
