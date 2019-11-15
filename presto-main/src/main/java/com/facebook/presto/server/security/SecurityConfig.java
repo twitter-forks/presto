@@ -32,6 +32,7 @@ public class SecurityConfig
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
     private List<AuthenticationType> authenticationTypes = ImmutableList.of();
+    private String httpAuthenticationPathRegex = "^\b$";
 
     public enum AuthenticationType
     {
@@ -65,6 +66,20 @@ public class SecurityConfig
         authenticationTypes = stream(SPLITTER.split(types))
                 .map(AuthenticationType::valueOf)
                 .collect(toImmutableList());
+        return this;
+    }
+
+    @NotNull
+    public String getHttpAuthenticationPathRegex()
+    {
+        return httpAuthenticationPathRegex;
+    }
+
+    @Config("http-server.http.authentication.path.regex")
+    @ConfigDescription("Regex of path that needs to be authenticated for non-secured http request")
+    public SecurityConfig setHttpAuthenticationPathRegex(String regex)
+    {
+        httpAuthenticationPathRegex = regex;
         return this;
     }
 }
