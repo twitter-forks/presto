@@ -17,6 +17,7 @@ import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class KafkaTableLayoutHandle
@@ -24,10 +25,21 @@ public class KafkaTableLayoutHandle
 {
     private final KafkaTableHandle table;
 
+    // Start timestamp used to seek to the start offset
+    private final long offsetStartTs;
+
+    // End timestamp used to seek to the end offset
+    private final long offsetEndTs;
+
     @JsonCreator
-    public KafkaTableLayoutHandle(@JsonProperty("table") KafkaTableHandle table)
+    public KafkaTableLayoutHandle(
+            @JsonProperty("table") KafkaTableHandle table,
+            @JsonProperty("offset_start_ts") Long offsetStartTs,
+            @JsonProperty("offset_end_ts") Long offsetEndTs)
     {
         this.table = requireNonNull(table, "table is null");
+        this.offsetStartTs = offsetStartTs == null ? 0 : offsetStartTs;
+        this.offsetEndTs = offsetEndTs == null ? 0 : offsetEndTs;
     }
 
     @JsonProperty
@@ -36,9 +48,24 @@ public class KafkaTableLayoutHandle
         return table;
     }
 
+    @JsonProperty
+    public long getOffsetStartTs()
+    {
+        return offsetStartTs;
+    }
+
+    @JsonProperty
+    public long getOffsetEndTs()
+    {
+        return offsetEndTs;
+    }
+
     @Override
     public String toString()
     {
-        return table.toString();
+        return toStringHelper(this)
+                .add("table", table.toString())
+                .add("offset_start_ts", offsetStartTs)
+                .add("offset_end_ts", offsetEndTs).toString();
     }
 }
