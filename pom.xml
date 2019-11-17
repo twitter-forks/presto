@@ -146,6 +146,7 @@
         <module>presto-sql-function</module>
         <module>presto-expressions</module>
         <module>presto-benchmark-runner</module>
+        <module>twitter-eventlistener-plugin</module>
     </modules>
 
     <dependencyManagement>
