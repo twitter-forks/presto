@@ -157,6 +157,7 @@
         <module>presto-spark-launcher</module>
         <module>presto-spark-testing</module>
         <module>presto-druid</module>
+        <module>twitter-eventlistener-plugin</module>
     </modules>
 
     <dependencyManagement>
