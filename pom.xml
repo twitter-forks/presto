@@ -141,6 +141,7 @@
         <module>presto-elasticsearch</module>
         <module>presto-sql-function</module>
         <module>presto-expressions</module>
+        <module>twitter-eventlistener-plugin</module>
     </modules>
 
     <dependencyManagement>
