@@ -7,4 +7,10 @@
             <unpack />
         </artifact>
     </artifactSet>
+
+    <artifactSet to="plugin/presto-twitter-functions">
+        <artifact id="${project.groupId}:presto-twitter-functions:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
 </runtime>
