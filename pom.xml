@@ -166,6 +166,7 @@
         <module>presto-thrift-testing-udf-server</module>
         <module>twitter-eventlistener-plugin</module>
         <module>presto-twitter-server</module>
+        <module>presto-twitter-functions</module>
     </modules>
 
     <dependencyManagement>
