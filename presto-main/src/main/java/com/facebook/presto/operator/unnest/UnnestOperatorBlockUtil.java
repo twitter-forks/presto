@@ -23,7 +23,7 @@ final class UnnestOperatorBlockUtil
     // See java.util.ArrayList for an explanation
     static final int MAX_ARRAY_SIZE = Integer.MAX_VALUE - 8;
 
-    // Copied from io.prestosql.spi.block.BlockUtil#calculateNewArraySize
+    // Copied from com.facebook.presto.spi.block.BlockUtil#calculateNewArraySize
     static int calculateNewArraySize(int currentSize)
     {
         // grow array by 50%
