@@ -327,4 +327,47 @@ public final class ParquetTypeUtils
         columnPath.addAll(nestedColumnPath(subfield));
         return columnPath.build();
     }
+
+    /**
+     * Find the column type by name using returning the first match with the following logic:
+     * <ul>
+     * <li>direct match</li>
+     * <li>case-insensitive match</li>
+     * <li>if the name ends with _, remove it and direct match</li>
+     * <li>if the name ends with _, remove it and case-insensitive match</li>
+     * </ul>
+     */
+    public static org.apache.parquet.schema.Type findParquetTypeByName(String name, MessageType messageType)
+    {
+        org.apache.parquet.schema.Type type = getParquetTypeByName(name, messageType);
+
+        if (type == null && name.endsWith("_")) {
+            type = getParquetTypeByName(name.substring(0, name.length() - 1), messageType);
+        }
+        return type;
+    }
+
+    // Find the column index by name following the same logic as findParquetTypeByName
+    public static int findFieldIndexByName(MessageType fileSchema, String name)
+    {
+        int fieldIndex = getFieldIndex(fileSchema, name);
+
+        if (fieldIndex == -1 && name.endsWith("_")) {
+            fieldIndex = getFieldIndex(fileSchema, name.substring(0, name.length() - 1));
+        }
+
+        return fieldIndex;
+    }
+
+    // Find the ColumnIO by name following the same logic as findParquetTypeByName
+    public static ColumnIO findColumnIObyName(GroupColumnIO groupColumnIO, String name)
+    {
+        ColumnIO columnIO = lookupColumnByName(groupColumnIO, name);
+
+        if (columnIO == null && name.endsWith("_")) {
+            columnIO = lookupColumnByName(groupColumnIO, name.substring(0, name.length() - 1));
+        }
+
+        return columnIO;
+    }
 }
