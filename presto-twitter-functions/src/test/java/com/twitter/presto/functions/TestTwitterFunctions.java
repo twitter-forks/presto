@@ -16,6 +16,7 @@ package com.twitter.presto.functions;
 import com.facebook.presto.operator.scalar.AbstractTestFunctions;
 import com.facebook.presto.spi.type.ArrayType;
 import com.facebook.presto.spi.type.SqlTimestamp;
+import com.facebook.presto.testing.TestingSession;
 import com.google.common.collect.ImmutableList;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -24,7 +25,6 @@ import static com.facebook.presto.metadata.FunctionExtractor.extractFunctions;
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.TimeZoneKey.UTC_KEY;
 import static com.facebook.presto.spi.type.TimestampType.TIMESTAMP;
 import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 
@@ -55,7 +55,7 @@ public class TestTwitterFunctions
 
     private static SqlTimestamp toTimestampUTC(long millis)
     {
-        return new SqlTimestamp(millis, UTC_KEY);
+        return new SqlTimestamp(millis, TestingSession.DEFAULT_TIME_ZONE_KEY);
     }
 
     @Test
