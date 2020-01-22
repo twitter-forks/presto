@@ -146,6 +146,7 @@
         <module>presto-twitter-functions</module>
         <module>presto-twitter-gateway</module>
         <module>presto-twitter-server-rpm</module>
+        <module>presto-router</module>
     </modules>
 
     <dependencyManagement>
