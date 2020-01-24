@@ -13,10 +13,10 @@
  */
 package com.twitter.presto.plugin.eventlistener;
 
+import com.facebook.airlift.bootstrap.Bootstrap;
 import com.facebook.presto.spi.eventlistener.EventListener;
 import com.facebook.presto.spi.eventlistener.EventListenerFactory;
 import com.google.inject.Injector;
-import io.airlift.bootstrap.Bootstrap;
 
 import java.util.Map;
 
@@ -44,10 +44,6 @@ public class TwitterEventListenerFactory
                     .initialize();
 
             return injector.getInstance(TwitterEventListener.class);
-        }
-        catch (InterruptedException ie) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Interrupted while creating connector", ie);
         }
         catch (Exception e) {
             throwIfUnchecked(e);

@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.twitter.hive;
 
-import io.airlift.configuration.Config;
-import io.airlift.configuration.ConfigDescription;
+import com.facebook.airlift.configuration.Config;
+import com.facebook.airlift.configuration.ConfigDescription;
 
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;

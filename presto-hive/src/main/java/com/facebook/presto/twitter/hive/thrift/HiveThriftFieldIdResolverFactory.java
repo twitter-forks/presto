@@ -13,9 +13,9 @@
  */
 package com.facebook.presto.twitter.hive.thrift;
 
+import com.facebook.airlift.log.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.airlift.log.Logger;
 
 import java.io.IOException;
 import java.util.Properties;
