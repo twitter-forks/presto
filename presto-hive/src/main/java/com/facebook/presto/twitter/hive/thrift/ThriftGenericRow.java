@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.twitter.hive.thrift;
 
-import io.airlift.log.Logger;
+import com.facebook.airlift.log.Logger;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TException;

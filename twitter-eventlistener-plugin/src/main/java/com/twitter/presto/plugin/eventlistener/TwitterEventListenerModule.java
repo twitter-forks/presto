@@ -13,14 +13,14 @@
  */
 package com.twitter.presto.plugin.eventlistener;
 
+import com.facebook.airlift.configuration.AbstractConfigurationAwareModule;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
 import com.twitter.presto.plugin.eventlistener.scriber.QueryCompletedEventScriber;
-import io.airlift.configuration.AbstractConfigurationAwareModule;
 
+import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
 import static com.google.inject.multibindings.Multibinder.newSetBinder;
-import static io.airlift.configuration.ConfigBinder.configBinder;
 
 public class TwitterEventListenerModule
         extends AbstractConfigurationAwareModule
