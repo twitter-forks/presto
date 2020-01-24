@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.twitter.hive;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.twitter.hive.util.TestUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.HostAndPort;
-import io.airlift.log.Logger;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.exception.ZkMarshallingError;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
