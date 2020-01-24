@@ -13,6 +13,7 @@
  */
 package com.twitter.presto.plugin.eventlistener.scriber;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryContext;
 import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
@@ -22,7 +23,6 @@ import com.twitter.presto.plugin.eventlistener.TwitterEventHandler;
 import com.twitter.presto.plugin.eventlistener.TwitterEventListenerConfig;
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryState;
-import io.airlift.log.Logger;
 import org.apache.thrift.TException;
 
 import javax.inject.Inject;

@@ -26,7 +26,6 @@ import com.facebook.presto.twitter.hive.ZookeeperServersetMetastoreConfig;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 
-import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
 import static com.facebook.airlift.configuration.ConditionalModule.installModuleIf;
 import static java.util.Objects.requireNonNull;
 import static org.weakref.jmx.ObjectNames.generatedNameOf;
