@@ -20,9 +20,9 @@ import org.apache.thrift.TException;
 
 import java.util.Properties;
 
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
-import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNKNOWN_ERROR;
-import static com.facebook.presto.hive.HiveUtil.checkCondition;
+import static com.facebook.presto.hive.MetastoreErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.MetastoreErrorCode.HIVE_UNSUPPORTED_FORMAT;
+import static com.facebook.presto.hive.metastore.MetastoreUtil.checkCondition;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
 public class ThriftGeneralDeserializer
@@ -37,7 +37,7 @@ public class ThriftGeneralDeserializer
 
     public ThriftGenericRow deserialize(Writable writable, short[] thriftIds)
     {
-        checkCondition(writable instanceof ThriftWritable, HIVE_UNKNOWN_ERROR, "Not an instance of ThriftWritable: " + writable);
+        checkCondition(writable instanceof ThriftWritable, HIVE_UNSUPPORTED_FORMAT, "Not an instance of ThriftWritable: " + writable);
         ThriftGenericRow row = (ThriftGenericRow) ((ThriftWritable) writable).get();
         try {
             row.parse(thriftIds);

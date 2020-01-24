@@ -13,8 +13,8 @@
  */
 package com.facebook.presto.twitter.hive;
 
+import com.facebook.airlift.log.Logger;
 import com.google.common.net.HostAndPort;
-import io.airlift.log.Logger;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.recipes.cache.PathChildrenCache;
