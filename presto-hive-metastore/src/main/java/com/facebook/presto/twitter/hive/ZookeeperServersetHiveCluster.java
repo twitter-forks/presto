@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.twitter.hive;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.hive.metastore.thrift.HiveCluster;
 import com.facebook.presto.hive.metastore.thrift.HiveMetastoreClient;
 import com.google.common.net.HostAndPort;
-import io.airlift.log.Logger;
 import org.apache.thrift.transport.TTransportException;
 
 import javax.inject.Inject;

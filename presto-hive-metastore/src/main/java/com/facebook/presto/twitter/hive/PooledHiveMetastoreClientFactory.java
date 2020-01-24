@@ -13,7 +13,7 @@
  */
 package com.facebook.presto.twitter.hive;
 
-import com.facebook.presto.hive.HiveClientConfig;
+import com.facebook.presto.hive.MetastoreClientConfig;
 import com.facebook.presto.hive.authentication.HiveMetastoreAuthentication;
 import com.facebook.presto.hive.metastore.thrift.HiveMetastoreClient;
 import com.facebook.presto.hive.metastore.thrift.ThriftHiveMetastoreClient;
@@ -59,7 +59,7 @@ public class PooledHiveMetastoreClientFactory
     }
 
     @Inject
-    public PooledHiveMetastoreClientFactory(HiveClientConfig config,
+    public PooledHiveMetastoreClientFactory(MetastoreClientConfig config,
             ZookeeperServersetMetastoreConfig zkConfig,
             HiveMetastoreAuthentication metastoreAuthentication)
     {
