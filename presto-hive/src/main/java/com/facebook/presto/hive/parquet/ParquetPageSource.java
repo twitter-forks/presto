@@ -40,7 +40,7 @@ import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
 import static com.facebook.presto.hive.parquet.ParquetPageSourceFactory.getParquetType;
-import static com.facebook.presto.parquet.ParquetTypeUtils.getFieldIndex;
+import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findFieldIndexByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.lookupColumnByName;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -167,7 +167,7 @@ public class ParquetPageSource
                     Optional<Field> field = fields.get(fieldId);
                     int fieldIndex;
                     if (useParquetColumnNames) {
-                        fieldIndex = getFieldIndex(fileSchema, columnNames.get(fieldId));
+                        fieldIndex = findFieldIndexByName(fileSchema, columnNames.get(fieldId));
                     }
                     else {
                         fieldIndex = hiveColumnIndexes[fieldId];

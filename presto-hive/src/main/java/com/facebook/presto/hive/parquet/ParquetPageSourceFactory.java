@@ -72,10 +72,10 @@ import static com.facebook.presto.hive.HiveSessionProperties.getParquetMaxReadBl
 import static com.facebook.presto.hive.HiveSessionProperties.isFailOnCorruptedParquetStatistics;
 import static com.facebook.presto.hive.HiveSessionProperties.isUseParquetColumnNames;
 import static com.facebook.presto.hive.parquet.HdfsParquetDataSource.buildHdfsParquetDataSource;
+import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findParquetTypeByName;
 import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getColumnIO;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getDescriptors;
-import static com.facebook.presto.parquet.ParquetTypeUtils.getParquetTypeByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getSubfieldType;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.buildPredicate;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.predicateMatches;
@@ -285,7 +285,7 @@ public class ParquetPageSourceFactory
     {
         org.apache.parquet.schema.Type type = null;
         if (useParquetColumnNames) {
-            type = getParquetTypeByName(column.getName(), messageType);
+            type = findParquetTypeByName(column.getName(), messageType);
         }
         else if (column.getHiveColumnIndex() < messageType.getFieldCount()) {
             type = messageType.getType(column.getHiveColumnIndex());

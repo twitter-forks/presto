@@ -221,6 +221,9 @@
                         <exclude>**/TestDistributedQueriesNoHashGeneration.java</exclude>
                         <exclude>**/TestLocalQueries.java</exclude>
                         <exclude>**/TestNonIterativeDistributedQueries.java</exclude>
+                        <exclude>**/TestDistributedQueriesIndexed.java</exclude>
+                        <exclude>**/TestDistributedSpilledQueries.java</exclude>
+                        <exclude>**/TestTpchDistributedQueries.java</exclude>
                     </excludes>
                 </configuration>
             </plugin>
@@ -255,7 +258,44 @@
                             <includes>
                                 <include>**/TestDistributedQueriesNoHashGeneration.java</include>
                                 <include>**/TestLocalQueries.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>ci-only-2</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludes combine.self="override" />
+                            <includes>
                                 <include>**/TestNonIterativeDistributedQueries.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>ci-only-3</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludes combine.self="override" />
+                            <includes>
+                                <include>**/TestDistributedQueriesIndexed.java</include>
+                                <include>**/TestDistributedSpilledQueries.java</include>
+                                <include>**/TestTpchDistributedQueries.java</include>
                             </includes>
                         </configuration>
                     </plugin>

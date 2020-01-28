@@ -36,6 +36,7 @@ import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.twitter.hive.thrift.ThriftGeneralInputFormat;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.base.VerifyException;
@@ -216,7 +217,7 @@ public final class HiveUtil
 
         // propagate serialization configuration to getRecordReader
         schema.stringPropertyNames().stream()
-                .filter(name -> name.startsWith("serialization."))
+                .filter(name -> name.startsWith("serialization.") || name.startsWith("elephantbird."))
                 .forEach(name -> jobConf.set(name, schema.getProperty(name)));
 
         // add Airlift LZO and LZOP to head of codecs list so as to not override existing entries
@@ -309,6 +310,11 @@ public final class HiveUtil
         if ("parquet.hive.DeprecatedParquetInputFormat".equals(inputFormatName) ||
                 "parquet.hive.MapredParquetInputFormat".equals(inputFormatName)) {
             return MapredParquetInputFormat.class;
+        }
+
+        // Remove this after https://github.com/twitter/elephant-bird/pull/481 is included in a release
+        if ("com.twitter.elephantbird.mapred.input.HiveMultiInputFormat".equals(inputFormatName)) {
+            return ThriftGeneralInputFormat.class;
         }
 
         Class<?> clazz = conf.getClassByName(inputFormatName);
