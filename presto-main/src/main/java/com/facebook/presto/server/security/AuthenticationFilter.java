@@ -34,6 +34,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_SOURCE;
 import static com.google.common.io.ByteStreams.copy;
 import static com.google.common.io.ByteStreams.nullOutputStream;
 import static com.google.common.net.HttpHeaders.WWW_AUTHENTICATE;
@@ -45,12 +46,16 @@ public class AuthenticationFilter
 {
     private final List<Authenticator> authenticators;
     private final String httpAuthenticationPathRegex;
+    private final boolean allowByPass;
+    private final String statementSourceByPassRegex;
 
     @Inject
     public AuthenticationFilter(List<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableList.copyOf(authenticators);
         this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
+        this.allowByPass = securityConfig.getAllowByPass();
+        this.statementSourceByPassRegex = securityConfig.getStatementSourceByPassRegex();
     }
 
     @Override
@@ -92,6 +97,14 @@ public class AuthenticationFilter
             // authentication succeeded
             nextFilter.doFilter(withPrincipal(request, principal), response);
             return;
+        }
+
+        if (allowByPass) {
+            if (statementSourceByPassRegex != null
+                    && request.getHeader(PRESTO_SOURCE) != null
+                    && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex)) {
+                nextFilter.doFilter(request, response);
+            }
         }
 
         // authentication failed
