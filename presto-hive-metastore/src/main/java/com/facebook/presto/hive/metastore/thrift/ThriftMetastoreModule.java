@@ -22,6 +22,7 @@ import com.facebook.presto.hive.metastore.ExtendedHiveMetastore;
 import com.facebook.presto.hive.metastore.RecordingHiveMetastore;
 import com.facebook.presto.twitter.hive.MetastoreStaticClusterModule;
 import com.facebook.presto.twitter.hive.MetastoreZkDiscoveryBasedModule;
+import com.facebook.presto.twitter.hive.PooledHiveMetastoreClientFactory;
 import com.facebook.presto.twitter.hive.ZookeeperServersetMetastoreConfig;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
@@ -45,7 +46,7 @@ public class ThriftMetastoreModule
     protected void setup(Binder binder)
     {
         binder.bind(HiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
-        binder.bind(HiveCluster.class).to(StaticHiveCluster.class).in(Scopes.SINGLETON);
+        binder.bind(PooledHiveMetastoreClientFactory.class).in(Scopes.SINGLETON);
         bindMetastoreClusterModule();
 
         binder.bind(HiveMetastore.class).to(ThriftHiveMetastore.class).in(Scopes.SINGLETON);
