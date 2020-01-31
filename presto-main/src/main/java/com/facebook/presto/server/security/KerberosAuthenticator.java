@@ -38,7 +38,6 @@ import java.security.Principal;
 import java.security.PrivilegedAction;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -64,10 +63,7 @@ public class KerberosAuthenticator
         System.setProperty("java.security.krb5.conf", config.getKerberosConfig().getAbsolutePath());
 
         try {
-            String hostname = Optional.ofNullable(config.getPrincipalHostname())
-                    .orElseGet(() -> getLocalHost().getCanonicalHostName())
-                    .toLowerCase(Locale.US);
-            String servicePrincipal = config.getServiceName() + "/" + hostname;
+            String servicePrincipal = config.getServiceName();
             loginContext = new LoginContext("", null, null, new Configuration()
             {
                 @Override
@@ -93,7 +89,7 @@ public class KerberosAuthenticator
             loginContext.login();
 
             serverCredential = doAs(loginContext.getSubject(), () -> gssManager.createCredential(
-                    gssManager.createName(config.getServiceName() + "@" + hostname, GSSName.NT_HOSTBASED_SERVICE),
+                    gssManager.createName(config.getServiceName(), GSSName.NT_USER_NAME),
                     INDEFINITE_LIFETIME,
                     new Oid[] {
                             new Oid("1.2.840.113554.1.2.2"), // kerberos 5
