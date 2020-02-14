@@ -105,7 +105,7 @@ public class SecurityConfig
         return this;
     }
 
-    @Config("http-server.statement.source.allow-by-pass-authentication")
+    @Config("http-server.statement.source.allow-by-pass-regex")
     @ConfigDescription("Regex of the statement source that allows bypass authentication")
     public SecurityConfig setStatementSourceByPassRegex(String regex)
     {
