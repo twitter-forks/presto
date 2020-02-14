@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.server.security;
 
+import com.facebook.airlift.log.Logger;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Set;
 
 import static com.facebook.presto.client.PrestoHeaders.PRESTO_SOURCE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_USER;
 import static com.google.common.io.ByteStreams.copy;
 import static com.google.common.io.ByteStreams.nullOutputStream;
 import static com.google.common.net.HttpHeaders.WWW_AUTHENTICATE;
@@ -44,6 +46,11 @@ import static javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED;
 public class AuthenticationFilter
         implements Filter
 {
+    private static final Logger LOG = Logger.get(AuthenticationFilter.class);
+
+    //TODO: remove this field once we enforced authentication 100%
+    private static final String statementGetPathRegex = "\\/v1\\/statement\\/\\d{8}_\\d{6}_\\d{5}_\\w{5}\\/\\d+";
+
     private final List<Authenticator> authenticators;
     private final String httpAuthenticationPathRegex;
     private final boolean allowByPass;
@@ -99,11 +106,15 @@ public class AuthenticationFilter
             return;
         }
 
+        //authentication bypassed
         if (allowByPass) {
-            if (statementSourceByPassRegex != null
+            if (request.getMethod().equals("GET") && request.getPathInfo().matches(statementGetPathRegex) ||
+                    (statementSourceByPassRegex != null
                     && request.getHeader(PRESTO_SOURCE) != null
-                    && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex)) {
+                    && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex))) {
                 nextFilter.doFilter(request, response);
+                LOG.debug("Authentication by passed from source: %s user: %s", request.getHeader(PRESTO_SOURCE), request.getHeader(PRESTO_USER));
+                return;
             }
         }
 
@@ -117,6 +128,7 @@ public class AuthenticationFilter
         if (messages.isEmpty()) {
             messages.add("Unauthorized");
         }
+        LOG.debug("Auth failed %s %s %s %s", request.getHeader(PRESTO_SOURCE), request.getHeader(PRESTO_USER), request.getPathInfo(), request.getQueryString());
         response.sendError(SC_UNAUTHORIZED, Joiner.on(" | ").join(messages));
     }
 
