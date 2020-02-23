@@ -45,9 +45,11 @@ public class NamenodeStats
         private final TimeStat time = new TimeStat(TimeUnit.MILLISECONDS);
         private final CounterStat totalFailures = new CounterStat();
         private final CounterStat ioExceptions = new CounterStat();
+        private final CounterStat totalCall = new CounterStat();
 
         public TimeStat.BlockTimer time()
         {
+            totalCall.update(1); //update total call counter when the timer stats starts
             return time.time();
         }
 
@@ -78,6 +80,13 @@ public class NamenodeStats
         public TimeStat getTime()
         {
             return time;
+        }
+
+        @Managed
+        @Nested
+        public CounterStat getTotalCall()
+        {
+            return totalCall;
         }
     }
 }
