@@ -40,6 +40,7 @@ import java.util.OptionalInt;
 
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
 import static com.facebook.presto.spi.schedule.NodeSelectionStrategy.HARD_AFFINITY;
+import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.isLzopIndexFile;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -233,6 +234,10 @@ public class InternalHiveSplitFactory
 
     private static boolean pathMatchesPredicate(Optional<Domain> pathDomain, String path)
     {
+        if (isLzopIndexFile(new Path(path))) {
+            return false;
+        }
+
         if (!pathDomain.isPresent()) {
             return true;
         }
