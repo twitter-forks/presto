@@ -50,4 +50,9 @@ public class LzoThriftUtil
     {
         return LZOP_DEFAULT_SUFFIX_FILTER.accept(filePath);
     }
+
+    public static boolean isLzopIndexFile(Path filePath)
+    {
+        return LZOP_INDEX_DEFAULT_SUFFIX_FILTER.accept(filePath);
+    }
 }
