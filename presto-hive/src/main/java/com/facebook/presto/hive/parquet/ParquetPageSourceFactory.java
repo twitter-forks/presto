@@ -59,6 +59,7 @@ import javax.inject.Inject;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
@@ -329,15 +330,16 @@ public class ParquetPageSourceFactory
                         RowType rowType = (RowType) type;
                         Map<String, Type> prestoFieldMap = rowType.getFields().stream().collect(
                                 Collectors.toMap(
-                                        f -> f.getName().get(),
+                                        f -> f.getName().get().toLowerCase(Locale.ENGLISH),
                                         f -> f.getType()));
                         for (int i = 0; i < groupType.getFields().size(); i++) {
                             org.apache.parquet.schema.Type parquetFieldType = groupType.getFields().get(i);
-                            Type prestoFieldType = prestoFieldMap.get(parquetFieldType.getName());
+                            String fieldName = parquetFieldType.getName().toLowerCase(Locale.ENGLISH);
+                            Type prestoFieldType = prestoFieldMap.get(fieldName);
                             if (prestoFieldType == null) {
-                                prestoFieldType = prestoFieldMap.get(parquetFieldType.getName() + "_");
+                                prestoFieldType = prestoFieldMap.get(fieldName + "_");
                             }
-                            if (!checkSchemaMatch(parquetFieldType, prestoFieldType)) {
+                            if (prestoFieldType == null || !checkSchemaMatch(parquetFieldType, prestoFieldType)) {
                                 return false;
                             }
                         }

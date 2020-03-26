@@ -63,6 +63,7 @@ import org.testng.annotations.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
@@ -747,6 +748,38 @@ public class TestHiveFileFormats
                 .withReadColumns(ImmutableList.of(nestColumn))
                 .withSession(parquetPageSourceSession)
                 .isFailingForPageSource(new ParquetPageSourceFactory(TYPE_MANAGER, HDFS_ENVIRONMENT, STATS, new HadoopFileOpener()), expectedErrorCode, expectedMessageRowLongNest);
+    }
+
+    @Test
+    public void testSchemaMismatchOnNestedStruct()
+            throws Exception {
+        TestColumn writeColumn = new TestColumn("column_name",
+                getStandardMapObjectInspector(
+                        javaStringObjectInspector,
+                        getStandardListObjectInspector(
+                                getStandardStructObjectInspector(
+                                        ImmutableList.of("s_int", "s_double"),
+                                        ImmutableList.of(javaIntObjectInspector, javaDoubleObjectInspector)))),
+                ImmutableMap.of("test", ImmutableList.<Object>of(Arrays.asList(1, 5.0))),
+                mapBlockOf(createUnboundedVarcharType(), new ArrayType(RowType.anonymous(ImmutableList.of(INTEGER, DOUBLE))),
+                        "test", arrayBlockOf(RowType.anonymous(ImmutableList.of(INTEGER, DOUBLE)), rowBlockOf(ImmutableList.of(INTEGER, DOUBLE), 1L, 5.0))));
+        TestColumn readColumn = new TestColumn("column_name",
+                getStandardMapObjectInspector(
+                        javaStringObjectInspector,
+                        getStandardListObjectInspector(
+                                getStandardStructObjectInspector(
+                                        ImmutableList.of("s_double", "s_int"),  //out of order
+                                        ImmutableList.of(javaDoubleObjectInspector, javaIntObjectInspector)))),
+                ImmutableMap.of("test", ImmutableList.<Object>of(Arrays.asList(5.0, 1))),
+                mapBlockOf(createUnboundedVarcharType(), new ArrayType(RowType.anonymous(ImmutableList.of(DOUBLE, INTEGER))),
+                        "test", arrayBlockOf(RowType.anonymous(ImmutableList.of(DOUBLE, INTEGER)), rowBlockOf(ImmutableList.of(DOUBLE, INTEGER), 5.0, 1L))));
+        assertThatFileFormat(PARQUET)
+                .withWriteColumns(ImmutableList.of(writeColumn))
+                .withReadColumns(ImmutableList.of(readColumn))
+                .withRowsCount(1)
+                .withSession(parquetPageSourceSession)
+                .isReadableByPageSource(new ParquetPageSourceFactory(TYPE_MANAGER, HDFS_ENVIRONMENT, STATS, new HadoopFileOpener()));
+
     }
 
     private void testCursorProvider(HiveRecordCursorProvider cursorProvider,
