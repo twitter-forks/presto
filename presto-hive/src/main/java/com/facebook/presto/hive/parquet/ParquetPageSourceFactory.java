@@ -32,6 +32,7 @@ import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.Subfield;
 import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.predicate.TupleDomain;
+import com.facebook.presto.spi.type.RowType;
 import com.facebook.presto.spi.type.StandardTypes;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
@@ -58,10 +59,12 @@ import javax.inject.Inject;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
@@ -94,6 +97,7 @@ import static com.facebook.presto.spi.type.StandardTypes.TINYINT;
 import static com.facebook.presto.spi.type.StandardTypes.VARBINARY;
 import static com.facebook.presto.spi.type.StandardTypes.VARCHAR;
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Strings.nullToEmpty;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -322,8 +326,20 @@ public class ParquetPageSourceFactory
             switch (prestoType) {
                 case ROW:
                     if (groupType.getFields().size() == type.getTypeParameters().size()) {
+                        checkState(type instanceof RowType, "It must be a RowType here.");
+                        RowType rowType = (RowType) type;
+                        Map<String, Type> prestoFieldMap = rowType.getFields().stream().collect(
+                                Collectors.toMap(
+                                        f -> f.getName().get().toLowerCase(Locale.ENGLISH),
+                                        f -> f.getType()));
                         for (int i = 0; i < groupType.getFields().size(); i++) {
-                            if (!checkSchemaMatch(groupType.getFields().get(i), type.getTypeParameters().get(i))) {
+                            org.apache.parquet.schema.Type parquetFieldType = groupType.getFields().get(i);
+                            String fieldName = parquetFieldType.getName().toLowerCase(Locale.ENGLISH);
+                            Type prestoFieldType = prestoFieldMap.get(fieldName);
+                            if (prestoFieldType == null) {
+                                prestoFieldType = prestoFieldMap.get(fieldName + "_");
+                            }
+                            if (prestoFieldType == null || !checkSchemaMatch(parquetFieldType, prestoFieldType)) {
                                 return false;
                             }
                         }
