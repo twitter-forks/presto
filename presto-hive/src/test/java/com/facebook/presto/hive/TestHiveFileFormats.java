@@ -830,6 +830,7 @@ public class TestHiveFileFormats
                 ImmutableMap.of("test", Arrays.asList(5.0, 1)),
                 mapBlockOf(createUnboundedVarcharType(), RowType.anonymous(ImmutableList.of(DOUBLE, INTEGER)),
                         "test", rowBlockOf(ImmutableList.of(DOUBLE, INTEGER), 5.0, 1L)));
+
         assertThatFileFormat(PARQUET)
                 .withWriteColumns(ImmutableList.of(writeColumn))
                 .withReadColumns(ImmutableList.of(readColumn))
