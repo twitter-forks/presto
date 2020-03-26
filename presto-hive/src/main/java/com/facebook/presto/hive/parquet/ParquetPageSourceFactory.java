@@ -410,6 +410,9 @@ public class ParquetPageSourceFactory
                         org.apache.parquet.schema.Type parquetFieldType = groupType.getFields().get(i);
                         String fieldName = parquetFieldType.getName().toLowerCase(Locale.ENGLISH);
                         Type prestoFieldType = prestoFieldMap.get(fieldName);
+                        if (prestoFieldType == null) {
+                            prestoFieldType = prestoFieldMap.get(fieldName + "_");
+                        }
                         if (prestoFieldType != null && !checkSchemaMatch(parquetFieldType, prestoFieldType)) {
                             return false;
                         }
