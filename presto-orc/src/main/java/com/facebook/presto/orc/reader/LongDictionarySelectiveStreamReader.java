@@ -278,13 +278,14 @@ public class LongDictionarySelectiveStreamReader
         if (!dictionaryOpen && dictionarySize > 0) {
             if (dictionary.length < dictionarySize) {
                 dictionary = new long[dictionarySize];
+                systemMemoryContext.setBytes(sizeOf(dictionary));
             }
 
             LongInputStream dictionaryStream = dictionaryDataStreamSource.openStream();
             if (dictionaryStream == null) {
                 throw new OrcCorruptionException(streamDescriptor.getOrcDataSourceId(), "Dictionary is not empty but data stream is not present");
             }
-            dictionaryStream.nextLongVector(dictionarySize, dictionary);
+            dictionaryStream.next(dictionary, dictionarySize);
             if (filter != null && !nonDeterministicFilter) {
                 dictionaryFilterStatus = ensureCapacity(dictionaryFilterStatus, dictionarySize);
                 Arrays.fill(dictionaryFilterStatus, 0, dictionarySize, FILTER_NOT_EVALUATED);
@@ -367,6 +368,16 @@ public class LongDictionarySelectiveStreamReader
     @Override
     public void close()
     {
+        values = null;
+        nulls = null;
+        outputPositions = null;
+        dictionary = null;
+        dictionaryFilterStatus = null;
+
+        dataStreamSource = null;
+        dataStream = null;
+        dictionaryDataStreamSource = null;
+
         systemMemoryContext.close();
     }
 
