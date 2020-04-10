@@ -29,7 +29,7 @@ import static java.util.Objects.requireNonNull;
 public final class ClosingBlockLease
         implements BlockLease
 {
-    private final Block block;
+    private Block block;
     private final List<Closer> closers;
     private boolean closed;
     private boolean retrieved;
@@ -65,6 +65,7 @@ public final class ClosingBlockLease
             return;
         }
         closed = true;
+        block = null;
 
         Throwable innerException = null;
         for (Closer closer : closers) {
