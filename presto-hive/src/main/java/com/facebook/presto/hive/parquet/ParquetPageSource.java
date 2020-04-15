@@ -41,7 +41,7 @@ import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CURSOR_ERROR;
 import static com.facebook.presto.hive.parquet.ParquetPageSourceFactory.getParquetType;
-import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findColumnIObyName;
+import static com.facebook.presto.parquet.ParquetTypeUtils.findColumnIObyName;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 import static org.apache.parquet.io.ColumnIOConverter.constructField;

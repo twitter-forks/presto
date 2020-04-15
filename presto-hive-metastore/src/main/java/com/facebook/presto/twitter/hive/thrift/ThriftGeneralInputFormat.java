@@ -29,7 +29,7 @@ import org.apache.hadoop.mapred.Reporter;
 
 import java.io.IOException;
 
-import static com.facebook.presto.hive.MetastoreErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.checkCondition;
 import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.getLzopIndexPath;
 import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.isLzopCompressedFile;

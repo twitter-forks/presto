@@ -20,8 +20,8 @@ import org.apache.thrift.TException;
 
 import java.util.Properties;
 
-import static com.facebook.presto.hive.MetastoreErrorCode.HIVE_INVALID_METADATA;
-import static com.facebook.presto.hive.MetastoreErrorCode.HIVE_UNSUPPORTED_FORMAT;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_INVALID_METADATA;
+import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNSUPPORTED_FORMAT;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.checkCondition;
 import static org.apache.hadoop.hive.serde.Constants.SERIALIZATION_CLASS;
 
