@@ -30,10 +30,9 @@ import java.util.Optional;
 import static com.facebook.presto.common.type.StandardTypes.ARRAY;
 import static com.facebook.presto.common.type.StandardTypes.MAP;
 import static com.facebook.presto.common.type.StandardTypes.ROW;
+import static com.facebook.presto.parquet.ParquetTypeUtils.findColumnIObyName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getArrayElementColumn;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getMapKeyValueColumn;
-import static com.facebook.presto.parquet.ParquetTypeUtils.findColumnIObyName;
-
 import static org.apache.parquet.schema.Type.Repetition.OPTIONAL;
 
 /**
