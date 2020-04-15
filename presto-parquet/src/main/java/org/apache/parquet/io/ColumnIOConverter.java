@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-import static com.facebook.presto.hive.parquet.ParquetTypeUtils.findColumnIObyName;
+import static com.facebook.presto.parquet.ParquetTypeUtils.findColumnIObyName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getArrayElementColumn;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getMapKeyValueColumn;
 import static com.facebook.presto.spi.type.StandardTypes.ARRAY;

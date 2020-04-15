@@ -775,7 +775,8 @@ public class TestHiveFileFormats
 
     @Test
     public void testSchemaMismatchOnNestedStruct()
-            throws Exception {
+            throws Exception
+    {
         TestColumn writeColumn = new TestColumn("column_name",
                 getStandardMapObjectInspector(
                         javaStringObjectInspector,
@@ -802,7 +803,6 @@ public class TestHiveFileFormats
                 .withRowsCount(1)
                 .withSession(parquetPageSourceSession)
                 .isReadableByPageSource(new ParquetPageSourceFactory(TYPE_MANAGER, HDFS_ENVIRONMENT, STATS, new HadoopFileOpener()));
-
     }
 
     private void testCursorProvider(HiveRecordCursorProvider cursorProvider,
