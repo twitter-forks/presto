@@ -56,6 +56,12 @@
         </artifact>
     </artifactSet>
 
+    <artifactSet to="plugin/druid">
+        <artifact id="${project.groupId}:presto-druid:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
+
     <artifactSet to="plugin/ml">
         <artifact id="${project.groupId}:presto-ml:zip:${project.version}">
             <unpack />
