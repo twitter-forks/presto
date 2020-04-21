@@ -48,9 +48,6 @@ public class AuthenticationFilter
 {
     private static final Logger LOG = Logger.get(AuthenticationFilter.class);
 
-    //TODO: remove this field once we enforced authentication 100%
-    private static final String statementGetPathRegex = "\\/v1\\/statement\\/\\d{8}_\\d{6}_\\d{5}_\\w{5}\\/\\d+";
-
     private final List<Authenticator> authenticators;
     private final String httpAuthenticationPathRegex;
     private final boolean allowByPass;
@@ -108,7 +105,8 @@ public class AuthenticationFilter
 
         //authentication bypassed
         if (allowByPass) {
-            if (request.getMethod().equals("GET") && request.getPathInfo().matches(statementGetPathRegex) ||
+            //TODO: remove this field once we enforced authentication 100%
+            if (request.getMethod().equals("GET") && request.getPathInfo().startsWith("/v1/statement") ||
                     (statementSourceByPassRegex != null
                     && request.getHeader(PRESTO_SOURCE) != null
                     && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex))) {
