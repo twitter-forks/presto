@@ -221,11 +221,6 @@
             <scope>runtime</scope>
         </dependency>
 
-        <dependency>
-            <groupId>com.facebook.airlift</groupId>
-            <artifactId>http-client</artifactId>
-        </dependency>
-
         <!-- for testing -->
         <dependency>
             <groupId>com.facebook.presto</groupId>
@@ -257,12 +252,6 @@
             <groupId>org.openjdk.jmh</groupId>
             <artifactId>jmh-generator-annprocess</artifactId>
             <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>javax.ws.rs</groupId>
-            <artifactId>javax.ws.rs-api</artifactId>
-            <scope>compile</scope>
         </dependency>
 
     </dependencies>
