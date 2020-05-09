@@ -185,11 +185,12 @@ public class DruidClient
             }
         }
     }
-    public static class DruidRequestBody
+    private static class DruidRequestBody
     {
         private String query;
         private String resultFormat;
         private boolean queryHeader;
+
         @JsonCreator
         public DruidRequestBody(
                 @JsonProperty("query") String query,
@@ -197,8 +198,8 @@ public class DruidClient
                 @JsonProperty("queryHeader") boolean queryHeader)
         {
             requireNonNull(query);
-            this.query = query;
-            this.resultFormat = resultFormat;
+            this.query = requireNonNull(query);
+            this.resultFormat = requireNonNull(resultFormat);
             this.queryHeader = queryHeader;
         }
 
