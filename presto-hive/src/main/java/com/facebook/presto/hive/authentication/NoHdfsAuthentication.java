@@ -13,6 +13,8 @@
  */
 package com.facebook.presto.hive.authentication;
 
+import org.apache.hadoop.security.UserGroupInformation;
+
 public class NoHdfsAuthentication
         implements HdfsAuthentication
 {
@@ -20,6 +22,7 @@ public class NoHdfsAuthentication
     public <R, E extends Exception> R doAs(String user, GenericExceptionAction<R, E> action)
             throws E
     {
+        UserGroupInformation.setLoginUser(UserGroupInformation.createRemoteUser(user));
         return action.run();
     }
 }
