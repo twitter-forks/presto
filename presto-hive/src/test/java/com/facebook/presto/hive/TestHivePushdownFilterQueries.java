@@ -32,20 +32,20 @@ import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static com.facebook.presto.common.type.StandardTypes.BIGINT;
+import static com.facebook.presto.common.type.StandardTypes.BOOLEAN;
+import static com.facebook.presto.common.type.StandardTypes.DATE;
+import static com.facebook.presto.common.type.StandardTypes.DOUBLE;
+import static com.facebook.presto.common.type.StandardTypes.INTEGER;
+import static com.facebook.presto.common.type.StandardTypes.REAL;
+import static com.facebook.presto.common.type.StandardTypes.SMALLINT;
+import static com.facebook.presto.common.type.StandardTypes.TINYINT;
+import static com.facebook.presto.common.type.StandardTypes.VARCHAR;
 import static com.facebook.presto.hive.HiveQueryRunner.HIVE_CATALOG;
 import static com.facebook.presto.hive.HiveSessionProperties.PUSHDOWN_FILTER_ENABLED;
 import static com.facebook.presto.hive.HiveStorageFormat.RCBINARY;
 import static com.facebook.presto.hive.HiveStorageFormat.RCTEXT;
 import static com.facebook.presto.hive.HiveStorageFormat.TEXTFILE;
-import static com.facebook.presto.spi.type.StandardTypes.BIGINT;
-import static com.facebook.presto.spi.type.StandardTypes.BOOLEAN;
-import static com.facebook.presto.spi.type.StandardTypes.DATE;
-import static com.facebook.presto.spi.type.StandardTypes.DOUBLE;
-import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
-import static com.facebook.presto.spi.type.StandardTypes.REAL;
-import static com.facebook.presto.spi.type.StandardTypes.SMALLINT;
-import static com.facebook.presto.spi.type.StandardTypes.TINYINT;
-import static com.facebook.presto.spi.type.StandardTypes.VARCHAR;
 import static com.google.common.io.MoreFiles.deleteRecursively;
 import static com.google.common.io.RecursiveDeleteOption.ALLOW_INSECURE;
 import static io.airlift.tpch.TpchTable.getTables;
@@ -670,7 +670,7 @@ public class TestHivePushdownFilterQueries
     {
         List<String> types = ImmutableList.of(BOOLEAN, TINYINT, SMALLINT, INTEGER, BIGINT, DOUBLE, REAL, VARCHAR, DATE);
 
-        String query = String.format("SELECT orderkey, CAST(ROW(%s, 1) AS ROW(%s, a INTEGER)) as struct FROM orders",
+        String query = String.format("SELECT orderkey, CAST(ROW(%s, orderkey) AS ROW(%s, orderkey INTEGER)) as struct FROM orders",
                 types.stream()
                         .map(type -> "null")
                         .collect(joining(", ")),
@@ -684,9 +684,13 @@ public class TestHivePushdownFilterQueries
             for (String type : types) {
                 assertQuery(
                         format(
-                                "SELECT struct.a, struct.null_%s FROM test_all_nulls_in_struct WHERE struct IS NOT NULL AND orderkey %% 2 = 0",
+                                "SELECT struct.orderkey, struct.null_%s FROM test_all_nulls_in_struct WHERE struct IS NOT NULL AND orderkey %% 2 = 0",
                                 type.toLowerCase(getSession().getLocale())),
-                        "SELECT 1, null FROM orders WHERE orderkey % 2 = 0");
+                        "SELECT orderkey, null FROM orders WHERE orderkey % 2 = 0");
+
+                assertQuery(format("SELECT orderkey from test_all_nulls_in_struct WHERE struct.null_%s is NULL AND struct.orderkey > 3000 " +
+                                "AND length(CAST(struct.null_%s AS VARCHAR)) IS NULL", type.toLowerCase(getSession().getLocale()), type.toLowerCase(getSession().getLocale())),
+                        "SELECT orderkey FROM orders WHERE orderkey > 3000");
             }
         }
         finally {
@@ -787,26 +791,28 @@ public class TestHivePushdownFilterQueries
     @Test
     public void testPartitionColumns()
     {
-        assertUpdate("CREATE TABLE test_partition_columns WITH (partitioned_by = ARRAY['p', 'q']) AS\n" +
-                "SELECT * FROM (VALUES (1, 'abc', 'cba'), (2, 'abc', 'def')) as t(x, p, q)", 2);
+        assertUpdate("CREATE TABLE test_partition_columns WITH (partitioned_by = ARRAY['p', 'q', 'ds']) AS\n" +
+                "SELECT * FROM (VALUES (1, 'abc', 'cba', '2020-01-01'), (2, 'abc', 'def', '2020-01-01')) as t(x, p, q, ds)", 2);
 
-        assertQuery("SELECT * FROM test_partition_columns", "SELECT 1, 'abc', 'cba' UNION ALL SELECT 2, 'abc', 'def'");
+        assertQuery("SELECT * FROM test_partition_columns", "SELECT 1, 'abc', 'cba', '2020-01-01' UNION ALL SELECT 2, 'abc', 'def', '2020-01-01'");
 
         assertQuery("SELECT x FROM test_partition_columns", "SELECT 1 UNION ALL SELECT 2");
 
-        assertQuery("SELECT * FROM test_partition_columns WHERE p = 'abc'", "SELECT 1, 'abc', 'cba' UNION ALL SELECT 2, 'abc', 'def'");
+        assertQuery("SELECT * FROM test_partition_columns WHERE p = 'abc'", "SELECT 1, 'abc', 'cba', '2020-01-01' UNION ALL SELECT 2, 'abc', 'def', '2020-01-01'");
 
-        assertQuery("SELECT * FROM test_partition_columns WHERE p LIKE 'a%'", "SELECT 1, 'abc', 'cba' UNION ALL SELECT 2, 'abc', 'def'");
+        assertQuery("SELECT * FROM test_partition_columns WHERE p LIKE 'a%'", "SELECT 1, 'abc', 'cba', '2020-01-01' UNION ALL SELECT 2, 'abc', 'def', '2020-01-01'");
 
-        assertQuery("SELECT * FROM test_partition_columns WHERE substr(p, x, 1) = 'a' and substr(q, 1, 1) = 'c'", "SELECT 1, 'abc', 'cba'");
+        assertQuery("SELECT * FROM test_partition_columns WHERE substr(p, x, 1) = 'a' and substr(q, 1, 1) = 'c'", "SELECT 1, 'abc', 'cba', '2020-01-01'");
 
         assertQueryReturnsEmptyResult("SELECT * FROM test_partition_columns WHERE p = 'xxx'");
 
         assertQueryReturnsEmptyResult("SELECT * FROM test_partition_columns WHERE p = 'abc' and p='def'");
 
-        assertUpdate("INSERT into test_partition_columns values (3, 'abc', NULL)", 1);
+        assertUpdate("INSERT into test_partition_columns values (3, 'abc', NULL, '2020-01-01')", 1);
 
         assertQuerySucceeds(getSession(), "select * from test_partition_columns");
+
+        assertQueryFails("SELECT * FROM test_partition_columns WHERE DATE_DIFF( 'day', PARSE_DATETIME( '2020-01-08', 'YYYY-MM-dd' ), PARSE_DATETIME( ds, 'yyyy-MM-dd HH:mm:ss.SSS' ) ) = 7", "Invalid format: \"2020-01-01\" is too short");
 
         assertUpdate("DROP TABLE test_partition_columns");
     }

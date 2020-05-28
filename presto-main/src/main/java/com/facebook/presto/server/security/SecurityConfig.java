@@ -32,6 +32,10 @@ public class SecurityConfig
     private static final Splitter SPLITTER = Splitter.on(',').trimResults().omitEmptyStrings();
 
     private List<AuthenticationType> authenticationTypes = ImmutableList.of();
+    private String httpAuthenticationPathRegex = "^\b$";
+
+    private boolean allowByPass;
+    private String statementSourceByPassRegex = "^\\b$";
 
     public enum AuthenticationType
     {
@@ -53,6 +57,17 @@ public class SecurityConfig
         return this;
     }
 
+    @NotNull
+    public boolean getAllowByPass()
+    {
+        return allowByPass;
+    }
+
+    public String getStatementSourceByPassRegex()
+    {
+        return statementSourceByPassRegex;
+    }
+
     @Config("http-server.authentication.type")
     @ConfigDescription("Authentication types (supported types: CERTIFICATE, KERBEROS, PASSWORD, JWT)")
     public SecurityConfig setAuthenticationTypes(String types)
@@ -65,6 +80,36 @@ public class SecurityConfig
         authenticationTypes = stream(SPLITTER.split(types))
                 .map(AuthenticationType::valueOf)
                 .collect(toImmutableList());
+        return this;
+    }
+
+    @NotNull
+    public String getHttpAuthenticationPathRegex()
+    {
+        return httpAuthenticationPathRegex;
+    }
+
+    @Config("http-server.http.authentication.path.regex")
+    @ConfigDescription("Regex of path that needs to be authenticated for non-secured http request")
+    public SecurityConfig setHttpAuthenticationPathRegex(String regex)
+    {
+        httpAuthenticationPathRegex = regex;
+        return this;
+    }
+
+    @Config("http-server.authentication.allow-by-pass")
+    @ConfigDescription("Allow authentication by pass")
+    public SecurityConfig setAllowByPass(boolean allowByPass)
+    {
+        this.allowByPass = allowByPass;
+        return this;
+    }
+
+    @Config("http-server.statement.source.allow-by-pass-regex")
+    @ConfigDescription("Regex of the statement source that allows bypass authentication")
+    public SecurityConfig setStatementSourceByPassRegex(String regex)
+    {
+        this.statementSourceByPassRegex = regex;
         return this;
     }
 }

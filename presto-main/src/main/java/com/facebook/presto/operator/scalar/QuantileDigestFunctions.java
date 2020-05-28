@@ -14,20 +14,20 @@
 package com.facebook.presto.operator.scalar;
 
 import com.facebook.airlift.stats.QuantileDigest;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.BlockBuilder;
+import com.facebook.presto.common.type.StandardTypes;
 import com.facebook.presto.spi.function.Description;
 import com.facebook.presto.spi.function.ScalarFunction;
 import com.facebook.presto.spi.function.SqlType;
-import com.facebook.presto.spi.type.StandardTypes;
 import io.airlift.slice.Slice;
 
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.DoubleType.DOUBLE;
+import static com.facebook.presto.common.type.RealType.REAL;
 import static com.facebook.presto.operator.aggregation.FloatingPointBitsConverterUtil.sortableIntToFloat;
 import static com.facebook.presto.operator.aggregation.FloatingPointBitsConverterUtil.sortableLongToDouble;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_FUNCTION_ARGUMENT;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.RealType.REAL;
 import static com.facebook.presto.util.Failures.checkCondition;
 import static java.lang.Float.floatToRawIntBits;
 
@@ -59,6 +59,7 @@ public final class QuantileDigestFunctions
     @SqlType(StandardTypes.BIGINT)
     public static long valueAtQuantileBigint(@SqlType("qdigest(bigint)") Slice input, @SqlType(StandardTypes.DOUBLE) double quantile)
     {
+        checkCondition(quantile >= 0 && quantile <= 1, INVALID_FUNCTION_ARGUMENT, "Quantile should be within bounds [0, 1], was: " + quantile);
         return new QuantileDigest(input).getQuantile(quantile);
     }
 
@@ -99,6 +100,38 @@ public final class QuantileDigestFunctions
             BIGINT.writeLong(output, digest.getQuantile(DOUBLE.getDouble(percentilesArrayBlock, i)));
         }
         return output.build();
+    }
+
+    @ScalarFunction("scale_qdigest")
+    @Description("Scale a quantile digest according to a new weight")
+    @SqlType("qdigest(double)")
+    public static Slice scaleQuantileDigestDouble(@SqlType("qdigest(double)") Slice input, @SqlType(StandardTypes.DOUBLE) double scale)
+    {
+        return scaleQuantileDigest(input, scale);
+    }
+
+    @ScalarFunction("scale_qdigest")
+    @Description("Scale a quantile digest according to a new weight")
+    @SqlType("qdigest(real)")
+    public static Slice scaleQuantileDigestReal(@SqlType("qdigest(real)") Slice input, @SqlType(StandardTypes.DOUBLE) double scale)
+    {
+        return scaleQuantileDigest(input, scale);
+    }
+
+    @ScalarFunction("scale_qdigest")
+    @Description("Scale a quantile digest according to a new weight")
+    @SqlType("qdigest(bigint)")
+    public static Slice scaleQuantileDigestBigint(@SqlType("qdigest(bigint)") Slice input, @SqlType(StandardTypes.DOUBLE) double scale)
+    {
+        return scaleQuantileDigest(input, scale);
+    }
+
+    private static Slice scaleQuantileDigest(Slice input, double scale)
+    {
+        checkCondition(scale > 0, INVALID_FUNCTION_ARGUMENT, "Scale factor should be positive.");
+        QuantileDigest digest = new QuantileDigest(input);
+        digest.scale(scale);
+        return digest.serialize();
     }
 
     public static double verifyAccuracy(double accuracy)

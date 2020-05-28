@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.operator.project.PageProcessor;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
 import com.google.common.collect.ImmutableList;
@@ -27,12 +27,12 @@ import java.util.Optional;
 
 import static com.facebook.presto.SequencePageBuilder.createSequencePage;
 import static com.facebook.presto.SequencePageBuilder.createSequencePageWithDictionaryBlocks;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.facebook.presto.metadata.MetadataManager.createTestMetadataManager;
 import static com.facebook.presto.operator.PageAssertions.assertPageEquals;
 import static com.facebook.presto.operator.project.PageProcessor.MAX_BATCH_SIZE;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.relational.Expressions.field;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
 import static com.google.common.collect.Iterators.getOnlyElement;
@@ -81,6 +81,6 @@ public class TestColumnarPageProcessor
     private PageProcessor newPageProcessor()
     {
         return new ExpressionCompiler(metadata, new PageFunctionCompiler(metadata, 0))
-                .compilePageProcessor(SESSION.getSqlFunctionProperties(), Optional.empty(), ImmutableList.of(field(0, types.get(0)), field(1, types.get(1))), MAX_BATCH_SIZE).get();
+                .compilePageProcessor(SESSION.getSqlFunctionProperties(), Optional.empty(), ImmutableList.of(field(0, types.get(0)), field(1, types.get(1))), false, MAX_BATCH_SIZE).get();
     }
 }

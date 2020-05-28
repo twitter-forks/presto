@@ -15,6 +15,11 @@ package com.facebook.presto.sql.planner;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.common.predicate.TupleDomain;
+import com.facebook.presto.common.type.ArrayType;
+import com.facebook.presto.common.type.MapType;
+import com.facebook.presto.common.type.RowType;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.TableHandle;
@@ -29,13 +34,8 @@ import com.facebook.presto.spi.plan.ProjectNode;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.spi.plan.UnionNode;
 import com.facebook.presto.spi.plan.ValuesNode;
-import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.spi.type.ArrayType;
-import com.facebook.presto.spi.type.MapType;
-import com.facebook.presto.spi.type.RowType;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.ExpressionUtils;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.analyzer.Field;
@@ -725,14 +725,18 @@ class RelationPlanner
 
     private RelationPlan addCoercions(RelationPlan plan, Type[] targetColumnTypes)
     {
-        List<VariableReferenceExpression> oldVariables = plan.getFieldMappings();
-        RelationType oldDescriptor = plan.getDescriptor().withOnlyVisibleFields();
-        verify(targetColumnTypes.length == oldVariables.size());
+        RelationType oldRelation = plan.getDescriptor();
+        List<VariableReferenceExpression> oldVisibleVariables = oldRelation.getVisibleFields().stream()
+                .map(oldRelation::indexOf)
+                .map(plan.getFieldMappings()::get)
+                .collect(toImmutableList());
+        RelationType oldRelationWithVisibleFields = plan.getDescriptor().withOnlyVisibleFields();
+        verify(targetColumnTypes.length == oldVisibleVariables.size());
         ImmutableList.Builder<VariableReferenceExpression> newVariables = new ImmutableList.Builder<>();
         Field[] newFields = new Field[targetColumnTypes.length];
         Assignments.Builder assignments = Assignments.builder();
         for (int i = 0; i < targetColumnTypes.length; i++) {
-            VariableReferenceExpression inputVariable = oldVariables.get(i);
+            VariableReferenceExpression inputVariable = oldVisibleVariables.get(i);
             Type outputType = targetColumnTypes[i];
             if (!outputType.equals(inputVariable.getType())) {
                 Expression cast = new Cast(new SymbolReference(inputVariable.getName()), outputType.getTypeSignature().toString());
@@ -746,7 +750,7 @@ class RelationPlanner
                 assignments.put(outputVariable, castToRowExpression(symbolReference));
                 newVariables.add(outputVariable);
             }
-            Field oldField = oldDescriptor.getFieldByIndex(i);
+            Field oldField = oldRelationWithVisibleFields.getFieldByIndex(i);
             newFields[i] = new Field(
                     oldField.getRelationAlias(),
                     oldField.getName(),

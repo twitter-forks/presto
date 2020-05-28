@@ -27,8 +27,8 @@
  */
 package com.facebook.presto.operator.repartition;
 
-import com.facebook.presto.spi.block.ArrayAllocator;
-import com.facebook.presto.spi.block.ColumnarRow;
+import com.facebook.presto.common.block.ArrayAllocator;
+import com.facebook.presto.common.block.ColumnarRow;
 import com.google.common.annotations.VisibleForTesting;
 import io.airlift.slice.SliceOutput;
 import org.openjdk.jol.info.ClassLayout;
@@ -312,10 +312,16 @@ public class RowBlockEncodingBuffer
         int columnarRowBaseOffset = columnarRow.getOffset(0);
         for (int i = 0; i < positionCount; i++) {
             int position = positions[i];
-            int beginOffset = columnarRow.getOffset(position);
-            int endOffset = columnarRow.getOffset(position + 1);  // if the row is null, endOffsetInBlock == beginOffsetInBlock
-            int currentRowSize = endOffset - beginOffset;
-            offsets[i + 1] = offsets[i] + currentRowSize;
+            offsets[i + 1] = offsets[i] + columnarRow.getOffset(position + 1) - columnarRow.getOffset(position);
+        }
+
+        for (int j = 0; j < fieldBuffers.length; j++) {
+            fieldBuffers[j].ensurePositionsCapacity(offsets[positionCount]);
+        }
+
+        for (int i = 0; i < positionCount; i++) {
+            int beginOffset = columnarRow.getOffset(positions[i]);
+            int currentRowSize = offsets[i + 1] - offsets[i];
 
             if (currentRowSize > 0) {
                 for (int j = 0; j < fieldBuffers.length; j++) {

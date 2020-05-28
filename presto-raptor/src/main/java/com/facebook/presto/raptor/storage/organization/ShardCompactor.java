@@ -15,6 +15,12 @@ package com.facebook.presto.raptor.storage.organization;
 
 import com.facebook.airlift.stats.CounterStat;
 import com.facebook.airlift.stats.DistributionStat;
+import com.facebook.presto.common.NotSupportedException;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.SortOrder;
+import com.facebook.presto.common.predicate.TupleDomain;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.raptor.filesystem.FileSystemContext;
 import com.facebook.presto.raptor.metadata.ColumnInfo;
 import com.facebook.presto.raptor.metadata.ShardInfo;
@@ -22,11 +28,7 @@ import com.facebook.presto.raptor.storage.ReaderAttributes;
 import com.facebook.presto.raptor.storage.StorageManager;
 import com.facebook.presto.raptor.storage.StoragePageSink;
 import com.facebook.presto.spi.ConnectorPageSource;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.SortOrder;
-import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.PrestoException;
 import com.google.common.collect.ImmutableList;
 import org.weakref.jmx.Managed;
 import org.weakref.jmx.Nested;
@@ -47,6 +49,7 @@ import java.util.UUID;
 
 import static com.facebook.airlift.concurrent.MoreFutures.getFutureValue;
 import static com.facebook.presto.hive.HiveFileContext.DEFAULT_HIVE_FILE_CONTEXT;
+import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.units.Duration.nanosSince;
 import static java.util.Objects.requireNonNull;
@@ -295,7 +298,14 @@ public final class ShardCompactor
                 Block rightBlock = other.currentPage.getBlock(channel);
                 int rightBlockPosition = other.currentPosition;
 
-                int compare = sortOrders.get(i).compareBlockValue(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+                int compare;
+                try {
+                    compare = sortOrders.get(i).compareBlockValue(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+                }
+                catch (NotSupportedException e) {
+                    throw new PrestoException(NOT_SUPPORTED, e.getMessage(), e);
+                }
+
                 if (compare != 0) {
                     return compare;
                 }

@@ -14,6 +14,14 @@
 package com.facebook.presto.hive;
 
 import com.facebook.airlift.json.JsonCodec;
+import com.facebook.presto.common.Subfield;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.predicate.Domain;
+import com.facebook.presto.common.predicate.NullableValue;
+import com.facebook.presto.common.predicate.TupleDomain;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeManager;
+import com.facebook.presto.common.type.VarcharType;
 import com.facebook.presto.hive.HdfsEnvironment.HdfsContext;
 import com.facebook.presto.hive.LocationService.WriteInfo;
 import com.facebook.presto.hive.PartitionUpdate.FileWriteInfo;
@@ -55,21 +63,15 @@ import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.StandardErrorCode;
-import com.facebook.presto.spi.Subfield;
 import com.facebook.presto.spi.SystemTable;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.ViewNotFoundException;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.facebook.presto.spi.connector.ConnectorPartitioningHandle;
 import com.facebook.presto.spi.connector.ConnectorPartitioningMetadata;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
-import com.facebook.presto.spi.function.FunctionMetadataManager;
 import com.facebook.presto.spi.function.StandardFunctionResolution;
 import com.facebook.presto.spi.plan.FilterStatsCalculatorService;
-import com.facebook.presto.spi.predicate.Domain;
-import com.facebook.presto.spi.predicate.NullableValue;
-import com.facebook.presto.spi.predicate.TupleDomain;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.RowExpressionService;
 import com.facebook.presto.spi.relation.SpecialFormExpression;
@@ -84,9 +86,6 @@ import com.facebook.presto.spi.statistics.ComputedStatistics;
 import com.facebook.presto.spi.statistics.TableStatisticType;
 import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.spi.statistics.TableStatisticsMetadata;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.spi.type.VarcharType;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Functions;
 import com.google.common.base.Joiner;
@@ -118,8 +117,8 @@ import java.io.File;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -137,6 +136,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static com.facebook.airlift.concurrent.MoreFutures.toCompletableFuture;
+import static com.facebook.presto.common.predicate.TupleDomain.withColumnDomains;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTANT;
 import static com.facebook.presto.expressions.LogicalRowExpressions.binaryExpression;
 import static com.facebook.presto.hive.HiveAnalyzeProperties.getPartitionList;
@@ -161,6 +162,7 @@ import static com.facebook.presto.hive.HiveErrorCode.HIVE_UNSUPPORTED_FORMAT;
 import static com.facebook.presto.hive.HivePartition.UNPARTITIONED_ID;
 import static com.facebook.presto.hive.HiveSessionProperties.getCompressionCodec;
 import static com.facebook.presto.hive.HiveSessionProperties.getHiveStorageFormat;
+import static com.facebook.presto.hive.HiveSessionProperties.getOrcCompressionCodec;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableCompressionCodec;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableSchema;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableStorageFormat;
@@ -174,6 +176,10 @@ import static com.facebook.presto.hive.HiveSessionProperties.isShufflePartitione
 import static com.facebook.presto.hive.HiveSessionProperties.isSortedWriteToTempPathEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isSortedWritingEnabled;
 import static com.facebook.presto.hive.HiveSessionProperties.isStatisticsEnabled;
+import static com.facebook.presto.hive.HiveStorageFormat.AVRO;
+import static com.facebook.presto.hive.HiveStorageFormat.DWRF;
+import static com.facebook.presto.hive.HiveStorageFormat.ORC;
+import static com.facebook.presto.hive.HiveStorageFormat.values;
 import static com.facebook.presto.hive.HiveTableProperties.AVRO_SCHEMA_URL;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
@@ -235,10 +241,8 @@ import static com.facebook.presto.spi.StandardErrorCode.INVALID_SCHEMA_PROPERTY;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_TABLE_PROPERTY;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.spi.StandardErrorCode.SCHEMA_NOT_EMPTY;
-import static com.facebook.presto.spi.predicate.TupleDomain.withColumnDomains;
 import static com.facebook.presto.spi.security.PrincipalType.USER;
 import static com.facebook.presto.spi.statistics.TableStatisticType.ROW_COUNT;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.google.common.base.MoreObjects.firstNonNull;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -270,14 +274,6 @@ public class HiveMetadata
     private static final String ORC_BLOOM_FILTER_FPP_KEY = "orc.bloom.filter.fpp";
 
     private static final String PRESTO_TEMPORARY_TABLE_NAME_PREFIX = "__presto_temporary_table_";
-    private static final ConnectorTableLayout EMPTY_TABLE_LAYOUT = new ConnectorTableLayout(
-            new ConnectorTableLayoutHandle() {},
-            Optional.empty(),
-            TupleDomain.none(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            emptyList());
 
     // Comma is not a reserved keyword with or without quote
     // See https://cwiki.apache.org/confluence/display/Hive/LanguageManual+DDL#LanguageManualDDL-Keywords,Non-reservedKeywordsandReservedKeywords
@@ -296,7 +292,6 @@ public class HiveMetadata
     private final TypeManager typeManager;
     private final LocationService locationService;
     private final StandardFunctionResolution functionResolution;
-    private final FunctionMetadataManager functionMetadataManager;
     private final RowExpressionService rowExpressionService;
     private final FilterStatsCalculatorService filterStatsCalculatorService;
     private final TableParameterCodec tableParameterCodec;
@@ -323,7 +318,6 @@ public class HiveMetadata
             TypeManager typeManager,
             LocationService locationService,
             StandardFunctionResolution functionResolution,
-            FunctionMetadataManager functionMetadataManager,
             RowExpressionService rowExpressionService,
             FilterStatsCalculatorService filterStatsCalculatorService,
             TableParameterCodec tableParameterCodec,
@@ -344,7 +338,6 @@ public class HiveMetadata
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.locationService = requireNonNull(locationService, "locationService is null");
         this.functionResolution = requireNonNull(functionResolution, "functionResolution is null");
-        this.functionMetadataManager = requireNonNull(functionMetadataManager, "functionMetadataManager is null");
         this.rowExpressionService = requireNonNull(rowExpressionService, "rowExpressionService is null");
         this.filterStatsCalculatorService = requireNonNull(filterStatsCalculatorService, "filterStatsCalculatorService is null");
         this.tableParameterCodec = requireNonNull(tableParameterCodec, "tableParameterCodec is null");
@@ -730,7 +723,7 @@ public class HiveMetadata
 
     /**
      * Returns a TupleDomain of constraints that is suitable for Explain (Type IO)
-     *
+     * <p>
      * Only Hive partition columns that are used in IO planning.
      */
     @Override
@@ -819,7 +812,7 @@ public class HiveMetadata
         }
         else {
             tableType = MANAGED_TABLE;
-            LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaName, tableName, isTempPathRequired(session, bucketProperty));
+            LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaName, tableName, isTempPathRequired(session, bucketProperty, preferredOrderingColumns));
             targetPath = locationService.getQueryWriteInfo(locationHandle).getTargetPath();
         }
 
@@ -905,7 +898,7 @@ public class HiveMetadata
 
     private void validateColumns(HiveStorageFormat hiveStorageFormat, List<HiveColumnHandle> handles)
     {
-        if (hiveStorageFormat == HiveStorageFormat.AVRO) {
+        if (hiveStorageFormat == AVRO) {
             for (HiveColumnHandle handle : handles) {
                 if (!handle.isPartitionKey()) {
                     validateAvroType(handle.getHiveType().getTypeInfo(), handle.getName());
@@ -962,7 +955,7 @@ public class HiveMetadata
         String avroSchemaUrl = getAvroSchemaUrl(tableMetadata.getProperties());
         if (avroSchemaUrl != null) {
             HiveStorageFormat hiveStorageFormat = getHiveStorageFormat(tableMetadata.getProperties());
-            if (hiveStorageFormat != HiveStorageFormat.AVRO) {
+            if (hiveStorageFormat != AVRO) {
                 throw new PrestoException(INVALID_TABLE_PROPERTY, format("Cannot specify %s table property for storage format: %s", AVRO_SCHEMA_URL, hiveStorageFormat));
             }
             tableProperties.put(AVRO_SCHEMA_URL_KEY, validateAndNormalizeAvroSchemaUrl(avroSchemaUrl, hdfsContext));
@@ -1273,7 +1266,7 @@ public class HiveMetadata
                 .collect(toList());
         checkPartitionTypesSupported(partitionColumns);
 
-        LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaName, tableName, isTempPathRequired(session, bucketProperty));
+        LocationHandle locationHandle = locationService.forNewTable(metastore, session, schemaName, tableName, isTempPathRequired(session, bucketProperty, preferredOrderingColumns));
         HiveOutputTableHandle result = new HiveOutputTableHandle(
                 schemaName,
                 tableName,
@@ -1283,7 +1276,8 @@ public class HiveMetadata
                 locationHandle,
                 tableStorageFormat,
                 partitionStorageFormat,
-                getCompressionCodec(session),
+                actualStorageFormat,
+                getHiveCompressionCodec(session, false, actualStorageFormat),
                 partitionedBy,
                 bucketProperty,
                 preferredOrderingColumns,
@@ -1512,7 +1506,10 @@ public class HiveMetadata
         HiveStorageFormat tableStorageFormat = extractHiveStorageFormat(table.get());
         LocationHandle locationHandle;
         boolean isTemporaryTable = table.get().getTableType().equals(TEMPORARY_TABLE);
-        boolean tempPathRequired = isTempPathRequired(session, table.map(Table::getStorage).flatMap(Storage::getBucketProperty));
+        boolean tempPathRequired = isTempPathRequired(
+                session,
+                table.map(Table::getStorage).flatMap(Storage::getBucketProperty),
+                decodePreferredOrderingColumnsFromStorage(table.get().getStorage()));
         if (isTemporaryTable) {
             locationHandle = locationService.forTemporaryTable(metastore, session, table.get(), tempPathRequired);
         }
@@ -1520,6 +1517,8 @@ public class HiveMetadata
             locationHandle = locationService.forExistingTable(metastore, session, table.get(), tempPathRequired);
         }
 
+        HiveStorageFormat partitionStorageFormat = isRespectTableFormat(session) ? tableStorageFormat : HiveSessionProperties.getHiveStorageFormat(session);
+        HiveStorageFormat actualStorageFormat = table.get().getPartitionColumns().isEmpty() ? tableStorageFormat : partitionStorageFormat;
         HiveInsertTableHandle result = new HiveInsertTableHandle(
                 tableName.getSchemaName(),
                 tableName.getTableName(),
@@ -1530,8 +1529,9 @@ public class HiveMetadata
                 table.get().getStorage().getBucketProperty(),
                 decodePreferredOrderingColumnsFromStorage(table.get().getStorage()),
                 tableStorageFormat,
-                isRespectTableFormat(session) ? tableStorageFormat : HiveSessionProperties.getHiveStorageFormat(session),
-                isTemporaryTable ? getTemporaryTableCompressionCodec(session) : getCompressionCodec(session));
+                partitionStorageFormat,
+                actualStorageFormat,
+                getHiveCompressionCodec(session, isTemporaryTable, actualStorageFormat));
 
         WriteInfo writeInfo = locationService.getQueryWriteInfo(locationHandle);
         metastore.declareIntentionToWrite(
@@ -1543,6 +1543,17 @@ public class HiveMetadata
                 tableName,
                 isTemporaryTable);
         return result;
+    }
+
+    private HiveCompressionCodec getHiveCompressionCodec(ConnectorSession session, boolean isTemporaryTable, HiveStorageFormat storageFormat)
+    {
+        if (isTemporaryTable) {
+            return getTemporaryTableCompressionCodec(session);
+        }
+        if (storageFormat == ORC || storageFormat == DWRF) {
+            return getOrcCompressionCodec(session);
+        }
+        return getCompressionCodec(session);
     }
 
     @Override
@@ -1656,9 +1667,10 @@ public class HiveMetadata
                         .collect(Collectors.toList())));
     }
 
-    private static boolean isTempPathRequired(ConnectorSession session, Optional<HiveBucketProperty> bucketProperty)
+    private static boolean isTempPathRequired(ConnectorSession session, Optional<HiveBucketProperty> bucketProperty, List<SortingColumn> preferredOrderingColumns)
     {
-        return isSortedWriteToTempPathEnabled(session) && bucketProperty.map(property -> !property.getSortedBy().isEmpty()).orElse(false);
+        boolean hasSortedWrite = bucketProperty.map(property -> !property.getSortedBy().isEmpty()).orElse(false) || !preferredOrderingColumns.isEmpty();
+        return isSortedWriteToTempPathEnabled(session) && hasSortedWrite;
     }
 
     private List<String> getTargetFileNames(List<FileWriteInfo> fileWriteInfos)
@@ -1955,7 +1967,7 @@ public class HiveMetadata
                 .add("buckets", bucketHandle.map(HiveBucketHandle::getReadBucketCount).orElse(null))
                 .add("bucketsToKeep", bucketFilter.map(HiveBucketFilter::getBucketsToKeep).orElse(null))
                 .add("filter", TRUE_CONSTANT.equals(remainingPredicate) ? null : rowExpressionService.formatRowExpression(session, remainingPredicate))
-                .add("domains", domainPredicate.isAll() ? null : domainPredicate.toString(session))
+                .add("domains", domainPredicate.isAll() ? null : domainPredicate.toString(session.getSqlFunctionProperties()))
                 .toString();
     }
 
@@ -2019,7 +2031,7 @@ public class HiveMetadata
         boolean pushdownFilterEnabled = HiveSessionProperties.isPushdownFilterEnabled(session);
         if (pushdownFilterEnabled) {
             HiveStorageFormat hiveStorageFormat = getHiveStorageFormat(getTableMetadata(session, tableHandle).getProperties());
-            if (hiveStorageFormat == HiveStorageFormat.ORC || hiveStorageFormat == HiveStorageFormat.DWRF) {
+            if (hiveStorageFormat == ORC || hiveStorageFormat == DWRF) {
                 return true;
             }
         }
@@ -2226,7 +2238,7 @@ public class HiveMetadata
         checkArgument(!partitions.isEmpty(), "partitions cannot be empty");
 
         boolean hasNull = false;
-        List<Object> nonNullValues = new ArrayList<>();
+        Set<Object> nonNullValues = new HashSet<>();
         Type type = null;
 
         for (HivePartition partition : partitions) {
@@ -2248,7 +2260,7 @@ public class HiveMetadata
         }
 
         if (!nonNullValues.isEmpty()) {
-            Domain domain = Domain.multipleValues(type, nonNullValues);
+            Domain domain = Domain.multipleValues(type, ImmutableList.copyOf(nonNullValues));
             if (hasNull) {
                 return domain.union(Domain.onlyNull(type));
             }
@@ -2526,14 +2538,14 @@ public class HiveMetadata
     }
 
     @Override
-    public CompletableFuture<Void> commitPartitionAsync(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
+    public CompletableFuture<Void> commitPageSinkAsync(ConnectorSession session, ConnectorOutputTableHandle tableHandle, Collection<Slice> fragments)
     {
         HiveOutputTableHandle handle = (HiveOutputTableHandle) tableHandle;
         return toCompletableFuture(stagingFileCommitter.commitFiles(session, handle.getSchemaName(), handle.getTableName(), getPartitionUpdates(fragments)));
     }
 
     @Override
-    public CompletableFuture<Void> commitPartitionAsync(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
+    public CompletableFuture<Void> commitPageSinkAsync(ConnectorSession session, ConnectorInsertTableHandle tableHandle, Collection<Slice> fragments)
     {
         HiveInsertTableHandle handle = (HiveInsertTableHandle) tableHandle;
         return toCompletableFuture(stagingFileCommitter.commitFiles(session, handle.getSchemaName(), handle.getTableName(), getPartitionUpdates(fragments)));
@@ -2586,7 +2598,7 @@ public class HiveMetadata
         String outputFormat = storageFormat.getOutputFormat();
         String serde = storageFormat.getSerDe();
 
-        for (HiveStorageFormat format : HiveStorageFormat.values()) {
+        for (HiveStorageFormat format : values()) {
             if (format.getOutputFormat().equals(outputFormat) && format.getSerDe().equals(serde)) {
                 return format;
             }

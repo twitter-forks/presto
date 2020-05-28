@@ -15,20 +15,21 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.presto.Session;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.PageBuilder;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.execution.Lifespan;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.operator.OperationTimer.OperationTiming;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.connector.ConnectorOutputMetadata;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.spi.statistics.ComputedStatistics;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.StatisticAggregationsDescriptor;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Streams;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
 
@@ -40,15 +41,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Stream;
 
 import static com.facebook.presto.SystemSessionProperties.isStatisticsCpuTimerEnabled;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.operator.PageSinkCommitStrategy.LIFESPAN_COMMIT;
 import static com.facebook.presto.operator.TableWriterUtils.FRAGMENT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.ROW_COUNT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.extractStatisticsRows;
 import static com.facebook.presto.operator.TableWriterUtils.getTableCommitContext;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.propagateIfPossible;
@@ -71,7 +72,7 @@ public class TableFinishOperator
         private final int operatorId;
         private final PlanNodeId planNodeId;
         private final TableFinisher tableFinisher;
-        private final LifespanCommitter lifespanCommitter;
+        private final PageSinkCommitter pageSinkCommitter;
         private final OperatorFactory statisticsAggregationOperatorFactory;
         private final StatisticAggregationsDescriptor<Integer> descriptor;
         private final Session session;
@@ -83,7 +84,7 @@ public class TableFinishOperator
                 int operatorId,
                 PlanNodeId planNodeId,
                 TableFinisher tableFinisher,
-                LifespanCommitter lifespanCommitter,
+                PageSinkCommitter pageSinkCommitter,
                 OperatorFactory statisticsAggregationOperatorFactory,
                 StatisticAggregationsDescriptor<Integer> descriptor,
                 Session session,
@@ -92,7 +93,7 @@ public class TableFinishOperator
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.tableFinisher = requireNonNull(tableFinisher, "tableFinisher is null");
-            this.lifespanCommitter = requireNonNull(lifespanCommitter, "lifespanCommitter is null");
+            this.pageSinkCommitter = requireNonNull(pageSinkCommitter, "pageSinkCommitter is null");
             this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
             this.descriptor = requireNonNull(descriptor, "descriptor is null");
             this.session = requireNonNull(session, "session is null");
@@ -106,7 +107,7 @@ public class TableFinishOperator
             OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableFinishOperator.class.getSimpleName());
             Operator statisticsAggregationOperator = statisticsAggregationOperatorFactory.createOperator(driverContext);
             boolean statisticsCpuTimerEnabled = !(statisticsAggregationOperator instanceof DevNullOperator) && isStatisticsCpuTimerEnabled(session);
-            return new TableFinishOperator(context, tableFinisher, lifespanCommitter, statisticsAggregationOperator, descriptor, statisticsCpuTimerEnabled, tableCommitContextCodec);
+            return new TableFinishOperator(context, tableFinisher, pageSinkCommitter, statisticsAggregationOperator, descriptor, statisticsCpuTimerEnabled, tableCommitContextCodec);
         }
 
         @Override
@@ -118,7 +119,7 @@ public class TableFinishOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TableFinishOperatorFactory(operatorId, planNodeId, tableFinisher, lifespanCommitter, statisticsAggregationOperatorFactory, descriptor, session, tableCommitContextCodec);
+            return new TableFinishOperatorFactory(operatorId, planNodeId, tableFinisher, pageSinkCommitter, statisticsAggregationOperatorFactory, descriptor, session, tableCommitContextCodec);
         }
     }
 
@@ -145,7 +146,7 @@ public class TableFinishOperator
     public TableFinishOperator(
             OperatorContext operatorContext,
             TableFinisher tableFinisher,
-            LifespanCommitter lifespanCommitter,
+            PageSinkCommitter pageSinkCommitter,
             Operator statisticsAggregationOperator,
             StatisticAggregationsDescriptor<Integer> descriptor,
             boolean statisticsCpuTimerEnabled,
@@ -157,7 +158,7 @@ public class TableFinishOperator
         this.descriptor = requireNonNull(descriptor, "descriptor is null");
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
         this.tableCommitContextCodec = requireNonNull(tableCommitContextCodec, "tableCommitContextCodec is null");
-        this.lifespanAndStageStateTracker = new LifespanAndStageStateTracker(lifespanCommitter);
+        this.lifespanAndStageStateTracker = new LifespanAndStageStateTracker(pageSinkCommitter);
 
         operatorContext.setInfoSupplier(this::getInfo);
     }
@@ -248,7 +249,7 @@ public class TableFinishOperator
         }
         state = State.FINISHED;
 
-        lifespanAndStageStateTracker.waitForAllLifespanCommitted();
+        lifespanAndStageStateTracker.commit();
         outputMetadata = tableFinisher.finishTable(lifespanAndStageStateTracker.getFinalFragments(), computedStatisticsBuilder.build());
 
         // output page will only be constructed once,
@@ -299,31 +300,36 @@ public class TableFinishOperator
         Optional<ConnectorOutputMetadata> finishTable(Collection<Slice> fragments, Collection<ComputedStatistics> computedStatistics);
     }
 
-    public interface LifespanCommitter
+    public interface PageSinkCommitter
     {
-        ListenableFuture<Void> commitLifespan(Collection<Slice> fragments);
+        ListenableFuture<Void> commitAsync(Collection<Slice> fragments);
     }
 
     // A lifespan in a stage defines the unit for commit and recovery in recoverable grouped execution
     private static class LifespanAndStageStateTracker
     {
-        private final Map<LifespanAndStage, LifespanAndStageState> unrecoverableLifespanAndStageStates = new HashMap<>();
+        private final Map<LifespanAndStage, LifespanAndStageState> noCommitUnrecoverableLifespanAndStageStates = new HashMap<>();
+        private final Map<LifespanAndStage, LifespanAndStageState> taskCommitUnrecoverableLifespanAndStageStates = new HashMap<>();
 
         // For recoverable execution, it is possible to receive pages of the same lifespan-stage from different tasks. We track all of them and commit the one
         // which finishes sending pages first.
         private final Map<LifespanAndStage, Map<TaskId, LifespanAndStageState>> uncommittedRecoverableLifespanAndStageStates = new HashMap<>();
         private final Map<LifespanAndStage, LifespanAndStageState> committedRecoverableLifespanAndStages = new HashMap<>();
 
-        private final LifespanCommitter lifespanCommitter;
+        private final PageSinkCommitter pageSinkCommitter;
         private final List<ListenableFuture<Void>> commitFutures = new ArrayList<>();
 
-        LifespanAndStageStateTracker(LifespanCommitter lifespanCommitter)
+        LifespanAndStageStateTracker(PageSinkCommitter pageSinkCommitter)
         {
-            this.lifespanCommitter = requireNonNull(lifespanCommitter, "lifespanCommitter is null");
+            this.pageSinkCommitter = requireNonNull(pageSinkCommitter, "pageSinkCommitter is null");
         }
 
-        public void waitForAllLifespanCommitted()
+        public void commit()
         {
+            for (LifespanAndStageState lifespanAndStageState : taskCommitUnrecoverableLifespanAndStageStates.values()) {
+                commitFutures.add(pageSinkCommitter.commitAsync(lifespanAndStageState.getFragments()));
+            }
+
             ListenableFuture<Void> future = whenAllSucceed(commitFutures).call(() -> null, directExecutor());
             try {
                 future.get();
@@ -343,44 +349,54 @@ public class TableFinishOperator
         public void update(Page page, TableCommitContext tableCommitContext)
         {
             LifespanAndStage lifespanAndStage = LifespanAndStage.fromTableCommitContext(tableCommitContext);
+            PageSinkCommitStrategy commitStrategy = tableCommitContext.getPageSinkCommitStrategy();
+            switch (commitStrategy) {
+                case NO_COMMIT: {
+                    // Case 1: lifespan commit is not required, this can be one of the following cases:
+                    //  - The source fragment is ungrouped execution (lifespan is TASK_WIDE).
+                    //  - The source fragment is grouped execution but not recoverable.
+                    noCommitUnrecoverableLifespanAndStageStates.computeIfAbsent(lifespanAndStage, ignored -> new LifespanAndStageState(tableCommitContext.getTaskId())).update(page);
+                    return;
+                }
+                case TASK_COMMIT: {
+                    // Case 2: Commit is required, but partial recovery is not supported
+                    taskCommitUnrecoverableLifespanAndStageStates.computeIfAbsent(lifespanAndStage, ignored -> new LifespanAndStageState(tableCommitContext.getTaskId())).update(page);
+                    return;
+                }
+                case LIFESPAN_COMMIT: {
+                    // Case 2: Lifespan commit is required
+                    checkState(lifespanAndStage.lifespan != Lifespan.taskWide(), "Recoverable lifespan cannot be TASK_WIDE");
 
-            // Case 1: lifespan commit is not required, this can be one of the following cases:
-            //  - The source fragment is ungrouped execution (lifespan is TASK_WIDE).
-            //  - The source fragment is grouped execution but not recoverable.
-            if (!tableCommitContext.isLifespanCommitRequired()) {
-                unrecoverableLifespanAndStageStates.computeIfAbsent(lifespanAndStage, ignored -> new LifespanAndStageState(tableCommitContext.getTaskId())).update(page);
-                return;
-            }
+                    // Case 2a: Current (stage, lifespan) combination is already committed
+                    if (committedRecoverableLifespanAndStages.containsKey(lifespanAndStage)) {
+                        checkState(
+                                !committedRecoverableLifespanAndStages.get(lifespanAndStage).getTaskId().equals(tableCommitContext.getTaskId()),
+                                "Received page from same task of committed lifespan and stage combination");
+                        return;
+                    }
 
-            // Case 2: lifespan commit is required
-            checkState(lifespanAndStage.lifespan != Lifespan.taskWide(), "Recoverable lifespan cannot be TASK_WIDE");
+                    // Case 2b: Current (stage, lifespan) combination is not yet committed
+                    Map<TaskId, LifespanAndStageState> lifespanStageStatesPerTask = uncommittedRecoverableLifespanAndStageStates.computeIfAbsent(lifespanAndStage, ignored -> new HashMap<>());
+                    lifespanStageStatesPerTask.computeIfAbsent(tableCommitContext.getTaskId(), ignored -> new LifespanAndStageState(tableCommitContext.getTaskId())).update(page);
 
-            // Case 2a: current (stage, lifespan) combination is already committed
-            if (committedRecoverableLifespanAndStages.containsKey(lifespanAndStage)) {
-                checkState(
-                        !committedRecoverableLifespanAndStages.get(lifespanAndStage).getTaskId().equals(tableCommitContext.getTaskId()),
-                        "Received page from same task of committed lifespan and stage combination");
-
-                return;
-            }
-
-            // Case 2b: current (stage, lifespan) combination is not yet committed
-            Map<TaskId, LifespanAndStageState> lifespanStageStatesPerTask = uncommittedRecoverableLifespanAndStageStates.computeIfAbsent(lifespanAndStage, ignored -> new HashMap<>());
-            lifespanStageStatesPerTask.computeIfAbsent(tableCommitContext.getTaskId(), ignored -> new LifespanAndStageState(tableCommitContext.getTaskId())).update(page);
-
-            if (tableCommitContext.isLastPage()) {
-                checkState(!committedRecoverableLifespanAndStages.containsKey(lifespanAndStage), "LifespanAndStage already finished");
-                LifespanAndStageState lifespanAndStageState = lifespanStageStatesPerTask.get(tableCommitContext.getTaskId());
-                committedRecoverableLifespanAndStages.put(lifespanAndStage, lifespanAndStageState);
-                uncommittedRecoverableLifespanAndStageStates.remove(lifespanAndStage);
-                commitFutures.add(lifespanCommitter.commitLifespan(lifespanAndStageState.getFragments()));
+                    if (tableCommitContext.isLastPage()) {
+                        checkState(!committedRecoverableLifespanAndStages.containsKey(lifespanAndStage), "LifespanAndStage already finished");
+                        LifespanAndStageState lifespanAndStageState = lifespanStageStatesPerTask.get(tableCommitContext.getTaskId());
+                        committedRecoverableLifespanAndStages.put(lifespanAndStage, lifespanAndStageState);
+                        uncommittedRecoverableLifespanAndStageStates.remove(lifespanAndStage);
+                        commitFutures.add(pageSinkCommitter.commitAsync(lifespanAndStageState.getFragments()));
+                    }
+                    return;
+                }
+                default:
+                    throw new IllegalArgumentException("unexpected commit strategy: " + commitStrategy);
             }
         }
 
         List<Page> getStatisticsPagesToProcess(Page page, TableCommitContext tableCommitContext)
         {
             LifespanAndStage lifespanAndStage = LifespanAndStage.fromTableCommitContext(tableCommitContext);
-            if (!tableCommitContext.isLifespanCommitRequired()) {
+            if (tableCommitContext.getPageSinkCommitStrategy() != LIFESPAN_COMMIT) {
                 return extractStatisticsRows(page).map(ImmutableList::of).orElse(ImmutableList.of());
             }
             if (!committedRecoverableLifespanAndStages.containsKey(lifespanAndStage)) {
@@ -393,7 +409,10 @@ public class TableFinishOperator
         public long getFinalRowCount()
         {
             checkState(uncommittedRecoverableLifespanAndStageStates.isEmpty(), "All recoverable LifespanAndStage should be committed when fetching final row count");
-            return Stream.concat(unrecoverableLifespanAndStageStates.values().stream(), committedRecoverableLifespanAndStages.values().stream())
+            return Streams.concat(
+                    noCommitUnrecoverableLifespanAndStageStates.values().stream(),
+                    taskCommitUnrecoverableLifespanAndStageStates.values().stream(),
+                    committedRecoverableLifespanAndStages.values().stream())
                     .mapToLong(LifespanAndStageState::getRowCount)
                     .sum();
         }
@@ -401,7 +420,10 @@ public class TableFinishOperator
         public List<Slice> getFinalFragments()
         {
             checkState(uncommittedRecoverableLifespanAndStageStates.isEmpty(), "All recoverable LifespanAndStage should be committed when fetching final fragments");
-            return Stream.concat(unrecoverableLifespanAndStageStates.values().stream(), committedRecoverableLifespanAndStages.values().stream())
+            return Streams.concat(
+                    noCommitUnrecoverableLifespanAndStageStates.values().stream(),
+                    taskCommitUnrecoverableLifespanAndStageStates.values().stream(),
+                    committedRecoverableLifespanAndStages.values().stream())
                     .map(LifespanAndStageState::getFragments)
                     .flatMap(List::stream)
                     .collect(toImmutableList());

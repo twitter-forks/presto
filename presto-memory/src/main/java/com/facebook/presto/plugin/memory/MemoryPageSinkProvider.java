@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.plugin.memory;
 
+import com.facebook.presto.common.Page;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.NodeManager;
-import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageSinkProperties;
 import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
@@ -59,7 +59,7 @@ public class MemoryPageSinkProvider
     @Override
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle outputTableHandle, PageSinkProperties pageSinkProperties)
     {
-        checkArgument(!pageSinkProperties.isPartitionCommitRequired(), "Memory connector does not support partition commit");
+        checkArgument(!pageSinkProperties.isCommitRequired(), "Memory connector does not support page sink commit");
 
         MemoryOutputTableHandle memoryOutputTableHandle = (MemoryOutputTableHandle) outputTableHandle;
         MemoryTableHandle tableHandle = memoryOutputTableHandle.getTable();
@@ -74,7 +74,7 @@ public class MemoryPageSinkProvider
     @Override
     public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle insertTableHandle, PageSinkProperties pageSinkProperties)
     {
-        checkArgument(!pageSinkProperties.isPartitionCommitRequired(), "Memory connector does not support partition commit");
+        checkArgument(!pageSinkProperties.isCommitRequired(), "Memory connector does not support page sink commit");
 
         MemoryInsertTableHandle memoryInsertTableHandle = (MemoryInsertTableHandle) insertTableHandle;
         MemoryTableHandle tableHandle = memoryInsertTableHandle.getTable();

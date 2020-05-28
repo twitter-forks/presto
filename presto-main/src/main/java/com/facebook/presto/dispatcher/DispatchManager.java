@@ -271,6 +271,11 @@ public class DispatchManager
         return queryTracker.getQuery(queryId).getBasicQueryInfo();
     }
 
+    public QueryInfo getFullQueryInfo(QueryId queryId)
+    {
+        return queryTracker.getQuery(queryId).getQueryInfo();
+    }
+
     public Optional<DispatchInfo> getDispatchInfo(QueryId queryId)
     {
         return queryTracker.tryGetQuery(queryId)
@@ -278,6 +283,19 @@ public class DispatchManager
                     dispatchQuery.recordHeartbeat();
                     return dispatchQuery.getDispatchInfo();
                 });
+    }
+
+    public boolean isQueryPresent(QueryId queryId)
+    {
+        return queryTracker.tryGetQuery(queryId).isPresent();
+    }
+
+    public void failQuery(QueryId queryId, Throwable cause)
+    {
+        requireNonNull(cause, "cause is null");
+
+        queryTracker.tryGetQuery(queryId)
+                .ifPresent(query -> query.fail(cause));
     }
 
     public void cancelQuery(QueryId queryId)

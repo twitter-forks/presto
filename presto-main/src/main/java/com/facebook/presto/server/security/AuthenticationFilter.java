@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.server.security;
 
+import com.facebook.airlift.log.Logger;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
@@ -34,6 +35,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_SOURCE;
+import static com.facebook.presto.client.PrestoHeaders.PRESTO_USER;
 import static com.google.common.io.ByteStreams.copy;
 import static com.google.common.io.ByteStreams.nullOutputStream;
 import static com.google.common.net.HttpHeaders.WWW_AUTHENTICATE;
@@ -43,12 +46,20 @@ import static javax.servlet.http.HttpServletResponse.SC_UNAUTHORIZED;
 public class AuthenticationFilter
         implements Filter
 {
+    private static final Logger LOG = Logger.get(AuthenticationFilter.class);
+
     private final List<Authenticator> authenticators;
+    private final String httpAuthenticationPathRegex;
+    private final boolean allowByPass;
+    private final String statementSourceByPassRegex;
 
     @Inject
-    public AuthenticationFilter(List<Authenticator> authenticators)
+    public AuthenticationFilter(List<Authenticator> authenticators, SecurityConfig securityConfig)
     {
         this.authenticators = ImmutableList.copyOf(authenticators);
+        this.httpAuthenticationPathRegex = requireNonNull(securityConfig.getHttpAuthenticationPathRegex(), "httpAuthenticationPathRegex is null");
+        this.allowByPass = securityConfig.getAllowByPass();
+        this.statementSourceByPassRegex = securityConfig.getStatementSourceByPassRegex();
     }
 
     @Override
@@ -64,8 +75,8 @@ public class AuthenticationFilter
         HttpServletRequest request = (HttpServletRequest) servletRequest;
         HttpServletResponse response = (HttpServletResponse) servletResponse;
 
-        // skip authentication if non-secure or not configured
-        if (!request.isSecure() || authenticators.isEmpty()) {
+        // skip authentication if (not configured) or (non-secure and not match
+        if (authenticators.isEmpty() || (!request.isSecure() && !request.getPathInfo().matches(httpAuthenticationPathRegex))) {
             nextFilter.doFilter(request, response);
             return;
         }
@@ -92,6 +103,19 @@ public class AuthenticationFilter
             return;
         }
 
+        //authentication bypassed
+        if (allowByPass) {
+            //TODO: remove this field once we enforced authentication 100%
+            if (request.getMethod().equals("GET") && request.getPathInfo().startsWith("/v1/statement") ||
+                    (statementSourceByPassRegex != null
+                    && request.getHeader(PRESTO_SOURCE) != null
+                    && request.getHeader(PRESTO_SOURCE).matches(statementSourceByPassRegex))) {
+                nextFilter.doFilter(request, response);
+                LOG.debug("Authentication by passed from source: %s user: %s", request.getHeader(PRESTO_SOURCE), request.getHeader(PRESTO_USER));
+                return;
+            }
+        }
+
         // authentication failed
         skipRequestBody(request);
 
@@ -102,6 +126,7 @@ public class AuthenticationFilter
         if (messages.isEmpty()) {
             messages.add("Unauthorized");
         }
+        LOG.debug("Auth failed %s %s %s %s", request.getHeader(PRESTO_SOURCE), request.getHeader(PRESTO_USER), request.getPathInfo(), request.getQueryString());
         response.sendError(SC_UNAUTHORIZED, Joiner.on(" | ").join(messages));
     }
 

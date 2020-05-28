@@ -13,9 +13,10 @@
  */
 package com.facebook.presto.hive.pagefile;
 
+import com.facebook.presto.common.Page;
+import com.facebook.presto.hive.HiveCompressionCodec;
 import com.facebook.presto.hive.HiveFileWriter;
 import com.facebook.presto.orc.DataSink;
-import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.page.PagesSerde;
 import io.airlift.units.DataSize;
@@ -35,16 +36,17 @@ public class PageFileWriter
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(PageFileWriter.class).instanceSize();
 
     private final PageWriter pageWriter;
-    private final Callable<Void> rollbackAction;
     private final PagesSerde pagesSerde;
+    private final Callable<Void> rollbackAction;
 
     public PageFileWriter(
             DataSink dataSink,
             PagesSerde pagesSerde,
+            HiveCompressionCodec compression,
             DataSize pageFileStripeMaxSize,
             Callable<Void> rollbackAction)
     {
-        pageWriter = new PageWriter(dataSink, pageFileStripeMaxSize);
+        pageWriter = new PageWriter(dataSink, compression, pageFileStripeMaxSize);
         this.pagesSerde = requireNonNull(pagesSerde, "pagesSerde is null");
         this.rollbackAction = requireNonNull(rollbackAction, "rollbackAction is null");
     }

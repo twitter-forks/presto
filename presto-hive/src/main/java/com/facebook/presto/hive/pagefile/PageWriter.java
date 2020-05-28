@@ -13,9 +13,11 @@
  */
 package com.facebook.presto.hive.pagefile;
 
+import com.facebook.presto.hive.HiveCompressionCodec;
 import com.facebook.presto.orc.DataSink;
 import com.facebook.presto.orc.stream.DataOutput;
 import com.facebook.presto.spi.page.SerializedPage;
+import com.google.common.collect.ImmutableList;
 import io.airlift.units.DataSize;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -32,17 +34,25 @@ public class PageWriter
     private static final int INSTANCE_SIZE = ClassLayout.parseClass(PageWriter.class).instanceSize();
 
     private final DataSink dataSink;
+    private final HiveCompressionCodec compressionCodec;
     private long bufferedBytes;
     private long retainedBytes;
     private long maxBufferedBytes;
     private boolean closed;
     private List<DataOutput> bufferedPages;
+    private List<Long> stripeOffsets;
+    private long stripeOffset;
 
-    public PageWriter(DataSink dataSink, DataSize pageFileStripeMaxSize)
+    public PageWriter(
+            DataSink dataSink,
+            HiveCompressionCodec compressionCodec,
+            DataSize pageFileStripeMaxSize)
     {
         this.dataSink = requireNonNull(dataSink, "pageDataSink is null");
+        this.compressionCodec = requireNonNull(compressionCodec, "compressionCodec is null");
         this.maxBufferedBytes = requireNonNull(pageFileStripeMaxSize, "pageFileStripeMaxSize is null").toBytes();
         bufferedPages = new ArrayList<>();
+        stripeOffsets = new ArrayList<>();
     }
 
     /**
@@ -59,10 +69,7 @@ public class PageWriter
         PageDataOutput pageDataOutput = new PageDataOutput(page);
         long writtenSize = pageDataOutput.size();
         if (maxBufferedBytes - bufferedBytes < writtenSize) {
-            dataSink.write(bufferedPages);
-            bufferedPages.clear();
-            bufferedBytes = 0;
-            retainedBytes = 0;
+            flushStripe();
         }
         bufferedPages.add(pageDataOutput);
         bufferedBytes += writtenSize;
@@ -78,13 +85,25 @@ public class PageWriter
         }
         closed = true;
         if (!bufferedPages.isEmpty()) {
-            dataSink.write(bufferedPages);
+            flushStripe();
         }
+        dataSink.write(ImmutableList.of(new PageFileFooterOutput(stripeOffsets, compressionCodec)));
         dataSink.close();
     }
 
     public long getRetainedBytes()
     {
         return INSTANCE_SIZE + retainedBytes + dataSink.getRetainedSizeInBytes();
+    }
+
+    private void flushStripe()
+            throws IOException
+    {
+        dataSink.write(bufferedPages);
+        stripeOffsets.add(stripeOffset);
+        stripeOffset += bufferedBytes;
+        bufferedPages.clear();
+        bufferedBytes = 0;
+        retainedBytes = 0;
     }
 }

@@ -14,6 +14,9 @@
 package com.facebook.presto.hive.benchmark;
 
 import com.facebook.presto.block.BlockEncodingManager;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.predicate.TupleDomain;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.hive.FileFormatDataSourceStats;
 import com.facebook.presto.hive.GenericHiveRecordCursorProvider;
 import com.facebook.presto.hive.HdfsEnvironment;
@@ -52,12 +55,9 @@ import com.facebook.presto.rcfile.binary.BinaryRcFileEncoding;
 import com.facebook.presto.rcfile.text.TextRcFileEncoding;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordPageSource;
 import com.facebook.presto.spi.page.PagesSerde;
-import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.slice.OutputStreamSliceOutput;
 import io.airlift.units.DataSize;
@@ -75,11 +75,14 @@ import java.util.Optional;
 import java.util.Properties;
 
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
+import static com.facebook.presto.hive.HiveCompressionCodec.NONE;
 import static com.facebook.presto.hive.HiveFileContext.DEFAULT_HIVE_FILE_CONTEXT;
+import static com.facebook.presto.hive.HiveStorageFormat.PAGEFILE;
 import static com.facebook.presto.hive.HiveTestUtils.HIVE_CLIENT_CONFIG;
 import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveType.toHiveType;
 import static com.facebook.presto.hive.metastore.StorageFormat.fromHiveStorageFormat;
+import static com.facebook.presto.hive.pagefile.PageFileWriterFactory.createPagesSerdeForPageFile;
 import static com.facebook.presto.hive.util.ConfigurationUtils.configureCompression;
 import static com.facebook.presto.orc.OrcEncoding.DWRF;
 import static com.facebook.presto.orc.OrcEncoding.ORC;
@@ -214,7 +217,7 @@ public enum FileFormat
             HiveBatchPageSourceFactory pageSourceFactory = new PageFilePageSourceFactory(
                     hdfsEnvironment,
                     new BlockEncodingManager(TYPE_MANAGER));
-            return createPageSource(pageSourceFactory, session, targetFile, columnNames, columnTypes, HiveStorageFormat.PAGEFILE);
+            return createPageSource(pageSourceFactory, session, targetFile, columnNames, columnTypes, PAGEFILE);
         }
 
         @Override
@@ -226,7 +229,10 @@ public enum FileFormat
                 HiveCompressionCodec compressionCodec)
                 throws IOException
         {
-            return new PrestoPageFormatWriter(targetFile);
+            if (!compressionCodec.isSupportedStorageFormat(PAGEFILE)) {
+                compressionCodec = NONE;
+            }
+            return new PrestoPageFormatWriter(targetFile, compressionCodec);
         }
 
         @Override
@@ -662,18 +668,16 @@ public enum FileFormat
             implements FormatWriter
     {
         private final PageWriter writer;
-        private final PagesSerde pagesSerde = new PagesSerde(
-                new BlockEncodingManager(TYPE_MANAGER),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        private final PagesSerde pagesSerde;
 
-        public PrestoPageFormatWriter(File targetFile)
+        public PrestoPageFormatWriter(File targetFile, HiveCompressionCodec compressionCodec)
                 throws IOException
         {
             writer = new PageWriter(
                     new OutputStreamDataSink(new FileOutputStream(targetFile)),
+                    compressionCodec,
                     new DataSize(10, DataSize.Unit.MEGABYTE));
+            pagesSerde = createPagesSerdeForPageFile(new BlockEncodingManager(TYPE_MANAGER), Optional.of(compressionCodec));
         }
 
         @Override

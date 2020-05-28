@@ -13,14 +13,14 @@
  */
 package com.facebook.presto.operator.index;
 
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.function.SqlFunctionProperties;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.operator.OperatorFactory;
 import com.facebook.presto.operator.project.PageProcessor;
-import com.facebook.presto.operator.project.PageProjection;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.function.SqlFunctionProperties;
+import com.facebook.presto.operator.project.PageProjectionWithOutputs;
 import com.facebook.presto.spi.plan.PlanNodeId;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
 import com.facebook.presto.sql.relational.Expressions;
 import com.google.common.annotations.VisibleForTesting;
@@ -50,7 +50,7 @@ public class DynamicTupleFilterFactory
     private final List<Type> filterTypes;
 
     private final List<Type> outputTypes;
-    private final List<Supplier<PageProjection>> outputProjections;
+    private final List<Supplier<PageProjectionWithOutputs>> outputProjections;
 
     public DynamicTupleFilterFactory(
             int filterOperatorId,
@@ -80,9 +80,13 @@ public class DynamicTupleFilterFactory
                 .collect(toImmutableList());
 
         this.outputTypes = ImmutableList.copyOf(outputTypes);
-        this.outputProjections = IntStream.range(0, outputTypes.size())
-                .mapToObj(field -> pageFunctionCompiler.compileProjection(sqlFunctionProperties, Expressions.field(field, outputTypes.get(field)), Optional.empty()))
-                .collect(toImmutableList());
+        this.outputProjections = pageFunctionCompiler.compileProjections(
+                sqlFunctionProperties,
+                IntStream.range(0, outputTypes.size())
+                        .mapToObj(field -> Expressions.field(field, outputTypes.get(field)))
+                        .collect(toImmutableList()),
+                false,
+                Optional.empty());
     }
 
     public OperatorFactory filterWithTuple(Page tuplePage)
@@ -100,7 +104,8 @@ public class DynamicTupleFilterFactory
                 Optional.of(filter),
                 outputProjections.stream()
                         .map(Supplier::get)
-                        .collect(toImmutableList()), initialBatchSize);
+                        .collect(toImmutableList()),
+                initialBatchSize);
     }
 
     private Page getFilterTuple(Page tuplePage)

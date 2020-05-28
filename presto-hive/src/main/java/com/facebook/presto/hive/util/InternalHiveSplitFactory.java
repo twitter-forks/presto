@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.hive.util;
 
+import com.facebook.presto.common.predicate.Domain;
 import com.facebook.presto.hive.HiveFileInfo;
 import com.facebook.presto.hive.HiveSplitPartitionInfo;
 import com.facebook.presto.hive.InternalHiveSplit;
 import com.facebook.presto.hive.InternalHiveSplit.InternalHiveBlock;
 import com.facebook.presto.hive.S3SelectPushdown;
 import com.facebook.presto.spi.HostAddress;
-import com.facebook.presto.spi.predicate.Domain;
 import com.facebook.presto.spi.schedule.NodeSelectionStrategy;
 import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.fs.BlockLocation;
@@ -39,6 +39,7 @@ import java.util.OptionalInt;
 
 import static com.facebook.presto.hive.HiveUtil.isSplittable;
 import static com.facebook.presto.spi.schedule.NodeSelectionStrategy.HARD_AFFINITY;
+import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.isLzopIndexFile;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.airlift.slice.Slices.utf8Slice;
@@ -228,6 +229,10 @@ public class InternalHiveSplitFactory
 
     private static boolean pathMatchesPredicate(Optional<Domain> pathDomain, String path)
     {
+        if (isLzopIndexFile(new Path(path))) {
+            return false;
+        }
+
         if (!pathDomain.isPresent()) {
             return true;
         }

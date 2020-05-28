@@ -13,12 +13,12 @@
  */
 package com.facebook.presto.sql.planner;
 
+import com.facebook.presto.common.type.BigintType;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.spi.VariableAllocator;
 import com.facebook.presto.spi.relation.CallExpression;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.spi.type.BigintType;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.analyzer.Field;
 import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.FunctionCall;
@@ -163,6 +163,11 @@ public class PlanVariableAllocator
 
     public VariableReferenceExpression newVariable(RowExpression expression)
     {
+        return newVariable(expression, null);
+    }
+
+    public VariableReferenceExpression newVariable(RowExpression expression, String suffix)
+    {
         String nameHint = "expr";
         if (expression instanceof VariableReferenceExpression) {
             nameHint = ((VariableReferenceExpression) expression).getName();
@@ -170,6 +175,6 @@ public class PlanVariableAllocator
         else if (expression instanceof CallExpression) {
             nameHint = ((CallExpression) expression).getDisplayName();
         }
-        return newVariable(nameHint, expression.getType(), null);
+        return newVariable(nameHint, expression.getType(), suffix);
     }
 }

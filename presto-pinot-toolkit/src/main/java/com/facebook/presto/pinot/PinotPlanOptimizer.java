@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.pinot;
 
+import com.facebook.presto.common.type.TypeManager;
 import com.facebook.presto.expressions.LogicalRowExpressions;
 import com.facebook.presto.pinot.query.PinotFilterExpressionConverter;
 import com.facebook.presto.pinot.query.PinotQueryGenerator;
@@ -33,7 +34,6 @@ import com.facebook.presto.spi.plan.PlanVisitor;
 import com.facebook.presto.spi.plan.TableScanNode;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 
 import javax.inject.Inject;
@@ -172,7 +172,13 @@ public class PinotPlanOptimizer
             boolean isQueryShort = pql.get().getGeneratedPql().isQueryShort();
             TableHandle newTableHandle = new TableHandle(
                     oldTableHandle.getConnectorId(),
-                    new PinotTableHandle(pinotTableHandle.getConnectorId(), pinotTableHandle.getSchemaName(), pinotTableHandle.getTableName(), Optional.of(isQueryShort), Optional.of(pql.get().getGeneratedPql())),
+                    new PinotTableHandle(
+                            pinotTableHandle.getConnectorId(),
+                            pinotTableHandle.getSchemaName(),
+                            pinotTableHandle.getTableName(),
+                            Optional.of(isQueryShort),
+                            Optional.of(ImmutableList.copyOf(assignments.values())),
+                            Optional.of(pql.get().getGeneratedPql())),
                     oldTableHandle.getTransaction(),
                     oldTableHandle.getLayout());
             return Optional.of(

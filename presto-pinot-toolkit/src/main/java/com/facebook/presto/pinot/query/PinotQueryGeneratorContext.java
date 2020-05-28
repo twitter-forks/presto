@@ -13,12 +13,12 @@
  */
 package com.facebook.presto.pinot.query;
 
+import com.facebook.presto.common.block.SortOrder;
 import com.facebook.presto.pinot.PinotColumnHandle;
 import com.facebook.presto.pinot.PinotConfig;
 import com.facebook.presto.pinot.PinotException;
 import com.facebook.presto.pinot.PinotSessionProperties;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
@@ -358,7 +358,8 @@ public class PinotQueryGeneratorContext
             query += " " + limitKeyWord + " " + queryLimit;
         }
 
-        List<Integer> indices = getIndicesMappingFromPinotSchemaToPrestoSchema(query, getAssignments());
+        LinkedHashMap<VariableReferenceExpression, PinotColumnHandle> assignments = getAssignments();
+        List<Integer> indices = getIndicesMappingFromPinotSchemaToPrestoSchema(query, assignments);
         return new PinotQueryGenerator.GeneratedPql(tableName, query, indices, groupByColumns.size(), filter.isPresent(), isQueryShort);
     }
 

@@ -14,19 +14,19 @@
 package com.facebook.presto.operator.project;
 
 import com.facebook.airlift.testing.TestingTicker;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.LazyBlock;
+import com.facebook.presto.common.block.VariableWidthBlock;
+import com.facebook.presto.common.function.SqlFunctionProperties;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.memory.context.AggregatedMemoryContext;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.metadata.MetadataManager;
 import com.facebook.presto.operator.CompletedWork;
 import com.facebook.presto.operator.DriverYieldSignal;
 import com.facebook.presto.operator.Work;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.LazyBlock;
-import com.facebook.presto.spi.block.VariableWidthBlock;
-import com.facebook.presto.spi.function.SqlFunctionProperties;
 import com.facebook.presto.spi.relation.CallExpression;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.ExpressionProfiler;
 import com.facebook.presto.sql.gen.PageFunctionCompiler;
 import com.google.common.collect.ImmutableList;
@@ -44,11 +44,15 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 import static com.facebook.airlift.concurrent.Threads.daemonThreadsNamed;
 import static com.facebook.presto.block.BlockAssertions.createLongSequenceBlock;
 import static com.facebook.presto.block.BlockAssertions.createSlicesBlock;
 import static com.facebook.presto.block.BlockAssertions.createStringsBlock;
+import static com.facebook.presto.common.function.OperatorType.ADD;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.execution.executor.PrioritizedSplitRunner.SPLIT_RUN_QUANTA;
 import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.facebook.presto.metadata.MetadataManager.createTestMetadataManager;
@@ -57,14 +61,12 @@ import static com.facebook.presto.operator.project.PageProcessor.MAX_BATCH_SIZE;
 import static com.facebook.presto.operator.project.PageProcessor.MAX_PAGE_SIZE_IN_BYTES;
 import static com.facebook.presto.operator.project.PageProcessor.MIN_PAGE_SIZE_IN_BYTES;
 import static com.facebook.presto.operator.project.SelectedPositions.positionsRange;
-import static com.facebook.presto.spi.function.OperatorType.ADD;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.analyzer.TypeSignatureProvider.fromTypes;
 import static com.facebook.presto.sql.relational.Expressions.call;
 import static com.facebook.presto.sql.relational.Expressions.constant;
 import static com.facebook.presto.sql.relational.Expressions.field;
 import static com.facebook.presto.testing.TestingConnectorSession.SESSION;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.join;
 import static java.util.Collections.nCopies;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
@@ -120,7 +122,7 @@ public class TestPageProcessor
     {
         PageProcessor pageProcessor = new PageProcessor(
                 Optional.of(new TestingPageFilter(positionsRange(25, 50))),
-                ImmutableList.of(new InputPageProjection(0, BIGINT)),
+                ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)),
                 OptionalInt.of(MAX_BATCH_SIZE));
 
         Page inputPage = new Page(createLongSequenceBlock(0, 100));
@@ -135,7 +137,7 @@ public class TestPageProcessor
     @Test
     public void testSelectAllFilter()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(new InputPageProjection(0, BIGINT)), OptionalInt.of(MAX_BATCH_SIZE));
+        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)), OptionalInt.of(MAX_BATCH_SIZE));
 
         Page inputPage = new Page(createLongSequenceBlock(0, 100));
 
@@ -149,7 +151,7 @@ public class TestPageProcessor
     @Test
     public void testSelectNoneFilter()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectNoneFilter()), ImmutableList.of(new InputPageProjection(0, BIGINT)));
+        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectNoneFilter()), ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)));
 
         Page inputPage = new Page(createLongSequenceBlock(0, 100));
 
@@ -164,7 +166,7 @@ public class TestPageProcessor
     @Test
     public void testProjectEmptyPage()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(new InputPageProjection(0, BIGINT)));
+        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)));
 
         Page inputPage = new Page(createLongSequenceBlock(0, 0));
 
@@ -180,7 +182,7 @@ public class TestPageProcessor
     @Test
     public void testSelectNoneFilterLazyLoad()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectNoneFilter()), ImmutableList.of(new InputPageProjection(1, BIGINT)));
+        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectNoneFilter()), ImmutableList.of(createInputPageProjectionWithOutputs(1, BIGINT, 0)));
 
         // if channel 1 is loaded, test will fail
         Page inputPage = new Page(createLongSequenceBlock(0, 100), new LazyBlock(100, lazyBlock -> {
@@ -197,7 +199,7 @@ public class TestPageProcessor
     @Test
     public void testProjectLazyLoad()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(new LazyPagePageProjection()), OptionalInt.of(MAX_BATCH_SIZE));
+        PageProcessor pageProcessor = new PageProcessor(Optional.of(new SelectAllFilter()), ImmutableList.of(new PageProjectionWithOutputs(new LazyPagePageProjection(), new int[] {0})), OptionalInt.of(MAX_BATCH_SIZE));
 
         // if channel 1 is loaded, test will fail
         Page inputPage = new Page(createLongSequenceBlock(0, 100), new LazyBlock(100, lazyBlock -> {
@@ -215,7 +217,7 @@ public class TestPageProcessor
     @Test
     public void testBatchedOutput()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(new InputPageProjection(0, BIGINT)), OptionalInt.of(MAX_BATCH_SIZE));
+        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)), OptionalInt.of(MAX_BATCH_SIZE));
 
         Page inputPage = new Page(createLongSequenceBlock(0, (int) (MAX_BATCH_SIZE * 2.5)));
 
@@ -234,7 +236,7 @@ public class TestPageProcessor
     @Test
     public void testAdaptiveBatchSize()
     {
-        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(new InputPageProjection(0, VARCHAR)), OptionalInt.of(MAX_BATCH_SIZE));
+        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(createInputPageProjectionWithOutputs(0, VARCHAR, 0)), OptionalInt.of(MAX_BATCH_SIZE));
 
         // process large page which will reduce batch size
         Slice[] slices = new Slice[(int) (MAX_BATCH_SIZE * 2.5)];
@@ -274,9 +276,9 @@ public class TestPageProcessor
     @Test
     public void testOptimisticProcessing()
     {
-        InvocationCountPageProjection firstProjection = new InvocationCountPageProjection(new InputPageProjection(0, VARCHAR));
-        InvocationCountPageProjection secondProjection = new InvocationCountPageProjection(new InputPageProjection(0, VARCHAR));
-        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(firstProjection, secondProjection), OptionalInt.of(MAX_BATCH_SIZE));
+        InvocationCountPageProjection firstProjection = new InvocationCountPageProjection(new InputPageProjection(0));
+        InvocationCountPageProjection secondProjection = new InvocationCountPageProjection(new InputPageProjection(0));
+        PageProcessor pageProcessor = new PageProcessor(Optional.empty(), ImmutableList.of(new PageProjectionWithOutputs(firstProjection, new int[] {0}), new PageProjectionWithOutputs(secondProjection, new int[] {1})), OptionalInt.of(MAX_BATCH_SIZE));
 
         // process large page which will reduce batch size
         Slice[] slices = new Slice[(int) (MAX_BATCH_SIZE * 2.5)];
@@ -317,7 +319,7 @@ public class TestPageProcessor
     {
         PageProcessor pageProcessor = new PageProcessor(
                 Optional.of(new SelectAllFilter()),
-                ImmutableList.of(new InputPageProjection(0, VARCHAR), new InputPageProjection(1, VARCHAR)),
+                ImmutableList.of(createInputPageProjectionWithOutputs(0, VARCHAR, 0), createInputPageProjectionWithOutputs(1, VARCHAR, 1)),
                 OptionalInt.of(MAX_BATCH_SIZE));
 
         // create 2 columns X 800 rows of strings with each string's size = 10KB
@@ -348,7 +350,7 @@ public class TestPageProcessor
         DriverYieldSignal yieldSignal = new DriverYieldSignal();
         PageProcessor pageProcessor = new PageProcessor(
                 Optional.empty(),
-                Collections.nCopies(columns, new YieldPageProjection(new InputPageProjection(0, VARCHAR))),
+                IntStream.range(0, 20).mapToObj(i -> new PageProjectionWithOutputs(new YieldPageProjection(new InputPageProjection(0)), new int[] {i})).collect(toImmutableList()),
                 OptionalInt.of(MAX_BATCH_SIZE));
 
         Slice[] slices = new Slice[rows];
@@ -400,7 +402,7 @@ public class TestPageProcessor
         ExpressionProfiler profiler = new ExpressionProfiler(testingTicker, SPLIT_RUN_QUANTA);
         for (int i = 0; i < 100; i++) {
             profiler.start();
-            Work<Block> work = projection.project(SESSION.getSqlFunctionProperties(), new DriverYieldSignal(), page, SelectedPositions.positionsRange(0, page.getPositionCount()));
+            Work<List<Block>> work = projection.project(SESSION.getSqlFunctionProperties(), new DriverYieldSignal(), page, SelectedPositions.positionsRange(0, page.getPositionCount()));
             if (i < 10) {
                 // increment the ticker with a large value to mark the expression as expensive
                 testingTicker.increment(10, SECONDS);
@@ -426,7 +428,7 @@ public class TestPageProcessor
         ExpressionProfiler profiler = new ExpressionProfiler(testingTicker, SPLIT_RUN_QUANTA);
         PageProcessor pageProcessor = new PageProcessor(
                 Optional.empty(),
-                ImmutableList.of(new InputPageProjection(0, BIGINT)),
+                ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)),
                 OptionalInt.of(1),
                 profiler);
 
@@ -460,7 +462,7 @@ public class TestPageProcessor
         ExpressionProfiler profiler = new ExpressionProfiler(testingTicker, new Duration(0, MILLISECONDS));
         PageProcessor pageProcessor = new PageProcessor(
                 Optional.empty(),
-                ImmutableList.of(new InputPageProjection(0, BIGINT)),
+                ImmutableList.of(createInputPageProjectionWithOutputs(0, BIGINT, 0)),
                 OptionalInt.of(512),
                 profiler);
 
@@ -482,6 +484,11 @@ public class TestPageProcessor
             }
             previousPositionCount = positionCount;
         }
+    }
+
+    private PageProjectionWithOutputs createInputPageProjectionWithOutputs(int inputChannel, Type type, int outputChannel)
+    {
+        return new PageProjectionWithOutputs(new InputPageProjection(inputChannel), new int[] {outputChannel});
     }
 
     private Iterator<Optional<Page>> processAndAssertRetainedPageSize(PageProcessor pageProcessor, Page inputPage)
@@ -517,12 +524,6 @@ public class TestPageProcessor
         }
 
         @Override
-        public Type getType()
-        {
-            return delegate.getType();
-        }
-
-        @Override
         public boolean isDeterministic()
         {
             return delegate.isDeterministic();
@@ -535,7 +536,7 @@ public class TestPageProcessor
         }
 
         @Override
-        public Work<Block> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
+        public Work<List<Block>> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
         {
             setInvocationCount(getInvocationCount() + 1);
             return delegate.project(properties, yieldSignal, page, selectedPositions);
@@ -561,16 +562,16 @@ public class TestPageProcessor
         }
 
         @Override
-        public Work<Block> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
+        public Work<List<Block>> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
         {
             return new YieldPageProjectionWork(properties, yieldSignal, page, selectedPositions);
         }
 
         private class YieldPageProjectionWork
-                implements Work<Block>
+                implements Work<List<Block>>
         {
             private final DriverYieldSignal yieldSignal;
-            private final Work<Block> work;
+            private final Work<List<Block>> work;
 
             public YieldPageProjectionWork(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
             {
@@ -588,7 +589,7 @@ public class TestPageProcessor
             }
 
             @Override
-            public Block getResult()
+            public List<Block> getResult()
             {
                 return work.getResult();
             }
@@ -598,12 +599,6 @@ public class TestPageProcessor
     public static class LazyPagePageProjection
             implements PageProjection
     {
-        @Override
-        public Type getType()
-        {
-            return BIGINT;
-        }
-
         @Override
         public boolean isDeterministic()
         {
@@ -617,9 +612,9 @@ public class TestPageProcessor
         }
 
         @Override
-        public Work<Block> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
+        public Work<List<Block>> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
         {
-            return new CompletedWork<>(page.getBlock(0).getLoadedBlock());
+            return new CompletedWork<>(ImmutableList.of(page.getBlock(0).getLoadedBlock()));
         }
     }
 

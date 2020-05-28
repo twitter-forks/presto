@@ -15,14 +15,20 @@ package com.facebook.presto.druid;
 
 import com.facebook.airlift.configuration.Config;
 import com.facebook.airlift.configuration.ConfigDescription;
+import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 
 import javax.validation.constraints.NotNull;
+
+import java.util.List;
 
 public class DruidConfig
 {
     private String coordinatorUrl;
     private String brokerUrl;
     private String schema = "druid";
+    private boolean pushdown;
+    private List<String> hadoopResourceConfigFiles = ImmutableList.of();
 
     @NotNull
     public String getDruidCoordinatorUrl()
@@ -63,6 +69,42 @@ public class DruidConfig
     public DruidConfig setDruidSchema(String schema)
     {
         this.schema = schema;
+        return this;
+    }
+
+    public boolean isComputePushdownEnabled()
+    {
+        return pushdown;
+    }
+
+    @Config("druid.compute-pushdown-enabled")
+    @ConfigDescription("pushdown query processing to druid")
+    public DruidConfig setComputePushdownEnabled(boolean pushdown)
+    {
+        this.pushdown = pushdown;
+        return this;
+    }
+
+    @NotNull
+    public List<String> getHadoopResourceConfigFiles()
+    {
+        return hadoopResourceConfigFiles;
+    }
+
+    @Config("druid.hadoop.config.resources")
+    public DruidConfig setHadoopResourceConfigFiles(String files)
+    {
+        if (files != null) {
+            this.hadoopResourceConfigFiles = Splitter.on(',').trimResults().omitEmptyStrings().splitToList(files);
+        }
+        return this;
+    }
+
+    public DruidConfig setHadoopResourceConfigFiles(List<String> files)
+    {
+        if (files != null) {
+            this.hadoopResourceConfigFiles = ImmutableList.copyOf(files);
+        }
         return this;
     }
 }

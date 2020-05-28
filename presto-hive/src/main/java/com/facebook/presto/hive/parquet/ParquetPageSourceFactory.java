@@ -13,6 +13,13 @@
  */
 package com.facebook.presto.hive.parquet;
 
+import com.facebook.presto.common.Subfield;
+import com.facebook.presto.common.predicate.Domain;
+import com.facebook.presto.common.predicate.TupleDomain;
+import com.facebook.presto.common.type.RowType;
+import com.facebook.presto.common.type.StandardTypes;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeManager;
 import com.facebook.presto.hive.FileFormatDataSourceStats;
 import com.facebook.presto.hive.HdfsEnvironment;
 import com.facebook.presto.hive.HiveBatchPageSourceFactory;
@@ -29,12 +36,6 @@ import com.facebook.presto.parquet.reader.ParquetReader;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.Subfield;
-import com.facebook.presto.spi.predicate.Domain;
-import com.facebook.presto.spi.predicate.TupleDomain;
-import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -57,11 +58,27 @@ import javax.inject.Inject;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
+import static com.facebook.presto.common.type.StandardTypes.ARRAY;
+import static com.facebook.presto.common.type.StandardTypes.BIGINT;
+import static com.facebook.presto.common.type.StandardTypes.CHAR;
+import static com.facebook.presto.common.type.StandardTypes.DATE;
+import static com.facebook.presto.common.type.StandardTypes.DECIMAL;
+import static com.facebook.presto.common.type.StandardTypes.INTEGER;
+import static com.facebook.presto.common.type.StandardTypes.MAP;
+import static com.facebook.presto.common.type.StandardTypes.REAL;
+import static com.facebook.presto.common.type.StandardTypes.ROW;
+import static com.facebook.presto.common.type.StandardTypes.SMALLINT;
+import static com.facebook.presto.common.type.StandardTypes.TIMESTAMP;
+import static com.facebook.presto.common.type.StandardTypes.TINYINT;
+import static com.facebook.presto.common.type.StandardTypes.VARBINARY;
+import static com.facebook.presto.common.type.StandardTypes.VARCHAR;
 import static com.facebook.presto.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_BAD_DATA;
 import static com.facebook.presto.hive.HiveErrorCode.HIVE_CANNOT_OPEN_SPLIT;
@@ -72,26 +89,12 @@ import static com.facebook.presto.hive.HiveSessionProperties.isFailOnCorruptedPa
 import static com.facebook.presto.hive.HiveSessionProperties.isUseParquetColumnNames;
 import static com.facebook.presto.hive.parquet.HdfsParquetDataSource.buildHdfsParquetDataSource;
 import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
+import static com.facebook.presto.parquet.ParquetTypeUtils.findParquetTypeByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getColumnIO;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getDescriptors;
-import static com.facebook.presto.parquet.ParquetTypeUtils.getParquetTypeByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getSubfieldType;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.buildPredicate;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.predicateMatches;
-import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
-import static com.facebook.presto.spi.type.StandardTypes.BIGINT;
-import static com.facebook.presto.spi.type.StandardTypes.CHAR;
-import static com.facebook.presto.spi.type.StandardTypes.DATE;
-import static com.facebook.presto.spi.type.StandardTypes.DECIMAL;
-import static com.facebook.presto.spi.type.StandardTypes.INTEGER;
-import static com.facebook.presto.spi.type.StandardTypes.MAP;
-import static com.facebook.presto.spi.type.StandardTypes.REAL;
-import static com.facebook.presto.spi.type.StandardTypes.ROW;
-import static com.facebook.presto.spi.type.StandardTypes.SMALLINT;
-import static com.facebook.presto.spi.type.StandardTypes.TIMESTAMP;
-import static com.facebook.presto.spi.type.StandardTypes.TINYINT;
-import static com.facebook.presto.spi.type.StandardTypes.VARBINARY;
-import static com.facebook.presto.spi.type.StandardTypes.VARCHAR;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.nullToEmpty;
 import static java.lang.String.format;
@@ -278,7 +281,7 @@ public class ParquetPageSourceFactory
     {
         org.apache.parquet.schema.Type type = null;
         if (useParquetColumnNames) {
-            type = getParquetTypeByName(column.getName(), messageType);
+            type = findParquetTypeByName(column.getName(), messageType);
         }
         else if (column.getHiveColumnIndex() < messageType.getFieldCount()) {
             type = messageType.getType(column.getHiveColumnIndex());
@@ -314,15 +317,23 @@ public class ParquetPageSourceFactory
             GroupType groupType = parquetType.asGroupType();
             switch (prestoType) {
                 case ROW:
-                    if (groupType.getFields().size() == type.getTypeParameters().size()) {
-                        for (int i = 0; i < groupType.getFields().size(); i++) {
-                            if (!checkSchemaMatch(groupType.getFields().get(i), type.getTypeParameters().get(i))) {
-                                return false;
-                            }
+                    RowType rowType = (RowType) type;
+                    Map<String, Type> prestoFieldMap = rowType.getFields().stream().collect(
+                            Collectors.toMap(
+                                    field -> field.getName().get().toLowerCase(Locale.ENGLISH),
+                                    field -> field.getType()));
+                    for (int i = 0; i < groupType.getFields().size(); i++) {
+                        org.apache.parquet.schema.Type parquetFieldType = groupType.getFields().get(i);
+                        String fieldName = parquetFieldType.getName().toLowerCase(Locale.ENGLISH);
+                        Type prestoFieldType = prestoFieldMap.get(fieldName);
+                        if (prestoFieldType == null) {
+                            prestoFieldType = prestoFieldMap.get(fieldName + "_");
                         }
-                        return true;
+                        if (prestoFieldType != null && !checkSchemaMatch(parquetFieldType, prestoFieldType)) {
+                            return false;
+                        }
                     }
-                    return false;
+                    return true;
                 case MAP:
                     if (groupType.getFields().size() != 1) {
                         return false;

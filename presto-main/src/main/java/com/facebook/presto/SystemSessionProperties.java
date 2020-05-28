@@ -37,15 +37,15 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.stream.Stream;
 
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.common.type.IntegerType.INTEGER;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_SESSION_PROPERTY;
 import static com.facebook.presto.spi.session.PropertyMetadata.booleanProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.doubleProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.integerProperty;
 import static com.facebook.presto.spi.session.PropertyMetadata.stringProperty;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
-import static com.facebook.presto.spi.type.IntegerType.INTEGER;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.PARTITIONED;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy.ELIMINATE_CROSS_JOINS;
@@ -149,6 +149,7 @@ public final class SystemSessionProperties
     public static final String PARTITIONING_PRECISION_STRATEGY = "partitioning_precision_strategy";
     public static final String EXPERIMENTAL_FUNCTIONS_ENABLED = "experimental_functions_enabled";
     public static final String USE_LEGACY_SCHEDULER = "use_legacy_scheduler";
+    public static final String OPTIMIZE_COMMON_SUB_EXPRESSIONS = "optimize_common_sub_expressions";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -362,7 +363,7 @@ public final class SystemSessionProperties
                         "Maximum amount of distributed memory a query can use",
                         VARCHAR,
                         DataSize.class,
-                        memoryManagerConfig.getMaxQueryMemory(),
+                        memoryManagerConfig.getSoftMaxQueryMemory(),
                         true,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -371,7 +372,7 @@ public final class SystemSessionProperties
                         "Maximum amount of user task memory a query can use",
                         VARCHAR,
                         DataSize.class,
-                        nodeMemoryConfig.getMaxQueryMemoryPerNode(),
+                        nodeMemoryConfig.getSoftMaxQueryMemoryPerNode(),
                         true,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -380,7 +381,7 @@ public final class SystemSessionProperties
                         "Maximum amount of distributed total memory a query can use",
                         VARCHAR,
                         DataSize.class,
-                        memoryManagerConfig.getMaxQueryTotalMemory(),
+                        memoryManagerConfig.getSoftMaxQueryTotalMemory(),
                         true,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -389,7 +390,7 @@ public final class SystemSessionProperties
                         "Maximum amount of total (user + system) task memory a query can use",
                         VARCHAR,
                         DataSize.class,
-                        nodeMemoryConfig.getMaxQueryTotalMemoryPerNode(),
+                        nodeMemoryConfig.getSoftMaxQueryTotalMemoryPerNode(),
                         true,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -752,11 +753,15 @@ public final class SystemSessionProperties
                         "Enable listing of functions marked as experimental",
                         featuresConfig.isExperimentalFunctionsEnabled(),
                         false),
-
                 booleanProperty(
                         USE_LEGACY_SCHEDULER,
                         "Use version of scheduler before refactorings for section retries",
                         featuresConfig.isUseLegacyScheduler(),
+                        false),
+                booleanProperty(
+                        OPTIMIZE_COMMON_SUB_EXPRESSIONS,
+                        "Extract and compute common sub-expressions in projection",
+                        featuresConfig.isOptimizeCommonSubExpressions(),
                         false));
     }
 
@@ -1282,5 +1287,10 @@ public final class SystemSessionProperties
     public static boolean isUseLegacyScheduler(Session session)
     {
         return session.getSystemProperty(USE_LEGACY_SCHEDULER, Boolean.class);
+    }
+
+    public static boolean isOptimizeCommonSubExpressions(Session session)
+    {
+        return session.getSystemProperty(OPTIMIZE_COMMON_SUB_EXPRESSIONS, Boolean.class);
     }
 }

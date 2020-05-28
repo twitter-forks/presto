@@ -15,15 +15,15 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.presto.Session;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.PageBuilder;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.RunLengthEncodedBlock;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.OperationTimer.OperationTiming;
 import com.facebook.presto.operator.aggregation.builder.InMemoryHashAggregationBuilder;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.PageBuilder;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.RunLengthEncodedBlock;
 import com.facebook.presto.spi.plan.PlanNodeId;
-import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
@@ -33,12 +33,12 @@ import java.util.List;
 import java.util.Queue;
 
 import static com.facebook.presto.SystemSessionProperties.isStatisticsCpuTimerEnabled;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static com.facebook.presto.operator.TableWriterUtils.CONTEXT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.FRAGMENT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.ROW_COUNT_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.createStatisticsPage;
 import static com.facebook.presto.operator.TableWriterUtils.extractStatisticsRows;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -223,7 +223,7 @@ public class TableWriterMergeOperator
     {
         return first.getLifespan().equals(second.getLifespan()) &&
                 first.getTaskId().equals(second.getTaskId()) &&
-                first.isLifespanCommitRequired() == second.isLifespanCommitRequired();
+                first.getPageSinkCommitStrategy() == second.getPageSinkCommitStrategy();
     }
 
     private long getRetainedMemoryBytes()
@@ -313,7 +313,7 @@ public class TableWriterMergeOperator
         return wrappedBuffer(tableCommitContextCodec.toJsonBytes(new TableCommitContext(
                 lastTableCommitContext.getLifespan(),
                 lastTableCommitContext.getTaskId(),
-                lastTableCommitContext.isLifespanCommitRequired(),
+                lastTableCommitContext.getPageSinkCommitStrategy(),
                 lastPage)));
     }
 

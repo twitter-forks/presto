@@ -14,15 +14,15 @@
 package com.facebook.presto.block;
 
 import com.facebook.presto.block.BlockAssertions.Encoding;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.BlockBuilder;
+import com.facebook.presto.common.type.ArrayType;
+import com.facebook.presto.common.type.MapType;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeManager;
 import com.facebook.presto.metadata.FunctionManager;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.MetadataManager;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.type.ArrayType;
-import com.facebook.presto.spi.type.MapType;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.type.TypeRegistry;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -54,9 +54,9 @@ import static com.facebook.presto.block.BlockAssertions.createRowBlock;
 import static com.facebook.presto.block.BlockAssertions.createStringArraysBlock;
 import static com.facebook.presto.block.BlockAssertions.createStringSequenceBlock;
 import static com.facebook.presto.block.BlockAssertions.createStringsBlock;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
 import static com.facebook.presto.testing.TestngUtils.toDataProvider;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.util.Arrays.asList;
@@ -247,19 +247,11 @@ public class TestRowBasedSerialization
         List<Type> types = ImmutableList.of(type);
         assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 10, 0, 0, false, wrappings)));
         assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 11, 0, 0, false, wrappings)));
-        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 20, 0.5f, 0, false, wrappings)));
+        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 100, 0.5f, 0, false, wrappings)));
         assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 33, 0, 0, false, wrappings)));
         assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 27, 0.5f, 0, false, wrappings)));
-        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 22, 0, 0.5f, false, wrappings)));
-        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 28, 0.5f, 0.5f, false, wrappings)));
-
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 10, false, false, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 11, false, false, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 20, true, false, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 33, false, false, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 27, true, false, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 22, false, true, wrappings)));
-//        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 28, true, true, wrappings)));
+        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 100, 0, 0.5f, false, wrappings)));
+        assertRoundTrip(types, ImmutableList.of(createRandomBlockForType(type, 100, 0.5f, 0.5f, false, wrappings)));
     }
 
     private static void assertRoundTrip(List<Type> types, List<Block> blocks)

@@ -13,22 +13,22 @@
  */
 package com.facebook.presto.operator.project;
 
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.BlockBuilder;
+import com.facebook.presto.common.block.DictionaryBlock;
+import com.facebook.presto.common.block.LazyBlock;
+import com.facebook.presto.common.block.LongArrayBlock;
+import com.facebook.presto.common.block.RunLengthEncodedBlock;
+import com.facebook.presto.common.function.SqlFunctionProperties;
 import com.facebook.presto.operator.DriverYieldSignal;
 import com.facebook.presto.operator.Work;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.DictionaryBlock;
-import com.facebook.presto.spi.block.LazyBlock;
-import com.facebook.presto.spi.block.LongArrayBlock;
-import com.facebook.presto.spi.block.RunLengthEncodedBlock;
-import com.facebook.presto.spi.function.SqlFunctionProperties;
-import com.facebook.presto.spi.type.Type;
 import com.google.common.collect.ImmutableList;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 
 import static com.facebook.airlift.concurrent.Threads.daemonThreadsNamed;
@@ -36,8 +36,8 @@ import static com.facebook.airlift.testing.Assertions.assertGreaterThan;
 import static com.facebook.airlift.testing.Assertions.assertInstanceOf;
 import static com.facebook.presto.block.BlockAssertions.assertBlockEquals;
 import static com.facebook.presto.block.BlockAssertions.createLongSequenceBlock;
-import static com.facebook.presto.spi.block.DictionaryId.randomDictionaryId;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
+import static com.facebook.presto.common.block.DictionaryId.randomDictionaryId;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
 import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
@@ -62,7 +62,6 @@ public class TestDictionaryAwarePageProjection
         DictionaryAwarePageProjection projection = createProjection();
         assertEquals(projection.isDeterministic(), true);
         assertEquals(projection.getInputChannels().getInputChannels(), ImmutableList.of(3));
-        assertEquals(projection.getType(), BIGINT);
     }
 
     @Test(dataProvider = "forceYield")
@@ -182,7 +181,7 @@ public class TestDictionaryAwarePageProjection
         return new DictionaryBlock(dictionary, ids);
     }
 
-    private static Block projectWithYield(Work<Block> work, DriverYieldSignal yieldSignal)
+    private static List<Block> projectWithYield(Work<List<Block>> work, DriverYieldSignal yieldSignal)
     {
         int yieldCount = 0;
         while (true) {
@@ -219,8 +218,8 @@ public class TestDictionaryAwarePageProjection
     private static void testProjectRange(Block block, Class<? extends Block> expectedResultType, DictionaryAwarePageProjection projection, boolean forceYield)
     {
         DriverYieldSignal yieldSignal = new DriverYieldSignal();
-        Work<Block> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsRange(5, 10));
-        Block result;
+        Work<List<Block>> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsRange(5, 10));
+        List<Block> result;
         if (forceYield) {
             result = projectWithYield(work, yieldSignal);
         }
@@ -230,17 +229,17 @@ public class TestDictionaryAwarePageProjection
         }
         assertBlockEquals(
                 BIGINT,
-                result,
+                result.get(0),
                 block.getRegion(5, 10));
-        assertInstanceOf(result, expectedResultType);
+        assertInstanceOf(result.get(0), expectedResultType);
     }
 
     private static void testProjectList(Block block, Class<? extends Block> expectedResultType, DictionaryAwarePageProjection projection, boolean forceYield)
     {
         DriverYieldSignal yieldSignal = new DriverYieldSignal();
         int[] positions = {0, 2, 4, 6, 8, 10};
-        Work<Block> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsList(positions, 0, positions.length));
-        Block result;
+        Work<List<Block>> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsList(positions, 0, positions.length));
+        List<Block> result;
         if (forceYield) {
             result = projectWithYield(work, yieldSignal);
         }
@@ -250,21 +249,21 @@ public class TestDictionaryAwarePageProjection
         }
         assertBlockEquals(
                 BIGINT,
-                result,
+                result.get(0),
                 block.copyPositions(positions, 0, positions.length));
-        assertInstanceOf(result, expectedResultType);
+        assertInstanceOf(result.get(0), expectedResultType);
     }
 
     private static void testProjectFastReturnIgnoreYield(Block block, DictionaryAwarePageProjection projection)
     {
         DriverYieldSignal yieldSignal = new DriverYieldSignal();
-        Work<Block> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsRange(5, 10));
+        Work<List<Block>> work = projection.project(null, yieldSignal, new Page(block), SelectedPositions.positionsRange(5, 10));
         yieldSignal.setWithDelay(1, executor);
         yieldSignal.forceYieldForTesting();
 
         // yield signal is ignored given the block has already been loaded
         assertTrue(work.process());
-        Block result = work.getResult();
+        Block result = work.getResult().get(0);
         yieldSignal.reset();
 
         assertBlockEquals(
@@ -290,12 +289,6 @@ public class TestDictionaryAwarePageProjection
             implements PageProjection
     {
         @Override
-        public Type getType()
-        {
-            return BIGINT;
-        }
-
-        @Override
         public boolean isDeterministic()
         {
             return true;
@@ -308,13 +301,13 @@ public class TestDictionaryAwarePageProjection
         }
 
         @Override
-        public Work<Block> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
+        public Work<List<Block>> project(SqlFunctionProperties properties, DriverYieldSignal yieldSignal, Page page, SelectedPositions selectedPositions)
         {
             return new TestPageProjectionWork(yieldSignal, page, selectedPositions);
         }
 
         private class TestPageProjectionWork
-                implements Work<Block>
+                implements Work<List<Block>>
         {
             private final DriverYieldSignal yieldSignal;
             private final Block block;
@@ -363,10 +356,10 @@ public class TestDictionaryAwarePageProjection
             }
 
             @Override
-            public Block getResult()
+            public List<Block> getResult()
             {
                 assertNotNull(result);
-                return result;
+                return ImmutableList.of(result);
             }
         }
 

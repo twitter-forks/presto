@@ -14,6 +14,10 @@
 package com.facebook.presto.hive;
 
 import com.facebook.airlift.event.client.EventClient;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.SortOrder;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeManager;
 import com.facebook.presto.hive.HdfsEnvironment.HdfsContext;
 import com.facebook.presto.hive.HiveSessionProperties.InsertExistingPartitionsBehavior;
 import com.facebook.presto.hive.LocationService.WriteInfo;
@@ -27,13 +31,9 @@ import com.facebook.presto.hive.metastore.StorageFormat;
 import com.facebook.presto.hive.metastore.Table;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.NodeManager;
-import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageSorter;
 import com.facebook.presto.spi.PrestoException;
-import com.facebook.presto.spi.block.SortOrder;
 import com.facebook.presto.spi.session.PropertyMetadata;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableList;
@@ -136,7 +136,7 @@ public class HiveWriterFactory
 
     private final HiveWriterStats hiveWriterStats;
 
-    private final boolean partitionCommitRequired;
+    private final boolean writeToTempFile;
 
     public HiveWriterFactory(
             Set<HiveFileWriterFactory> fileWriterFactories,
@@ -165,7 +165,7 @@ public class HiveWriterFactory
             HiveSessionProperties hiveSessionProperties,
             HiveWriterStats hiveWriterStats,
             OrcFileWriterFactory orcFileWriterFactory,
-            boolean partitionCommitRequired)
+            boolean commitRequired)
     {
         this.fileWriterFactories = ImmutableSet.copyOf(requireNonNull(fileWriterFactories, "fileWriterFactories is null"));
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
@@ -289,7 +289,9 @@ public class HiveWriterFactory
 
         this.hiveWriterStats = requireNonNull(hiveWriterStats, "hiveWriterStats is null");
 
-        this.partitionCommitRequired = partitionCommitRequired;
+        // In Hive connector, bucket commit is fulfilled by writing to temporary file in TableWriterOperator, and rename in TableFinishOpeartor
+        // (note Presto partition here loosely maps to Hive bucket)
+        this.writeToTempFile = commitRequired;
     }
 
     public HiveWriter createWriter(Page partitionColumns, int position, OptionalInt bucketNumber)
@@ -326,7 +328,7 @@ public class HiveWriterFactory
         }
 
         String writeFileName;
-        if (partitionCommitRequired) {
+        if (writeToTempFile) {
             writeFileName = ".tmp.presto." + filePrefix + "_" + randomUUID() + extension;
         }
         else {

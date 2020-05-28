@@ -14,6 +14,8 @@
 package com.facebook.presto.hive;
 
 import com.facebook.presto.Session;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeSignature;
 import com.facebook.presto.cost.StatsAndCosts;
 import com.facebook.presto.hive.HiveSessionProperties.InsertExistingPartitionsBehavior;
 import com.facebook.presto.metadata.InsertTableHandle;
@@ -30,8 +32,6 @@ import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.security.SelectedRole;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeSignature;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.planner.Plan;
 import com.facebook.presto.sql.planner.plan.ExchangeNode;
@@ -81,6 +81,17 @@ import static com.facebook.presto.SystemSessionProperties.GROUPED_EXECUTION_FOR_
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static com.facebook.presto.SystemSessionProperties.PARTIAL_MERGE_PUSHDOWN_STRATEGY;
 import static com.facebook.presto.SystemSessionProperties.PARTITIONING_PROVIDER_CATALOG;
+import static com.facebook.presto.common.predicate.Marker.Bound.EXACTLY;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.common.type.CharType.createCharType;
+import static com.facebook.presto.common.type.DecimalType.createDecimalType;
+import static com.facebook.presto.common.type.DoubleType.DOUBLE;
+import static com.facebook.presto.common.type.SmallintType.SMALLINT;
+import static com.facebook.presto.common.type.TinyintType.TINYINT;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
+import static com.facebook.presto.common.type.VarcharType.createUnboundedVarcharType;
+import static com.facebook.presto.common.type.VarcharType.createVarcharType;
 import static com.facebook.presto.hive.HiveColumnHandle.BUCKET_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveColumnHandle.PATH_COLUMN_NAME;
 import static com.facebook.presto.hive.HiveQueryRunner.HIVE_CATALOG;
@@ -93,24 +104,14 @@ import static com.facebook.presto.hive.HiveSessionProperties.RCFILE_OPTIMIZED_WR
 import static com.facebook.presto.hive.HiveSessionProperties.SORTED_WRITE_TEMP_PATH_SUBDIRECTORY_COUNT;
 import static com.facebook.presto.hive.HiveSessionProperties.SORTED_WRITE_TO_TEMP_PATH_ENABLED;
 import static com.facebook.presto.hive.HiveSessionProperties.getInsertExistingPartitionsBehavior;
+import static com.facebook.presto.hive.HiveStorageFormat.PAGEFILE;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKETED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.BUCKET_COUNT_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.PARTITIONED_BY_PROPERTY;
 import static com.facebook.presto.hive.HiveTableProperties.STORAGE_FORMAT_PROPERTY;
 import static com.facebook.presto.hive.HiveTestUtils.TYPE_MANAGER;
 import static com.facebook.presto.hive.HiveUtil.columnExtraInfo;
-import static com.facebook.presto.spi.predicate.Marker.Bound.EXACTLY;
 import static com.facebook.presto.spi.security.SelectedRole.Type.ROLE;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
-import static com.facebook.presto.spi.type.CharType.createCharType;
-import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
-import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.SmallintType.SMALLINT;
-import static com.facebook.presto.spi.type.TinyintType.TINYINT;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
-import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
-import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType.BROADCAST;
 import static com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy.PUSH_THROUGH_LOW_MEMORY_OPERATORS;
 import static com.facebook.presto.sql.planner.optimizations.PlanNodeSearcher.searchFrom;
@@ -2255,49 +2256,66 @@ public class TestHiveIntegrationSmokeTest
     @Test
     public void testWritePreferredOrderingTable()
     {
+        testWritePreferredOrderingTable(getSession());
+        testWritePreferredOrderingTable(Session.builder(getSession())
+                .setCatalogSessionProperty(catalog, SORTED_WRITE_TO_TEMP_PATH_ENABLED, "true")
+                .setCatalogSessionProperty(catalog, SORTED_WRITE_TEMP_PATH_SUBDIRECTORY_COUNT, "10")
+                .build());
+    }
+
+    public void testWritePreferredOrderingTable(Session session)
+    {
         try {
             // create table
             assertUpdate(
+                    session,
                     "CREATE TABLE create_partitioned_ordering_table (orderkey, custkey, totalprice, orderdate, orderpriority, clerk, shippriority, comment, orderstatus)\n" +
                             "WITH (partitioned_by = ARRAY['orderstatus'], preferred_ordering_columns = ARRAY['orderkey']) AS\n" +
                             "SELECT orderkey, custkey, totalprice, orderdate, orderpriority, clerk, shippriority, comment, orderstatus FROM tpch.sf1.orders",
                     (long) computeActual("SELECT count(*) FROM tpch.sf1.orders").getOnlyValue());
             assertQuery(
+                    session,
                     "SELECT count(*) FROM create_partitioned_ordering_table",
                     "SELECT count(*) * 100 FROM orders");
 
             assertUpdate(
+                    session,
                     "CREATE TABLE create_unpartitioned_ordering_table (orderkey, custkey, totalprice, orderdate, orderpriority, clerk, shippriority, comment, orderstatus)\n" +
                             "WITH (preferred_ordering_columns = ARRAY['orderkey']) AS\n" +
                             "SELECT orderkey, custkey, totalprice, orderdate, orderpriority, clerk, shippriority, comment, orderstatus FROM tpch.sf1.orders",
                     (long) computeActual("SELECT count(*) FROM tpch.sf1.orders").getOnlyValue());
             assertQuery(
+                    session,
                     "SELECT count(*) FROM create_unpartitioned_ordering_table",
                     "SELECT count(*) * 100 FROM orders");
 
             // insert
             assertUpdate(
+                    session,
                     "CREATE TABLE insert_partitioned_ordering_table (LIKE create_partitioned_ordering_table) " +
                             "WITH (partitioned_by = ARRAY['orderstatus'], preferred_ordering_columns = ARRAY['orderkey'])");
 
             assertUpdate(
+                    session,
                     "INSERT INTO insert_partitioned_ordering_table\n" +
                             "SELECT orderkey, custkey, totalprice, orderdate, orderpriority, clerk, shippriority, comment, orderstatus FROM tpch.sf1.orders",
                     (long) computeActual("SELECT count(*) FROM tpch.sf1.orders").getOnlyValue());
             assertQuery(
+                    session,
                     "SELECT count(*) FROM insert_partitioned_ordering_table",
                     "SELECT count(*) * 100 FROM orders");
 
             // invalid
             assertQueryFails(
+                    session,
                     "CREATE TABLE invalid_bucketed_ordering_table (LIKE create_partitioned_ordering_table) " +
                             "WITH (preferred_ordering_columns = ARRAY['orderkey'], bucketed_by = ARRAY['totalprice'], bucket_count = 13)",
                     ".*preferred_ordering_columns must not be specified when bucketed_by is specified.*");
         }
         finally {
-            assertUpdate("DROP TABLE IF EXISTS create_partitioned_ordering_table");
-            assertUpdate("DROP TABLE IF EXISTS create_unpartitioned_ordering_table");
-            assertUpdate("DROP TABLE IF EXISTS insert_partitioned_ordering_table");
+            assertUpdate(session, "DROP TABLE IF EXISTS create_partitioned_ordering_table");
+            assertUpdate(session, "DROP TABLE IF EXISTS create_unpartitioned_ordering_table");
+            assertUpdate(session, "DROP TABLE IF EXISTS insert_partitioned_ordering_table");
         }
     }
 
@@ -4615,6 +4633,10 @@ public class TestHiveIntegrationSmokeTest
                 "SELECT * FROM test_prune_failure\n" +
                 "WHERE x < 0 AND cast(p AS int) > 0");
 
+        assertQueryFails("" +
+                "SELECT * FROM test_prune_failure\n" +
+                "WHERE x > 0 AND cast(p AS int) > 0", "Cannot cast 'abc' to INT");
+
         assertUpdate("DROP TABLE test_prune_failure");
     }
 
@@ -4720,7 +4742,7 @@ public class TestHiveIntegrationSmokeTest
                 .build();
         assertUpdate(
                 smallStripeSession,
-                "CREATE TABLE test_pagefile_orders\n" +
+                "CREATE TABLE test_pagefile_small_stripe\n" +
                 "WITH (\n" +
                 "format = 'PAGEFILE'\n" +
                 ") AS\n" +
@@ -4729,11 +4751,76 @@ public class TestHiveIntegrationSmokeTest
                 "FROM tpch.orders",
                 "SELECT count(*) FROM orders");
 
-        assertQuery("SELECT count(*) FROM test_pagefile_orders", "SELECT count(*) FROM orders");
+        assertQuery("SELECT count(*) FROM test_pagefile_small_stripe", "SELECT count(*) FROM orders");
 
-        assertQuery("SELECT sum(custkey) FROM test_pagefile_orders", "SELECT sum(custkey) FROM orders");
+        assertQuery("SELECT sum(custkey) FROM test_pagefile_small_stripe", "SELECT sum(custkey) FROM orders");
 
-        assertUpdate("DROP TABLE test_pagefile_orders");
+        assertUpdate("DROP TABLE test_pagefile_small_stripe");
+    }
+
+    @Test
+    public void testPageFileFormatSmallSplitSize()
+    {
+        Session testSession = Session.builder(getQueryRunner().getDefaultSession())
+                .setCatalogSessionProperty(catalog, "pagefile_writer_max_stripe_size", "100B")
+                .setCatalogSessionProperty(catalog, "max_split_size", "1kB")
+                .setCatalogSessionProperty(catalog, "max_initial_split_size", "1kB")
+                .build();
+
+        assertUpdate(
+                testSession,
+                "CREATE TABLE test_pagefile_small_split\n" +
+                        "WITH (\n" +
+                        "format = 'PAGEFILE'\n" +
+                        ") AS\n" +
+                        "SELECT\n" +
+                        "*\n" +
+                        "FROM tpch.orders",
+                "SELECT count(*) FROM orders");
+
+        assertQuery(testSession, "SELECT count(*) FROM test_pagefile_small_split", "SELECT count(*) FROM orders");
+
+        assertQuery(testSession, "SELECT sum(custkey) FROM test_pagefile_small_split", "SELECT sum(custkey) FROM orders");
+
+        assertUpdate("DROP TABLE test_pagefile_small_split");
+    }
+
+    @Test
+    public void testPageFileCompression()
+    {
+        for (HiveCompressionCodec compression : HiveCompressionCodec.values()) {
+            if (!compression.isSupportedStorageFormat(PAGEFILE)) {
+                continue;
+            }
+            testPageFileCompression(compression.name());
+        }
+    }
+
+    private void testPageFileCompression(String compression)
+    {
+        Session testSession = Session.builder(getQueryRunner().getDefaultSession())
+                .setCatalogSessionProperty(catalog, "compression_codec", compression)
+                .setCatalogSessionProperty(catalog, "pagefile_writer_max_stripe_size", "100B")
+                .setCatalogSessionProperty(catalog, "max_split_size", "1kB")
+                .setCatalogSessionProperty(catalog, "max_initial_split_size", "1kB")
+                .build();
+
+        assertUpdate(
+                testSession,
+                "CREATE TABLE test_pagefile_compression\n" +
+                        "WITH (\n" +
+                        "format = 'PAGEFILE'\n" +
+                        ") AS\n" +
+                        "SELECT\n" +
+                        "*\n" +
+                        "FROM tpch.orders",
+                "SELECT count(*) FROM orders");
+
+        assertQuery(testSession, "SELECT count(*) FROM test_pagefile_compression", "SELECT count(*) FROM orders");
+
+        assertQuery(testSession, "SELECT sum(custkey) FROM test_pagefile_compression", "SELECT sum(custkey) FROM orders");
+
+        assertUpdate("DROP TABLE test_pagefile_compression");
     }
 
     private static Consumer<Plan> assertTableWriterMergeNodeIsPresent()
@@ -4839,8 +4926,62 @@ public class TestHiveIntegrationSmokeTest
 
     private void testWithAllStorageFormats(BiConsumer<Session, HiveStorageFormat> test)
     {
-        for (HiveStorageFormat storageFormat : HiveStorageFormat.values()) {
-            test.accept(getSession(), storageFormat);
+        for (TestingHiveStorageFormat storageFormat : getAllTestingHiveStorageFormat()) {
+            testWithStorageFormat(storageFormat, test);
+        }
+    }
+
+    private static void testWithStorageFormat(TestingHiveStorageFormat storageFormat, BiConsumer<Session, HiveStorageFormat> test)
+    {
+        requireNonNull(storageFormat, "storageFormat is null");
+        requireNonNull(test, "test is null");
+        Session session = storageFormat.getSession();
+        try {
+            test.accept(session, storageFormat.getFormat());
+        }
+        catch (Exception | AssertionError e) {
+            fail(format("Failure for format %s with properties %s", storageFormat.getFormat(), session.getConnectorProperties()), e);
+        }
+    }
+
+    private List<TestingHiveStorageFormat> getAllTestingHiveStorageFormat()
+    {
+        Session session = getSession();
+        ImmutableList.Builder<TestingHiveStorageFormat> formats = ImmutableList.builder();
+        for (HiveStorageFormat hiveStorageFormat : HiveStorageFormat.values()) {
+            if (hiveStorageFormat.equals(HiveStorageFormat.THRIFTBINARY)) {
+                continue;
+            }
+            formats.add(new TestingHiveStorageFormat(session, hiveStorageFormat));
+        }
+        formats.add(new TestingHiveStorageFormat(
+                Session.builder(session).setCatalogSessionProperty(session.getCatalog().get(), "orc_optimized_writer_enabled", "true").build(),
+                HiveStorageFormat.ORC));
+        formats.add(new TestingHiveStorageFormat(
+                Session.builder(session).setCatalogSessionProperty(session.getCatalog().get(), "orc_optimized_writer_enabled", "true").build(),
+                HiveStorageFormat.DWRF));
+        return formats.build();
+    }
+
+    private static class TestingHiveStorageFormat
+    {
+        private final Session session;
+        private final HiveStorageFormat format;
+
+        TestingHiveStorageFormat(Session session, HiveStorageFormat format)
+        {
+            this.session = requireNonNull(session, "session is null");
+            this.format = requireNonNull(format, "format is null");
+        }
+
+        public Session getSession()
+        {
+            return session;
+        }
+
+        public HiveStorageFormat getFormat()
+        {
+            return format;
         }
     }
 }

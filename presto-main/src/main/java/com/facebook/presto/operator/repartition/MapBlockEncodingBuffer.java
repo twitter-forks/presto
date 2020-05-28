@@ -27,9 +27,9 @@
  */
 package com.facebook.presto.operator.repartition;
 
-import com.facebook.presto.spi.block.ArrayAllocator;
-import com.facebook.presto.spi.block.ColumnarMap;
-import com.facebook.presto.spi.type.TypeSerde;
+import com.facebook.presto.common.block.ArrayAllocator;
+import com.facebook.presto.common.block.ColumnarMap;
+import com.facebook.presto.common.type.TypeSerde;
 import com.google.common.annotations.VisibleForTesting;
 import io.airlift.slice.SliceOutput;
 import org.openjdk.jol.info.ClassLayout;
@@ -345,16 +345,17 @@ public class MapBlockEncodingBuffer
 
         for (int i = 0; i < positionCount; i++) {
             int position = positions[i];
-            int beginOffset = columnarMap.getOffset(position);
-            int endOffset = columnarMap.getOffset(position + 1);
-            int currentRowSize = endOffset - beginOffset;
+            offsets[i + 1] = offsets[i] + columnarMap.getOffset(position + 1) - columnarMap.getOffset(position);
+        }
 
-            offsets[i + 1] = offsets[i] + currentRowSize;
+        keyBuffers.ensurePositionsCapacity(offsets[positionCount]);
+        valueBuffers.ensurePositionsCapacity(offsets[positionCount]);
 
-            if (currentRowSize > 0) {
-                keyBuffers.appendPositionRange(beginOffset, currentRowSize);
-                valueBuffers.appendPositionRange(beginOffset, currentRowSize);
-            }
+        for (int i = 0; i < positionCount; i++) {
+            int beginOffset = columnarMap.getOffset(positions[i]);
+            int currentRowSize = offsets[i + 1] - offsets[i];
+            keyBuffers.appendPositionRange(beginOffset, currentRowSize);
+            valueBuffers.appendPositionRange(beginOffset, currentRowSize);
         }
     }
 

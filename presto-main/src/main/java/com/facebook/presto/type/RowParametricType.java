@@ -13,19 +13,21 @@
  */
 package com.facebook.presto.type;
 
-import com.facebook.presto.spi.type.NamedTypeSignature;
-import com.facebook.presto.spi.type.ParameterKind;
-import com.facebook.presto.spi.type.ParametricType;
-import com.facebook.presto.spi.type.RowFieldName;
-import com.facebook.presto.spi.type.RowType;
-import com.facebook.presto.spi.type.StandardTypes;
-import com.facebook.presto.spi.type.Type;
-import com.facebook.presto.spi.type.TypeManager;
-import com.facebook.presto.spi.type.TypeParameter;
-import com.facebook.presto.spi.type.TypeSignature;
-import com.facebook.presto.spi.type.TypeSignatureParameter;
+import com.facebook.presto.common.type.NamedType;
+import com.facebook.presto.common.type.NamedTypeSignature;
+import com.facebook.presto.common.type.ParameterKind;
+import com.facebook.presto.common.type.ParametricType;
+import com.facebook.presto.common.type.RowFieldName;
+import com.facebook.presto.common.type.RowType;
+import com.facebook.presto.common.type.StandardTypes;
+import com.facebook.presto.common.type.Type;
+import com.facebook.presto.common.type.TypeManager;
+import com.facebook.presto.common.type.TypeParameter;
+import com.facebook.presto.common.type.TypeSignature;
+import com.facebook.presto.common.type.TypeSignatureParameter;
 
 import java.util.List;
+import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.stream.Collectors.toList;
@@ -48,7 +50,9 @@ public final class RowParametricType
     @Override
     public Type createType(TypeManager typeManager, List<TypeParameter> parameters)
     {
-        checkArgument(!parameters.isEmpty(), "Row type must have at least one parameter");
+        if (parameters.isEmpty()) {
+            parameters.add(TypeParameter.of(new NamedType(Optional.of(new RowFieldName(UnknownType.NAME, false)), UnknownType.UNKNOWN)));
+        }
         checkArgument(
                 parameters.stream().allMatch(parameter -> parameter.getKind() == ParameterKind.NAMED_TYPE),
                 "Expected only named types as a parameters, got %s",

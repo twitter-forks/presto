@@ -15,6 +15,11 @@ package com.facebook.presto.operator;
 
 import com.facebook.airlift.json.JsonCodec;
 import com.facebook.presto.Session;
+import com.facebook.presto.common.Page;
+import com.facebook.presto.common.block.Block;
+import com.facebook.presto.common.block.BlockBuilder;
+import com.facebook.presto.common.block.RunLengthEncodedBlock;
+import com.facebook.presto.common.type.Type;
 import com.facebook.presto.execution.TaskId;
 import com.facebook.presto.execution.scheduler.ExecutionWriterTarget;
 import com.facebook.presto.execution.scheduler.ExecutionWriterTarget.CreateHandle;
@@ -22,13 +27,8 @@ import com.facebook.presto.execution.scheduler.ExecutionWriterTarget.InsertHandl
 import com.facebook.presto.memory.context.LocalMemoryContext;
 import com.facebook.presto.operator.OperationTimer.OperationTiming;
 import com.facebook.presto.spi.ConnectorPageSink;
-import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageSinkProperties;
-import com.facebook.presto.spi.block.Block;
-import com.facebook.presto.spi.block.BlockBuilder;
-import com.facebook.presto.spi.block.RunLengthEncodedBlock;
 import com.facebook.presto.spi.plan.PlanNodeId;
-import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.PageSinkManager;
 import com.facebook.presto.util.AutoCloseableCloser;
 import com.facebook.presto.util.Mergeable;
@@ -48,10 +48,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import static com.facebook.airlift.concurrent.MoreFutures.getFutureValue;
 import static com.facebook.airlift.concurrent.MoreFutures.toListenableFuture;
 import static com.facebook.presto.SystemSessionProperties.isStatisticsCpuTimerEnabled;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.VarbinaryType.VARBINARY;
 import static com.facebook.presto.operator.TableWriterUtils.STATS_START_CHANNEL;
 import static com.facebook.presto.operator.TableWriterUtils.createStatisticsPage;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -75,7 +75,7 @@ public class TableWriterOperator
         private final Session session;
         private final OperatorFactory statisticsAggregationOperatorFactory;
         private final List<Type> types;
-        private final boolean partitionCommitRequired;
+        private final PageSinkCommitStrategy pageSinkCommitStrategy;
         private boolean closed;
         private final JsonCodec<TableCommitContext> tableCommitContextCodec;
 
@@ -89,7 +89,7 @@ public class TableWriterOperator
                 OperatorFactory statisticsAggregationOperatorFactory,
                 List<Type> types,
                 JsonCodec<TableCommitContext> tableCommitContextCodec,
-                boolean partitionCommitRequired)
+                PageSinkCommitStrategy pageSinkCommitStrategy)
         {
             this.operatorId = operatorId;
             this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
@@ -101,7 +101,7 @@ public class TableWriterOperator
             this.statisticsAggregationOperatorFactory = requireNonNull(statisticsAggregationOperatorFactory, "statisticsAggregationOperatorFactory is null");
             this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
             this.tableCommitContextCodec = requireNonNull(tableCommitContextCodec, "tableCommitContextCodec is null");
-            this.partitionCommitRequired = partitionCommitRequired;
+            this.pageSinkCommitStrategy = requireNonNull(pageSinkCommitStrategy, "pageSinkCommitStrategy is null");
         }
 
         @Override
@@ -119,16 +119,19 @@ public class TableWriterOperator
                     types,
                     statisticsCpuTimerEnabled,
                     tableCommitContextCodec,
-                    partitionCommitRequired);
+                    pageSinkCommitStrategy);
         }
 
         private ConnectorPageSink createPageSink()
         {
+            PageSinkProperties pageSinkProperties = PageSinkProperties.builder()
+                    .setCommitRequired(pageSinkCommitStrategy.isCommitRequired())
+                    .build();
             if (target instanceof CreateHandle) {
-                return pageSinkManager.createPageSink(session, ((CreateHandle) target).getHandle(), PageSinkProperties.builder().setPartitionCommitRequired(partitionCommitRequired).build());
+                return pageSinkManager.createPageSink(session, ((CreateHandle) target).getHandle(), pageSinkProperties);
             }
             if (target instanceof InsertHandle) {
-                return pageSinkManager.createPageSink(session, ((InsertHandle) target).getHandle(), PageSinkProperties.builder().setPartitionCommitRequired(partitionCommitRequired).build());
+                return pageSinkManager.createPageSink(session, ((InsertHandle) target).getHandle(), pageSinkProperties);
             }
             throw new UnsupportedOperationException("Unhandled target type: " + target.getClass().getName());
         }
@@ -142,7 +145,7 @@ public class TableWriterOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, columnChannels, session, statisticsAggregationOperatorFactory, types, tableCommitContextCodec, partitionCommitRequired);
+            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, columnChannels, session, statisticsAggregationOperatorFactory, types, tableCommitContextCodec, pageSinkCommitStrategy);
         }
     }
 
@@ -171,7 +174,7 @@ public class TableWriterOperator
     private final boolean statisticsCpuTimerEnabled;
 
     private final JsonCodec<TableCommitContext> tableCommitContextCodec;
-    private final boolean partitionCommitRequired;
+    private final PageSinkCommitStrategy pageSinkCommitStrategy;
 
     public TableWriterOperator(
             OperatorContext operatorContext,
@@ -181,7 +184,7 @@ public class TableWriterOperator
             List<Type> types,
             boolean statisticsCpuTimerEnabled,
             JsonCodec<TableCommitContext> tableCommitContextCodec,
-            boolean partitionCommitRequired)
+            PageSinkCommitStrategy pageSinkCommitStrategy)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pageSinkMemoryContext = operatorContext.newLocalSystemMemoryContext(TableWriterOperator.class.getSimpleName());
@@ -192,7 +195,7 @@ public class TableWriterOperator
         this.types = ImmutableList.copyOf(requireNonNull(types, "types is null"));
         this.statisticsCpuTimerEnabled = statisticsCpuTimerEnabled;
         this.tableCommitContextCodec = requireNonNull(tableCommitContextCodec, "tableCommitContextCodec is null");
-        this.partitionCommitRequired = partitionCommitRequired;
+        this.pageSinkCommitStrategy = requireNonNull(pageSinkCommitStrategy, "pageSinkCommitStrategy is null");
     }
 
     @Override
@@ -344,7 +347,7 @@ public class TableWriterOperator
                 new TableCommitContext(
                         operatorContext.getDriverContext().getLifespan(),
                         taskId,
-                        partitionCommitRequired,
+                        pageSinkCommitStrategy,
                         lastPage)));
     }
 

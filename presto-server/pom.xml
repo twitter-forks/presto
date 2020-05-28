@@ -5,7 +5,7 @@
     <parent>
         <groupId>com.facebook.presto</groupId>
         <artifactId>presto-root</artifactId>
-        <version>0.235-SNAPSHOT</version>
+        <version>0.236-SNAPSHOT</version>
     </parent>
 
     <artifactId>presto-server</artifactId>
@@ -279,6 +279,14 @@
         <dependency>
             <groupId>com.facebook.presto</groupId>
             <artifactId>presto-elasticsearch</artifactId>
+            <version>${project.version}</version>
+            <type>zip</type>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.facebook.presto</groupId>
+            <artifactId>presto-druid</artifactId>
             <version>${project.version}</version>
             <type>zip</type>
             <scope>provided</scope>

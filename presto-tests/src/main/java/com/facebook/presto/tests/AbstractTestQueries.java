@@ -15,13 +15,13 @@ package com.facebook.presto.tests;
 
 import com.facebook.presto.Session;
 import com.facebook.presto.SystemSessionProperties;
+import com.facebook.presto.common.type.Decimals;
+import com.facebook.presto.common.type.SqlTimestampWithTimeZone;
+import com.facebook.presto.common.type.VarcharType;
 import com.facebook.presto.metadata.BuiltInFunction;
 import com.facebook.presto.metadata.FunctionListBuilder;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.session.PropertyMetadata;
-import com.facebook.presto.spi.type.Decimals;
-import com.facebook.presto.spi.type.SqlTimestampWithTimeZone;
-import com.facebook.presto.spi.type.VarcharType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinDistributionType;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.JoinReorderingStrategy;
 import com.facebook.presto.sql.analyzer.SemanticException;
@@ -56,16 +56,16 @@ import java.util.stream.IntStream;
 import static com.facebook.presto.SystemSessionProperties.DISTRIBUTED_SORT;
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
+import static com.facebook.presto.common.type.BigintType.BIGINT;
+import static com.facebook.presto.common.type.BooleanType.BOOLEAN;
+import static com.facebook.presto.common.type.DecimalType.createDecimalType;
+import static com.facebook.presto.common.type.DoubleType.DOUBLE;
+import static com.facebook.presto.common.type.IntegerType.INTEGER;
+import static com.facebook.presto.common.type.VarcharType.VARCHAR;
+import static com.facebook.presto.common.type.VarcharType.createVarcharType;
 import static com.facebook.presto.connector.informationSchema.InformationSchemaMetadata.INFORMATION_SCHEMA;
 import static com.facebook.presto.operator.scalar.ApplyFunction.APPLY_FUNCTION;
 import static com.facebook.presto.operator.scalar.InvokeFunction.INVOKE_FUNCTION;
-import static com.facebook.presto.spi.type.BigintType.BIGINT;
-import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
-import static com.facebook.presto.spi.type.DecimalType.createDecimalType;
-import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.IntegerType.INTEGER;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
-import static com.facebook.presto.spi.type.VarcharType.createVarcharType;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARAMETER_USAGE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MUST_BE_AGGREGATE_OR_GROUP_BY;
 import static com.facebook.presto.sql.tree.ExplainType.Type.DISTRIBUTED;
@@ -4224,6 +4224,7 @@ public abstract class AbstractTestQueries
                         "WITH a AS (SELECT * FROM orders) " +
                         "SELECT * FROM a",
                 "SELECT * FROM orders");
+        assertQuerySucceeds("WITH t(x, y, z) AS (TABLE region) SELECT * FROM t");
     }
 
     @Test
@@ -8295,6 +8296,44 @@ public abstract class AbstractTestQueries
                         "    )" +
                         "FROM T",
                 "Values 1, 2, 2");
+    }
+
+    @Test
+    public void testLargeBytecode()
+    {
+        StringBuilder stringBuilder = new StringBuilder("SELECT x FROM (SELECT orderkey x, custkey y from orders limit 10) WHERE CASE");
+        // Generate 100 cases.
+        for (int i = 0; i < 100; i++) {
+            stringBuilder.append(" when x in (");
+            for (int j = 0; j < 20; j++) {
+                stringBuilder.append("random(" + (i * 100 + j) + "), ");
+            }
+
+            stringBuilder.append("random(" + i + ")) then x = random()");
+        }
+
+        stringBuilder.append("else x = random() end");
+        assertQueryFails(stringBuilder.toString(), "Query results in large bytecode exceeding the limits imposed by JVM|Compiler failed");
+    }
+
+    @Test
+    public void testInComplexTypes()
+    {
+        //test cases to trigger the SET_CONTAINS path of InCodeGenerator.java with complex types
+        StringBuilder query = new StringBuilder("select * from (values('a'), (null)) as t (name) where ROW('1', name) IN ( ");
+        for (int i = 2; i < 32; i++) {
+            query.append(String.format("ROW('1','%s'), ", i));
+        }
+        query.append("ROW('1', name), ROW('2',name), ROW('3',name))");
+        assertQuerySucceeds(query.toString());
+
+        query = new StringBuilder("select ROW(null_value) IN ( ");
+        for (int i = 0; i < 32; i++) {
+            query.append(String.format("ROW(%s), ", i));
+        }
+        query.append("ROW(32)) ");
+        query.append("FROM (values(null)) as t (null_value)");
+        assertQuery(query.toString(), "SELECT NULL");
     }
 
     protected Session noJoinReordering()
