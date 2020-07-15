@@ -42,16 +42,16 @@ public class QueryCompletedEventScriber
     private static final String DASH = "-";
     private static final Logger log = Logger.get(QueryCompletedEventScriber.class);
 
-    private final TwitterScriber scriber;
+    private final TwitterEventPublisher scriber;
 
     @Inject
     public QueryCompletedEventScriber(TwitterEventListenerConfig config)
     {
         requireNonNull(config.getScribeCategory(), "scribe category is null");
-        this.scriber = new TwitterScriber(config.getScribeCategory());
+        this.scriber = new TwitterEventPublisher(config.getScribeCategory());
     }
 
-    public QueryCompletedEventScriber(TwitterScriber scriber)
+    public QueryCompletedEventScriber(TwitterEventPublisher scriber)
     {
         this.scriber = requireNonNull(scriber, "scriber is null");
     }

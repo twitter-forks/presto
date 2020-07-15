@@ -20,12 +20,17 @@ import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tpch.TpchPlugin;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.twitter.logpipeline.client.serializers.EventLogMsgSerializer;
+import com.twitter.logpipeline.client.serializers.EventLogMsgTBinarySerializer;
+import com.twitter.logpipeline.client.serializers.EventLogSerializationException;
 import com.twitter.presto.plugin.eventlistener.TestingTwitterEventListenerPlugin;
 import com.twitter.presto.plugin.eventlistener.TwitterEventHandler;
 import com.twitter.presto.thriftjava.QueryCompletionEvent;
 import com.twitter.presto.thriftjava.QueryStageInfo;
 import com.twitter.presto.thriftjava.QueryState;
+import org.apache.thrift.TBase;
 import org.apache.thrift.TDeserializer;
+import org.apache.thrift.TException;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -171,7 +176,7 @@ public class TestQueryCompletedEventScriber
     }
 
     private class TestingTwitterScriber
-            extends TwitterScriber
+            extends TwitterEventPublisher
     {
         private final List<String> messages;
         private CountDownLatch messagesLatch;
@@ -200,9 +205,17 @@ public class TestQueryCompletedEventScriber
         }
 
         @Override
-        protected void scribe(String message)
+        public void scribe(QueryCompletionEvent thriftMessage)
+                throws TException
         {
-            messages.add(message);
+            EventLogMsgSerializer<TBase> serializer = EventLogMsgTBinarySerializer.getNewSerializer();
+            try {
+                messages.add(Base64.getEncoder().encodeToString(serializer.serialize(thriftMessage)));
+            }
+            catch (EventLogSerializationException e) {
+                e.printStackTrace();
+                throw new TException(e.getMessage());
+            }
             messagesLatch.countDown();
         }
     }
