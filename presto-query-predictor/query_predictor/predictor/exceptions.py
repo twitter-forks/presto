@@ -31,7 +31,7 @@ class PredictorException(Exception):
         message: str,
         status: str = INTERNAL_ERROR,
         payload: Optional = None,
-    ):
+    ) -> None:
         self.message = message
         self.status = status
         self.payload = payload
@@ -40,6 +40,22 @@ class PredictorException(Exception):
 class DataLoaderException(PredictorException):
     """
     The exception class for errors in loading data.
+    """
+
+    pass
+
+
+class DataTransformerException(PredictorException):
+    """
+    The exception class for errors in transforming data.
+    """
+
+    pass
+
+
+class LabelCreatorException(PredictorException):
+    """
+    The exception class for errors in creating labels.
     """
 
     pass

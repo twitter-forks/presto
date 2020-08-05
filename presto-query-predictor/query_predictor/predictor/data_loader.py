@@ -15,16 +15,16 @@ This module contains the component to load a Presto log dataset from a file.
 import logging
 from logging.config import fileConfig
 from pathlib import Path
-from query_predictor.predictor.exceptions import DataLoaderException
 from typing import Callable
 from typing import Iterator
 from typing import Optional
 
 import pandas as pd
 
+from .exceptions import DataLoaderException
+
 fileConfig("../conf/logging.conf")
 _logger = logging.getLogger(__name__)
-_logger.info("logging....")
 
 
 class DataLoader:
@@ -49,7 +49,7 @@ class DataLoader:
         sample: bool = False,
         sample_size: int = 1,
         funcs: Iterator[Callable[[pd.DataFrame], pd.DataFrame]] = (),
-    ):
+    ) -> None:
         self.file_path = file_path
         self.shuffle = shuffle
         self.sample = sample
@@ -70,6 +70,9 @@ class DataLoader:
             raise DataLoaderException(f"File {self.file_path} not existed")
 
         self.data_frame = pd.read_csv(self.file_path, delimiter=delimiter)
+        _logger.debug(
+            "Loaded the dataset with the shape %s", self.data_frame.shape
+        )
 
         if self.shuffle:
             self.data_frame = self._shuffle()
