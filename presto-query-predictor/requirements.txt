@@ -1,0 +1,9 @@
+Flask
+flask-cors
+joblib
+numpy
+pandas
+pylint
+pytest
+scikit-learn
+waitress
