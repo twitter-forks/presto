@@ -30,7 +30,9 @@ from .exceptions import DataTransformerException
 from .label_creator import CPUTimeLabelCreator
 from .label_creator import PeakMemoryLabelCreator
 
-fileConfig("../conf/logging.conf")
+pd.options.mode.chained_assignment = None  # default='warn'
+
+fileConfig("../conf/logging.conf", disable_existing_loggers=False)
 _logger = logging.getLogger(__name__)
 
 
@@ -113,7 +115,7 @@ class DataTransformer:
         :return: A pandas data frame with a labeled CPU time column.
         """
         _logger.info("Creating the cpu time labels...")
-        self.data_frame[CPU_TIME_LABEL] = self.data_frame.apply(
+        self.data_frame.loc[:, CPU_TIME_LABEL] = self.data_frame.apply(
             CPUTimeLabelCreator().label, axis=1
         )
         return self.data_frame
@@ -125,7 +127,7 @@ class DataTransformer:
         :return: A pandas data frame with a labeled peak memory column.
         """
         _logger.info("Creating the peak memory labels...")
-        self.data_frame[PEAK_MEMORY_LABEL] = self.data_frame.apply(
+        self.data_frame.loc[:, PEAK_MEMORY_LABEL] = self.data_frame.apply(
             PeakMemoryLabelCreator().label, axis=1
         )
         return self.data_frame
@@ -161,6 +163,6 @@ class DataTransformer:
         :return: A pandas data frame with minimal number of columns for training.
         """
         self.data_frame = self.data_frame[
-            QUERY_COLUMN, CPU_TIME_LABEL, PEAK_MEMORY_LABEL
+            [QUERY_COLUMN, CPU_TIME_LABEL, PEAK_MEMORY_LABEL]
         ]
         return self.data_frame

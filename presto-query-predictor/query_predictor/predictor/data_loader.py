@@ -23,7 +23,7 @@ import pandas as pd
 
 from .exceptions import DataLoaderException
 
-fileConfig("../conf/logging.conf")
+fileConfig("../conf/logging.conf", disable_existing_loggers=False)
 _logger = logging.getLogger(__name__)
 
 
