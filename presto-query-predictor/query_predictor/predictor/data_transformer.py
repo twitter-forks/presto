@@ -75,7 +75,7 @@ class DataTransformer:
 
         :return: A pandas data frame with transformed data.
         :raise DataTransformerException: If a predefined transformer cannot be found
-        for a function string.
+        for a function string. Or any exceptions triggered in the transformers.
         """
         for func_str in self.func_strs:
             _logger.info("Executing %s on the data frame...", func_str)
@@ -137,32 +137,63 @@ class DataTransformer:
         Drops failed presto queries' logs.
 
         :return: A pandas data frame with successful presto queries.
+        :raise DataTransformerException: If the query state column does not exist
+        in the data frame.
         """
+        self._validate_column(QUERY_STATE_COLUMN)
+
         if QUERY_STATE_COLUMN in self.data_frame.columns:
             self.data_frame = self.data_frame[
                 self.data_frame[QUERY_STATE_COLUMN] == "FINISHED"
             ]
         return self.data_frame
 
-    def to_lower_queries(self) -> pd.DataFrame:
+    def to_lower_queries(self, column: str = QUERY_COLUMN) -> pd.DataFrame:
         """
         Converts each sql statement to lowercase.
 
+        :param column: The target column to lowercase.
         :return: A pandas data frame with all sql statements in lowercase strings.
+        :raise DataTransformerException: If the passed in column does not exist
+        in the data frame.
         """
-        self.data_frame[QUERY_COLUMN] = self.data_frame[
-            QUERY_COLUMN
-        ].str.lower()
+        self._validate_column(column)
+
+        self.data_frame[column] = self.data_frame[column].str.lower()
         return self.data_frame
 
-    def select_training_columns(self) -> pd.DataFrame:
+    def select_training_columns(
+        self,
+        columns: Iterator[str] = (
+            QUERY_COLUMN,
+            CPU_TIME_LABEL,
+            PEAK_MEMORY_LABEL,
+        ),
+    ) -> pd.DataFrame:
         """
         Selects the columns for model training. The columns contain the sql statements,
         labeled CPU time, and labeled peak memory.
 
+        :param columns: A sequence of columns to select.
         :return: A pandas data frame with minimal number of columns for training.
+        :raise DataTransformerException: If any of the passed in columns does not
+        exist in the data frame.
         """
-        self.data_frame = self.data_frame[
-            [QUERY_COLUMN, CPU_TIME_LABEL, PEAK_MEMORY_LABEL]
-        ]
+        for column in columns:
+            self._validate_column(column)
+
+        self.data_frame = self.data_frame[list(columns)]
         return self.data_frame
+
+    def _validate_column(self, column: str) -> None:
+        """
+        Validate the column exists in the data frame. If not, an exception will
+        be raised.
+
+        :param column:
+        :return: ``None``
+        :raise DataTransformerException: If the passed in column does not exist
+        in the data frame.
+        """
+        if column not in self.data_frame:
+            raise DataTransformerException(f"{column} column does not exist")
