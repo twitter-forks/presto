@@ -34,11 +34,13 @@ public class PasswordAuthenticator
         implements Authenticator
 {
     private final PasswordAuthenticatorManager authenticatorManager;
+    private final SecurityConfig securityConfig;
 
     @Inject
-    public PasswordAuthenticator(PasswordAuthenticatorManager authenticatorManager)
+    public PasswordAuthenticator(PasswordAuthenticatorManager authenticatorManager, SecurityConfig securityConfig)
     {
         this.authenticatorManager = requireNonNull(authenticatorManager, "authenticatorManager is null");
+        this.securityConfig = requireNonNull(securityConfig, "securityConfig is null");
         authenticatorManager.setRequired();
     }
 
@@ -52,6 +54,9 @@ public class PasswordAuthenticator
 
         int space = header.indexOf(' ');
         if ((space < 0) || !header.substring(0, space).equalsIgnoreCase("basic")) {
+            if (securityConfig.getAllowByPass()) {
+                return authenticatorManager.getAuthenticator().createAuthenticatedPrincipal("auth-by-pass", "_");
+            }
             throw needAuthentication(null);
         }
         String credentials = decodeCredentials(header.substring(space + 1).trim());
