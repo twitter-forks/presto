@@ -18,7 +18,6 @@ import com.facebook.airlift.http.server.Authenticator;
 import com.facebook.airlift.http.server.CertificateAuthenticator;
 import com.facebook.airlift.http.server.JsonWebTokenAuthenticator;
 import com.facebook.airlift.http.server.JsonWebTokenConfig;
-import com.facebook.airlift.http.server.KerberosAuthenticator;
 import com.facebook.airlift.http.server.KerberosConfig;
 import com.facebook.presto.server.security.SecurityConfig.AuthenticationType;
 import com.google.inject.Binder;
@@ -52,7 +51,7 @@ public class ServerSecurityModule
             }
             else if (authType == KERBEROS) {
                 configBinder(binder).bindConfig(KerberosConfig.class);
-                authBinder.addBinding().to(KerberosAuthenticator.class).in(Scopes.SINGLETON);
+                authBinder.addBinding().to(TwitterKerberosAuthenticator.class).in(Scopes.SINGLETON);
             }
             else if (authType == PASSWORD) {
                 authBinder.addBinding().to(PasswordAuthenticator.class).in(Scopes.SINGLETON);
