@@ -82,7 +82,7 @@ class DataCountVectorizer(DataVectorizer):
     approach.
     """
 
-    def __init__(self, params):
+    def __init__(self, params: Optional[Dict] = None) -> None:
         super().__init__(params)
         self.type = "count"
 
@@ -90,6 +90,7 @@ class DataCountVectorizer(DataVectorizer):
         from sklearn.feature_extraction.text import CountVectorizer
 
         vectorizer = CountVectorizer(**self.params)
+        self.data = data
         if not self.vectorizer:
             self.vectorizer = vectorizer.fit(self.data)
         self.vectors = self.vectorizer.transform(self.data)
@@ -106,7 +107,7 @@ class DataTfidfVectorizer(DataVectorizer):
     (term frequency-inverse document frequency) approach.
     """
 
-    def __init__(self, params):
+    def __init__(self, params: Optional[Dict] = None) -> None:
         super().__init__(params)
         self.type = "tfidf"
 
@@ -114,6 +115,7 @@ class DataTfidfVectorizer(DataVectorizer):
         from sklearn.feature_extraction.text import TfidfVectorizer
 
         vectorizer = TfidfVectorizer(**self.params)
+        self.data = data
         if not self.vectorizer:
             self.vectorizer = vectorizer.fit(self.data)
         self.vectors = self.vectorizer.transform(self.data)
