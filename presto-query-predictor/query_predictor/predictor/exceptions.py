@@ -59,3 +59,11 @@ class LabelCreatorException(PredictorException):
     """
 
     pass
+
+
+class DataVectorizationException(PredictorException):
+    """
+    The exception class for errors in vectorizing data.
+    """
+
+    pass
