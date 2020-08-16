@@ -12,8 +12,6 @@
 """
 This module contains the component to preprocess and transform the Presto log dataset.
 """
-import logging
-from logging.config import fileConfig
 from typing import Callable
 from typing import Iterator
 from typing import List
@@ -29,11 +27,11 @@ from .constant import QUERY_STATE_COLUMN
 from .exceptions import DataTransformerException
 from .label_creator import CPUTimeLabelCreator
 from .label_creator import PeakMemoryLabelCreator
+from .logging_utils import get_module_logger
 
 pd.options.mode.chained_assignment = None  # default='warn'
 
-fileConfig("../conf/logging.conf", disable_existing_loggers=False)
-_logger = logging.getLogger(__name__)
+_logger = get_module_logger(__name__)
 
 
 class DataTransformer:

@@ -12,10 +12,8 @@
 """
 This module contains components to vectorize data.
 """
-import logging
 from abc import ABC
 from abc import abstractmethod
-from logging.config import fileConfig
 from typing import Dict
 from typing import NoReturn
 from typing import Optional
@@ -23,8 +21,9 @@ from typing import Union
 
 import numpy as np
 
-fileConfig("../conf/logging.conf", disable_existing_loggers=False)
-_logger = logging.getLogger(__name__)
+from .logging_utils import get_module_logger
+
+_logger = get_module_logger(__name__)
 
 
 class DataVectorizer(ABC):

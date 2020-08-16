@@ -12,8 +12,6 @@
 """
 This module contains the component to load a Presto log dataset from a file.
 """
-import logging
-from logging.config import fileConfig
 from pathlib import Path
 from typing import Callable
 from typing import Iterator
@@ -22,9 +20,9 @@ from typing import Optional
 import pandas as pd
 
 from .exceptions import DataLoaderException
+from .logging_utils import get_module_logger
 
-fileConfig("../conf/logging.conf", disable_existing_loggers=False)
-_logger = logging.getLogger(__name__)
+_logger = get_module_logger(__name__)
 
 
 class DataLoader:
