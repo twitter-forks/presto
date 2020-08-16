@@ -15,8 +15,10 @@ This module contains the base class for classification.
 from abc import ABC
 from abc import abstractmethod
 from typing import Dict
+from typing import List
 from typing import NoReturn
 from typing import Optional
+from typing import Union
 
 import numpy as np
 
@@ -65,13 +67,20 @@ class Classifier(ABC):
         return NotImplementedError("To be overridden")
 
     @abstractmethod
-    def tune(self, train_data: np.ndarray, train_labels: np.array) -> NoReturn:
+    def tune(
+        self,
+        train_data: np.ndarray,
+        train_labels: np.ndarray,
+        param_grid: Union[Dict[str, List], List[Dict[str, List]]],
+    ) -> NoReturn:
         """
         Builds multiple classification models from the training dataset to search
         for the optimal ones.
 
         :param train_data: Training input samples.
         :param train_labels: Training labels.
+        :param param_grid: Dictionary (or a list of such dictionaries) with parameters
+        names as keys and lists of parameter settings for model tuning.
         :return: ``None`` in the base class.
         """
         return NotImplementedError("To be overridden")
@@ -87,7 +96,9 @@ class Classifier(ABC):
         return NotImplementedError("To be overridden")
 
     @abstractmethod
-    def score(self, test_data: np.ndarray, test_labels: np.array) -> NoReturn:
+    def score(
+        self, test_data: np.ndarray, test_labels: np.ndarray
+    ) -> NoReturn:
         """
         Gets the mean accuracy of the given test data and labels. Note that accuracy
         may not always be the best metric to evaluate models.
@@ -99,7 +110,9 @@ class Classifier(ABC):
         return NotImplementedError("To be overridden")
 
     @abstractmethod
-    def report(self, test_data: np.ndarray, test_labels: np.array) -> NoReturn:
+    def report(
+        self, test_data: np.ndarray, test_labels: np.ndarray
+    ) -> NoReturn:
         """
         Reports additional metrics (confusion matrix, precisions, etc.) of the
         classifier.
