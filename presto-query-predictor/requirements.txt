@@ -6,4 +6,5 @@ pandas
 pylint
 pytest
 scikit-learn
+xgboost
 waitress

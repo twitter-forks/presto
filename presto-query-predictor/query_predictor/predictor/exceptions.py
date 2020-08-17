@@ -67,3 +67,11 @@ class DataVectorizationException(PredictorException):
     """
 
     pass
+
+
+class ClassifierException(PredictorException):
+    """
+    The exception class for errors in classification.
+    """
+
+    pass
