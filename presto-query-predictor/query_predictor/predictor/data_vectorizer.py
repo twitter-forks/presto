@@ -158,3 +158,42 @@ class DataTfidfVectorizer(DataVectorizer):
 
     def transform(self, data: np.array) -> np.array:
         return self.vectorizer.transform(data)
+
+
+class VectorizerFactory:
+    """
+    The factory class to create vectorizers.
+
+    Each type of vectorizers can only have one instance (singleton), controlled
+    by a dictionary of vectorizers.
+    """
+
+    def __init__(self):
+        #: Holds a dictionary of vectoriziers, {type => vectorizer instance}
+        self.vectorizers = {}
+
+    def create_vectorizer(
+        self, vec_type: str, params: Optional[Dict] = None
+    ) -> DataVectorizer:
+        """
+        Creates a vectorizer with a type.
+
+        :param vec_type: Type of the vectorizer. e.g. count
+        :param params: Parameters for the vectorizer. These will be passed to
+        specific vectorizer created.
+        :return: A ``DataVectorizer`` instance.
+        :raise DataVectorizationException: If the type is not recognized.
+        """
+        if vec_type in self.vectorizers:
+            return self.vectorizers[vec_type]
+
+        if vec_type == "count":
+            self.vectorizers[vec_type] = DataCountVectorizer(params)
+        elif vec_type == "tfidf":
+            self.vectorizers[vec_type] = DataTfidfVectorizer(params)
+        else:
+            raise DataVectorizationException(
+                f"Unknown vectorizer type {vec_type}"
+            )
+
+        return self.vectorizers[vec_type]

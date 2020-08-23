@@ -188,7 +188,7 @@ class DataTransformer:
         Validate the column exists in the data frame. If not, an exception will
         be raised.
 
-        :param column:
+        :param column: The target column to validate.
         :return: ``None``
         :raise DataTransformerException: If the passed in column does not exist
         in the data frame.
