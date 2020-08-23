@@ -75,3 +75,27 @@ class ClassifierException(PredictorException):
     """
 
     pass
+
+
+class ConfigManagerException(PredictorException):
+    """
+    The exception class for errors in config management./
+    """
+
+    pass
+
+
+class ConfigValidationException(PredictorException):
+    """
+    The exception class for errors in config validation.
+    """
+
+    pass
+
+
+class AssemblerException(PredictorException):
+    """
+    The exception class for errors in assemblers.
+    """
+
+    pass
