@@ -14,10 +14,10 @@ This module contains the utility functions for logging.
 """
 import logging
 from logging.config import fileConfig
+from pathlib import Path
 
-from pkg_resources import resource_filename
 
-log_conf_path = resource_filename(__name__, "../conf/logging.conf")
+log_conf_path = Path(__file__).parent.parent / "conf/logging.conf"
 fileConfig(log_conf_path, disable_existing_loggers=False)
 
 
