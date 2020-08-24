@@ -19,10 +19,13 @@ import com.facebook.airlift.http.server.CertificateAuthenticator;
 import com.facebook.airlift.http.server.JsonWebTokenAuthenticator;
 import com.facebook.airlift.http.server.JsonWebTokenConfig;
 import com.facebook.airlift.http.server.KerberosConfig;
+import com.facebook.airlift.http.server.TheServlet;
 import com.facebook.presto.server.security.SecurityConfig.AuthenticationType;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.Multibinder;
+
+import javax.servlet.Filter;
 
 import java.util.List;
 
@@ -39,6 +42,9 @@ public class ServerSecurityModule
     @Override
     protected void setup(Binder binder)
     {
+        newSetBinder(binder, Filter.class, TheServlet.class).addBinding()
+                .to(TwitterAuthenticationFilter.class).in(Scopes.SINGLETON);
+
         binder.bind(PasswordAuthenticatorManager.class).in(Scopes.SINGLETON);
         configBinder(binder).bindConfig(SecurityConfig.class);
 
