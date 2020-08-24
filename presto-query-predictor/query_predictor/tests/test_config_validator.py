@@ -32,6 +32,18 @@ def test_transformer_config_validator(example_transformer_config):
     assert not config["persist"], "default persist should be False"
 
 
+def test_transformer_config_validator_persist(example_transformer_config):
+    config_validator = TransformerConfigValidator(example_transformer_config)
+    config_validator.config["persist"] = True
+    with pytest.raises(ConfigValidationException) as err:
+        config_validator.validate()
+
+    assert (
+        "A persist path is required when persist is set true"
+        in err.value.args[0]
+    ), "A persist path is expected"
+
+
 def test_error_transformer_config_validator(error_transformer_config):
     config_validator = TransformerConfigValidator(error_transformer_config)
     with pytest.raises(ConfigValidationException) as err:

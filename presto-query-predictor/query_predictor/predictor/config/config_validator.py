@@ -33,7 +33,7 @@ class ConfigValidator(ABC):
     :param config: The config dictionary for validation.
     """
 
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None) -> None:
         if config is None:
             config = {}
         self.config = config
@@ -47,6 +47,27 @@ class ConfigValidator(ABC):
         """
         return NotImplementedError("To be overridden")
 
+    @staticmethod
+    def validate_persist(config) -> Dict:
+        """
+        Validate the ``persist`` and ``persist_path`` fields. If ``persist`` is
+        not in the config, it will be set to the default value. If ``persist`` is
+        True, a ``persist_path`` must be provided.
+
+        :param config: The config dictionary for validation.
+        :return: The config dictionary after validation.
+        :raise ConfigValidationException: If ``persist`` is True, but ``persist_path``
+        is not provided.
+        """
+        if "persist" not in config:
+            config["persist"] = DEFAULT_PERSIST
+
+        if config["persist"] and "persist_path" not in config:
+            raise ConfigValidationException(
+                "A persist path is required when persist is set true"
+            )
+        return config
+
 
 class TransformerConfigValidator(ConfigValidator):
     """
@@ -59,16 +80,17 @@ class TransformerConfigValidator(ConfigValidator):
     #: The fields required in a transformer config.
     REQUIRED_FIELDS = ["transformers"]
 
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None) -> None:
         super().__init__(config)
 
-    def validate(self):
+    def validate(self) -> Dict:
         """
         The main entry point to validate transformer configs. It ensures the
         exist of required fields and fill some optional fields with default
         values if not provided.
 
-        :return: ``None``.
+        :return: A dictionary of configs after the validation.
+        :raise ConfigValidationException: If a required field is not provided.
         """
         for field in self.REQUIRED_FIELDS:
             if field not in self.config:
@@ -76,10 +98,10 @@ class TransformerConfigValidator(ConfigValidator):
                     f"{field} is required but not provided"
                 )
 
-        if "persist" not in self.config:
-            self.config["persist"] = DEFAULT_PERSIST
+        self.validate_persist(self.config)
 
         _logger.info("Transformer config validation passed")
+        return self.config
 
 
 class TrainerConfigValidator(ConfigValidator):
@@ -92,16 +114,17 @@ class TrainerConfigValidator(ConfigValidator):
     #: The fields required in a trainer config.
     REQUIRED_FIELDS = ["label", "feature", "vectorizer", "classifier"]
 
-    def __init__(self, config: Optional[Dict] = None):
+    def __init__(self, config: Optional[Dict] = None) -> None:
         super().__init__(config)
 
-    def validate(self):
+    def validate(self) -> Dict:
         """
         The main entry point to validate trainer configs. It ensures the
         exist of required fields and fill some optional fields with default
         values if not provided.
 
-        :return: ``None``.
+        :return: A dictionary of configs after the validation.
+        :raise ConfigValidationException: If a required field is not provided.
         """
         for field in self.REQUIRED_FIELDS:
             if field not in self.config:
@@ -109,12 +132,11 @@ class TrainerConfigValidator(ConfigValidator):
                     f"{field} is required but not provided"
                 )
 
-        if "persist" not in self.config["vectorizer"]:
-            self.config["vectorizer"]["persist"] = DEFAULT_PERSIST
-        if "persist" not in self.config["classifier"]:
-            self.config["classifier"]["persist"] = DEFAULT_PERSIST
+        self.validate_persist(self.config["vectorizer"])
+        self.validate_persist(self.config["classifier"])
 
         if "test_size" not in self.config:
             self.config["test_size"] = DEFAULT_TEST_SIZE
 
         _logger.info("Trainer config validation passed")
+        return self.config
