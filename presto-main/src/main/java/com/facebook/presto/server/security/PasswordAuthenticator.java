@@ -54,9 +54,6 @@ public class PasswordAuthenticator
 
         int space = header.indexOf(' ');
         if ((space < 0) || !header.substring(0, space).equalsIgnoreCase("basic")) {
-            if (securityConfig.getAllowByPass()) {
-                return authenticatorManager.getAuthenticator().createAuthenticatedPrincipal("auth-by-pass", "_");
-            }
             throw needAuthentication(null);
         }
         String credentials = decodeCredentials(header.substring(space + 1).trim());
