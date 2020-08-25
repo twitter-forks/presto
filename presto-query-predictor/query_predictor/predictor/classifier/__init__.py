@@ -9,3 +9,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from .classifier import Classifier
+from .sklearn_classifier import LogisticRegressionClassifier
+from .sklearn_classifier import RandomForestClassifier
+from .sklearn_classifier import SkLearnClassifier
+from .xgboost_classifier import XGBoostClassifier
+
+__all__ = (
+    "Classifier",
+    "SkLearnClassifier",
+    "RandomForestClassifier",
+    "LogisticRegressionClassifier",
+    "XGBoostClassifier",
+)

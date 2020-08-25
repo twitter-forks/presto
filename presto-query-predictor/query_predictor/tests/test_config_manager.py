@@ -9,10 +9,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from query_predictor.predictor.config.config_manager import ConfigManager
-from query_predictor.predictor.config.config_validator import (
-    TransformerConfigValidator,
-)
+from query_predictor.predictor.config import ConfigManager
+from query_predictor.predictor.config import TransformerConfigValidator
 
 
 def test_config_manager(create_transformer_tmp_config):
