@@ -54,10 +54,24 @@ def error_trainer_config():
 
 
 @pytest.fixture()
-def create_transformer_tmp_config(tmp_path, example_transformer_config):
+def create_tmp_dir(tmp_path):
     config_tmp_folder = tmp_path / "conf"
     config_tmp_folder.mkdir()
-    config_tmp_path = config_tmp_folder / "transformer.yaml"
+
+    return config_tmp_folder.absolute()
+
+
+@pytest.fixture()
+def create_transformer_tmp_config(create_tmp_dir, example_transformer_config):
+    config_tmp_path = create_tmp_dir / "transformer.yaml"
     config_tmp_path.write_text(str(example_transformer_config))
+
+    return config_tmp_path
+
+
+@pytest.fixture()
+def create_trainer_tmp_config(create_tmp_dir, example_trainer_config):
+    config_tmp_path = create_tmp_dir / "trainer.yaml"
+    config_tmp_path.write_text(str(example_trainer_config))
 
     return config_tmp_path
