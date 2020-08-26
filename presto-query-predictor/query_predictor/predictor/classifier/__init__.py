@@ -9,23 +9,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""
-This module contains the utility functions for logging.
-"""
-import logging
-from logging.config import fileConfig
-from pathlib import Path
+from .classifier import Classifier
+from .sklearn_classifier import LogisticRegressionClassifier
+from .sklearn_classifier import RandomForestClassifier
+from .sklearn_classifier import SkLearnClassifier
+from .xgboost_classifier import XGBoostClassifier
 
-
-log_conf_path = Path(__file__).parent.parent / "conf/logging.conf"
-fileConfig(log_conf_path, disable_existing_loggers=False)
-
-
-def get_module_logger(module_name: str) -> logging.Logger:
-    """
-    Gets a logger with the name provided.
-
-    :param module_name: The name of the module used for logging.
-    :return: A Logger instance.
-    """
-    return logging.getLogger(module_name)
+__all__ = (
+    "Classifier",
+    "SkLearnClassifier",
+    "RandomForestClassifier",
+    "LogisticRegressionClassifier",
+    "XGBoostClassifier",
+)

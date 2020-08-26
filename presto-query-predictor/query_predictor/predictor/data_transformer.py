@@ -58,7 +58,7 @@ class DataTransformer:
 
     def __init__(
         self,
-        data_frame,
+        data_frame: pd.DataFrame = None,
         func_strs: Union[Tuple[str], List[str]] = (),
         funcs: Iterator[Callable[[pd.DataFrame], pd.DataFrame]] = (),
     ) -> None:
@@ -94,6 +94,21 @@ class DataTransformer:
         )
 
         return self.data_frame
+
+    def save(self, file_path: str, index: bool = False) -> None:
+        """
+        Saves the data frame to a file. If necessary, it should be called after
+        the series of transformations.
+
+        :param file_path: The string of the path for the saved file.
+        :param index: Whether writing row names or not. False by default.
+        :return: ``None``
+        :raise DataTransformerException: If the data frame is None.
+        """
+        if self.data_frame is None:
+            raise DataTransformerException("Data frame hasn't been loaded")
+
+        self.data_frame.to_csv(file_path, index=index)
 
     def create_labels(self) -> pd.DataFrame:
         """
@@ -188,7 +203,7 @@ class DataTransformer:
         Validate the column exists in the data frame. If not, an exception will
         be raised.
 
-        :param column:
+        :param column: The target column to validate.
         :return: ``None``
         :raise DataTransformerException: If the passed in column does not exist
         in the data frame.

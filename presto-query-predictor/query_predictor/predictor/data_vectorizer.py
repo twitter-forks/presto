@@ -14,13 +14,16 @@ This module contains components to vectorize data.
 """
 from abc import ABC
 from abc import abstractmethod
+from pathlib import Path
 from typing import Dict
 from typing import NoReturn
 from typing import Optional
 from typing import Union
 
+import joblib
 import numpy as np
 
+from .exceptions import DataVectorizationException
 from .logging_utils import get_module_logger
 
 _logger = get_module_logger(__name__)
@@ -74,6 +77,36 @@ class DataVectorizer(ABC):
         """
         return NotImplementedError("To be overridden")
 
+    def save(self, path: str) -> None:
+        """
+        Saves the trained vectorizer.
+
+        :param path: Target saved vectorizer path.
+        :return: ``None``
+        :raise DataVectorizationException: If the vectorizer hasn't been created.
+        """
+        if self.vectorizer is None:
+            raise DataVectorizationException("Vectorizer does not exist")
+
+        p = Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+
+        joblib.dump(self.vectorizer, path)
+
+    def load(self, path: str):
+        """
+        Loads a trained vectorizer.
+
+        :param path: Loaded vectorizer path.
+        :return:  A vectorizer.
+        :raise DataVectorizationException: If the vectorizer path does not exist.
+        """
+        if not Path(path).exists():
+            raise DataVectorizationException(f"File {path} does not exist")
+
+        self.vectorizer = joblib.load(path)
+        return self.vectorizer
+
 
 class DataCountVectorizer(DataVectorizer):
     """
@@ -88,6 +121,7 @@ class DataCountVectorizer(DataVectorizer):
     def vectorize(self, data: np.array) -> np.array:
         from sklearn.feature_extraction.text import CountVectorizer
 
+        _logger.info("Vectorizing data with a count vectorizer...")
         vectorizer = CountVectorizer(**self.params)
         self.data = data
         if not self.vectorizer:
@@ -113,6 +147,7 @@ class DataTfidfVectorizer(DataVectorizer):
     def vectorize(self, data: np.array) -> np.array:
         from sklearn.feature_extraction.text import TfidfVectorizer
 
+        _logger.info("Vectorizing data with a TF-IDF vectorizer...")
         vectorizer = TfidfVectorizer(**self.params)
         self.data = data
         if not self.vectorizer:
@@ -123,3 +158,42 @@ class DataTfidfVectorizer(DataVectorizer):
 
     def transform(self, data: np.array) -> np.array:
         return self.vectorizer.transform(data)
+
+
+class VectorizerFactory:
+    """
+    The factory class to create vectorizers.
+
+    Each type of vectorizers can only have one instance (singleton), controlled
+    by a dictionary of vectorizers.
+    """
+
+    def __init__(self):
+        #: Holds a dictionary of vectoriziers, {type => vectorizer instance}
+        self.vectorizers = {}
+
+    def create_vectorizer(
+        self, vec_type: str, params: Optional[Dict] = None
+    ) -> DataVectorizer:
+        """
+        Creates a vectorizer with a type.
+
+        :param vec_type: Type of the vectorizer. e.g. count
+        :param params: Parameters for the vectorizer. These will be passed to
+        specific vectorizer created.
+        :return: A ``DataVectorizer`` instance.
+        :raise DataVectorizationException: If the type is not recognized.
+        """
+        if vec_type in self.vectorizers:
+            return self.vectorizers[vec_type]
+
+        if vec_type == "count":
+            self.vectorizers[vec_type] = DataCountVectorizer(params)
+        elif vec_type == "tfidf":
+            self.vectorizers[vec_type] = DataTfidfVectorizer(params)
+        else:
+            raise DataVectorizationException(
+                f"Unknown vectorizer type {vec_type}"
+            )
+
+        return self.vectorizers[vec_type]
