@@ -16,8 +16,10 @@ package com.facebook.presto.client;
 import com.facebook.airlift.security.pem.PemReader;
 import com.google.common.base.CharMatcher;
 import com.google.common.net.HostAndPort;
+import okhttp3.Authenticator;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.Challenge;
 import okhttp3.Credentials;
 import okhttp3.Interceptor;
 import okhttp3.JavaNetCookieJar;
@@ -131,6 +133,30 @@ public final class OkHttpUtil
         proxy.map(OkHttpUtil::toUnresolvedAddress)
                 .map(address -> new Proxy(type, address))
                 .ifPresent(clientBuilder::proxy);
+    }
+
+    public static void setupProxyAuthenticator(OkHttpClient.Builder clientBuilder, Optional<String> proxyUser, Optional<String> proxyPassword)
+    {
+        proxyUser.flatMap(user -> proxyPassword.map(password -> (Authenticator) (route, response) -> {
+            if (response.request().header("Proxy-Authorization") != null) {
+                System.out.println("presto auth failed, give up -- " + response.toString());
+                return null; // Give up, we've already failed to authenticate.
+            }
+
+            for (Challenge challenge : response.challenges()) {
+                System.out.println("challenge schema: " + challenge.scheme());
+                if (challenge.scheme().equalsIgnoreCase("Basic")) {
+                    String credential = Credentials.basic(user, password, challenge.charset());
+                    System.out.println("preempt basic auth, response code " + response.toString());
+                    return response.request().newBuilder()
+                            .header("Proxy-Authorization", credential)
+                            .build();
+                }
+            }
+            System.out.println("no challenge -- response code " + response.code());
+            return null;
+        }
+        )).ifPresent(clientBuilder::proxyAuthenticator);
     }
 
     private static InetSocketAddress toUnresolvedAddress(HostAndPort address)
