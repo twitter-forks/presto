@@ -56,7 +56,7 @@ class DataVectorizer(ABC):
         self.data = None
 
     @abstractmethod
-    def vectorize(self, data: np.array) -> Union[NoReturn, np.array]:
+    def vectorize(self, data: np.ndarray) -> Union[NoReturn, np.ndarray]:
         """
         Entry point to vectorize data.
 
@@ -67,7 +67,7 @@ class DataVectorizer(ABC):
         return NotImplementedError("To be overridden")
 
     @abstractmethod
-    def transform(self, data: np.array) -> Union[NoReturn, np.array]:
+    def transform(self, data: np.ndarray) -> Union[NoReturn, np.ndarray]:
         """
         Entry point to transform data with the trained vectorizer.
 
@@ -118,7 +118,7 @@ class DataCountVectorizer(DataVectorizer):
         super().__init__(params)
         self.type = "count"
 
-    def vectorize(self, data: np.array) -> np.array:
+    def vectorize(self, data: np.ndarray) -> np.ndarray:
         from sklearn.feature_extraction.text import CountVectorizer
 
         _logger.info("Vectorizing data with a count vectorizer...")
@@ -130,7 +130,7 @@ class DataCountVectorizer(DataVectorizer):
 
         return self.vectors
 
-    def transform(self, data: np.array) -> np.array:
+    def transform(self, data: np.ndarray) -> np.ndarray:
         return self.vectorizer.transform(data)
 
 
@@ -144,7 +144,7 @@ class DataTfidfVectorizer(DataVectorizer):
         super().__init__(params)
         self.type = "tfidf"
 
-    def vectorize(self, data: np.array) -> np.array:
+    def vectorize(self, data: np.ndarray) -> np.ndarray:
         from sklearn.feature_extraction.text import TfidfVectorizer
 
         _logger.info("Vectorizing data with a TF-IDF vectorizer...")
@@ -156,7 +156,7 @@ class DataTfidfVectorizer(DataVectorizer):
 
         return self.vectors
 
-    def transform(self, data: np.array) -> np.array:
+    def transform(self, data: np.ndarray) -> np.ndarray:
         return self.vectorizer.transform(data)
 
 
