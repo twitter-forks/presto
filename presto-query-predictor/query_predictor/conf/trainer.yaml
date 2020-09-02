@@ -7,7 +7,7 @@ vectorizer:
     min_df: 1
     max_df: 0.8
   persist: true
-  persist_path: vec.bin
+  persist_path: models/vec-cpu.bin
 test_size: 0.2
 classifier:
   type: XGBoost
@@ -15,4 +15,4 @@ classifier:
     max_depth: 2
     objective: 'binary:logistic'
   persist: true
-  persist_path: model.bin
+  persist_path: models/model-cpu.bin
