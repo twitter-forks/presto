@@ -10,13 +10,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from .classifier import Classifier
+from .classifier_factory import ClassifierFactory
 from .sklearn_classifier import LogisticRegressionClassifier
 from .sklearn_classifier import RandomForestClassifier
 from .sklearn_classifier import SkLearnClassifier
 from .xgboost_classifier import XGBoostClassifier
 
+
 __all__ = (
     "Classifier",
+    "ClassifierFactory",
     "SkLearnClassifier",
     "RandomForestClassifier",
     "LogisticRegressionClassifier",
