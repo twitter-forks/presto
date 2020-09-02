@@ -48,7 +48,7 @@ class ConfigValidator(ABC):
         return NotImplementedError("To be overridden")
 
     @staticmethod
-    def validate_persist(config) -> Dict:
+    def validate_persist(config: Dict) -> Dict:
         """
         Validate the ``persist`` and ``persist_path`` fields. If ``persist`` is
         not in the config, it will be set to the default value. If ``persist`` is
@@ -139,4 +139,73 @@ class TrainerConfigValidator(ConfigValidator):
             self.config["test_size"] = DEFAULT_TEST_SIZE
 
         _logger.info("Trainer config validation passed")
+        return self.config
+
+
+class ServingConfigValidator(ConfigValidator):
+    """
+    The class to validate a serving config which holds the config for model
+    serving.
+
+    :param config: The config dictionary for validation.
+    """
+
+    #: The fields required in a serving config.
+    REQUIRED_FIELDS = ["models", "vectorizers"]
+
+    #: The fields required in a model values.
+    MODEL_REQUIRED_FIELDS = [
+        "label",
+        "feature",
+        "type",
+        "path",
+        "name",
+        "description",
+        "version",
+    ]
+
+    #: The fields required in a vectorizer fields.
+    VECTORIZER_REQUIRED_FIELDS = [
+        "feature",
+        "type",
+        "path",
+        "name",
+        "description",
+        "version",
+    ]
+
+    def __init__(self, config: Optional[Dict] = None) -> None:
+        super().__init__(config)
+
+    def validate(self) -> Dict:
+        """
+        The main entry point to validate serving configs. It ensures the
+        exist of required fields.
+
+        :return: A dictionary of configs after the validation.
+        :raise ConfigValidationException: If a required field is not provided.
+        """
+        for field in self.REQUIRED_FIELDS:
+            if field not in self.config:
+                raise ConfigValidationException(
+                    f"{field} is required but not provided"
+                )
+
+        models = self.config["models"]
+        for config in models.values():
+            for field in self.MODEL_REQUIRED_FIELDS:
+                if field not in config:
+                    raise ConfigValidationException(
+                        f"{field} is required for a classifier but not provided"
+                    )
+
+        vectorizers = self.config["vectorizers"]
+        for config in vectorizers.values():
+            for field in self.VECTORIZER_REQUIRED_FIELDS:
+                if field not in config:
+                    raise ConfigValidationException(
+                        f"{field} is required for a vectorizer but not provided"
+                    )
+
+        _logger.info("Serving config validation passed")
         return self.config
