@@ -14,6 +14,7 @@ This file contains the exceptions of the query predictor.
 """
 from typing import Optional
 
+BAD_REQUEST_ERROR = 400
 INTERNAL_ERROR = 500
 
 
@@ -29,12 +30,20 @@ class PredictorException(Exception):
     def __init__(
         self,
         message: str,
-        status: str = INTERNAL_ERROR,
+        status: int = INTERNAL_ERROR,
         payload: Optional = None,
     ) -> None:
         self.message = message
         self.status = status
         self.payload = payload
+
+
+class VersionException(PredictorException):
+    """
+    The exception class for errors in versions.
+    """
+
+    pass
 
 
 class DataLoaderException(PredictorException):
@@ -96,6 +105,55 @@ class ConfigValidationException(PredictorException):
 class AssemblerException(PredictorException):
     """
     The exception class for errors in assemblers.
+    """
+
+    pass
+
+
+class MetadataException(PredictorException):
+    """
+    The exception class for errors in metadata.
+    """
+
+    pass
+
+
+class MLModelException(PredictorException):
+    """
+    The exception class for errors in ML models.
+    """
+
+    pass
+
+
+class VectorizerModelException(PredictorException):
+    """
+    The exception class for errors in vectorizer models.
+    """
+
+    pass
+
+
+class ModelManagerException(PredictorException):
+    """
+    The exception class for errors in model management.
+    """
+
+    pass
+
+
+class BadRequestException(PredictorException):
+    """
+    The exception class for bad requests.
+    """
+
+    def __init__(self, message, payload=None):
+        super().__init__(message, BAD_REQUEST_ERROR, payload)
+
+
+class InternalServerException(PredictorException):
+    """
+    The exception class for internal server errors.
     """
 
     pass
