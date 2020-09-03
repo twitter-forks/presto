@@ -11,6 +11,7 @@
 # limitations under the License.
 from .config_manager import ConfigManager
 from .config_validator import ConfigValidator
+from .config_validator import ServingConfigValidator
 from .config_validator import TrainerConfigValidator
 from .config_validator import TransformerConfigValidator
 
@@ -19,4 +20,5 @@ __all__ = (
     "ConfigValidator",
     "TransformerConfigValidator",
     "TrainerConfigValidator",
+    "ServingConfigValidator",
 )

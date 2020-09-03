@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Query Predictor</title>
+  <link rel="stylesheet"
+        href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+        crossorigin="anonymous">
+  <script
+      src="https://code.jquery.com/jquery-3.4.1.min.js"
+      integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo="
+      crossorigin="anonymous"></script>
+  <script
+      src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+      integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+      crossorigin="anonymous"></script>
+  <script
+      src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+      integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6"
+      crossorigin="anonymous"></script>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <a class="navbar-brand" href="#">Query Predictor</a>
+  <button class="navbar-toggler" type="button" data-toggle="collapse"
+          data-target="#navbarNav" aria-controls="navbarNav"
+          aria-expanded="false" aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+</nav>
+
+<div class="container">
+  <div class="row" style="margin-top: 20px;">
+    <div class="col-12">
+      <h2>Query Predictor Web App</h2>
+    </div>
+    <div class="col-12" style="margin-top: 20px;">
+      <div class="form-group">
+        <label for="query-form">
+          Try a SQL statement below and predict it!
+        </label>
+        <textarea class="form-control" id="query-form" rows="10"></textarea>
+      </div>
+      <button class="btn btn-primary float-right" id="btn-predict">
+        Predict
+      </button>
+    </div>
+    <div class="col-12" style="margin-top: 20px;">
+      <p>
+        Predicted CPU time:
+        <span class="badge badge-success" id="predicted-cpu"></span>
+      </p>
+      <p>
+        Predicted peak memory bytes:
+        <span class="badge badge-info" id="predicted-memory"></span>
+      </p>
+    </div>
+  </div>
+
+  <div class="row" style="height: 200px"></div>
+</div>
+
+<script>
+  $(document).ready(function () {
+    const queryFormElement = document.getElementById('query-form');
+    const predictedCPU = document.getElementById('predicted-cpu');
+    const predictedMemory = document.getElementById('predicted-memory');
+
+    const fetchPredictedData = (query, url, callback) => {
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({query})
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log(data);
+        if ('status' in data && data.status != 200) {
+          return;
+        }
+        callback(data);
+      })
+      .catch(error => {
+        console.error('Error:', error);
+      })
+    };
+
+    document.getElementById('btn-predict').addEventListener('click', () => {
+      const query = queryFormElement.value;
+      console.log(query);
+
+      fetchPredictedData(query, '/v1/cpu', data => {
+        predictedCPU.innerHTML = data.cpu_pred_str;
+      });
+
+      fetchPredictedData(query, '/v1/memory', data => {
+        predictedMemory.innerHTML = data.memory_pred_str;
+      });
+    });
+  });
+</script>
+</body>
+</html>

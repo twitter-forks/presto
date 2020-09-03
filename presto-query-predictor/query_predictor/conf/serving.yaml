@@ -1,0 +1,32 @@
+models:
+  cpu_model:
+    label: cpu_time_label
+    feature: query
+    type: XGBoost
+    path: models/model-cpu.bin
+    name: XGBoost-CPU
+    description: An XGBoost model to predict cpu time of each SQL query
+    version: 0.1.0
+  memory_model:
+    label: peak_memory_label
+    feature: query
+    type: XGBoost
+    path: models/model-memory.bin
+    name: XGBoost-Memory
+    description: An XGBoost model to predict peak memory bytes of each SQL query
+    version: 0.1.0
+vectorizers:
+  cpu_vectorizer:
+    feature: query
+    type: tfidf
+    path: models/vec-cpu.bin
+    name: tfidf-cpu
+    description: A TF-IDF vectorizer for SQL queries
+    version: 0.1.0
+  memory_vectorizer:
+    feature: query
+    type: tfidf
+    path: models/vec-memory.bin
+    name: tfidf-memory
+    description: A TF-IDF vectorizer for SQL queries
+    version: 0.1.0

@@ -13,7 +13,9 @@
 This module contains the component to manager configurations for the machine
 learning pipeline.
 """
+from pathlib import Path
 from typing import Dict
+from typing import Optional
 
 import yaml
 
@@ -27,11 +29,36 @@ _logger = get_module_logger(__name__)
 class ConfigManager:
     """
     The config manager class helps to manage, e.g. saving and loading configurations.
+
+    Singleton pattern is applied to this class such that there's only one
+    ``ConfigManager`` instance.
     """
 
+    #: The singleton instance of the ``ConfigManager``.
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ConfigManager, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self) -> None:
-        #: A dictionary to hold the configurations.
+        #: A dictionary to hold the last loaded configurations.
         self.config: Dict = {}
+
+        #: A dictionary to hold all configurations loaded.
+        #: config_path (absolute) => config
+        self.configs: Dict = {}
+
+    def get_config(self, config_path: str) -> Dict:
+        """
+        Gets the config dictionary with a config path.
+
+        :param config_path: The path for the config looked for.
+        :return: If the path exists in the configs dictionary, the concrete config
+        in a dictionary will be returned. Otherwise, it will return ``None``.
+        """
+        return self.configs.get(Path(config_path).resolve(), None)
 
     def load_config(self, config_path: str) -> Dict:
         """
@@ -43,6 +70,10 @@ class ConfigManager:
         :raise ConfigManagerException: If it fails to load the file to YAML.
         :raise FileNotFoundError: If the file does not exist.
         """
+        config_path = Path(config_path).resolve()
+        if config_path in self.configs:
+            return self.configs[config_path]
+
         _logger.info("Loading config from %s", config_path)
         try:
             with open(config_path, "r") as yaml_file:
@@ -58,6 +89,7 @@ class ConfigManager:
             err_msg = f"Error in reading {config_path}: {err}"
             _logger.error(err_msg)
             raise ConfigManagerException(err_msg)
+        self.configs[config_path] = self.config
 
         return self.config
 
@@ -81,12 +113,21 @@ class ConfigManager:
         """
         return yaml.dump(self.config)
 
-    def validate(self, config_validator: ConfigValidator) -> None:
+    def validate(
+        self,
+        config_validator: ConfigValidator,
+        config_path: Optional[str] = None,
+    ) -> None:
         """
         Validates the correctness of the formats of the configuration.
 
         :param config_validator: A ``ConfigValidator`` instance for validation.
+        :param config_path: Path for the configuration. If this parameter is
+        provided, the method will first load the configuration.
         :return: ``None``.
         """
+        if config_path:
+            self.load_config(config_path)
+
         config_validator.config = self.config
         config_validator.validate()
