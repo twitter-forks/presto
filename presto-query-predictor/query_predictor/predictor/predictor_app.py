@@ -38,7 +38,7 @@ from .model import VectorizerModelManager
 # So the templates are wrapped in a ``resources`` dependency in the BUILD file.
 # And __file__ is relied on to find the correct path.
 # This method works in both a normal folder structure and a compressed file.
-curr_dir = Path(__file__).parent
+curr_dir = Path(__file__).parent.absolute()
 template_path = curr_dir / "webapp/templates"
 predictor_app = Flask(__name__, template_folder=template_path)
 

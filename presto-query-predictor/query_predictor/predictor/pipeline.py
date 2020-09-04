@@ -46,7 +46,7 @@ class Pipeline:
     >>>
     >>> data_frame = load_tpch()
     >>> transformer_config_path = "../conf/transformer.yaml"
-    >>> trainer_config_path = "../conf/trainer.yaml"
+    >>> trainer_config_path = "../conf/trainer-cpu.yaml"
     >>> pipeline = Pipeline(
     >>>     data_frame=data_frame,
     >>>     transformer_config_path=transformer_config_path,
