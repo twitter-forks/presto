@@ -218,7 +218,8 @@ class Pipeline:
     def eval(self) -> Pipeline:
         """
         Evaluates the trained model against the testing dataset.
-        :return:
+
+        :return: ``self``
         """
         self.x_test = self.vectorizer.transform(self.x_test)
         self.report = self.classifier.report(self.x_test, self.y_test)
