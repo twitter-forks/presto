@@ -33,8 +33,6 @@ if __name__ == "__main__":
         parent_dir / "query_predictor/conf/trainer-memory.yaml"
     )
 
-    data_frame = load_tpch()
-
     # Runs the pipeline to train a model to predict cpu time.
     cpu_pipeline = Pipeline(
         data_path=data_path,
