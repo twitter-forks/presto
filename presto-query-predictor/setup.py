@@ -44,6 +44,7 @@ setup(
         "joblib",
         "numpy",
         "pandas",
+        "pyyaml",
         "scikit-learn",
         "xgboost",
     ],

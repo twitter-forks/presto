@@ -10,17 +10,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-This script runs the preprocessing of presto request logs.
+This file shows an example of transforming datasets.
 """
+from pathlib import Path
 from query_predictor.predictor.data_loader import DataLoader
 from query_predictor.predictor.data_transformer import DataTransformer
 
-from pkg_resources import resource_filename
 
 if __name__ == "__main__":
-    file_path = resource_filename(__name__, f"../data/presto-logs.csv")
+    curr_dir = Path(__file__).parent.absolute()
+
+    # This is the fake dataset embedded in the query predictor.
+    # The dataset can also be loaded by running ``load_tpch`` method.
+    file_path = curr_dir.parent / "query_predictor/datasets/data/tpch.csv"
     data_loader = DataLoader(file_path=file_path)
     data_frame = data_loader.load()
+
+    print("Dataset loaded:")
+    print(data_frame)
 
     transformer_list = [
         "drop_failed_queries",
@@ -30,7 +37,6 @@ if __name__ == "__main__":
     ]
     data_transformer = DataTransformer(data_frame, transformer_list)
     data_frame = data_transformer.transform()
-    output_file_path = resource_filename(
-        __name__, f"../data/presto-clean-logs.csv"
-    )
-    data_frame.to_csv(output_file_path, index=False)
+
+    print("Dataset transformed:")
+    print(data_frame)

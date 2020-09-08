@@ -46,7 +46,7 @@ class Pipeline:
     >>>
     >>> data_frame = load_tpch()
     >>> transformer_config_path = "../conf/transformer.yaml"
-    >>> trainer_config_path = "../conf/trainer.yaml"
+    >>> trainer_config_path = "../conf/trainer-cpu.yaml"
     >>> pipeline = Pipeline(
     >>>     data_frame=data_frame,
     >>>     transformer_config_path=transformer_config_path,
@@ -218,7 +218,8 @@ class Pipeline:
     def eval(self) -> Pipeline:
         """
         Evaluates the trained model against the testing dataset.
-        :return:
+
+        :return: ``self``
         """
         self.x_test = self.vectorizer.transform(self.x_test)
         self.report = self.classifier.report(self.x_test, self.y_test)

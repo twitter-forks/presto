@@ -10,12 +10,10 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 """
-This file contains an example to serve a query predictor application.
+This file contains an example to load embedded datasets.
 """
-from query_predictor.predictor.predictor_app import predictor_app
-
-from waitress import serve
+from query_predictor.datasets import load_tpch
 
 if __name__ == "__main__":
-    # Uses the waitress package to serve the app in a production environment.
-    serve(predictor_app, host="0.0.0.0", port=8000)
+    data = load_tpch()
+    print(data.columns)

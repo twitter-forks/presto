@@ -71,7 +71,7 @@ def create_transformer_tmp_config(create_tmp_dir, example_transformer_config):
 
 @pytest.fixture()
 def create_trainer_tmp_config(create_tmp_dir, example_trainer_config):
-    config_tmp_path = create_tmp_dir / "trainer.yaml"
+    config_tmp_path = create_tmp_dir / "trainer-cpu.yaml"
     config_tmp_path.write_text(str(example_trainer_config))
 
     return config_tmp_path
