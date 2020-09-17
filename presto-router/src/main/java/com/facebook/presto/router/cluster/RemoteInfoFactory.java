@@ -13,13 +13,13 @@
  */
 package com.facebook.presto.router.cluster;
 
-import io.airlift.http.client.HttpClient;
+import com.facebook.airlift.http.client.HttpClient;
 
 import javax.inject.Inject;
 
 import java.net.URI;
 
-import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
+import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static java.util.Objects.requireNonNull;
 
 public class RemoteInfoFactory
