@@ -13,12 +13,12 @@
  */
 package com.facebook.presto.router.cluster;
 
+import com.facebook.airlift.node.NodeInfo;
 import com.facebook.presto.client.ServerInfo;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import io.airlift.node.NodeInfo;
 
 import javax.annotation.concurrent.Immutable;
 import javax.ws.rs.GET;
