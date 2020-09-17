@@ -13,6 +13,15 @@
  */
 package com.facebook.presto.router;
 
+import com.facebook.airlift.bootstrap.Bootstrap;
+import com.facebook.airlift.bootstrap.LifeCycleManager;
+import com.facebook.airlift.http.server.HttpServerInfo;
+import com.facebook.airlift.http.server.testing.TestingHttpServerModule;
+import com.facebook.airlift.jaxrs.JaxrsModule;
+import com.facebook.airlift.json.JsonCodec;
+import com.facebook.airlift.json.JsonModule;
+import com.facebook.airlift.log.Logging;
+import com.facebook.airlift.node.testing.TestingNodeModule;
 import com.facebook.presto.execution.QueryState;
 import com.facebook.presto.jdbc.PrestoResultSet;
 import com.facebook.presto.router.cluster.ClusterStatusTracker;
@@ -20,15 +29,6 @@ import com.facebook.presto.server.testing.TestingPrestoServer;
 import com.facebook.presto.tpch.TpchPlugin;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Injector;
-import io.airlift.bootstrap.Bootstrap;
-import io.airlift.bootstrap.LifeCycleManager;
-import io.airlift.http.server.HttpServerInfo;
-import io.airlift.http.server.testing.TestingHttpServerModule;
-import io.airlift.jaxrs.JaxrsModule;
-import io.airlift.json.JsonCodec;
-import io.airlift.json.JsonModule;
-import io.airlift.log.Logging;
-import io.airlift.node.testing.TestingNodeModule;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;

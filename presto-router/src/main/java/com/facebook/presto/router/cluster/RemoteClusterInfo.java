@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.router.cluster;
 
+import com.facebook.airlift.http.client.HttpClient;
+import com.facebook.airlift.log.Logger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.airlift.http.client.HttpClient;
-import io.airlift.log.Logger;
 
 import java.net.URI;
 import java.util.Map;
