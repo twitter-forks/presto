@@ -13,12 +13,12 @@
  */
 package com.facebook.presto.router.cluster;
 
+import com.facebook.airlift.http.client.HttpClient;
+import com.facebook.airlift.log.Logger;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
-import io.airlift.http.client.HttpClient;
-import io.airlift.log.Logger;
 
 import javax.annotation.concurrent.ThreadSafe;
 

@@ -13,10 +13,10 @@
  */
 package com.facebook.presto.router;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.router.cluster.ClusterManager;
 import com.facebook.presto.router.cluster.RequestInfo;
 import com.google.inject.Inject;
-import io.airlift.log.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.POST;
@@ -28,7 +28,7 @@ import javax.ws.rs.core.Response;
 
 import java.net.URI;
 
-import static io.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
+import static com.facebook.airlift.http.client.HttpUriBuilder.uriBuilderFrom;
 import static java.util.Objects.requireNonNull;
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
 import static javax.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;

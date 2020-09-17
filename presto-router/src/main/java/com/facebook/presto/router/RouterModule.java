@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.router;
 
+import com.facebook.airlift.configuration.AbstractConfigurationAwareModule;
 import com.facebook.presto.router.cluster.ClusterManager;
 import com.facebook.presto.router.cluster.ClusterStatusResource;
 import com.facebook.presto.router.cluster.ClusterStatusTracker;
@@ -21,15 +22,14 @@ import com.facebook.presto.router.cluster.ForQueryInfoTracker;
 import com.facebook.presto.router.cluster.RemoteInfoFactory;
 import com.google.inject.Binder;
 import com.google.inject.Scopes;
-import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.airlift.units.Duration;
 
 import java.lang.annotation.Annotation;
 
-import static io.airlift.configuration.ConfigBinder.configBinder;
-import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
-import static io.airlift.http.server.HttpServerBinder.httpServerBinder;
-import static io.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
+import static com.facebook.airlift.configuration.ConfigBinder.configBinder;
+import static com.facebook.airlift.http.client.HttpClientBinder.httpClientBinder;
+import static com.facebook.airlift.http.server.HttpServerBinder.httpServerBinder;
+import static com.facebook.airlift.jaxrs.JaxrsBinder.jaxrsBinder;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class RouterModule

@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.router.cluster;
 
+import com.facebook.airlift.json.JsonCodec;
+import com.facebook.airlift.json.JsonCodecFactory;
+import com.facebook.airlift.json.ObjectMapperProvider;
 import com.facebook.presto.router.RouterConfig;
 import com.facebook.presto.router.spec.GroupSpec;
 import com.facebook.presto.router.spec.RouterSpec;
@@ -21,9 +24,6 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import io.airlift.json.JsonCodec;
-import io.airlift.json.JsonCodecFactory;
-import io.airlift.json.ObjectMapperProvider;
 
 import javax.inject.Inject;
 
