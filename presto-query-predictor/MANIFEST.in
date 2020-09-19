@@ -1,0 +1,9 @@
+include requirements.txt
+include query_predictor/datasets/data/*
+graft docs
+graft examples
+prune examples/models
+global-exclude *.pyc
+global-exclude *.ipynb_checkpoints
+global-exclude .DS_Store
+global-exclude presto-logs.csv
