@@ -1,8 +1,9 @@
 include requirements.txt
-include query_predictor/datasets/data/*
+recursive-include query_predictor *
 graft docs
 graft examples
 prune examples/models
+prune tests
 global-exclude *.pyc
 global-exclude *.ipynb_checkpoints
 global-exclude .DS_Store
