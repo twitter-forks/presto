@@ -20,22 +20,16 @@ from query_predictor.predictor.pipeline import Pipeline
 # If you don't want to see the logs during training, import logging package and
 # use logging.disable() to disable logging utilities.
 if __name__ == "__main__":
-    parent_dir = Path(__file__).parent.absolute().parent
+    curr_dir = Path(__file__).parent
 
-    data_path = parent_dir / "query_predictor/datasets/data/tpch.csv"
-    transformer_config_path = (
-        parent_dir / "query_predictor/conf/transformer.yaml"
-    )
-    cpu_trainer_config_path = (
-        parent_dir / "query_predictor/conf/trainer-cpu.yaml"
-    )
-    memory_trainer_config_path = (
-        parent_dir / "query_predictor/conf/trainer-memory.yaml"
-    )
+    data_frame = load_tpch()
+    transformer_config_path = curr_dir / "conf/transformer.yaml"
+    cpu_trainer_config_path = curr_dir / "conf/trainer-cpu.yaml"
+    memory_trainer_config_path = curr_dir / "conf/trainer-memory.yaml"
 
     # Runs the pipeline to train a model to predict cpu time.
     cpu_pipeline = Pipeline(
-        data_path=data_path,
+        data_frame=data_frame,
         transformation_required=True,
         transformer_config_path=transformer_config_path,
         trainer_config_path=cpu_trainer_config_path,
@@ -47,7 +41,7 @@ if __name__ == "__main__":
 
     # Runs the pipeline to train a model to predict peak memory bytes.
     memory_pipeline = Pipeline(
-        data_path=data_path,
+        data_frame=data_frame,
         transformation_required=True,
         transformer_config_path=transformer_config_path,
         trainer_config_path=memory_trainer_config_path,

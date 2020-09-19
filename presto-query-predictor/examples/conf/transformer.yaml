@@ -1,0 +1,7 @@
+transformers:
+  - drop_failed_queries
+  - create_labels
+  - to_lower_queries
+  - select_training_columns
+persist: true
+persist_path: clean.csv
