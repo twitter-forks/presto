@@ -10,8 +10,14 @@ and memory usages of Presto queries.
 After cloning the GitHub repository,
 
 ``` bash
-    pip3 install -e .  # Installs the presto-query-predictor package locally
-    pip3 install -r requirements.txt  # Installs dependencies
+pip3 install -e .  # Installs the presto-query-predictor package locally
+pip3 install -r requirements.txt  # Installs dependencies
+```
+
+An alternative way is to install the package from PyPi,
+
+``` bash
+pip3 install presto-query-predictor
 ```
 
 We recommend installing the package in a Python virtual environment instead
