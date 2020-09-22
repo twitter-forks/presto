@@ -3,7 +3,7 @@ import re
 from setuptools import find_packages
 from setuptools import setup
 
-with open("query_predictor/predictor/__init__.py", encoding="utf8") as f:
+with open("query_predictor/__init__.py", encoding="utf8") as f:
     version = re.search(r'__version__ = "(.*?)"', f.read()).group(1)
 
 setup(
@@ -12,6 +12,7 @@ setup(
     author_email="iq-dev@twitter.com",
     description="A query predictor pipeline and service to predict resource usages of Presto queries",
     long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
     version=version,
     url="https://github.com/twitter-forks/presto/tree/query-predictor/presto-query-predictor",
     packages=find_packages(exclude=["tests", "tests.*"]),
@@ -22,7 +23,7 @@ setup(
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
-        "Intended Audience :: Science"
+        "Intended Audience :: Science/Research",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: POSIX",

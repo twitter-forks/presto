@@ -1,0 +1,18 @@
+label: cpu_time_label
+feature: query
+vectorizer:
+  type: tfidf
+  params:
+    max_features: 100
+    min_df: 1
+    max_df: 0.8
+  persist: true
+  persist_path: models/vec-cpu.bin
+test_size: 0.2
+classifier:
+  type: XGBoost
+  params:
+    max_depth: 2
+    objective: 'binary:logistic'
+  persist: true
+  persist_path: models/model-cpu.bin

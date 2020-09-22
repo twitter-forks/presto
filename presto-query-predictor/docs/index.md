@@ -1,8 +1,3 @@
-<!-- # Welcome to Presto Query Predictor
-
-A ML-based pipeline and service to predict resource usages of Presto SQL queries
-based on models trained from historical request logs.  -->
-
 # Getting Started
 
 **presto-query-predictor** is a Python module introducing machine learning
@@ -15,8 +10,14 @@ and memory usages of Presto queries.
 After cloning the GitHub repository,
 
 ``` bash
-    pip3 install -e .  # Installs the presto-query-predictor package locally
-    pip3 install -r requirements.txt  # Installs dependencies
+pip3 install -e .  # Installs the presto-query-predictor package locally
+pip3 install -r requirements.txt  # Installs dependencies
+```
+
+An alternative way is to install the package from PyPi,
+
+``` bash
+pip3 install presto-query-predictor
 ```
 
 !!! note
