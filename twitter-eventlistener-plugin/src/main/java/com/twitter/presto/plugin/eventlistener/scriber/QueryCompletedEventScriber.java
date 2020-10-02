@@ -14,6 +14,7 @@
 package com.twitter.presto.plugin.eventlistener.scriber;
 
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.spi.eventlistener.OperatorStatistics;
 import com.facebook.presto.spi.eventlistener.QueryCompletedEvent;
 import com.facebook.presto.spi.eventlistener.QueryContext;
 import com.facebook.presto.spi.eventlistener.QueryFailureInfo;
@@ -78,6 +79,7 @@ public class QueryCompletedEventScriber
         QueryMetadata eventMetadata = event.getMetadata();
         QueryContext eventContext = event.getContext();
         QueryStatistics eventStat = event.getStatistics();
+        List<OperatorStatistics> operatorStats = event.getOperatorStatistics();
 
         QueryCompletionEvent thriftEvent =
                 new com.twitter.presto.thriftjava.QueryCompletionEvent();
@@ -112,7 +114,7 @@ public class QueryCompletedEventScriber
         }
         thriftEvent.setTotal_bytes(eventStat.getTotalBytes());
         thriftEvent.setQuery_stages(QueryStatsHelper.getQueryStages(eventMetadata));
-        thriftEvent.setOperator_summaries(QueryStatsHelper.getOperatorSummaries(eventStat));
+        thriftEvent.setOperator_summaries(QueryStatsHelper.getOperatorSummaries(operatorStats));
         thriftEvent.setTotal_rows(eventStat.getTotalRows());
         thriftEvent.setSplits(eventStat.getCompletedSplits());
         if (event.getFailureInfo().isPresent()) {
