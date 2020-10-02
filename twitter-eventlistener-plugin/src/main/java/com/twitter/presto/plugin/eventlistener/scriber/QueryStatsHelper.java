@@ -14,8 +14,8 @@
 package com.twitter.presto.plugin.eventlistener.scriber;
 
 import com.facebook.airlift.log.Logger;
+import com.facebook.presto.spi.eventlistener.OperatorStatistics;
 import com.facebook.presto.spi.eventlistener.QueryMetadata;
-import com.facebook.presto.spi.eventlistener.QueryStatistics;
 import com.twitter.presto.thriftjava.OperatorStats;
 import com.twitter.presto.thriftjava.QueryStageInfo;
 import io.airlift.units.DataSize;
@@ -93,49 +93,36 @@ public class QueryStatsHelper
         return stageInfo;
     }
 
-    private static OperatorStats getOperatorStat(String operatorSummaryStr)
-    {
-        try {
-            JsonReader jsonReader = Json.createReader(new StringReader(operatorSummaryStr));
-            return getOperatorStat(jsonReader.readObject());
-        }
-        catch (Exception e) {
-            log.error(e, String.format("Error retrieving operator stats from string:\n%s\n", operatorSummaryStr));
-        }
-
-        return null;
-    }
-
-    private static OperatorStats getOperatorStat(JsonObject obj)
+    private static OperatorStats getOperatorStat(OperatorStatistics stats)
     {
         OperatorStats operatorStats = new OperatorStats();
 
         try {
-            operatorStats.pipeline_id = obj.getInt("pipelineId");
-            operatorStats.operator_id = obj.getInt("operatorId");
-            operatorStats.plan_node_id = obj.getString("planNodeId");
-            operatorStats.operator_type = obj.getString("operatorType");
-            operatorStats.total_drivers = obj.getJsonNumber("totalDrivers").longValue();
-            operatorStats.add_input_calls = obj.getJsonNumber("addInputCalls").longValue();
-            operatorStats.add_input_wall_millis = getMillisOrNegativeOne(obj.getString("addInputWall"));
-            operatorStats.add_input_cpu_millis = getMillisOrNegativeOne(obj.getString("addInputCpu"));
-            operatorStats.input_data_size_bytes = getBytesOrNegativeOne(obj.getString("inputDataSize"));
-            operatorStats.input_positions = obj.getJsonNumber("inputPositions").longValue();
-            operatorStats.sum_squared_input_positions = obj.getJsonNumber("sumSquaredInputPositions").doubleValue();
-            operatorStats.get_output_calls = obj.getJsonNumber("getOutputCalls").longValue();
-            operatorStats.get_output_wall_millis = getMillisOrNegativeOne(obj.getString("getOutputWall"));
-            operatorStats.get_output_cpu_millis = getMillisOrNegativeOne(obj.getString("getOutputCpu"));
-            operatorStats.output_data_size_bytes = getBytesOrNegativeOne(obj.getString("outputDataSize"));
-            operatorStats.output_positions = obj.getJsonNumber("outputPositions").longValue();
-            operatorStats.blocked_wall_millis = getMillisOrNegativeOne(obj.getString("blockedWall"));
-            operatorStats.finish_calls = obj.getJsonNumber("finishCalls").longValue();
-            operatorStats.finish_wall_millis = getMillisOrNegativeOne(obj.getString("finishWall"));
-            operatorStats.finish_cpu_millis = getMillisOrNegativeOne(obj.getString("finishCpu"));
-            operatorStats.memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("userMemoryReservation"));
-            operatorStats.system_memory_reservation_bytes = getBytesOrNegativeOne(obj.getString("systemMemoryReservation"));
+            operatorStats.pipeline_id = stats.getPipelineId();
+            operatorStats.operator_id = stats.getOperatorId();
+            operatorStats.plan_node_id = stats.getPlanNodeId().toString();
+            operatorStats.operator_type = stats.getOperatorType();
+            operatorStats.total_drivers = stats.getTotalDrivers();
+            operatorStats.add_input_calls = stats.getAddInputCalls();
+            operatorStats.add_input_wall_millis = stats.getAddInputWall().toMillis();
+            operatorStats.add_input_cpu_millis = stats.getAddInputCpu().toMillis();
+            operatorStats.input_data_size_bytes = stats.getInputDataSize().toBytes();
+            operatorStats.input_positions = stats.getInputPositions();
+            operatorStats.sum_squared_input_positions = stats.getSumSquaredInputPositions();
+            operatorStats.get_output_calls = stats.getGetOutputCalls();
+            operatorStats.get_output_wall_millis = stats.getGetOutputWall().toMillis();
+            operatorStats.get_output_cpu_millis = stats.getGetOutputCpu().toMillis();
+            operatorStats.output_data_size_bytes = stats.getOutputDataSize().toBytes();
+            operatorStats.output_positions = stats.getOutputPositions();
+            operatorStats.blocked_wall_millis = stats.getBlockedWall().toMillis();
+            operatorStats.finish_calls = stats.getFinishCalls();
+            operatorStats.finish_wall_millis = stats.getFinishWall().toMillis();
+            operatorStats.finish_cpu_millis = stats.getFinishCpu().toMillis();
+            operatorStats.memory_reservation_bytes = stats.getUserMemoryReservation().toBytes();
+            operatorStats.system_memory_reservation_bytes = stats.getSystemMemoryReservation().toBytes();
         }
         catch (Exception e) {
-            log.error(e, String.format("Error retrieving operator stats from JsonObject:\n%s\n", obj.toString()));
+            log.error(e, String.format("Error retrieving operator stats from JsonObject:\n%s\n", stats.toString()));
             return null;
         }
 
@@ -193,19 +180,19 @@ public class QueryStatsHelper
         return stages;
     }
 
-    public static List<OperatorStats> getOperatorSummaries(QueryStatistics eventStat)
+    public static List<OperatorStats> getOperatorSummaries(List<OperatorStatistics> operatorStats)
     {
         try {
-            return eventStat.getOperatorSummaries()
+            return operatorStats
                     .stream()
-                    .filter(val -> val != null && !val.isEmpty())
+                    .filter(val -> val != null)
                     .map(QueryStatsHelper::getOperatorStat)
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
         }
         catch (Exception e) {
             log.error(e,
-                    String.format("Error converting List<String> to List<OperatorStats>:\n%s\n", eventStat.getOperatorSummaries().toString()));
+                    String.format("Error converting List<OperatorStatistics> to List<OperatorStats>:\n%s\n", operatorStats.toString()));
         }
 
         return null;
