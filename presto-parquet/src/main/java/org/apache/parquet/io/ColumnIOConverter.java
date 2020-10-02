@@ -105,7 +105,7 @@ public class ColumnIOConverter
         for (String pathElement : path) {
             if (columnIO instanceof GroupColumnIO) {
                 GroupColumnIO groupColumnIO = (GroupColumnIO) columnIO;
-                columnIO = lookupColumnByName(groupColumnIO, pathElement);
+                columnIO = findColumnIObyName(groupColumnIO, pathElement);
                 if (columnIO == null) {
                     return Optional.empty();
                 }

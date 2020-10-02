@@ -33,6 +33,7 @@ import javax.inject.Inject;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -44,6 +45,7 @@ import static com.facebook.presto.hive.HiveUtil.getDeserializerClassName;
 import static com.facebook.presto.hive.metastore.MetastoreUtil.checkCondition;
 import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.getLzopIndexPath;
 import static com.facebook.presto.twitter.hive.thrift.LzoThriftUtil.isLzopCompressedFile;
+import static java.util.Collections.emptyMap;
 import static java.util.Objects.requireNonNull;
 
 public class ThriftHiveRecordCursorProvider
@@ -77,7 +79,8 @@ public class ThriftHiveRecordCursorProvider
             TupleDomain<HiveColumnHandle> effectivePredicate,
             DateTimeZone hiveStorageTimeZone,
             TypeManager typeManager,
-            boolean s3SelectPushdownEnabled)
+            boolean s3SelectPushdownEnabled,
+            Map<String, String> customSplitInfo)
     {
         if (!THRIFT_SERDE_CLASS_NAMES.contains(getDeserializerClassName(schema))) {
             return Optional.empty();
@@ -131,7 +134,7 @@ public class ThriftHiveRecordCursorProvider
         long finalStart = start;
         long finalLength = length;
         RecordReader<?, ?> recordReader = hdfsEnvironment.doAs(session.getUser(),
-                () -> createRecordReader(configuration, path, finalStart, finalLength, schema, columns));
+                () -> createRecordReader(configuration, path, finalStart, finalLength, schema, columns, emptyMap()));
 
         return Optional.of(new ThriftHiveRecordCursor<>(
                 genericRecordReader(recordReader),
