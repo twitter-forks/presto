@@ -17,6 +17,7 @@ import com.facebook.airlift.configuration.AbstractConfigurationAwareModule;
 import com.google.inject.Binder;
 import com.google.inject.Injector;
 import com.google.inject.TypeLiteral;
+import com.mysql.jdbc.jdbc2.optional.MysqlDataSource;
 import org.jdbi.v3.core.ConnectionFactory;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
@@ -37,8 +38,8 @@ public class MySqlConnectionModule
         configBinder(binder).bindConfig(MySqlConnectionConfig.class);
 
         String databaseUrl = buildConfigObject(MySqlConnectionConfig.class).getDatabaseUrl();
-        Jdbi jdbi = createJdbi(
-                () -> DriverManager.getConnection(databaseUrl),
+        Jdbi jdbi = createMySQLJdbi(
+                databaseUrl,
                 buildConfigObject(MySqlFunctionNamespaceManagerConfig.class));
         binder.bind(Jdbi.class).toInstance(jdbi);
         binder.bind(FunctionNamespaceDao.class).toProvider(FunctionNamespaceDaoProvider.class);
@@ -66,6 +67,13 @@ public class MySqlConnectionModule
     public static Jdbi createJdbi(String url, MySqlFunctionNamespaceManagerConfig config)
     {
         return createJdbi(() -> DriverManager.getConnection(url), config);
+    }
+
+    public static Jdbi createMySQLJdbi(String url, MySqlFunctionNamespaceManagerConfig config)
+    {
+        MysqlDataSource dataSource = new MysqlDataSource();
+        dataSource.setURL(url);
+        return createJdbi(() -> dataSource.getConnection(), config);
     }
 
     public static Jdbi createJdbi(ConnectionFactory connectionFactory, MySqlFunctionNamespaceManagerConfig config)
