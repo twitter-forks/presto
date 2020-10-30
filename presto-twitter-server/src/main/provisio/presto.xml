@@ -85,4 +85,10 @@
             <unpack />
         </artifact>
     </artifactSet>
+
+    <artifactSet to="plugin/function-namespace-managers">
+        <artifact id="${project.groupId}:presto-function-namespace-managers:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
 </runtime>
