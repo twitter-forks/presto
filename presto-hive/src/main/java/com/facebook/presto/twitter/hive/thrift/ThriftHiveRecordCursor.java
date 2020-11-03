@@ -313,6 +313,15 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         if (value instanceof Float) {
             return floatToRawIntBits(((Float) value));
         }
+        if (value instanceof List) {
+            List list = (List) value;
+            if (list.size() > 0) {
+                return getLongExpressedValue(list.get(0), hiveTimeZone);
+            }
+            else {
+                return 0L;
+            }
+        }
         return ((Number) value).longValue();
     }
 
@@ -387,6 +396,15 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         }
         else if (value instanceof Integer) {
             sliceValue = Slices.utf8Slice(value.toString());
+        }
+        else if (value instanceof List) {
+            List list = (List) value;
+            if (list.size() > 0) {
+                return getSliceExpressedValue(list.get(0), type);
+            }
+            else {
+                return Slices.utf8Slice("");
+            }
         }
         else {
             throw new IllegalStateException("unsupported string field type: " + value.getClass().getName());
