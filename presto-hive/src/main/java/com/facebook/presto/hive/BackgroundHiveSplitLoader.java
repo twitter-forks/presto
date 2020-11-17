@@ -298,6 +298,14 @@ public class BackgroundHiveSplitLoader
                 .orElse(table.getDataColumns().size());
         List<HivePartitionKey> partitionKeys = getPartitionKeys(table, partition.getPartition());
         Path path = new Path(getPartitionLocation(table, partition.getPartition()));
+        if ("gs".equals(path.toUri().getScheme()) && path.toUri().getHost().startsWith("user")) {
+            // 1. If your dataset has an underscore ( _ ), then that would get converted to dash ( - ).
+            // 2. If your dataset has a dash ( - ), then that would get converted to double dash (-- ).
+            // 3. All of log category buckets are named as gs://logs.{log category name}.dp.gcp.twttr.net (applying rule 1 and 2)
+            // 4. All of user paths are named as gs://user.{username or serviceaccount}.dp.gcp.twttr.net (applying rule 1 and 2)
+            String escapedHost = path.toUri().getHost().replaceAll("-", "--").replaceAll("_", "-");
+            path = new Path(path.toString().replaceAll(path.toUri().getHost(), escapedHost));
+        }
         Configuration configuration = hdfsEnvironment.getConfiguration(hdfsContext, path);
         InputFormat<?, ?> inputFormat = getInputFormat(configuration, inputFormatName, false);
         ExtendedFileSystem fs = hdfsEnvironment.getFileSystem(hdfsContext, path);
