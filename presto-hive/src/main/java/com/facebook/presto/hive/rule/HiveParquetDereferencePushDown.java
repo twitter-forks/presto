@@ -376,7 +376,7 @@ public class HiveParquetDereferencePushDown
                         -1,
                         SYNTHESIZED,
                         Optional.of("nested column pushdown"),
-                        ImmutableList.of(nestedColumn),
+                        ImmutableList.of(new Subfield(regularColumnHandle.getName(), nestedColumn.getPath())),
                         Optional.empty());
 
                 VariableReferenceExpression newOutputVariable = variableAllocator.newVariable(pushdownColumnName, dereferenceExpression.getType());
