@@ -175,6 +175,7 @@ import com.google.inject.Binder;
 import com.google.inject.Key;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import com.twitter.presto.healthcheck.TwitterAuroraHealth;
 import com.twitter.presto.maintenance.MaintenanceCoordinatorModule;
 import io.airlift.slice.Slice;
 import io.airlift.units.DataSize;
@@ -590,6 +591,9 @@ public class ServerMainModule
 
         //Optional Status Detector
         newOptionalBinder(binder, NodeStatusService.class);
+
+        //twitter's server health check endpoint
+        jaxrsBinder(binder).bind(TwitterAuroraHealth.class);
     }
 
     @Provides
