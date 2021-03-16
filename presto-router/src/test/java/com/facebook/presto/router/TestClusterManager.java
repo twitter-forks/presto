@@ -89,7 +89,6 @@ public class TestClusterManager
                 new RouterModule());
 
         Injector injector = app
-                .strictConfig()
                 .doNotInitializeLogging()
                 .setRequiredConfigurationProperty("router.config-file", configFile.getAbsolutePath())
                 .quiet()

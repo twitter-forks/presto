@@ -410,21 +410,6 @@ public final class HiveUtil
         }
     }
 
-    public static boolean isLzopCompressedFile(Path filePath)
-    {
-        return LZOP_DEFAULT_SUFFIX_FILTER.accept(filePath);
-    }
-
-    public static boolean isLzopIndexFile(Path filePath)
-    {
-        return LZOP_INDEX_DEFAULT_SUFFIX_FILTER.accept(filePath);
-    }
-
-    public static Path getLzopIndexPath(Path lzoPath)
-    {
-        return lzoPath.suffix(LZO_INDEX_SUFFIX);
-    }
-
     public static StructObjectInspector getTableObjectInspector(Deserializer deserializer)
     {
         try {

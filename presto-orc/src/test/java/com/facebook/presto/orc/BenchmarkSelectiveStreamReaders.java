@@ -457,11 +457,11 @@ public class BenchmarkSelectiveStreamReaders
         {
             switch (withNulls) {
                 case NONE:
-                    return Pair.of(false, 1 - filterRate);
+                    return new Pair<>(false, 1 - filterRate);
                 case PARTIAL:
-                    return Pair.of(true, (1 - filterRate) / (1 + filterRate));
+                    return new Pair<>(true, (1 - filterRate) / (1 + filterRate));
                 case ALL:
-                    return Pair.of((filterRate == 0 ? true : false), 1f);
+                    return new Pair<>((filterRate == 0 ? true : false), 1f);
                 default:
                     throw new UnsupportedOperationException("Unsupported withNulls: " + withNulls);
             }

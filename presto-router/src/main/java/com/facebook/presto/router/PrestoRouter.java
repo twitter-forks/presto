@@ -53,7 +53,7 @@ public class PrestoRouter
 
         Logger log = Logger.get(RouterModule.class);
         try {
-            app.strictConfig().initialize();
+            app.initialize();
             log.info("======== SERVER STARTED ========");
         }
         catch (Throwable t) {

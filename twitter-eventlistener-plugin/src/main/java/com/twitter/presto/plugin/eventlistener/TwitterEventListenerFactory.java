@@ -38,7 +38,6 @@ public class TwitterEventListenerFactory
             Bootstrap app = new Bootstrap(new TwitterEventListenerModule());
 
             Injector injector = app
-                    .strictConfig()
                     .doNotInitializeLogging()
                     .setRequiredConfigurationProperties(config)
                     .initialize();

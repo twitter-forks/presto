@@ -24,6 +24,7 @@ import com.facebook.presto.common.type.Type;
 import com.facebook.presto.common.type.TypeParameter;
 import com.facebook.presto.common.type.TypeSignature;
 import com.facebook.presto.common.type.TypeSignatureParameter;
+import com.facebook.presto.common.type.UnknownType;
 
 import java.util.List;
 import java.util.Optional;
