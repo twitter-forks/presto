@@ -397,6 +397,9 @@ class ThriftHiveRecordCursor<K, V extends Writable>
         else if (value instanceof Integer) {
             sliceValue = Slices.utf8Slice(value.toString());
         }
+        else if (value instanceof Short) {
+            sliceValue = Slices.utf8Slice(value.toString());
+        }
         else if (value instanceof List) {
             List list = (List) value;
             if (list.size() > 0) {
