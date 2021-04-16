@@ -37,7 +37,9 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
+            <scope>provided</scope>
         </dependency>
+
         <dependency>
             <groupId>org.weakref</groupId>
             <artifactId>jmxutils</artifactId>

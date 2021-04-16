@@ -180,4 +180,32 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.basepom.maven</groupId>
+                <artifactId>duplicate-finder-maven-plugin</artifactId>
+                <configuration>
+                    <ignoredResourcePatterns>
+                        <ignoredResourcePattern>javax/xml/bind/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>javax/xml/bind/helpers/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>javax/xml/bind/util/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>mozilla/public-suffix-list.txt</ignoredResourcePattern>
+                        <ignoredResourcePattern>module-info</ignoredResourcePattern>
+                        <ignoredResourcePattern>about.html</ignoredResourcePattern>
+                    </ignoredResourcePatterns>
+                    <ignoredClassPatterns>
+                        <ignoredClassPattern>okio.*</ignoredClassPattern>
+                        <ignoredClassPattern>javax.xml.bind.*</ignoredClassPattern>
+                        <ignoredClassPattern>javax.activation.*</ignoredClassPattern>
+                        <ignoredClassPattern>module-info</ignoredClassPattern>
+                        <ignoredClassPattern>org.objectweb.asm.*</ignoredClassPattern>
+                        <ignoredClassPattern>net.minidev.*</ignoredClassPattern>
+                        <ignoredClassPattern>com.sun.activation.*</ignoredClassPattern>
+                    </ignoredClassPatterns>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
