@@ -197,11 +197,22 @@
                     <ignoredResourcePatterns>
                         <ignoredResourcePattern>parquet.thrift</ignoredResourcePattern>
                         <ignoredResourcePattern>about.html</ignoredResourcePattern>
+                        <ignoredResourcePattern>javax/xml/bind/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>javax/xml/bind/helpers/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>javax/xml/bind/util/Messages.properties</ignoredResourcePattern>
+                        <ignoredResourcePattern>mozilla/public-suffix-list.txt</ignoredResourcePattern>
+                        <ignoredResourcePattern>module-info</ignoredResourcePattern>
                     </ignoredResourcePatterns>
                     <ignoredClassPatterns>
                         <ignoredClassPattern>shaded.parquet.it.unimi.dsi.fastutil.*</ignoredClassPattern>
                         <ignoredClassPattern>module-info</ignoredClassPattern>
                         <ignoredClassPattern>com.facebook.presto.parquet.batchreader.*BatchReader</ignoredClassPattern>
+                        <ignoredClassPattern>okio.*</ignoredClassPattern>
+                        <ignoredClassPattern>javax.xml.bind.*</ignoredClassPattern>
+                        <ignoredClassPattern>javax.activation.*</ignoredClassPattern>
+                        <ignoredClassPattern>org.objectweb.asm.*</ignoredClassPattern>
+                        <ignoredClassPattern>net.minidev.*</ignoredClassPattern>
+                        <ignoredClassPattern>com.sun.activation.*</ignoredClassPattern>
                     </ignoredClassPatterns>
                 </configuration>
             </plugin>
