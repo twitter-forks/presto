@@ -275,7 +275,7 @@ public final class ParquetTypeUtils
         checkArgument(nestedColumnPath.size() >= 1, "subfield size is less than 1");
         ImmutableList.Builder<org.apache.parquet.schema.Type> typeBuilder = ImmutableList.builder();
 
-        org.apache.parquet.schema.Type parentType = getParquetTypeByName(rootName, baseType.asGroupType());
+        org.apache.parquet.schema.Type parentType = findParquetTypeByName(rootName, baseType.asGroupType());
         if (parentType == null) {
             // column doesn't exist in the file
             return Optional.empty();
@@ -283,7 +283,7 @@ public final class ParquetTypeUtils
         typeBuilder.add(parentType);
 
         for (String field : nestedColumnPath) {
-            org.apache.parquet.schema.Type childType = getParquetTypeByName(field, parentType.asGroupType());
+            org.apache.parquet.schema.Type childType = findParquetTypeByName(field, parentType.asGroupType());
             if (childType == null) {
                 return Optional.empty();
             }
@@ -345,7 +345,7 @@ public final class ParquetTypeUtils
      * <li>if the name ends with _, remove it and case-insensitive match</li>
      * </ul>
      */
-    public static org.apache.parquet.schema.Type findParquetTypeByName(String name, MessageType messageType)
+    public static org.apache.parquet.schema.Type findParquetTypeByName(String name, GroupType messageType)
     {
         org.apache.parquet.schema.Type type = getParquetTypeByName(name, messageType);
 

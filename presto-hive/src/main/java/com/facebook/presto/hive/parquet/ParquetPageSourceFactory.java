@@ -103,11 +103,11 @@ import static com.facebook.presto.hive.HiveUtil.shouldUseRecordReaderFromInputFo
 import static com.facebook.presto.hive.parquet.HdfsParquetDataSource.buildHdfsParquetDataSource;
 import static com.facebook.presto.memory.context.AggregatedMemoryContext.newSimpleAggregatedMemoryContext;
 import static com.facebook.presto.parquet.ParquetTypeUtils.columnPathFromSubfield;
+import static com.facebook.presto.parquet.ParquetTypeUtils.findColumnIObyName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.findParquetTypeByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getColumnIO;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getDescriptors;
 import static com.facebook.presto.parquet.ParquetTypeUtils.getSubfieldType;
-import static com.facebook.presto.parquet.ParquetTypeUtils.lookupColumnByName;
 import static com.facebook.presto.parquet.ParquetTypeUtils.nestedColumnPath;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.buildPredicate;
 import static com.facebook.presto.parquet.predicate.PredicateUtils.predicateMatches;
@@ -282,7 +282,7 @@ public class ParquetPageSourceFactory
                 if (column.getColumnType() == SYNTHESIZED) {
                     Subfield pushedDownSubfield = getPushedDownSubfield(column);
                     List<String> nestedColumnPath = nestedColumnPath(pushedDownSubfield);
-                    Optional<ColumnIO> columnIO = findNestedColumnIO(lookupColumnByName(messageColumnIO, pushedDownSubfield.getRootName()), nestedColumnPath);
+                    Optional<ColumnIO> columnIO = findNestedColumnIO(findColumnIObyName(messageColumnIO, pushedDownSubfield.getRootName()), nestedColumnPath);
                     if (columnIO.isPresent()) {
                         fieldsBuilder.add(constructField(type, columnIO.get()));
                     }
@@ -292,7 +292,7 @@ public class ParquetPageSourceFactory
                 }
                 else if (getParquetType(type, fileSchema, useParquetColumnNames, column, tableName, path).isPresent()) {
                     String columnName = useParquetColumnNames ? name : fileSchema.getFields().get(column.getHiveColumnIndex()).getName();
-                    fieldsBuilder.add(constructField(type, lookupColumnByName(messageColumnIO, columnName)));
+                    fieldsBuilder.add(constructField(type, findColumnIObyName(messageColumnIO, columnName)));
                 }
                 else {
                     fieldsBuilder.add(Optional.empty());
